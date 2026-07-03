@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Explorer — Profin</title>
+<meta name="description" content="Type a ticker and pick a filing to see the exact normalized JSON Profin's API serves — real SEC XBRL data, mapped into one clean schema.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/explorer.css">
+</head>
+<body class="explorer-body">
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#covered">Coverage</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/docs">Docs</a>
+      <a href="/explorer" class="current">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/#covered">Coverage</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/docs">Docs</a>
+    <a href="/explorer" class="current">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<main class="explorer-wrap">
+
+  <header class="explorer-hero">
+    <div class="explorer-hero-top">
+      <div>
+        <div class="explorer-eyebrow">Profin — SEC XBRL, normalized</div>
+        <h1 class="explorer-title">Data Explorer</h1>
+      </div>
+      <div class="explorer-meta">Public · Read-only<br>try it live</div>
+    </div>
+    <div class="explorer-rule"></div>
+    <p class="explorer-intro">Type a ticker and pick a filing. You get the exact normalized JSON Profin's API would serve — messy SEC XBRL tags mapped into one clean, consistent schema.</p>
+  </header>
+
+  <section class="query-panel" aria-label="Query controls">
+    <div class="query-panel-header">
+      <span class="query-panel-kicker">Query · GET /v1/companies/{symbol}/statements</span>
+      <span class="query-panel-resolved" id="resolvedLabel"></span>
+    </div>
+    <div class="query-panel-body">
+
+      <div class="query-row">
+        <label class="query-label" for="tickerInput">Company</label>
+        <input id="tickerInput" class="ticker-input" placeholder="ticker or CIK" spellcheck="false" autocomplete="off" maxlength="10" />
+        <button id="lookupBtn" class="btn-lookup" type="button">Look up</button>
+        <span class="row-divider"></span>
+        <div class="chip-row" id="chipRow"></div>
+      </div>
+
+      <div class="query-row">
+        <label class="query-label">Statement</label>
+        <div class="segmented" id="statementControl" role="tablist"></div>
+      </div>
+
+      <div class="query-row query-row-period">
+        <label class="query-label">Period</label>
+        <div class="period-block">
+          <div class="pill-row" id="periodRow"></div>
+          <div class="period-caption">Periods with filings on record · GET /periods</div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="results-region" id="resultsRegion" aria-live="polite">
+
+    <div class="state-card state-loading" id="stateLoading" hidden>
+      <div class="loading-status"><span class="pulse-dot"></span><span id="loadingText"></span></div>
+      <div class="shimmer-stack">
+        <div class="shimmer-bar" style="width:38%"></div>
+        <div class="shimmer-bar" style="width:64%"></div>
+        <div class="shimmer-bar" style="width:52%"></div>
+        <div class="shimmer-bar" style="width:71%"></div>
+        <div class="shimmer-bar" style="width:44%"></div>
+      </div>
+      <div class="loading-footnote">Cold path — some periods read live from SEC EDGAR on first request; cached responses will be near-instant.</div>
+    </div>
+
+    <div class="state-card state-404" id="state404" hidden>
+      <div class="http-code">HTTP 404</div>
+      <div class="state-404-title" id="state404Title"></div>
+      <p class="state-404-copy" id="state404Copy"></p>
+      <div class="chip-row" id="state404Chips"></div>
+    </div>
+
+    <div class="state-card state-empty" id="stateEmpty" hidden>
+      <div class="empty-meta-strip" id="emptyMetaStrip"></div>
+      <div class="empty-body">
+        <div class="empty-tag">Filing on record — no mapped fields</div>
+        <p class="empty-copy" id="emptyCopy"></p>
+      </div>
+    </div>
+
+    <div class="ready-block" id="stateReady" hidden>
+      <div class="filing-header">
+        <div>
+          <div class="company-name" id="companyName"></div>
+          <div class="company-sub" id="companySub"></div>
+        </div>
+        <div class="filing-meta-grid" id="filingMetaGrid"></div>
+      </div>
+
+      <div class="toolbar">
+        <div class="row-count" id="rowCountLabel"></div>
+        <div class="toolbar-actions">
+          <span class="toolbar-caption">raw XBRL tag → clean field</span>
+          <button class="toggle-btn" id="jsonToggleBtn" type="button" aria-pressed="false">{ } View raw JSON</button>
+          <button class="toggle-btn" id="auditToggleBtn" type="button" aria-pressed="false">○ Show your work</button>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-normal" id="tableNormal">
+          <div class="table-head"><span>Concept</span><span>Value · click to reveal exact</span></div>
+          <div id="rowsNormal"></div>
+        </div>
+        <div class="table-audit" id="tableAudit" hidden>
+          <div class="table-head-audit"><span>Raw XBRL tag (SEC)</span><span></span><span>Profin schema</span></div>
+          <div id="rowsAudit"></div>
+        </div>
+      </div>
+
+      <pre class="raw-json" id="rawJson" hidden></pre>
+
+      <p class="caveat">Sourced from SEC EDGAR filings — subject to normal filing lag (a 10-K posts ~45–90 days after period end). Values are raw USD unless noted; display figures are rounded, exact reported figures on click.</p>
+    </div>
+
+  </section>
+
+  <div class="coming-soon">
+    <span class="soon-tag">Soon</span>
+    <span>Insider trades and institutional ownership (13F) — coming soon. Not yet available in the API.</span>
+  </div>
+
+  <footer class="explorer-footer">
+    <div class="explorer-footer-links">
+      <a href="/docs" target="_blank" rel="noopener">API reference · /docs ↗</a>
+      <a href="/#pricing">Pricing · /#pricing ↗</a>
+    </div>
+    <div class="explorer-footer-tag">Profin · public SEC data, cleaned &amp; queryable</div>
+  </footer>
+
+</main>
+
+<script src="/static/script.js"></script>
+<script src="/static/explorer.js"></script>
+</body>
+</html>

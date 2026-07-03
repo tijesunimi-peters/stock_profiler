@@ -32,6 +32,11 @@ async def landing_page() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/explorer", include_in_schema=False)
+async def data_explorer() -> FileResponse:
+    return FileResponse(STATIC_DIR / "explorer.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
