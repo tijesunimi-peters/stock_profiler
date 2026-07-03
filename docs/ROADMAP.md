@@ -15,8 +15,14 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
 
 ## Milestone 1 — reliable financials for one statement type
 
-- [ ] Storage layer: cache RawFacts per company (SQLite behind a repository interface)
-- [ ] Put the cache in front of API routes (stop hitting SEC per request)
+- [x] Storage layer: cache RawFacts per company (SQLite behind a repository interface) --
+      `storage/repository.py` + `storage/sqlite_repository.py`
+- [x] Bulk backfill pipeline: SEC companyfacts.zip -> bounded producer/consumer ->
+      SQLite (`ingest/backfill.py`, `python -m secfin.ingest.backfill`)
+- [x] Daily incremental ingest via the SEC daily index + existing throttled SECClient
+      (`ingest/incremental.py`, `python -m secfin.ingest.incremental`)
+- [ ] Put the cache in front of API routes (stop hitting SEC per request) -- storage now
+      exists and is populated, but routes.py hasn't been switched over yet
 - [ ] Expand mapping coverage for the income statement; measure with `coverage_report()`
 - [ ] Real tests against a few saved companyfacts fixtures (Apple, a bank, a retailer)
 

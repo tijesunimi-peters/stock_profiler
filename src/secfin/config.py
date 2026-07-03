@@ -20,8 +20,16 @@ class Settings(BaseSettings):
     # Local cache / DB path. SQLite for dev.
     secfin_db_path: str = "./data/secfin.db"
 
-    # SEC fair-access throttle. Do not raise above the SEC limit.
+    # SEC fair-access throttle. Do not raise above the SEC limit (verified 2026-07-03:
+    # SEC's published guideline is 10 req/s per IP; 8 keeps a safety margin under it).
     sec_max_rps: int = 8
+
+    # Bulk backfill (src/secfin/ingest/backfill.py).
+    secfin_bulk_data_dir: str = "./data/bulk"
+    # 0 => auto-detect as max(1, cpu_count() - 1).
+    secfin_backfill_workers: int = 0
+    secfin_backfill_batch_size: int = 5000
+    secfin_backfill_queue_maxsize: int = 50
 
     @property
     def user_agent_is_configured(self) -> bool:

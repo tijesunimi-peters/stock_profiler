@@ -15,20 +15,65 @@ swapped without rewriting the others.
                                               never on the request path)
 ```
 
-## 1. Ingest — `src/secfin/sec/`
+## 1. Ingest — `src/secfin/sec/` and `src/secfin/ingest/`
 
-Thin clients over the SEC's free public APIs. **No business logic here.**
+Thin clients over the SEC's free public APIs live in `sec/`. **No business logic there.**
+Pipeline orchestration (downloading, multiprocessing, batching into the store) lives in
+`ingest/`, which is the only place that reaches into `storage/`.
 
 - `client.py` — one HTTP client for everything. Enforces the required `User-Agent` and
   throttles to the SEC fair-access rate. All SEC access goes through it.
 - `companyfacts.py` — pulls the `companyfacts` JSON (all XBRL numbers for a company) and
-  flattens it to `RawFact`s. Also resolves ticker → CIK.
+  flattens it to `RawFact`s via `flatten_company_facts`, a pure function with no I/O. Also
+  resolves ticker → CIK.
 - `insider.py` — (stub) pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s.
 - `institutional.py` — (stub) pulls Form 13F information-table XML → `HoldingsSnapshot`s, and
   Schedules 13D/G → `BeneficialOwnership`. 13F is a quarter-end *snapshot*, not trades.
 
 The financials source is already structured (companyfacts gives us clean data points), so
 there's no HTML parsing. Insider trades and 13F are structured XML — again no HTML scraping.
+
+### Two ingestion entry points, one parse+store path
+
+Both call `flatten_company_facts` and the same `storage.RawFactRepository`, so a fact
+ingested via either path is indistinguishable in the store.
+
+- **Bulk backfill** (`ingest/backfill.py`, `python -m secfin.ingest.backfill`) — a bounded
+  producer–consumer pipeline for a full historical load:
+
+  ```
+    ingest/downloader.py          N parser processes           1 writer (main process)
+    (sequential, ~2-3 requests)         |                              |
+    companyfacts.zip, submissions.zip   |                              |
+              |                          v                              v
+              `---------> [bounded work queue] -----> flatten_company_facts -----> [bounded result queue] -----> batched
+                          (cik, zip entry name)         (no DB access)                (cik, entry, facts)         upsert + checkpoint
+  ```
+
+  - `ingest/downloader.py` fetches `companyfacts.zip` and `submissions.zip` to local disk,
+    streamed and resumable (HTTP Range + a size/sha256 sidecar file). This is ~2-3 HTTP
+    requests total for the whole backfill — the SEC per-IP rate limit is irrelevant at that
+    volume, so downloads are **not** parallelized and don't go through `SECClient`'s limiter
+    (they still send the required `User-Agent`).
+  - The main process enumerates `companyfacts.zip`'s entries (one `CIK##########.json` per
+    company), skips CIKs already checkpointed, and feeds the rest into a bounded
+    `multiprocessing.Queue` — this is the backpressure point on the producer side.
+  - N parser processes (default `cpu_count() - 1`) each open the zip once and, per entry,
+    call `flatten_company_facts` — the same pure function `sec/companyfacts.py` uses for the
+    live per-request path, so the two are guaranteed to produce identical `RawFact`s.
+    **Parsers never open the database.**
+  - The main process doubles as the single DB writer: it drains a second bounded queue,
+    batches ~5-10k facts across companies, and commits each batch's facts *and* its
+    per-company checkpoint rows in one SQLite transaction — so a crash mid-backfill can't
+    leave a checkpoint without its facts, or vice versa. Re-running the backfill skips
+    everything already checkpointed.
+
+- **Daily incremental** (`ingest/incremental.py`, `python -m secfin.ingest.incremental`) — for
+  ongoing updates: reads the SEC daily index (`form.YYYYMMDD.idx`) to find CIKs that filed a
+  10-K/10-Q on a given date, then fetches each via the existing throttled `SECClient` and
+  feeds the same `flatten_company_facts` → repository path. Volume is small (hundreds/day),
+  so this runs as a single process — no pool, and no extra processes to "go faster", since
+  the SEC's fair-access limit is per-IP, not per-process.
 
 ## 2. Normalize — `src/secfin/normalize/`  ← the value-add
 
@@ -46,20 +91,35 @@ of that onto one small, stable canonical schema.
 
 See `DATA_MODEL.md` for the schema and mapping details.
 
-## 3. Store — (to build)
+## 3. Store — `src/secfin/storage/`
 
-Not yet implemented. Two distinct stores, not one replacing the other — different jobs,
-different access patterns.
+Two distinct stores, not one replacing the other — different jobs, different access
+patterns.
 
 ### 3a. Operational store — what `serve` reads from
 
-- Cache the flattened `RawFact`s (and, once implemented, `HoldingsSnapshot`s) per company
-  so we don't hit the SEC on every request (also the only way to respect fair-access limits
-  at scale).
-- Start with SQLite in WAL mode (concurrent point reads for the API); keep all DB access
-  behind a small repository interface so moving to Postgres is a drop-in.
-- Preserve every version of a fact (never destructively overwrite on restatement); the
-  builder decides what's "current".
+- `storage/repository.py` — abstract `RawFactRepository`. All DB access goes through this
+  interface (CLAUDE.md: "keep DB behind an interface; no raw SQL in the API layer"), so
+  moving to Postgres later is a drop-in.
+- `storage/sqlite_repository.py` — the SQLite implementation. WAL mode + `synchronous=NORMAL`
+  so the API's concurrent point reads don't block on the backfill/incremental writer.
+  Caches the flattened `RawFact`s per company so we don't hit the SEC on every request (also
+  the only way to respect fair-access limits at scale). The API routes don't use this yet
+  (see §4) — wiring it in is the next step, not part of this pipeline change.
+- **Single-writer rule:** exactly one process holds a writer connection at a time. In the
+  bulk backfill that's the main/orchestrator process; parser processes never touch the DB.
+  The daily incremental is already single-process, so this is automatic there.
+- **Idempotent upsert, keyed on** `(cik, gaap_tag, unit, period_start, period_end, instant,
+  accession)`. Re-ingesting the same fact from the same filing updates in place; a
+  restatement (same concept+period, different accession/filed) lands as a new row — nothing
+  is ever deleted, and `normalize/statements.py` picks "current" (latest `filed`) at read
+  time. Absent `period_start`/`period_end`/`instant` are stored as `''` rather than `NULL`,
+  because SQLite treats every `NULL` as distinct in a `UNIQUE` index — leaving them `NULL`
+  would let idempotent upsert silently duplicate every instant (balance-sheet) fact.
+- **Checkpoint table** (`ingest_checkpoint`, keyed on `(cik, source)`) records which
+  companies have been ingested per source (`bulk_companyfacts` / `daily_incremental`), so a
+  crashed backfill resumes without re-parsing already-done companies and without re-hitting
+  the SEC (the zip is already local).
 
 ### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
 
@@ -89,8 +149,9 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 - `GET /v1/companies/{symbol}/periods`
 - `GET /v1/companies/{symbol}/insider-trades` (501 until implemented)
 
-`symbol` accepts a ticker or a raw CIK. Right now routes fetch live from the SEC per
-request — that's a placeholder until the store lands.
+`symbol` accepts a ticker or a raw CIK. Right now routes still fetch live from the SEC per
+request — the storage layer (§3a) exists and is populated by `ingest/`, but wiring routes to
+read from it instead of the live SEC API is separate follow-up work, not part of this change.
 
 ## Data flow example (income statement for AAPL, FY2024)
 

@@ -16,9 +16,13 @@ from secfin.normalize.schema import RawFact
 from secfin.sec.client import SECClient
 
 
-async def fetch_raw_facts(client: SECClient, cik: int, taxonomy: str = "us-gaap") -> list[RawFact]:
-    """Return every data point for a company under one taxonomy as flat RawFacts."""
-    payload = await client.get_json(client.company_facts_url(cik))
+def flatten_company_facts(payload: dict, cik: int, taxonomy: str = "us-gaap") -> list[RawFact]:
+    """Pure flatten step: companyfacts JSON payload -> flat RawFacts.
+
+    Deliberately network-free so both ingestion paths can call it and get identical
+    output: the live per-request fetch below, and the bulk backfill (secfin.ingest.backfill),
+    which loads the same payload shape from a companyfacts.zip entry instead of the API.
+    """
     concepts = payload.get("facts", {}).get(taxonomy, {})
     out: list[RawFact] = []
 
@@ -46,6 +50,12 @@ async def fetch_raw_facts(client: SECClient, cik: int, taxonomy: str = "us-gaap"
                     )
                 )
     return out
+
+
+async def fetch_raw_facts(client: SECClient, cik: int, taxonomy: str = "us-gaap") -> list[RawFact]:
+    """Return every data point for a company under one taxonomy as flat RawFacts."""
+    payload = await client.get_json(client.company_facts_url(cik))
+    return flatten_company_facts(payload, cik, taxonomy)
 
 
 async def resolve_ticker(client: SECClient, ticker: str) -> int | None:

@@ -46,13 +46,16 @@ and is a deliberate later decision.
    XML)            schema
 ```
 
-- **ingest** (`src/secfin/sec/`): thin, rate-limited clients over the SEC's public JSON/XML APIs.
+- **ingest** (`src/secfin/sec/`, `src/secfin/ingest/`): thin, rate-limited clients over the
+  SEC's public JSON/XML APIs (`sec/`), plus pipeline orchestration (`ingest/`) that runs a
+  bulk backfill and a daily incremental job through the same parse+store path. See
+  `docs/ARCHITECTURE.md` for the pipeline diagram.
 - **normalize** (`src/secfin/normalize/`): the value-add. Maps inconsistent source tags to one
   canonical schema. **This is the moat — most of our real work lives here.**
-- **store**: two distinct stores, not one replacing the other:
-  - *Operational* — on-disk/SQLite now (WAL mode, concurrent point reads for the API), with
-    a planned path to Postgres. Stays behind the repository interface. This is what `serve`
-    reads from.
+- **store** (`src/secfin/storage/`): two distinct stores, not one replacing the other:
+  - *Operational* — SQLite now (WAL mode, concurrent point reads for the API), with a planned
+    path to Postgres. Stays behind the `RawFactRepository` interface. This is what `serve`
+    reads from (once routes are wired to it — see ROADMAP), and what `ingest/` writes to.
   - *Analytical* — DuckDB querying Parquet on disk, for batch aggregation only (13F
     cross-manager inversion, cross-company screening). Never on the live request path.
     See `docs/ARCHITECTURE.md`.
@@ -73,6 +76,16 @@ Base host for structured data: `https://data.sec.gov`
 - **Ticker → CIK map:** `https://www.sec.gov/files/company_tickers.json`
 - **Insider trades (Forms 3/4/5):** discovered via `/submissions/...`, then fetch the ownership
   XML document from the filing's EDGAR directory. Parsed in `src/secfin/sec/insider.py`.
+- **Bulk companyfacts (all companies, nightly rebuild):**
+  `https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip` — one
+  `CIK##########.json` per company, same shape as the companyfacts API. Used by
+  `ingest/backfill.py`. Verified 2026-07-03; re-check before relying on it long-term.
+- **Bulk submissions (all filers' history, nightly rebuild):**
+  `https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip` — downloaded by
+  the backfill for future insider/13F work; not parsed yet (see ROADMAP).
+- **Daily filing index (for the incremental job):**
+  `https://www.sec.gov/Archives/edgar/daily-index/{year}/QTR{n}/form.{YYYYMMDD}.idx` — used
+  by `ingest/incremental.py` to find CIKs that filed 10-K/10-Q on a given date.
 
 ## Tech stack
 
@@ -93,7 +106,7 @@ Base host for structured data: `https://data.sec.gov`
 
 ```
 src/secfin/
-  config.py              # settings (User-Agent, DB path) from env
+  config.py              # settings (User-Agent, DB path, backfill tuning) from env
   sec/
     client.py            # rate-limited SEC HTTP client (User-Agent + throttle)  [implemented]
     companyfacts.py      # fetch + shape companyfacts JSON                        [implemented]
@@ -104,6 +117,13 @@ src/secfin/
     mapping.py           # canonical concept -> candidate US-GAAP tags (the moat) [starter]
     statements.py        # build canonical statements from company facts         [implemented]
     flows.py             # derive 13F buy/sell by diffing snapshots              [implemented]
+  storage/
+    repository.py        # abstract RawFactRepository                          [implemented]
+    sqlite_repository.py # SQLite impl: WAL mode, idempotent upsert, checkpoint [implemented]
+  ingest/
+    downloader.py         # resumable download of SEC bulk zips                [implemented]
+    backfill.py           # bulk backfill: downloader -> N parsers -> 1 writer [implemented]
+    incremental.py         # daily incremental via SEC daily index + SECClient  [implemented]
   api/
     main.py              # FastAPI app + wiring
     routes.py            # endpoints
@@ -150,6 +170,13 @@ pytest
 
 # lint/format (if configured)
 ruff check . && ruff format .
+
+# bulk backfill (downloads SEC companyfacts.zip/submissions.zip, parses with a
+# multiprocessing pool, writes to SQLite via a single writer process)
+python -m secfin.ingest.backfill
+
+# daily incremental (companies that filed 10-K/10-Q recently, via the throttled SECClient)
+python -m secfin.ingest.incremental
 ```
 
 ## Guardrails for the agent
@@ -163,3 +190,7 @@ ruff check . && ruff format .
    keeps reading from the operational store (SQLite → Postgres).
 7. Analytical queries (13F inversion, cross-company screening) run as separate batch jobs
    against Parquet, not inline with a request handler.
+8. In the bulk backfill pipeline (`ingest/backfill.py`): parsers never open the database —
+   exactly one process (the writer) owns the SQLite connection. If you add a new bulk data
+   source, route it through the same single-writer queue rather than giving parsers their
+   own connections.
