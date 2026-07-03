@@ -146,6 +146,12 @@ docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP
   never delete prior values.
 - Type hints on all public functions. Keep `sec/` clients free of business logic — mapping belongs
   in `normalize/`.
+- **Docker persistence:** the `api` service's `secfin-data` volume (mounted at `/app/data`)
+  holds both the SQLite DB (`SECFIN_DB_PATH=/app/data/secfin.db`) and the downloaded bulk
+  zips (`secfin_bulk_data_dir` defaults to `./data/bulk`, which resolves to `/app/data/bulk`
+  under the container's `/app` `WORKDIR`). That's a single volume, not two — both the
+  checkpoint table and the resumable downloads need to survive the same container restarts
+  for backfill resumability to work. See `docs/DEVELOPMENT.md`.
 
 ## SEC compliance (non-negotiable — do not bypass)
 
@@ -177,6 +183,18 @@ python -m secfin.ingest.backfill
 
 # daily incremental (companies that filed 10-K/10-Q recently, via the throttled SECClient)
 python -m secfin.ingest.incremental
+```
+
+Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must
+`docker compose build` again after any source change — the image bakes in `src/` rather
+than mounting it live):
+
+```bash
+cp .env.example .env   # then set a real SEC_USER_AGENT — required even for `build`
+docker compose build
+docker compose up api                                          # API on :8000
+docker compose run --rm api python -m secfin.ingest.backfill    # same image, same volume
+docker compose run --rm api python -m secfin.ingest.incremental
 ```
 
 ## Guardrails for the agent

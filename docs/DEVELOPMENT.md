@@ -1,0 +1,215 @@
+# Development: running this project with Docker
+
+This documents the `Dockerfile` and `docker-compose.yml` already in the repo root, as
+they actually behave — every command below was run against the real files to confirm it.
+For running directly with a local Python install instead, see the README's `Setup`/`Run`
+sections.
+
+## What's in the compose file
+
+`docker-compose.yml` defines one service, `api`:
+
+```yaml
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+      SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
+    volumes:
+      - secfin-data:/app/data
+```
+
+`Dockerfile` builds a `python:3.11-slim` image, `WORKDIR /app`, and runs
+`pip install --no-cache-dir .` (production deps only, **not** the `[dev]` extra) against
+a `COPY src ./src` taken at build time — the image does not bind-mount your working
+tree. Its `CMD` is `uvicorn secfin.api.main:app --host 0.0.0.0 --port 8000`.
+
+There's no separate service or Dockerfile for the ingest jobs — `backfill` and
+`incremental` run as one-off overrides of the same `api` service/image via
+`docker compose run`, so they get the same build, environment, and volume.
+
+## 1. Configure `.env` once
+
+`docker compose` auto-loads a `.env` file from the project root for variable
+substitution — this is the **same** `.env` the app itself reads (`config.py`, via
+`pydantic-settings`), so one file covers both. Without it, `SEC_USER_AGENT` has no
+default and **every** `docker compose` subcommand fails at parse time, including `build`:
+
+```
+error while interpolating services.api.environment.SEC_USER_AGENT: required variable SEC_USER_AGENT is missing a value
+```
+
+Set it up once:
+
+```bash
+cp .env.example .env
+# edit .env: set SEC_USER_AGENT to something like "stock-profiler you@example.com"
+# (a real contact email — the SEC blocks requests without one)
+```
+
+`SECFIN_DB_PATH` and `SEC_MAX_RPS` also come from `.env`/the shell if set; compose
+otherwise falls back to the defaults baked into `docker-compose.yml`
+(`/app/data/secfin.db`, `8`).
+
+## 2. Build the image
+
+```bash
+docker compose build
+```
+
+**Rebuild whenever `src/` changes.** The image bakes in a `COPY src ./src` at build
+time — it is not a live bind mount — so `docker compose run`/`up` will silently run
+whatever code was in `src/` the last time you built, not your current working tree.
+Concretely: if you build once, then add a new module under `src/secfin/`, `docker compose
+run --rm api python -m secfin.some_new_module` will fail with `ModuleNotFoundError` until
+you `docker compose build` again.
+
+## 3. Run the API
+
+```bash
+docker compose up api
+```
+
+The Dockerfile's `CMD` binds uvicorn to `0.0.0.0:8000` inside the container, and compose
+maps that to the host with `ports: ["8000:8000"]`, so it's reachable at:
+
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+`docker compose down` stops and removes the container/network but leaves the
+`secfin-data` volume (and everything in it) alone.
+
+## 4. Run the bulk backfill
+
+```bash
+docker compose run --rm api python -m secfin.ingest.backfill
+```
+
+Same service, same image, same volume, different command — `docker compose run`
+overrides the `CMD` but keeps the `api` service's `environment:` and `volumes:` as
+declared. Tuning flags (all optional; see `secfin.ingest.backfill.build_arg_parser`):
+
+```bash
+docker compose run --rm api python -m secfin.ingest.backfill \
+  --workers 4 --batch-size 5000 --queue-maxsize 50 \
+  --data-dir ./data/bulk --db-path ./data/secfin.db
+```
+
+Paths are relative to the container's `WORKDIR` (`/app`), so the defaults
+(`./data/bulk`, `./data/secfin.db`) resolve to `/app/data/bulk` and
+`/app/data/secfin.db` — both under the one mounted volume (see §6).
+
+## 5. Run the daily incremental job
+
+```bash
+docker compose run --rm api python -m secfin.ingest.incremental
+```
+
+Optional flags (`secfin.ingest.incremental.build_arg_parser`):
+
+```bash
+docker compose run --rm api python -m secfin.ingest.incremental \
+  --date 2026-07-02 --forms 10-K 10-Q --db-path ./data/secfin.db
+```
+
+`--date` defaults to yesterday if omitted.
+
+## 6. Where the data lives, and why the backfill is resumable
+
+Everything persists in the single named volume declared in `docker-compose.yml`,
+`secfin-data`, mounted at `/app/data`. Compose namespaces it by the project name (the
+directory name, unless overridden) — confirmed on this repo:
+
+```bash
+$ docker compose config
+...
+volumes:
+  secfin-data:
+    name: stock_profiler_secfin-data
+```
+
+Both of the following land under that one volume, since neither is redirected
+elsewhere by `docker-compose.yml`'s `environment:` block:
+
+- the SQLite DB (`SECFIN_DB_PATH=/app/data/secfin.db`, set explicitly in compose)
+- the downloaded bulk zips (`companyfacts.zip`, `submissions.zip`), because
+  `secfin_bulk_data_dir` defaults to `./data/bulk` (`config.py`), which resolves
+  against the container's `/app` `WORKDIR` to `/app/data/bulk`
+
+That's what makes `docker compose run --rm api python -m secfin.ingest.backfill`
+resumable across separate invocations: each `run` is a fresh, disposable *container*,
+but the *volume* isn't torn down with it. On a re-run, `ingest/downloader.py` sees the
+zip already on disk (via its sidecar `.meta.json` + size check) and skips or resumes it
+instead of re-downloading, and the writer skips any CIK already present in the
+`ingest_checkpoint` table in `secfin.db`.
+
+`docker compose down` does **not** remove this volume. `docker compose down -v` does —
+only do that if you actually want to discard the downloaded zips and the ingested
+database and start over.
+
+## 7. Inspecting the DB without contending with an active writer
+
+The store uses SQLite WAL mode with exactly one writer at a time (`storage/
+sqlite_repository.py`: `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL`). WAL
+allows concurrent readers while a writer is active, but open your inspection connection
+**read-only** anyway, so a stray write attempt errors instead of contending for the
+writer lock:
+
+```bash
+docker compose run --rm api python3 -c "
+import sqlite3
+c = sqlite3.connect('file:/app/data/secfin.db?mode=ro', uri=True)
+print(c.execute('SELECT COUNT(*) FROM ingest_checkpoint').fetchone())
+"
+```
+
+This is a second, independent container attached to the same `secfin-data` volume — it
+can run at the same time as a `backfill`/`incremental` container without needing to be
+stopped first. `mode=ro` refuses to create the file if it doesn't exist yet (rather than
+silently starting a new empty DB), which is a useful sanity check that you're pointed at
+real data.
+
+## Running tests / lint
+
+The shipped image **does not** support this: the `Dockerfile` installs the package
+without the `[dev]` extra (no `pytest`/`ruff`), and only `COPY`s `pyproject.toml`,
+`README.md`, and `src/` — `tests/` is never added to the image (and is separately
+excluded via `.dockerignore`). `docker compose run --rm api pytest` will fail on a
+plain build of this image.
+
+If you still want to run tests via Docker rather than a local venv, the working pattern
+used during development of this pipeline does **not** use the project's own Dockerfile —
+it bind-mounts the repo into the public `python:3.11-slim` base image and installs dev
+deps fresh each time:
+
+```bash
+docker run --rm -v "$(pwd)":/app -w /app python:3.11-slim \
+  bash -c "pip install -q -e '.[dev]' && pytest -q"
+```
+
+See "Open questions / mismatches" below — this is a real gap in the current setup, not
+a documented, first-class workflow.
+
+## Open questions / mismatches
+
+- **No tested path to run tests/lint via the project's own Docker image.** The
+  `Dockerfile` deliberately installs production-only deps and never copies `tests/`.
+  Whether that's intentional (image is meant to be a slim runtime artifact only) or an
+  oversight isn't stated anywhere in the repo — flagging rather than assuming either way.
+- **`.env.example` doesn't list the backfill tuning variables** that `config.py` actually
+  reads (`SECFIN_BULK_DATA_DIR`, `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`,
+  `SECFIN_BACKFILL_QUEUE_MAXSIZE`) — they work (confirmed via `--help`-equivalent
+  defaults in `backfill.build_arg_parser`), just via their own hardcoded defaults unless
+  passed as CLI flags or set directly in the shell/`.env` by hand.
+  `docker-compose.yml`'s `environment:` block doesn't surface them either, so today the
+  only way to override them for a Docker-run backfill is the CLI flags shown in §4.
+- **Every `docker compose` subcommand — including `build`, `config`, `down` — fails
+  without `SEC_USER_AGENT` resolvable**, since compose interpolates the whole file
+  up front. This is easy to trip over if you `docker compose build` before creating
+  `.env`; worth knowing going in rather than discovering via the error.
