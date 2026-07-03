@@ -1,0 +1,14 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+      SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
+    volumes:
+      - secfin-data:/app/data
+
+volumes:
+  secfin-data:

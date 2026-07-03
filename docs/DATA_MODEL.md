@@ -60,3 +60,52 @@ tags are your best candidates to add next. Every time you add a concept or candi
 (date, security, shares, price, acquired/disposed, direct/indirect ownership, shares after).
 Holdings-only rows are kept but flagged with `is_holding`. Parsing lives in `sec/insider.py`
 (currently a stub with the implementation plan in its docstring).
+
+## Institutional ownership (13F, 13D/G)
+
+This is the "ownership & flows" module that pairs with insider trades. It answers "who
+owns / is accumulating this stock?" — a different question from insider activity, and a
+different filing set.
+
+### The one distinction that shapes everything: snapshot ≠ transaction
+
+**Form 13F is a quarter-end holdings snapshot, not a record of trades.** A manager reports
+the positions it held at the end of the quarter. There is no "bought 500k shares on date X".
+
+So the models split cleanly:
+
+- `InstitutionalHolding` — one position line from a 13F information table (CUSIP, issuer,
+  value, shares, put/call, discretion).
+- `HoldingsSnapshot` — a manager's full 13F for one quarter (`manager_cik`, `report_period`).
+- `HoldingDelta` — **derived** buy/sell, computed by diffing two consecutive snapshots
+  (`new` / `added` / `reduced` / `exited` / `unchanged`). This is a *computed* result, and
+  the API surfaces it as such — we never present it as reported trade data.
+
+The diff lives in `normalize/flows.py` (`diff_snapshots`) and is fully implemented; the
+13F XML parsing that feeds it lives in `sec/institutional.py` (stub + plan).
+
+### 13D / 13G
+
+`BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —
+with owner, percent of class, shares, and event date. Event-driven, not periodic.
+
+### Limitations to surface (never hide these)
+
+- 13F is **long positions in 13(f) securities only** — no shorts, no cash, no non-US.
+- **~45-day reporting lag** after quarter-end, so the data is inherently stale.
+- Amendments (`13F-HR/A`) can restate a quarter; keep both, latest filed is current.
+- Answering "who holds AAPL?" requires **aggregating across all managers' 13Fs** and
+  inverting the index by security — closer to the cross-company/frames problem than to a
+  per-company lookup, so it's more infrastructure than just another endpoint.
+- CUSIP→CIK resolution isn't a single free SEC endpoint; maintain a mapping table and
+  track unresolved CUSIPs.
+
+## Analytical layer (planned, Milestone 2.5) — serialization, not a new model
+
+The DuckDB/Parquet analytical engine (see `ARCHITECTURE.md`, stage 3b) reads a **Parquet
+serialization of the existing `RawFact` and `HoldingsSnapshot` records** — it is not a new
+canonical model, and it does not get its own schema section here. Batch jobs land the same
+operational records to disk in columnar form so DuckDB can scan them; the shapes above stay
+the single source of truth. If a batch job needs a derived output (e.g. an inverted
+holder-by-security index for the 13F cross-manager view), that's a query result, not a new
+canonical concept.

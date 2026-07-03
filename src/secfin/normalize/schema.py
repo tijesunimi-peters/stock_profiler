@@ -91,3 +91,78 @@ class InsiderTransaction(BaseModel):
     accession: str | None = None
     filed: str | None = None
     is_holding: bool = False  # True if this is a holding, not a transaction
+
+
+# --- Institutional ownership (13F) -------------------------------------------------
+#
+# IMPORTANT: 13F is a *holdings snapshot*, not transactions. A manager reports the
+# positions it held at quarter-end. There is no "bought/sold on date X". Buy/sell is
+# DERIVED by diffing two consecutive quarterly snapshots (see normalize/flows.py and
+# the HoldingDelta model). Keep this distinction visible in the API — never imply
+# trade-level data we don't have.
+
+
+class InstitutionalHolding(BaseModel):
+    """One position line from a manager's 13F information table (quarter-end snapshot)."""
+
+    cusip: str  # security identifier used in 13F
+    issuer_name: str | None = None  # "nameOfIssuer" as reported
+    title_of_class: str | None = None
+    value: float | None = None  # reported market value of the position
+    shares: float | None = None  # sshPrnamt (shares or principal amount)
+    shares_or_principal: Literal["SH", "PRN"] | None = None
+    put_call: Literal["Put", "Call"] | None = None  # set for option positions
+    investment_discretion: str | None = None  # SOLE / DFND / OTR
+    cik: int | None = None  # issuer CIK, if resolved from CUSIP
+
+
+class HoldingsSnapshot(BaseModel):
+    """A single manager's full 13F for one quarter."""
+
+    manager_cik: int
+    manager_name: str | None = None
+    # Report period is a calendar quarter-end, e.g. "2024-06-30".
+    report_period: str
+    filed: str | None = None
+    accession: str | None = None
+    is_amendment: bool = False
+    holdings: list[InstitutionalHolding] = Field(default_factory=list)
+
+
+class HoldingDelta(BaseModel):
+    """DERIVED change in one manager's position in one security between two quarters.
+
+    Computed by diffing consecutive HoldingsSnapshots — not reported by the SEC.
+    """
+
+    manager_cik: int
+    manager_name: str | None = None
+    cusip: str
+    issuer_name: str | None = None
+    cik: int | None = None  # issuer CIK if resolved
+
+    from_period: str | None = None  # prior quarter-end ("2024-03-31"); None => new position
+    to_period: str  # current quarter-end
+
+    shares_before: float | None = None
+    shares_after: float | None = None
+    shares_change: float | None = None  # after - before (positive = added)
+    # new | added | reduced | exited | unchanged
+    action: Literal["new", "added", "reduced", "exited", "unchanged"]
+
+
+class BeneficialOwnership(BaseModel):
+    """A 13D/13G beneficial-ownership position (crossing the 5% threshold).
+
+    13D signals activist intent; 13G is the passive/institutional variant.
+    """
+
+    issuer_cik: int | None = None
+    issuer_name: str | None = None
+    owner_name: str | None = None
+    form_type: Literal["SC 13D", "SC 13G", "SC 13D/A", "SC 13G/A"] | None = None
+    percent_of_class: float | None = None
+    shares_beneficially_owned: float | None = None
+    event_date: str | None = None  # date of the triggering event
+    filed: str | None = None
+    accession: str | None = None

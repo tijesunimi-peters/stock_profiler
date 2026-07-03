@@ -16,9 +16,15 @@ messy SEC filings into consistent, queryable data.
 - Balance sheets
 - Cash flow statements
 - Insider trades (Forms 3 / 4 / 5)
+- Institutional ownership (Form 13F holdings; Schedules 13D / 13G)
 
-All four are already filed with the SEC in structured form (XBRL for financials, ownership XML
-for insider trades). We **ingest and re-shape structured data — we do not scrape or parse HTML.**
+All of these are filed with the SEC in structured form (XBRL for financials, ownership XML
+for insider trades, an XML information table for 13F). We **ingest and re-shape structured
+data — we do not scrape or parse HTML.**
+
+**Critical 13F caveat:** 13F is a quarter-end *holdings snapshot*, NOT transactions. Any
+"buy/sell" is DERIVED by diffing consecutive quarters (`normalize/flows.py` → `HoldingDelta`).
+Never present derived deltas as reported trades. Carry the long-only / ~45-day-lag caveats.
 
 **Explicitly out of scope (do not build yet):**
 - MD&A, risk factors, footnotes, or any free-text narrative ("Track 2")
@@ -43,8 +49,13 @@ and is a deliberate later decision.
 - **ingest** (`src/secfin/sec/`): thin, rate-limited clients over the SEC's public JSON/XML APIs.
 - **normalize** (`src/secfin/normalize/`): the value-add. Maps inconsistent source tags to one
   canonical schema. **This is the moat — most of our real work lives here.**
-- **store**: start with on-disk/SQLite cache; design so it can move to Postgres without touching
-  the API layer.
+- **store**: two distinct stores, not one replacing the other:
+  - *Operational* — on-disk/SQLite now (WAL mode, concurrent point reads for the API), with
+    a planned path to Postgres. Stays behind the repository interface. This is what `serve`
+    reads from.
+  - *Analytical* — DuckDB querying Parquet on disk, for batch aggregation only (13F
+    cross-manager inversion, cross-company screening). Never on the live request path.
+    See `docs/ARCHITECTURE.md`.
 - **serve** (`src/secfin/api/`): FastAPI endpoints returning canonical JSON.
 
 ## Data sources (SEC — all public, all free)
@@ -71,6 +82,12 @@ Base host for structured data: `https://data.sec.gov`
 - `FastAPI` + `uvicorn` — API layer
 - `pytest` — tests
 - SQLite for local dev; keep DB access behind a small interface so Postgres is a drop-in later.
+- `DuckDB` (planned, Milestone 2.5) — **analytical only**, querying Parquet files on disk for
+  batch jobs (13F cross-manager inversion, cross-company screening). Not the API's transactional
+  backend; never on the live per-request read path. Serverless — no DB process to run or pay
+  for, which fits the cheap-subscription goal. Pin a version and verify its multi-process
+  read/write concurrency semantics against that version's docs before implementing — this has
+  changed across DuckDB releases, so "verify, don't assume."
 
 ## Repository layout
 
@@ -81,10 +98,12 @@ src/secfin/
     client.py            # rate-limited SEC HTTP client (User-Agent + throttle)  [implemented]
     companyfacts.py      # fetch + shape companyfacts JSON                        [implemented]
     insider.py           # fetch + parse Forms 3/4/5 ownership XML               [stub]
+    institutional.py     # fetch + parse 13F info table, 13D/G                   [stub]
   normalize/
     schema.py            # canonical Pydantic models                            [implemented]
     mapping.py           # canonical concept -> candidate US-GAAP tags (the moat) [starter]
     statements.py        # build canonical statements from company facts         [implemented]
+    flows.py             # derive 13F buy/sell by diffing snapshots              [implemented]
   api/
     main.py              # FastAPI app + wiring
     routes.py            # endpoints
@@ -140,3 +159,7 @@ ruff check . && ruff format .
 3. When you add a new canonical concept, update `normalize/mapping.py` AND `docs/DATA_MODEL.md`.
 4. Prefer extending the mapping table over hard-coding company-specific fixes in `statements.py`.
 5. Keep the DB behind an interface; no raw SQL in the API layer.
+6. Never put DuckDB on the live request path — it's for batch/analytical jobs only. The API
+   keeps reading from the operational store (SQLite → Postgres).
+7. Analytical queries (13F inversion, cross-company screening) run as separate batch jobs
+   against Parquet, not inline with a request handler.

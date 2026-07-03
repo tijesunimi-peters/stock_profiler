@@ -63,3 +63,49 @@ async def get_periods(symbol: str) -> dict:
 async def get_insider_trades(symbol: str) -> dict:
     """Insider trades (Forms 3/4/5) — not yet implemented (see sec/insider.py)."""
     raise HTTPException(status_code=501, detail="Insider-trade endpoint not yet implemented.")
+
+
+# --- Institutional ownership (13F, 13D/G) ------------------------------------------
+#
+# NOTE: 13F is a quarter-end HOLDINGS SNAPSHOT, not transactions. The "buy/sell" view
+# is DERIVED by diffing consecutive quarters (normalize/flows.py). Endpoints and their
+# responses must make that explicit and carry the ~45-day-lag / long-only caveats.
+
+
+@router.get("/companies/{symbol}/institutional-holders")
+async def get_institutional_holders(
+    symbol: str,
+    period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+) -> dict:
+    """Managers holding this issuer as of a quarter-end (aggregated across 13F filings).
+
+    Requires the cross-manager 13F index + CUSIP→CIK resolution. Not yet implemented.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail="Institutional holders endpoint not yet implemented (needs 13F aggregation).",
+    )
+
+
+@router.get("/companies/{symbol}/institutional-activity")
+async def get_institutional_activity(
+    symbol: str,
+    period: str = Query(..., description="Current quarter-end, e.g. 2024-06-30"),
+) -> dict:
+    """DERIVED buy/sell activity for this issuer (current vs. prior quarter 13F diff).
+
+    Values are computed by diffing snapshots — not reported trades. Not yet implemented.
+    """
+    raise HTTPException(
+        status_code=501,
+        detail="Institutional activity endpoint not yet implemented (derived from 13F diffs).",
+    )
+
+
+@router.get("/managers/{manager_cik}/holdings")
+async def get_manager_holdings(
+    manager_cik: int,
+    period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+) -> dict:
+    """One manager's full 13F holdings snapshot for a quarter. Not yet implemented."""
+    raise HTTPException(status_code=501, detail="Manager holdings endpoint not yet implemented.")
