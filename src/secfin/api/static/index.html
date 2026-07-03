@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profin — Clean SEC financials, as a simple API.</title>
+<meta name="description" content="Profin normalizes messy public SEC XBRL filings into one consistent JSON schema — income statements, balance sheets, cash flow, insider trades, and institutional ownership.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="#covered">Coverage</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/docs">Docs</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="#covered">Coverage</a>
+    <a href="#pricing">Pricing</a>
+    <a href="/docs">Docs</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <div class="badge"><span class="badge-dot"></span>SEC XBRL, normalized</div>
+      <h1>Clean SEC financials,<br>as a simple API.</h1>
+      <p class="hero-sub">We normalize messy public XBRL filings into one consistent schema — so <span class="chip">revenue</span> means the same thing for every company, every year.</p>
+      <div class="cta-row">
+        <a href="/docs" class="btn btn-primary">View the docs</a>
+        <a href="#pricing" class="btn btn-outline">Get an API key</a>
+      </div>
+      <p class="fine-print">Public SEC data · normalized by us · ~2009–present</p>
+    </div>
+
+    <div class="code-panel">
+      <div class="code-titlebar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="filename">income-statement.json</span>
+      </div>
+      <div class="code-request">
+        <span class="verb">GET</span> <span class="path">/v1/financials/income-statement?ticker=</span><span class="accent-text">AAPL</span><span class="path">&amp;period=</span><span class="accent-text">FY2023</span>
+      </div>
+      <pre class="code-body"><span class="punct">{</span>
+  <span class="key">"company"</span>: <span class="str">"Apple Inc."</span>,
+  <span class="key">"ticker"</span>: <span class="str">"AAPL"</span>,
+  <span class="key">"cik"</span>: <span class="str">"0000320193"</span>,
+  <span class="key">"period"</span>: <span class="str">"FY2023"</span>,
+  <span class="key">"currency"</span>: <span class="str">"USD"</span>,
+  <span class="key">"income_statement"</span>: <span class="punct">{</span>
+    <span class="key">"revenue"</span>:           <span class="num">383285000000</span>,
+    <span class="key">"cost_of_revenue"</span>:   <span class="num">214137000000</span>,
+    <span class="key">"gross_profit"</span>:      <span class="num">169148000000</span>,
+    <span class="key">"operating_income"</span>:  <span class="num">114301000000</span>,
+    <span class="key">"net_income"</span>:        <span class="num">96995000000</span>,
+    <span class="key">"eps_diluted"</span>:       <span class="num">6.13</span>
+  <span class="punct">}</span>,
+  <span class="key">"source"</span>: <span class="str">"10-K filed 2023-11-03"</span><span class="cursor">▍</span>
+<span class="punct">}</span></pre>
+    </div>
+  </div>
+</header>
+
+<div class="trust-strip-wrap">
+  <div class="trust-strip">
+    <span class="trust-label">Sourced directly from SEC EDGAR</span>
+    <div class="trust-forms">
+      <span>10-K</span><span>10-Q</span><span>Form 4</span><span>13F</span><span>XBRL</span>
+    </div>
+  </div>
+</div>
+
+<section class="section problem">
+  <div class="problem-grid">
+    <div>
+      <span class="eyebrow">01 / The problem</span>
+      <h2>SEC data is free. Using it isn't.</h2>
+      <p class="body-text">The raw filings are public, but every company tags the same concept differently — and often changes those tags year to year, or invents their own. Getting a clean time series means writing and maintaining a mountain of mapping logic.</p>
+      <p class="body-text">We do that mapping work once, for everyone, so you don't have to.</p>
+    </div>
+    <div class="diagram">
+      <div class="diagram-card raw">
+        <div class="diagram-label">Raw XBRL tags</div>
+        <div>us-gaap:Revenues</div>
+        <div>RevenueFromContract…</div>
+        <div>SalesRevenueNet</div>
+        <div>us-gaap:Revenue<span class="arrow-up">↗</span></div>
+        <div class="bad-tag">acme:TotalTopLine</div>
+      </div>
+      <div class="diagram-arrow">→</div>
+      <div class="diagram-card clean">
+        <div class="diagram-label">Profin schema</div>
+        <div><span class="key">"revenue"</span>:</div>
+        <div class="clean-value">383285000000</div>
+        <div class="comment">// one field.</div>
+        <div class="comment">// every company.</div>
+        <div class="comment">// every year.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section features">
+  <span class="eyebrow">02 / What you get</span>
+  <h2 class="features-heading">Built for developers who value their time.</h2>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="icon-chip">≡</div>
+      <h3>Clean normalization</h3>
+      <p>Inconsistent tags mapped to one schema. A field means the same thing across every company and every year — no reconciliation on your end.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon-chip">{ }</div>
+      <h3>Readable &amp; organized</h3>
+      <p>Structured to avoid information overload. You get the numbers you asked for — not the filing noise around them.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon-chip">?</div>
+      <h3>Queryable</h3>
+      <p>Filter by company, period, and metric through a plain REST API. Predictable URLs in, clean JSON out.</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon-chip">$</div>
+      <h3>Genuinely affordable</h3>
+      <p>A low subscription price that undercuts the enterprise data vendors — because the data is public and the value is the cleanup.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="covered">
+  <div class="coverage-block">
+    <span class="eyebrow eyebrow-dark">03 / Coverage</span>
+    <h2 class="coverage-heading">The core fundamentals, end to end.</h2>
+    <p class="coverage-sub">Every U.S. company that files XBRL with the SEC, from roughly 2009 to the present.</p>
+    <div class="coverage-grid">
+      <div class="coverage-card">
+        <div class="coverage-kicker">endpoint</div>
+        <div class="coverage-title">Income statement</div>
+        <div class="coverage-desc">Revenue through diluted EPS.</div>
+      </div>
+      <div class="coverage-card">
+        <div class="coverage-kicker">endpoint</div>
+        <div class="coverage-title">Balance sheet</div>
+        <div class="coverage-desc">Assets, liabilities, equity.</div>
+      </div>
+      <div class="coverage-card">
+        <div class="coverage-kicker">endpoint</div>
+        <div class="coverage-title">Cash flow</div>
+        <div class="coverage-desc">Operating, investing, financing.</div>
+      </div>
+      <div class="coverage-card">
+        <div class="coverage-kicker">endpoint</div>
+        <div class="coverage-title">Insider trades</div>
+        <div class="coverage-desc">Form 4 buys and sells.</div>
+      </div>
+      <div class="coverage-card">
+        <div class="coverage-kicker">endpoint</div>
+        <div class="coverage-title">Institutional</div>
+        <div class="coverage-desc">13F ownership positions.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section pricing" id="pricing">
+  <div class="pricing-grid">
+    <div>
+      <span class="eyebrow">04 / Pricing</span>
+      <h2>Priced like a dev tool, not a data vendor.</h2>
+      <p class="body-text">Incumbent fundamentals feeds run into the thousands per year. We charge a flat, low subscription — the data is public, so the price reflects the cleanup and access, nothing more.</p>
+      <ul class="check-list">
+        <li><span class="check">✓</span> Full historical coverage, ~2009–present</li>
+        <li><span class="check">✓</span> All endpoints, one flat price</li>
+        <li><span class="check">✓</span> No per-call metering surprises</li>
+      </ul>
+    </div>
+    <div class="price-card">
+      <div class="price-kicker">Developer</div>
+      <div class="price-figure">
+        <span class="price-amount">$29</span>
+        <span class="price-period">/ month</span>
+      </div>
+      <p class="price-support">Everything you need to build. Cancel anytime.</p>
+      <a href="#pricing" class="btn btn-primary btn-block">Get an API key</a>
+      <a href="/docs" class="btn btn-outline btn-block">Read the docs first</a>
+      <p class="price-note">API key signups aren't open yet — Profin is in active development. The docs reflect the target shape of the API today.</p>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/docs">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/docs">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="#covered">Coverage</a>
+      <a href="#covered">Schema</a>
+      <a href="#covered">Sources</a>
+      <a href="#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/">About</a>
+      <a href="/">Changelog</a>
+      <a href="/">Contact</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

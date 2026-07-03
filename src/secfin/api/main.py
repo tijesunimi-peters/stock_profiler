@@ -7,9 +7,15 @@ Docs at /docs.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from secfin.api.routes import router
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(
     title="sec-financials-api",
@@ -18,6 +24,12 @@ app = FastAPI(
 )
 
 app.include_router(router, prefix="/v1")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def landing_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")
