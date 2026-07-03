@@ -58,3 +58,24 @@ def test_restatement_latest_filed_wins():
     stmt = build_statement(facts, 320193, "income", 2024, "FY")
     net = next(line for line in stmt.lines if line.canonical_concept == "net_income")
     assert net.value == 97
+
+
+def test_empty_lines_still_carries_filing_metadata():
+    """A filing that exists but has no facts mapping to this statement's concepts
+
+    should still surface its form/filed/accession, so callers can distinguish this
+    from a period with no filing at all (see api/routes.py's 404 vs. empty handling).
+    """
+    facts = [_fact("SomeUnmappedExtensionTag", 42, "2024-11-01")]
+    stmt = build_statement(facts, 320193, "balance", 2024, "FY")
+    assert stmt.lines == []
+    assert stmt.accession == "0000320193-24-000123"
+    assert stmt.filed == "2024-11-01"
+    assert stmt.form == "10-K"
+
+
+def test_no_facts_for_period_yields_no_metadata():
+    facts = [_fact("NetIncomeLoss", 97, "2024-11-01")]  # only fiscal_year=2024
+    stmt = build_statement(facts, 320193, "income", 2023, "FY")
+    assert stmt.lines == []
+    assert stmt.accession is None

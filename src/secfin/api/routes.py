@@ -39,7 +39,10 @@ async def get_statement(
         cik = await _cik_from_symbol(client, symbol)
         facts = await fetch_raw_facts(client, cik)
     result = build_statement(facts, cik, statement, year, period)
-    if not result.lines:
+    if not result.lines and result.accession is None:
+        # No facts at all for this period (as opposed to facts that exist but didn't map
+        # to any concept on this statement, which build_statement still returns metadata
+        # for — see its "empty" case).
         raise HTTPException(
             status_code=404,
             detail=f"No {statement} data found for {symbol} {period} {year}.",

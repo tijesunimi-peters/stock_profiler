@@ -73,6 +73,12 @@ def build_statement(
             )
         )
 
+    if meta is None and best_by_tag:
+        # A filing exists for this period (it has facts) even though none of them mapped
+        # to a concept on this statement. Still surface its metadata so callers can tell
+        # "filing on record, mapping gap" apart from "no filing for this period at all".
+        meta = max(best_by_tag.values(), key=lambda f: f.filed or "")
+
     return Statement(
         cik=cik,
         statement=statement,
