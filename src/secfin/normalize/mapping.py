@@ -46,7 +46,19 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         "Operating Income",
         ["OperatingIncomeLoss"],
     ),
-    "interest_expense": ("Interest Expense", ["InterestExpense"]),
+    "interest_expense": (
+        "Interest Expense",
+        [
+            "InterestExpense",
+            # Confirmed via real filings (2026-07-03): MSFT/TGT use InterestExpenseNonoperating,
+            # WMT uses InterestExpenseDebt, and banks (JPM/BAC) use InterestExpenseOperating as
+            # the aggregate across their deposit/repo/debt/trading-liability interest expense
+            # components (verified against JPM: sum of those components matches this tag).
+            "InterestExpenseNonoperating",
+            "InterestExpenseDebt",
+            "InterestExpenseOperating",
+        ],
+    ),
     "income_before_tax": (
         "Income Before Tax",
         ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"],

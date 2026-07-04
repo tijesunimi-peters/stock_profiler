@@ -54,6 +54,34 @@ tags are your best candidates to add next. Every time you add a concept or candi
 2. update this doc,
 3. add/extend a test in `tests/`.
 
+**Worked example (2026-07-03):** `coverage_report()` against real filings for AAPL, MSFT,
+JPM, WMT, COST, TGT, BAC showed `interest_expense` unmapped for half the sample even
+though most of them clearly report it — just under a different tag than `InterestExpense`.
+Checking what each company actually uses turned up three more real candidates:
+`InterestExpenseNonoperating` (MSFT, TGT), `InterestExpenseDebt` (WMT), and
+`InterestExpenseOperating` (JPM/BAC — confirmed by summing their granular
+deposit/repo/debt/trading-liability interest-expense tags, which matches this one).
+Coverage across that sample went from 3/7 to 6/7 companies. See `tests/test_real_fixtures.py`
+for the regression tests this was verified against.
+
+### Known limitations (structural, not tagging gaps — don't "fix" with more candidate tags)
+
+- **Banks / financial institutions don't fit this schema.** A bank's income statement is
+  built around net interest income + noninterest income/expense, not
+  cost-of-revenue/gross-profit/operating-income — there's no better tag to add for
+  `cost_of_revenue`, `gross_profit`, `research_and_development`, `sga_expense`,
+  `operating_expenses`, or `operating_income` for a bank, because the concept genuinely
+  isn't reported that way. `interest_expense` is the one line that *does* map cleanly (see
+  above). A proper fix would mean a separate canonical schema for financial-sector
+  companies — a bigger, deliberate decision, not a mapping-table tweak.
+- **Retailers often don't tag a discrete `gross_profit` or aggregate `operating_expenses`
+  line**, even though they clearly compute both internally (confirmed against WMT, COST,
+  TGT) — SG&A is tagged, but the rollup isn't. R&D is correctly absent for retailers (not
+  applicable, not a gap). `build_statement` already skips concepts with no value rather
+  than emitting a blank/zero row, which is the right behavior for all of the above.
+- **Apple's recent 10-Ks don't tag a discrete `interest_expense` line at all** — it's
+  netted into "other income/expense." Absent is correct here, not a regression.
+
 ## Insider transactions
 
 `InsiderTransaction` captures issuer, reporting owner + relationship, and per-trade fields

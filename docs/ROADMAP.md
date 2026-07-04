@@ -24,8 +24,12 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       (`ingest/incremental.py`, `python -m secfin.ingest.incremental`)
 - [x] Put the cache in front of API routes (stop hitting SEC per request) -- routes.py's
       `_facts_for_cik` reads SQLite first, only fetching+storing from SEC on a miss
-- [ ] Expand mapping coverage for the income statement; measure with `coverage_report()`
-- [ ] Real tests against a few saved companyfacts fixtures (Apple, a bank, a retailer)
+- [x] Expand mapping coverage for the income statement; measured with `coverage_report()`
+      against real filings for 7 companies -- added 3 more `interest_expense` candidate
+      tags, closing that gap for 6/7 (see `docs/DATA_MODEL.md`'s worked example + known
+      limitations for the bank/retailer gaps that are structural, not tagging gaps)
+- [x] Real tests against saved companyfacts fixtures (Apple, a bank, a retailer) --
+      `tests/fixtures/` + `tests/test_real_fixtures.py`
 
 ## Milestone 2 — all three statements + ownership & flows
 
