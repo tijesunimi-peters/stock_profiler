@@ -79,10 +79,50 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     "total_assets": ("Total Assets", ["Assets"]),
     "total_current_liabilities": ("Total Current Liabilities", ["LiabilitiesCurrent"]),
     "total_liabilities": ("Total Liabilities", ["Liabilities"]),
+    "accounts_receivable": (
+        "Accounts Receivable",
+        # AccountsReceivableNetCurrent is trade receivables (what DSO wants); ReceivablesNetCurrent
+        # is broader (includes other receivables) and is the fallback when the trade tag is absent.
+        ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent"],
+    ),
+    "inventory": ("Inventory", ["InventoryNet"]),
     "long_term_debt": ("Long-Term Debt", ["LongTermDebtNoncurrent", "LongTermDebt"]),
+    "debt_current": (
+        "Current Debt",
+        # KNOWN LIMITATION of pick-one selection: some filers report the current portion of
+        # long-term debt AND short-term borrowings as SEPARATE lines with no aggregate
+        # DebtCurrent tag. Picking one then undercounts total current debt. DebtCurrent (when
+        # present) is the comprehensive single tag, so it leads. A correct total in the split
+        # case needs a "sum multiple tags" capability the mapping doesn't have yet — track as
+        # a coverage gap rather than pretending the single pick is always complete.
+        ["DebtCurrent", "LongTermDebtCurrent", "ShortTermBorrowings"],
+    ),
     "stockholders_equity": (
         "Stockholders' Equity",
         ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    ),
+    # --- share counts ---
+    # UNIT WARNING: these facts are reported in "shares" (or dei), NOT USD. Any metric using
+    # them (book value/share, FCF/share, dilution trend) must be unit-aware and must not treat
+    # a share count as dollars. INSTANT vs DURATION also differs (see notes) — matters for TTM.
+    "shares_outstanding": (
+        "Shares Outstanding",
+        # INSTANT (point-in-time). CommonStockSharesOutstanding is us-gaap (balance sheet).
+        # EntityCommonStockSharesOutstanding lives in the *dei* taxonomy, so it only matches if
+        # ingestion flattens dei facts too — fetch_raw_facts defaults to taxonomy="us-gaap".
+        # VERIFY dei is ingested, otherwise this fallback never fires and multi-class filers
+        # (who often report per-class us-gaap counts) may miss a clean total.
+        ["CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"],
+    ),
+    "shares_basic": (
+        "Weighted Avg Basic Shares",
+        # DURATION (weighted average over the period), reported on the income statement near EPS.
+        ["WeightedAverageNumberOfSharesOutstandingBasic"],
+    ),
+    "shares_diluted": (
+        "Weighted Avg Diluted Shares",
+        # DURATION. Use as the denominator for FCF/share; the series is the dilution/buyback signal.
+        ["WeightedAverageNumberOfDilutedSharesOutstanding"],
     ),
     # --- cash flow ---
     "cash_from_operations": (
@@ -123,15 +163,21 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "net_income",
         "eps_basic",
         "eps_diluted",
+        "shares_basic",
+        "shares_diluted",
     ],
     "balance": [
         "cash_and_equivalents",
+        "accounts_receivable",
+        "inventory",
         "total_current_assets",
         "total_assets",
         "total_current_liabilities",
+        "debt_current",
         "total_liabilities",
         "long_term_debt",
         "stockholders_equity",
+        "shares_outstanding",
     ],
     "cashflow": [
         "cash_from_operations",
