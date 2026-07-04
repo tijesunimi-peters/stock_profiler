@@ -4,8 +4,9 @@ Facts are served cache-aside from the SQLite store (see `_facts_for_cik`): a com
 already ingested by `ingest/backfill.py` / `ingest/incremental.py`, or seen by a prior
 request, is read straight from SQLite with no SEC call. Only a genuine cache miss hits
 the SEC live -- and that fetch is then written back so the next request for the same
-company is a cache hit. Ticker->CIK resolution still hits SEC per request (a separate,
-still-open gap -- see ROADMAP's "Ticker->CIK map caching" item).
+company is a cache hit. Ticker->CIK resolution is cached the same way, in memory (see
+`sec/ticker_cache.py`) rather than via SQLite, since it's one small map shared process-wide
+rather than per-company data.
 """
 
 from __future__ import annotations
@@ -15,7 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from secfin.normalize.schema import FiscalPeriod, RawFact, Statement, StatementType
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
-from secfin.sec.companyfacts import fetch_raw_facts, resolve_ticker
+from secfin.sec.companyfacts import fetch_raw_facts
+from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.repository import RawFactRepository
 
 router = APIRouter()
@@ -25,11 +27,15 @@ def get_repo(request: Request) -> RawFactRepository:
     return request.app.state.repo
 
 
-async def _cik_from_symbol(client: SECClient, symbol: str) -> int:
+def get_ticker_cache(request: Request) -> TickerCache:
+    return request.app.state.ticker_cache
+
+
+async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol: str) -> int:
     """Accept either a raw CIK (digits) or a ticker symbol."""
     if symbol.isdigit():
         return int(symbol)
-    cik = await resolve_ticker(client, symbol)
+    cik = await ticker_cache.resolve(client, symbol)
     if cik is None:
         raise HTTPException(status_code=404, detail=f"Unknown ticker: {symbol}")
     return cik
@@ -53,10 +59,11 @@ async def get_statement(
     year: int = Query(..., description="Fiscal year, e.g. 2024"),
     period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
     repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
 ) -> Statement:
     """Return one normalized statement for a company + fiscal period."""
     async with SECClient() as client:
-        cik = await _cik_from_symbol(client, symbol)
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
     result = build_statement(facts, cik, statement, year, period)
     if not result.lines and result.accession is None:
@@ -71,10 +78,14 @@ async def get_statement(
 
 
 @router.get("/companies/{symbol}/periods")
-async def get_periods(symbol: str, repo: RawFactRepository = Depends(get_repo)) -> dict:
+async def get_periods(
+    symbol: str,
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
     """List the fiscal periods available for a company."""
     async with SECClient() as client:
-        cik = await _cik_from_symbol(client, symbol)
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
     return {
         "cik": cik,

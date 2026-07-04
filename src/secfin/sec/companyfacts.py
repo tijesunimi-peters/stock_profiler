@@ -56,16 +56,3 @@ async def fetch_raw_facts(client: SECClient, cik: int, taxonomy: str = "us-gaap"
     """Return every data point for a company under one taxonomy as flat RawFacts."""
     payload = await client.get_json(client.company_facts_url(cik))
     return flatten_company_facts(payload, cik, taxonomy)
-
-
-async def resolve_ticker(client: SECClient, ticker: str) -> int | None:
-    """Resolve a ticker symbol to a CIK using the SEC ticker map.
-
-    NOTE: this fetches the full map each call. In real use, cache it (it changes rarely).
-    """
-    data = await client.get_json(client.company_tickers_url())
-    ticker = ticker.upper().strip()
-    for row in data.values():
-        if row.get("ticker", "").upper() == ticker:
-            return int(row["cik_str"])
-    return None

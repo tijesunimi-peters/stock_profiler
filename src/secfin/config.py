@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # Local cache / DB path. SQLite for dev.
     secfin_db_path: str = "./data/secfin.db"
 
+    # How long the in-memory ticker->CIK map (sec/ticker_cache.py) is considered fresh
+    # before a lookup triggers a refetch of SEC's company_tickers.json. The SEC updates
+    # that file rarely (new listings/delistings), so a long TTL is safe.
+    secfin_ticker_cache_ttl_seconds: float = 86400.0
+
     # Where `storage/backup.py` writes snapshots and `storage/restore.py` reads them from.
     # Deliberately NOT under the same path as secfin_db_path -- see docker-compose.yml,
     # where this is bind-mounted to a host directory independent of the secfin-data

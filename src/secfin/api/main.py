@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from secfin.api.routes import router
 from secfin.config import settings
+from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -28,6 +29,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # api.routes.get_repo (a Depends on request.app.state.repo), same interface
     # ingest/backfill.py and ingest/incremental.py already write through.
     app.state.repo = SQLiteRawFactRepository(settings.secfin_db_path)
+    # Likewise, one in-memory ticker->CIK cache for the process lifetime -- see
+    # sec/ticker_cache.py and api.routes.get_ticker_cache.
+    app.state.ticker_cache = TickerCache(ttl_seconds=settings.secfin_ticker_cache_ttl_seconds)
     try:
         yield
     finally:

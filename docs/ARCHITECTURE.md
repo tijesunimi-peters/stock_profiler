@@ -153,8 +153,9 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 
 `symbol` accepts a ticker or a raw CIK. Statement/period facts are served cache-aside from
 the storage layer (§3a): populated by `ingest/`, or by the route itself on a cache miss.
-Ticker→CIK resolution still hits SEC live per request — that caching is a separate, still-open
-item (see ROADMAP's "Ticker→CIK map caching").
+Ticker→CIK resolution is cached too, but in memory rather than SQLite (`sec/ticker_cache.py`'s
+`TickerCache`, one instance for the process lifetime) — it's a single small map shared
+across all companies, not per-company data, so it doesn't belong in the RawFact store.
 
 ## Data flow example (income statement for AAPL, FY2024)
 

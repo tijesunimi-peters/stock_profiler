@@ -11,7 +11,8 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
 - [x] Starter concept → GAAP tag mapping
 - [x] Statement builder (concept selection + restatement handling)
 - [x] API skeleton (statements, periods)
-- [ ] Ticker→CIK map caching (currently refetched per request)
+- [x] Ticker→CIK map caching -- `sec/ticker_cache.py`'s `TickerCache` holds the whole map
+      in memory (one instance for the process lifetime), refetching only once per TTL
 
 ## Milestone 1 — reliable financials for one statement type
 
