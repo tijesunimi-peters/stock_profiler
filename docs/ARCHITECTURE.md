@@ -104,8 +104,10 @@ patterns.
 - `storage/sqlite_repository.py` — the SQLite implementation. WAL mode + `synchronous=NORMAL`
   so the API's concurrent point reads don't block on the backfill/incremental writer.
   Caches the flattened `RawFact`s per company so we don't hit the SEC on every request (also
-  the only way to respect fair-access limits at scale). The API routes don't use this yet
-  (see §4) — wiring it in is the next step, not part of this pipeline change.
+  the only way to respect fair-access limits at scale). The API routes read through this
+  cache (see §4): `api/routes.py`'s `_facts_for_cik` serves from SQLite when a company is
+  already there (from a prior request, `ingest/backfill.py`, or `ingest/incremental.py`) and
+  only calls SEC live on a miss, writing the result back before returning.
 - **Single-writer rule:** exactly one process holds a writer connection at a time. In the
   bulk backfill that's the main/orchestrator process; parser processes never touch the DB.
   The daily incremental is already single-process, so this is automatic there.
@@ -149,9 +151,10 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 - `GET /v1/companies/{symbol}/periods`
 - `GET /v1/companies/{symbol}/insider-trades` (501 until implemented)
 
-`symbol` accepts a ticker or a raw CIK. Right now routes still fetch live from the SEC per
-request — the storage layer (§3a) exists and is populated by `ingest/`, but wiring routes to
-read from it instead of the live SEC API is separate follow-up work, not part of this change.
+`symbol` accepts a ticker or a raw CIK. Statement/period facts are served cache-aside from
+the storage layer (§3a): populated by `ingest/`, or by the route itself on a cache miss.
+Ticker→CIK resolution still hits SEC live per request — that caching is a separate, still-open
+item (see ROADMAP's "Ticker→CIK map caching").
 
 ## Data flow example (income statement for AAPL, FY2024)
 

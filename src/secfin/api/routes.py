@@ -1,20 +1,28 @@
 """API routes.
 
-NOTE: these fetch from the SEC live on each request for now. Before launch, put the
-storage/cache layer in front of `fetch_raw_facts` so we don't hit the SEC per request
-(and so we respect fair-access limits at scale). Wiring the cache is a to-do — see ROADMAP.
+Facts are served cache-aside from the SQLite store (see `_facts_for_cik`): a company
+already ingested by `ingest/backfill.py` / `ingest/incremental.py`, or seen by a prior
+request, is read straight from SQLite with no SEC call. Only a genuine cache miss hits
+the SEC live -- and that fetch is then written back so the next request for the same
+company is a cache hit. Ticker->CIK resolution still hits SEC per request (a separate,
+still-open gap -- see ROADMAP's "Ticker->CIK map caching" item).
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from secfin.normalize.schema import FiscalPeriod, Statement, StatementType
+from secfin.normalize.schema import FiscalPeriod, RawFact, Statement, StatementType
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts, resolve_ticker
+from secfin.storage.repository import RawFactRepository
 
 router = APIRouter()
+
+
+def get_repo(request: Request) -> RawFactRepository:
+    return request.app.state.repo
 
 
 async def _cik_from_symbol(client: SECClient, symbol: str) -> int:
@@ -27,17 +35,29 @@ async def _cik_from_symbol(client: SECClient, symbol: str) -> int:
     return cik
 
 
+async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -> list[RawFact]:
+    """Cache-aside read: SQLite if we have it, else fetch SEC live and populate it."""
+    cached = repo.get_raw_facts(cik)
+    if cached:
+        return cached
+    facts = await fetch_raw_facts(client, cik)
+    if facts:
+        repo.upsert_raw_facts(facts)
+    return facts
+
+
 @router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
 async def get_statement(
     symbol: str,
     statement: StatementType,
     year: int = Query(..., description="Fiscal year, e.g. 2024"),
     period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
 ) -> Statement:
     """Return one normalized statement for a company + fiscal period."""
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, symbol)
-        facts = await fetch_raw_facts(client, cik)
+        facts = await _facts_for_cik(repo, client, cik)
     result = build_statement(facts, cik, statement, year, period)
     if not result.lines and result.accession is None:
         # No facts at all for this period (as opposed to facts that exist but didn't map
@@ -51,11 +71,11 @@ async def get_statement(
 
 
 @router.get("/companies/{symbol}/periods")
-async def get_periods(symbol: str) -> dict:
+async def get_periods(symbol: str, repo: RawFactRepository = Depends(get_repo)) -> dict:
     """List the fiscal periods available for a company."""
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, symbol)
-        facts = await fetch_raw_facts(client, cik)
+        facts = await _facts_for_cik(repo, client, cik)
     return {
         "cik": cik,
         "periods": [{"year": y, "period": p} for (y, p) in available_periods(facts)],
