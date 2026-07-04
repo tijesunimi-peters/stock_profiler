@@ -152,6 +152,10 @@ docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP
   under the container's `/app` `WORKDIR`). That's a single volume, not two — both the
   checkpoint table and the resumable downloads need to survive the same container restarts
   for backfill resumability to work. See `docs/DEVELOPMENT.md`.
+- **Backups live on a separate mount, deliberately.** `docker-compose.yml` also binds
+  `./data/backups:/app/backups` (`SECFIN_BACKUP_DIR`) — a host directory, not part of the
+  `secfin-data` volume above, so `storage/backup.py`'s snapshots survive `docker compose
+  down -v`. `storage/restore.py` hydrates a fresh volume from one. See `docs/DEVELOPMENT.md` §7.
 
 ## SEC compliance (non-negotiable — do not bypass)
 
@@ -195,6 +199,9 @@ docker compose build
 docker compose up api                                          # API on :8000
 docker compose run --rm api python -m secfin.ingest.backfill    # same image, same volume
 docker compose run --rm api python -m secfin.ingest.incremental
+
+docker compose run --rm api python -m secfin.storage.backup            # snapshot -> ./data/backups
+docker compose run --rm api python -m secfin.storage.restore --latest  # hydrate a fresh volume
 ```
 
 ## Guardrails for the agent

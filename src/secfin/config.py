@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Local cache / DB path. SQLite for dev.
     secfin_db_path: str = "./data/secfin.db"
 
+    # Where `storage/backup.py` writes snapshots and `storage/restore.py` reads them from.
+    # Deliberately NOT under the same path as secfin_db_path -- see docker-compose.yml,
+    # where this is bind-mounted to a host directory independent of the secfin-data
+    # volume, so a backup survives even `docker compose down -v`.
+    secfin_backup_dir: str = "./data/backups"
+
     # SEC fair-access throttle. Do not raise above the SEC limit (verified 2026-07-03:
     # SEC's published guideline is 10 req/s per IP; 8 keeps a safety margin under it).
     sec_max_rps: int = 8

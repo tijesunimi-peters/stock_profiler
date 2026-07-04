@@ -153,7 +153,47 @@ instead of re-downloading, and the writer skips any CIK already present in the
 only do that if you actually want to discard the downloaded zips and the ingested
 database and start over.
 
-## 7. Inspecting the DB without contending with an active writer
+## 7. Backing up and restoring the SQLite store
+
+`docker-compose.yml` adds a second, separate mount on the `api` service specifically for
+this: a host bind mount, `./data/backups:/app/backups` (`SECFIN_BACKUP_DIR=/app/backups`).
+It is intentionally **not** the same volume as `/app/data` — a backup that lived inside
+`secfin-data` would vanish along with the DB itself the moment you `docker compose
+down -v`. `./data/backups` is a real directory in the project root, already covered by
+the repo's blanket `data/` `.gitignore` rule, so backups don't need a separate ignore entry.
+
+Take a backup any time (the API can be running — see below for why this is safe):
+
+```bash
+docker compose run --rm api python -m secfin.storage.backup
+```
+
+This writes a timestamped `secfin-<UTC timestamp>.db` into `./data/backups/` and also
+refreshes `./data/backups/secfin-latest.db` to match, so scripts/CI can always grab "the
+most recent one" without parsing timestamps.
+
+Restore (hydrate) into a fresh volume — the order matters, since restoring into a file
+another process already has open isn't supported:
+
+```bash
+docker compose down -v                                          # or: brand new environment
+docker compose run --rm api python -m secfin.storage.restore --latest
+docker compose up api
+```
+
+`storage/restore.py` also deletes any stale `-wal`/`-shm` sidecar files at the destination
+before copying the backup in — otherwise SQLite would try to replay them against the
+restored file's unrelated page contents on next open.
+
+**Why backing up a live database is safe:** `storage/backup.py` uses sqlite3's *online
+backup API* (`Connection.backup()`), not a raw file copy. A plain `cp` of a WAL-mode
+database can capture an inconsistent snapshot (uncommitted pages still sit in the `-wal`
+sidecar); the backup API is built to copy a live, concurrently-written database
+correctly, retrying pages that change mid-copy. It also opens the source connection
+read-only (`mode=ro`), the same pattern §8 below uses for inspection — this script can
+never itself write to the live DB.
+
+## 8. Inspecting the DB without contending with an active writer
 
 The store uses SQLite WAL mode with exactly one writer at a time (`storage/
 sqlite_repository.py`: `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL`). WAL

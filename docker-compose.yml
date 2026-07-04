@@ -6,9 +6,14 @@ services:
     environment:
       SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
       SECFIN_DB_PATH: "/app/data/secfin.db"
+      SECFIN_BACKUP_DIR: "/app/backups"
       SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
     volumes:
       - secfin-data:/app/data
+      # Host bind mount, deliberately separate from the secfin-data named volume above:
+      # backups written here (storage/backup.py) land as real files under ./data/backups
+      # on the host, so they survive `docker compose down -v` wiping secfin-data.
+      - ./data/backups:/app/backups
 
 volumes:
   secfin-data:
