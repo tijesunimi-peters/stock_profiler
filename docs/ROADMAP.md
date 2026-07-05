@@ -50,7 +50,15 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       cover-page-vs-info-table filename quirk and a confirmed `value` unit convention
       change (thousands -> whole dollars, ~2023) -- see `docs/DATA_MODEL.md`. `cik`
       (CUSIP resolution) intentionally left `None` -- that's the next item below.
-- [ ] CUSIP→CIK mapping table (+ track unresolved CUSIPs)
+- [x] CUSIP→CIK mapping table (+ track unresolved CUSIPs) -- `storage/cusip_repository.py`
+      (interface) + `storage/sqlite_cusip_repository.py`, and `normalize/cusip.py`'s
+      `CusipResolver` (matches a 13F row's issuer name against SEC's own
+      `company_tickers.json`, exact-normalized-match only, no fuzzy matching). Persists
+      both resolved and unresolved CUSIPs; `unresolved_cusips()` surfaces the latter for
+      review. Confirmed against a real, deliberately-declined mismatch (Berkshire's
+      "ALLY FINL INC" vs SEC's "Ally Financial Inc.") -- see `docs/DATA_MODEL.md`. Not
+      yet wired into `sec/institutional.py`'s snapshot builder or any endpoint --
+      standalone building block for now, same as `normalize/flows.py` was before this.
 - [ ] Wire `normalize/flows.diff_snapshots` into a per-manager activity endpoint
 - [ ] 13D/G beneficial-ownership parsing → `BeneficialOwnership` (still a stub in
       `sec/institutional.py` -- cover pages are far less uniformly structured than 13F's

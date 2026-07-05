@@ -183,9 +183,28 @@ once scaled); a 2026 one reports `$498,992,850` (whole dollars, no scaling neede
 reported — this module does **not** detect or normalize the convention change; a caller
 comparing `value` across quarters spanning it must account for the shift itself.
 
-CUSIP→issuer-CIK resolution is explicitly **not** done here — `InstitutionalHolding.cik`
-is always `None` from this parser. That's its own roadmap item (a maintained mapping
-table + backfill), not something to half-implement inline.
+CUSIP→issuer-CIK resolution is explicitly **not** done inside `sec/institutional.py` —
+`InstitutionalHolding.cik` is always `None` from this parser. Resolution is a separate,
+opt-in step: `normalize/cusip.py`'s `CusipResolver.resolve(client, cusip, issuer_name)`
+matches a 13F row's `nameOfIssuer` against SEC's own `company_tickers.json` (the same
+source `sec/ticker_cache.py` uses for ticker→CIK — confirmed it carries no CUSIP field,
+so there's no shortcut there), and persists the outcome via a `CusipMapRepository`
+(`storage/cusip_repository.py` + SQLite impl) so the same CUSIP is a cache hit across
+every manager's 13F, not just one.
+
+**Deliberately conservative, not fuzzy:** only an EXACT match after normalization
+(`normalize_issuer_name` — uppercase, strip punctuation, drop common legal suffixes)
+counts as resolved; nothing attempts to expand abbreviations. Confirmed against a real
+mismatch this correctly declines rather than guesses at: Berkshire's 2026 Q1 13F reports
+CUSIP `02005N100` as issuer `"ALLY FINL INC"`, but SEC's registered title is `"Ally
+Financial Inc."` — normalizing both sides gives `"ALLY FINL"` vs `"ALLY FINANCIAL"`, which
+don't match, so that CUSIP stays unresolved (and tracked) rather than silently attached to
+the wrong or right CIK by chance. A wrong CIK on a position is worse than an honestly
+unresolved one for data served as fact. See `tests/test_cusip.py`.
+
+`CusipMapRepository.unresolved_cusips()` surfaces everything still unmatched
+(issuer name as last reported, attempt count, first/last seen) for review or a future,
+more capable resolver — not silently dropped.
 
 **Known limitation:** a filing can have more than one `<reportingOwner>`-equivalent
 concept on the 13F side too (multiple managers filing jointly, listed in the cover page's
@@ -210,8 +229,10 @@ so it's scoped as its own follow-up rather than rushed alongside 13F.
 - Answering "who holds AAPL?" requires **aggregating across all managers' 13Fs** and
   inverting the index by security — closer to the cross-company/frames problem than to a
   per-company lookup, so it's more infrastructure than just another endpoint.
-- CUSIP→CIK resolution isn't a single free SEC endpoint; maintain a mapping table and
-  track unresolved CUSIPs.
+- CUSIP→CIK resolution isn't a single free SEC endpoint (confirmed:
+  `company_tickers.json` has no CUSIP field) — it's a best-effort, exact-name-match
+  mapping table (`normalize/cusip.py`) that intentionally leaves ambiguous/abbreviated
+  names unresolved rather than guessing; see `unresolved_cusips()` for what's tracked.
 
 ## Analytical layer (planned, Milestone 2.5) — serialization, not a new model
 
