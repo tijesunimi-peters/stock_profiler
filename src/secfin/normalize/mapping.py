@@ -73,7 +73,10 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     # --- balance sheet (instant facts) ---
     "cash_and_equivalents": (
         "Cash & Cash Equivalents",
-        ["CashAndCashEquivalentsAtCarryingValue"],
+        # Banks (JPM) don't use the commercial CashAndCashEquivalentsAtCarryingValue tag at
+        # all -- confirmed via real filing (2026-07-04) -- they report CashAndDueFromBanks
+        # instead, the bank-specific equivalent concept.
+        ["CashAndCashEquivalentsAtCarryingValue", "CashAndDueFromBanks"],
     ),
     "total_current_assets": ("Total Current Assets", ["AssetsCurrent"]),
     "total_assets": ("Total Assets", ["Assets"]),

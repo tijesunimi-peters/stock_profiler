@@ -33,7 +33,10 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
 
 ## Milestone 2 — all three statements + ownership & flows
 
-- [ ] Balance sheet + cash flow mapping coverage
+- [x] Balance sheet + cash flow mapping coverage -- measured with `build_statement()` /
+      `coverage_report()` against the AAPL/WMT/JPM fixtures; AAPL and WMT fully covered,
+      one real gap closed (JPM's `CashAndDueFromBanks`), remaining gaps documented as
+      structural (bank shape) or genuine tagging absences in `docs/DATA_MODEL.md`
 - [ ] Implement `sec/insider.py` (Forms 3/4/5 XML parsing) per its docstring plan
 - [ ] Insider-trades endpoint
 - [ ] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot`

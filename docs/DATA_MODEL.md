@@ -82,6 +82,40 @@ for the regression tests this was verified against.
 - **Apple's recent 10-Ks don't tag a discrete `interest_expense` line at all** — it's
   netted into "other income/expense." Absent is correct here, not a regression.
 
+**Worked example, balance sheet + cash flow (2026-07-04):** checked `build_statement()`
+against the same AAPL/WMT/JPM fixtures for `balance` and `cashflow`. AAPL and WMT come out
+fully covered on every applicable concept. JPM was missing `cash_and_equivalents` — it
+doesn't use the commercial `CashAndCashEquivalentsAtCarryingValue` tag at all, reporting
+`CashAndDueFromBanks` instead (added as a second candidate). See
+`tests/test_real_fixtures.py` for the regression tests.
+
+### Known limitations — balance sheet / cash flow (structural or real gaps, not tagging bugs)
+
+- **Banks' balance sheets aren't classified into current/noncurrent**, and banks hold
+  loans/deposits rather than receivables/inventory — `total_current_assets`,
+  `total_current_liabilities`, `accounts_receivable`, `inventory`, and `long_term_debt`
+  have no better tag to add for JPM; this mirrors the income-statement bank limitation
+  above. JPM's closest long-term-debt line
+  (`LongTermDebtAndCapitalLeaseObligationsIncludingCurrentMaturities`) mixes in current
+  maturities, so it isn't a like-for-like substitute for the noncurrent-only concept.
+- **Banks don't tag a discrete `capital_expenditures` line in XBRL** the way commercial
+  filers do (confirmed against JPM) — nothing to map it to.
+- **Walmart's 10-K has no aggregate `Liabilities` tag** — only the combined
+  `LiabilitiesAndStockholdersEquity` total. There's no second candidate tag that means
+  "total liabilities" on its own; correctly deriving one would mean subtracting
+  `stockholders_equity`, which is a "combine multiple tags" capability the mapping
+  doesn't have (same category as the `debt_current` split limitation above) — tracked as
+  a gap, not fixed here.
+- **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) is
+  currently dead in practice** — confirmed against the WMT fixture, which only tags
+  `CommonStockSharesOutstanding` in `us-gaap`... except it doesn't, either (WMT reports no
+  us-gaap shares-outstanding tag this period at all). `fetch_raw_facts`/`flatten_company_facts`
+  default to `taxonomy="us-gaap"` everywhere they're called (`ingest/backfill.py`,
+  `ingest/incremental.py`, `api/routes.py`), so `dei` facts are never actually ingested —
+  the fallback tag can't fire until something in the ingest path fetches `dei` too. Flagging
+  as a real, verified gap rather than fixing here: it's an ingestion-pipeline change (touches
+  all three call sites plus storage), not a mapping-table tweak.
+
 ## Insider transactions
 
 `InsiderTransaction` captures issuer, reporting owner + relationship, and per-trade fields

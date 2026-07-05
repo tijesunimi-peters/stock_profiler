@@ -2,14 +2,15 @@
 
 Unlike test_mapping.py's hand-built RawFacts, these fixtures are genuine SEC filing data
 (fetched 2026-07-03, trimmed to the last 2 fiscal years per company -- see
-tests/fixtures/README.md) for three companies with meaningfully different income
-statement shapes:
+tests/fixtures/README.md) for three companies with meaningfully different statement
+shapes, covering income statement, balance sheet, and cash flow:
 
   - AAPL: a standard commercial/tech company -- the shape the canonical schema targets.
   - WMT:  a retailer -- has cost_of_revenue/net_income but no discrete gross_profit or
           operating_expenses tag, and no R&D (none of that is a bug; see below).
   - JPM:  a bank -- revenue/expense concepts don't fit the commercial income-statement
-          shape at all (no cost_of_revenue/gross_profit/operating_income); this is a
+          shape at all (no cost_of_revenue/gross_profit/operating_income), and the
+          balance sheet isn't classified into current/noncurrent at all; this is a
           known, documented scope limitation, not something these tags can fix.
 
 These numbers were captured directly from the fixtures (see the module docstring in
@@ -39,7 +40,11 @@ def test_aapl_income_statement_matches_real_filing():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 353, "mapped": 72}
+    # NOTE: coverage_report() counts mapped-vs-unmapped across ALL canonical concepts
+    # (income + balance + cashflow), not just this statement's -- so these totals moved
+    # when balance-sheet/cashflow concepts were added to mapping.py, even though this test
+    # only exercises the income statement. See test_..._balance_and_cashflow below.
+    assert coverage_report(period_facts) == {"unmapped": 339, "mapped": 86}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -60,7 +65,7 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert latest_fy == (2026, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 448, "mapped": 70}
+    assert coverage_report(period_facts) == {"unmapped": 434, "mapped": 84}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -82,7 +87,7 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 962, "mapped": 41}
+    assert coverage_report(period_facts) == {"unmapped": 949, "mapped": 54}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -107,3 +112,83 @@ def test_jpm_bank_income_statement_has_structural_gaps():
         "operating_income",
     ):
         assert concept not in by_concept
+
+
+def test_aapl_balance_sheet_and_cashflow_fully_covered():
+    facts = _load("aapl_companyfacts.json", 320193)
+    latest_fy = next(p for p in available_periods(facts) if p[1] == "FY")
+
+    balance = build_statement(facts, 320193, "balance", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in balance.lines}
+    assert by_concept["cash_and_equivalents"] == 29943000000
+    assert by_concept["accounts_receivable"] == 33410000000
+    assert by_concept["inventory"] == 7286000000
+    assert by_concept["total_assets"] == 364980000000
+    assert by_concept["total_liabilities"] == 308030000000
+    assert by_concept["long_term_debt"] == 85750000000
+    assert by_concept["stockholders_equity"] == 50672000000
+    assert by_concept["shares_outstanding"] == 15116786000
+
+    cashflow = build_statement(facts, 320193, "cashflow", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
+    assert by_concept["cash_from_operations"] == 110543000000
+    assert by_concept["capital_expenditures"] == 10959000000
+    assert by_concept["depreciation_amortization"] == 11519000000
+
+
+def test_wmt_balance_sheet_has_retailer_shaped_gaps():
+    facts = _load("wmt_companyfacts.json", 104169)
+    latest_fy = next(p for p in available_periods(facts) if p[1] == "FY")
+
+    balance = build_statement(facts, 104169, "balance", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in balance.lines}
+    assert by_concept["cash_and_equivalents"] == 9037000000
+    assert by_concept["inventory"] == 56435000000
+    assert by_concept["total_assets"] == 252399000000
+    assert by_concept["stockholders_equity"] == 91013000000
+
+    # Walmart's 10-K doesn't tag a discrete aggregate "Liabilities" line (only the
+    # combined LiabilitiesAndStockholdersEquity total) -- a real coverage gap with no
+    # better single candidate tag, not a "wrong tag" bug (see DATA_MODEL.md). Nor does it
+    # tag CommonStockSharesOutstanding in us-gaap -- that only appears in the *dei*
+    # taxonomy (cover page), which isn't ingested by fetch_raw_facts's default
+    # taxonomy="us-gaap" (see mapping.py's shares_outstanding comment).
+    for concept in ("total_liabilities", "shares_outstanding"):
+        assert concept not in by_concept
+
+    cashflow = build_statement(facts, 104169, "cashflow", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
+    assert by_concept["cash_from_operations"] == 35726000000
+    assert by_concept["capital_expenditures"] == 20606000000
+
+
+def test_jpm_bank_balance_sheet_has_structural_gaps():
+    facts = _load("jpm_companyfacts.json", 19617)
+    latest_fy = next(p for p in available_periods(facts) if p[1] == "FY")
+
+    balance = build_statement(facts, 19617, "balance", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in balance.lines}
+    assert by_concept["total_assets"] == 3875393000000
+    assert by_concept["total_liabilities"] == 3658056000000
+    assert by_concept["stockholders_equity"] == 327878000000
+    # JPM doesn't use the commercial CashAndCashEquivalentsAtCarryingValue tag at all --
+    # it reports CashAndDueFromBanks instead, the bank-specific equivalent concept.
+    assert by_concept["cash_and_equivalents"] == 23372000000
+
+    # A bank's balance sheet isn't classified into current/noncurrent, and banks hold
+    # loans/deposits rather than receivables/inventory -- these concepts genuinely don't
+    # apply, not a tagging gap (mirrors the income-statement bank limitation above).
+    for concept in (
+        "total_current_assets",
+        "total_current_liabilities",
+        "accounts_receivable",
+        "inventory",
+        "long_term_debt",
+    ):
+        assert concept not in by_concept
+
+    cashflow = build_statement(facts, 19617, "cashflow", *latest_fy)
+    by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
+    assert by_concept["cash_from_operations"] == 12974000000
+    # Banks don't report a discrete capex line in XBRL the way commercial filers do.
+    assert "capital_expenditures" not in by_concept
