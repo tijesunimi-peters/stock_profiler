@@ -26,7 +26,9 @@ Pipeline orchestration (downloading, multiprocessing, batching into the store) l
 - `companyfacts.py` — pulls the `companyfacts` JSON (all XBRL numbers for a company) and
   flattens it to `RawFact`s via `flatten_company_facts`, a pure function with no I/O. Also
   resolves ticker → CIK.
-- `insider.py` — pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s.
+- `insider.py` — pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s. **Known
+  limitation:** a filing with multiple `<reportingOwner>` blocks (joint filers) currently yields
+  only the first owner's row — see `DATA_MODEL.md`; tracked as a must-fix in `ROADMAP.md` M2.
 - `institutional.py` — pulls Form 13F information-table XML → `HoldingsSnapshot`s
   (implemented; CUSIP→CIK resolution is a separate opt-in step, `normalize/cusip.py`).
   13F is a quarter-end *snapshot*, not trades. Also pulls Schedules 13D/G → one

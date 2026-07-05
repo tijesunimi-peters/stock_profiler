@@ -11,6 +11,31 @@
 Never let the canonical layer lose the audit trail: every `StatementLine` carries the
 `source_tag` it was mapped from and an `is_extension` flag.
 
+## Coverage boundaries (surface these)
+
+These are *availability* limits: inside a boundary we have the data; outside it we don't — and
+"outside" means **we don't carry it**, not "it didn't happen." Never let an empty result read as
+"nothing was filed." Both floors below should be shown to users, not just tracked internally.
+
+- **Financials (XBRL) — from ~2009, phased through ~2012, capped per company.** The SEC only
+  required XBRL financial data starting in 2009, phased in by filer size (large accelerated filers
+  2009; accelerated 2010; the remainder 2011, effectively complete by ~2012). A company's statement
+  history therefore starts at its **first XBRL filing** — which for a recently-public company is
+  much later than 2009 (a 2021 IPO has no pre-2021 financials here). Pre-XBRL financials exist only
+  as legacy HTML/text filings, which we deliberately don't parse (no HTML scraping — CLAUDE.md).
+  There is **no pre-~2009 fundamentals history by design.**
+- **Beneficial ownership (13D/13G) — structured-XML filings only (from ~mid-2025).** The SEC
+  transitioned Schedule 13D/G to structured XML during 2025 (confirmed against real Apple history:
+  legacy `SC 13G/A` HTML/text as recently as 2024-02-14; modern `SCHEDULE 13G`/`SCHEDULE 13G/A`
+  from 2025-07-29). We parse **only** the modern structured filings; legacy HTML/text ones are
+  excluded by design (no HTML scraping). A company whose 5%+-ownership history predates the
+  transition returns an **empty list, not an error** — read that as "outside our coverage window,"
+  not "no one crossed 5%." (See the "13D / 13G" section below for the parsing detail.)
+
+For contrast, the sources *without* a recent floor: insider trades (Forms 3/4/5) and 13F holdings
+moved to structured XML much earlier, so their usable history runs far deeper — bounded by each
+filer's EDGAR history and the (earlier) date each form adopted XML, not by the 2025 cutover above.
+
 ## Canonical concepts
 
 A small, stable set of keys (e.g. `revenue`, `net_income`, `total_assets`,

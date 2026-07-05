@@ -107,6 +107,28 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       yet -- standalone building block, same position the 13F functions were in before
       their endpoints existed. See `docs/DATA_MODEL.md` and
       `tests/fixtures/institutional/README.md`.
+- [ ] **Fix joint-filer capture in INSIDER (Forms 3/4/5) parsing (promoted from "known gap" —
+      must-fix before any insider-activity analysis).** `parse_ownership_xml` keeps only the
+      first `<reportingOwner>`, so a filing where several insiders report together collapses to
+      one row — directly breaking **insider cluster-buying** (several insiders buying at once),
+      one of the stronger signals in the literature and the exact case it exists to catch (a real
+      cluster of 3 becomes "1"). Emit one row per reporting owner — the same shape as the
+      multi-reporting-person handling already done in `parse_schedule_13dg_xml`.
+      (`DATA_MODEL.md` insider section, "known limitation".)
+- [ ] **Separately: 13F joint filers are also unattributed** (distinct from the insider gap
+      above — don't let "fix joint filers" be mistaken for one fix). A 13F can list co-filing
+      managers via the cover page's `otherManagers2Info`; the snapshot is keyed on the filing
+      manager only, so jointly-managed positions aren't attributed to co-managers. Lower priority
+      than the insider fix, but track it. (`DATA_MODEL.md` 13F CUSIP section, "known limitation".)
+- [x] **Surface both data-coverage floors in the "Limitations to surface" list** (docs). The
+      13D/G structured-XML floor is already *described* in `DATA_MODEL.md` ("13D / 13G" section) —
+      the real gap was that neither it nor the ~2009 XBRL financials floor appeared in a
+      user-facing coverage-limits list, so an empty result ("no 13D/G before ~mid-2025") could
+      read as "nobody filed." Added a **"Coverage boundaries (surface these)"** section to
+      `DATA_MODEL.md` covering both floors (13D/G structured-XML cutover; XBRL financials phased
+      in 2009→~2012, capped at each company's first XBRL filing). *(Corrects an earlier version of
+      this item that wrongly implied the 13D/G floor was undocumented and cited a 2009-floor doc
+      precedent that didn't exist — it does now.)*
 
 ## Milestone 2.5 — institutional aggregation (cross-manager)
 
@@ -118,6 +140,12 @@ whole-market inversion, so the cross-manager view runs as a separate batch query
 rather than another API-serving query.
 
 - [ ] Bulk-ingest a quarter's 13F filings and invert the index by security (CUSIP/CIK)
+- [ ] **Track CUSIP resolution rate as a first-class metric.** Exact-normalized-match-only
+      resolution (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means
+      the cross-manager "who holds X" view has holes proportional to the unresolved-CUSIP rate.
+      Surface that rate (built on `unresolved_cusips()`) as a headline number — it directly
+      bounds how complete the institutional-holders answer can be, and it's the signal for when
+      fuzzy matching or a real CUSIP source becomes worth the effort.
 - [ ] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints
 - [ ] Surface the long-only / 45-day-lag caveats in every institutional response
 - [ ] Land cached `RawFact`/`HoldingsSnapshot` data as Parquet on disk (a serialization of
@@ -158,4 +186,9 @@ rather than another API-serving query.
 
 - [ ] Confirm current SEC fair-access + redistribution terms
 - [ ] Verify User-Agent is enforced everywhere and throttle can't be bypassed
-- [ ] Load test the cache path (not the live-SEC path)
+- [ ] Load test the cache path (financials `/statements`) — the fast path under subscriber load
+- [ ] Load / failure test the **uncached live-SEC endpoints** (`/insider-trades`, `/managers/*`)
+      separately — these hit SEC on every request and are the real rate-limit exposure, not the
+      cache path. Verify behavior as concurrent traffic approaches the 8 req/s ceiling, and what
+      a mid-request SEC 403/throttle does to a response. Depends on the M2 cache-aside stores:
+      either land those first, or keep these endpoints out of the launched surface until cached.
