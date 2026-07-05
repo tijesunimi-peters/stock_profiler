@@ -143,8 +143,9 @@ Unlike `/statements`, there's no cache-aside store for insider transactions yet 
 `InsiderTransactionRepository`), so this is a heavier request: one submissions.json fetch
 plus one ownership-XML fetch per matching filing, up to `limit` filings (default 50, max
 200). Verified end-to-end against the real API (2026-07-05) — deliberately not treated
-as a gap to close in the same pass as the endpoint itself; if usage warrants it, add a
-repository the same shape as `storage/repository.py`'s.
+as a gap to close in the same pass as the endpoint itself; tracked as its own roadmap
+item ("Cache-aside store for insider transactions", `docs/ROADMAP.md` Milestone 2) —
+a repository the same shape as `storage/repository.py`'s.
 
 ## Institutional ownership (13F, 13D/G)
 
@@ -172,6 +173,10 @@ The diff lives in `normalize/flows.py` (`diff_snapshots`) and is fully implement
 submissions.json, matches `reportDate` to the requested quarter-end, locates the info
 table (see below), and parses it via `parse_info_table_xml` — pure and network-free, same
 design intent as `companyfacts.flatten_company_facts` / `insider.parse_ownership_xml`.
+No cache-aside store yet either — every call re-fetches and re-parses from SEC, same
+situation as insider transactions above. Tracked as its own roadmap item ("Cache-aside
+store for 13F holdings snapshots", `docs/ROADMAP.md` Milestone 2), keyed on
+`(manager_cik, report_period)`.
 
 **Confirmed quirk (2026-07-04, against real Berkshire Hathaway 13F-HR filings):** unlike
 Forms 3/4/5, a 13F's `primaryDocument` in `filings.recent` is the *cover page* (filer

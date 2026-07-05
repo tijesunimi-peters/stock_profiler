@@ -124,6 +124,14 @@ patterns.
   companies have been ingested per source (`bulk_companyfacts` / `daily_incremental`), so a
   crashed backfill resumes without re-parsing already-done companies and without re-hitting
   the SEC (the zip is already local).
+- **Planned, not yet built:** an `InsiderTransactionRepository` and a
+  `HoldingsSnapshotRepository`, same interface-then-SQLite-impl shape as
+  `RawFactRepository`/`SQLiteRawFactRepository` above. Right now `/insider-trades` and
+  `fetch_13f_snapshot` re-fetch and re-parse from SEC on *every* call — there is no
+  cache-aside read for either the way `_facts_for_cik` gives statements (see §4 and
+  `docs/ROADMAP.md`'s Milestone 2). Also already present but not yet wired into either
+  of those: `CusipMapRepository` (`storage/cusip_repository.py`), which resolves 13F
+  CUSIPs to issuer CIKs.
 
 ### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
 
@@ -152,7 +160,8 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 - `GET /v1/companies/{symbol}/statements/{income|balance|cashflow}?year=&period=`
 - `GET /v1/companies/{symbol}/periods`
 - `GET /v1/companies/{symbol}/insider-trades?limit=` — fetched live from SEC on every
-  request; no cache-aside store for insider transactions yet (unlike statements below).
+  request; no cache-aside store for insider transactions yet (unlike statements below —
+  see §3a's "planned, not yet built" note and `docs/ROADMAP.md`).
 - `GET /v1/companies/{symbol}/institutional-holders`,
   `GET /v1/companies/{symbol}/institutional-activity`,
   `GET /v1/managers/{manager_cik}/holdings` (501 until implemented — need the

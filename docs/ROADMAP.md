@@ -48,6 +48,19 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       `/statements`, that's a deliberate gap, not an oversight). Verified end-to-end
       against the real running API (Docker) with real AAPL data, ticker + CIK symbol
       forms, unknown-ticker 404, and `limit` validation.
+- [ ] Cache-aside store for insider transactions -- add an `InsiderTransactionRepository`
+      (interface + SQLite impl) the same shape as `storage/repository.py` /
+      `sqlite_repository.py`, and change `get_insider_trades` to read it first the way
+      `_facts_for_cik` does for statements, only calling SEC (+ writing back) on a miss.
+      Needs an idempotency key (e.g. `(issuer_cik, accession, ...)` — a filing can carry
+      multiple transaction/holding rows) and a decision on what "cache hit" means for a
+      `limit`-bounded live source (a smaller cached `limit` isn't a superset of a larger
+      one the way a company's full RawFact set is).
+- [ ] Cache-aside store for 13F holdings snapshots -- add a `HoldingsSnapshotRepository`
+      (interface + SQLite impl) and change `fetch_13f_snapshot`'s caller(s) to read
+      through it first, keyed on `(manager_cik, report_period)`. Same rationale as
+      above: repeated per-manager/per-quarter requests currently re-fetch and re-parse
+      from SEC every time.
 - [x] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot` --
       `parse_info_table_xml` (pure) + `fetch_13f_snapshot` (submissions.json -> match
       quarter -> locate info table via directory listing -> fetch -> parse); verified
