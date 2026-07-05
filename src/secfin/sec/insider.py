@@ -1,43 +1,203 @@
 """Insider trades (Forms 3 / 4 / 5) ingestion.
 
-STATUS: stub. This is the second ingestion source. Unlike company financials
-(which come pre-flattened from the companyfacts JSON API), insider trades come as
-ownership XML documents attached to individual filings.
+Unlike company financials (which come pre-flattened from the companyfacts JSON API),
+insider trades come as ownership XML documents attached to individual filings:
 
-Implementation plan
--------------------
-1. From /submissions/CIK##########.json, filter the recent-filings block to
-   form types in {"3", "4", "5"} (and their /A amendments).
-2. For each, build the filing's EDGAR directory URL from its accession number and
-   fetch the ownership XML document (the primary .xml in that filing).
-3. Parse the XML into InsiderTransaction records (see schema.InsiderTransaction):
-   issuer (CIK/name), reporting owner (name + relationship: director/officer/10% owner),
-   and each transaction: date, security title, shares, price-per-share,
-   acquired/disposed flag, direct vs indirect ownership, shares owned after.
-4. Amendments supersede prior filings for the same accession family; keep both,
-   mark the latest as current (same restatement rule as financials).
+1. `/submissions/CIK##########.json`'s `filings.recent` block lists a company's filings
+   as parallel arrays; filter `form` to {"3","4","5"} (and `/A` amendments).
+2. Each such filing's `primaryDocument` (e.g. "xslF345X06/form4.xml") points at EDGAR's
+   *rendered-HTML* viewer path, not the raw XML -- confirmed against a real Apple Form 4
+   (2026-07-04): fetching that exact path returns an HTML document, while the raw
+   ownership XML lives at the filing's directory root under the same filename (i.e.
+   "form4.xml", no "xslF345X06/" prefix). `_raw_document_name` does that strip.
+3. `parse_ownership_xml` (pure, network-free -- same shape as
+   `companyfacts.flatten_company_facts`) turns one ownership document into
+   `InsiderTransaction` rows: one per non-derivative/derivative transaction or holding.
 
-Parsing notes
--------------
-- Ownership XML is a stable, well-defined schema; prefer parsing it directly over
-  any HTML rendering.
-- Non-derivative and derivative transactions live in separate sections; capture both.
-- Some entries are holdings (no transaction) rather than trades — keep them but flag.
+Known limitation: a filing can have more than one `<reportingOwner>` (joint filers). This
+parses only the first -- multi-owner attribution is not implemented.
 """
 
 from __future__ import annotations
+
+import xml.etree.ElementTree as ET
 
 from secfin.normalize.schema import InsiderTransaction
 from secfin.sec.client import SECClient
 
 INSIDER_FORMS = {"3", "4", "5", "3/A", "4/A", "5/A"}
 
+_TRUE = {"1", "true"}
+
+
+def _raw_document_name(primary_document: str) -> str:
+    """Strip a viewer subdirectory (e.g. "xslF345X06/") off a submissions.json primaryDocument.
+
+    See the module docstring -- the viewer path renders HTML, the raw XML sits alongside
+    it at the filing's directory root under the same filename.
+    """
+    return primary_document.rsplit("/", 1)[-1]
+
+
+def _recent_filings(payload: dict, forms: set[str]) -> list[dict]:
+    """Filter submissions.json's `filings.recent` parallel arrays down to matching forms.
+
+    Returned in the same (newest-first) order the SEC serves them in.
+    """
+    recent = payload.get("filings", {}).get("recent", {})
+    out = []
+    for i, form in enumerate(recent.get("form", [])):
+        if form not in forms:
+            continue
+        out.append(
+            {
+                "form": form,
+                "accessionNumber": recent["accessionNumber"][i],
+                "filingDate": recent["filingDate"][i],
+                "primaryDocument": recent["primaryDocument"][i],
+            }
+        )
+    return out
+
+
+def _wrapped(el: ET.Element | None, tag: str) -> str | None:
+    """Read a "<tag><value>...</value></tag>"-shaped field (most transaction data)."""
+    if el is None:
+        return None
+    node = el.find(tag)
+    if node is None:
+        return None
+    val = node.findtext("value")
+    return val.strip() if val else None
+
+
+def _text(el: ET.Element | None, tag: str) -> str | None:
+    """Read a plain "<tag>...</tag>"-shaped field (identifying/flag fields)."""
+    if el is None:
+        return None
+    val = el.findtext(tag)
+    return val.strip() if val and val.strip() else None
+
+
+def _to_float(s: str | None) -> float | None:
+    if s is None:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _relationship_label(rel: ET.Element | None) -> str | None:
+    if rel is None:
+        return None
+    roles = []
+    if _text(rel, "isDirector") in _TRUE:
+        roles.append("director")
+    if _text(rel, "isOfficer") in _TRUE:
+        title = _text(rel, "officerTitle")
+        roles.append(f"officer ({title})" if title else "officer")
+    if _text(rel, "isTenPercentOwner") in _TRUE:
+        roles.append("10% owner")
+    if _text(rel, "isOther") in _TRUE:
+        other = _text(rel, "otherText")
+        roles.append(f"other ({other})" if other else "other")
+    return ", ".join(roles) or None
+
+
+def _row_fields(row: ET.Element, *, is_holding: bool) -> dict:
+    """Extract the per-transaction/holding fields shared by both tables' rows."""
+    amounts = row.find("transactionAmounts")
+    post = row.find("postTransactionAmounts")
+    nature = row.find("ownershipNature")
+    ownership_raw = _wrapped(nature, "directOrIndirectOwnership")
+    return {
+        "security_title": _wrapped(row, "securityTitle"),
+        "transaction_date": _wrapped(row, "transactionDate"),
+        "shares": _to_float(_wrapped(amounts, "transactionShares")),
+        "price_per_share": _to_float(_wrapped(amounts, "transactionPricePerShare")),
+        "acquired_disposed": _wrapped(amounts, "transactionAcquiredDisposedCode"),
+        "ownership_type": {"D": "direct", "I": "indirect"}.get(ownership_raw or ""),
+        "shares_owned_after": _to_float(_wrapped(post, "sharesOwnedFollowingTransaction")),
+        "is_holding": is_holding,
+    }
+
+
+def parse_ownership_xml(
+    xml_bytes: bytes,
+    *,
+    form_type: str,
+    filed: str | None,
+    accession: str | None,
+) -> list[InsiderTransaction]:
+    """Parse one ownership XML document into InsiderTransaction rows.
+
+    Pure and network-free (same design intent as flatten_company_facts): the live API
+    path and any future bulk path can both call this against raw bytes.
+    """
+    root = ET.fromstring(xml_bytes)
+
+    issuer = root.find("issuer")
+    issuer_cik_text = _text(issuer, "issuerCik")
+    if not issuer_cik_text:
+        raise ValueError("ownership XML missing issuer/issuerCik")
+    issuer_cik = int(issuer_cik_text)
+    issuer_name = _text(issuer, "issuerName")
+
+    owner = root.find("reportingOwner")
+    owner_id = owner.find("reportingOwnerId") if owner is not None else None
+    owner_name = _text(owner_id, "rptOwnerName")
+    relationship = owner.find("reportingOwnerRelationship") if owner is not None else None
+    owner_relationship = _relationship_label(relationship)
+
+    common = {
+        "issuer_cik": issuer_cik,
+        "issuer_name": issuer_name,
+        "owner_name": owner_name,
+        "owner_relationship": owner_relationship,
+        "form_type": form_type,
+        "filed": filed,
+        "accession": accession,
+    }
+
+    records: list[InsiderTransaction] = []
+    for table_tag, txn_tag, holding_tag in (
+        ("nonDerivativeTable", "nonDerivativeTransaction", "nonDerivativeHolding"),
+        ("derivativeTable", "derivativeTransaction", "derivativeHolding"),
+    ):
+        table = root.find(table_tag)
+        if table is None:
+            continue
+        for row in table.findall(txn_tag):
+            records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=False)))
+        for row in table.findall(holding_tag):
+            records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=True)))
+
+    return records
+
 
 async def fetch_insider_transactions(
     client: SECClient, cik: int, limit: int = 50
 ) -> list[InsiderTransaction]:
-    """Fetch and parse recent insider transactions for a company.
+    """Fetch and parse a company's most recent insider transactions (Forms 3/4/5).
 
-    TODO: implement per the plan in this module's docstring.
+    `limit` bounds the number of *filings* fetched (newest first), not transaction rows --
+    each filing can contain several transaction/holding rows.
     """
-    raise NotImplementedError("Insider-trade ingestion not yet implemented (see docstring).")
+    payload = await client.get_json(client.submissions_url(cik))
+    filings = _recent_filings(payload, INSIDER_FORMS)[:limit]
+
+    transactions: list[InsiderTransaction] = []
+    for f in filings:
+        doc = _raw_document_name(f["primaryDocument"])
+        url = client.filing_document_url(cik, f["accessionNumber"], doc)
+        xml_bytes = await client.get_bytes(url)
+        transactions.extend(
+            parse_ownership_xml(
+                xml_bytes,
+                form_type=f["form"],
+                filed=f["filingDate"],
+                accession=f["accessionNumber"],
+            )
+        )
+    return transactions

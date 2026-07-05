@@ -120,8 +120,22 @@ doesn't use the commercial `CashAndCashEquivalentsAtCarryingValue` tag at all, r
 
 `InsiderTransaction` captures issuer, reporting owner + relationship, and per-trade fields
 (date, security, shares, price, acquired/disposed, direct/indirect ownership, shares after).
-Holdings-only rows are kept but flagged with `is_holding`. Parsing lives in `sec/insider.py`
-(currently a stub with the implementation plan in its docstring).
+Holdings-only rows are kept but flagged with `is_holding`. Parsing lives in `sec/insider.py`.
+
+`fetch_insider_transactions(client, cik, limit)` reads `/submissions/CIK##########.json`'s
+`filings.recent` block, filters to Forms 3/4/5 (+ `/A` amendments), and for each fetches +
+parses the ownership XML via `parse_ownership_xml` — a pure, network-free function (same
+design intent as `companyfacts.flatten_company_facts`) so a future bulk path can reuse it
+against raw bytes from a different source.
+
+**Confirmed quirk (2026-07-04, against a real Apple Form 4):** `primaryDocument` in
+`filings.recent` (e.g. `"xslF345X06/form4.xml"`) points at EDGAR's *rendered-HTML* viewer
+path — fetching that exact URL returns HTML, not XML. The raw ownership XML lives at the
+filing's directory root under the same filename, with the `xslF345X0N/` viewer prefix
+stripped (`_raw_document_name`). See `tests/fixtures/insider/README.md`.
+
+**Known limitation:** a filing can have more than one `<reportingOwner>` (joint filers) —
+only the first is parsed; multi-owner attribution isn't implemented.
 
 ## Institutional ownership (13F, 13D/G)
 

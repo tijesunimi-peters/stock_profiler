@@ -37,7 +37,11 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       `coverage_report()` against the AAPL/WMT/JPM fixtures; AAPL and WMT fully covered,
       one real gap closed (JPM's `CashAndDueFromBanks`), remaining gaps documented as
       structural (bank shape) or genuine tagging absences in `docs/DATA_MODEL.md`
-- [ ] Implement `sec/insider.py` (Forms 3/4/5 XML parsing) per its docstring plan
+- [x] Implement `sec/insider.py` (Forms 3/4/5 XML parsing) -- `parse_ownership_xml`
+      (pure) + `fetch_insider_transactions` (submissions.json -> filter -> fetch -> parse);
+      verified against real Apple Form 3/4/5 fixtures, including the primaryDocument
+      viewer-vs-raw-XML quirk (see `docs/DATA_MODEL.md`). Known gap: joint filers
+      (multiple `<reportingOwner>` per filing) only capture the first owner.
 - [ ] Insider-trades endpoint
 - [ ] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot`
 - [ ] CUSIP→CIK mapping table (+ track unresolved CUSIPs)

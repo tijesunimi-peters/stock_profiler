@@ -98,3 +98,14 @@ class SECClient:
     @staticmethod
     def company_tickers_url() -> str:
         return f"{WWW_HOST}/files/company_tickers.json"
+
+    @staticmethod
+    def filing_document_url(cik: int, accession: str, document: str) -> str:
+        """Build the URL for one document inside a filing's EDGAR directory.
+
+        Unlike the data.sec.gov JSON APIs, EDGAR's Archives layout uses the *un-padded*
+        CIK and a dash-stripped accession number, e.g.
+        /Archives/edgar/data/320193/000114036126025622/form4.xml
+        """
+        acc_nodash = accession.replace("-", "")
+        return f"{WWW_HOST}/Archives/edgar/data/{int(cik)}/{acc_nodash}/{document}"
