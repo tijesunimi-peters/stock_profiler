@@ -151,12 +151,19 @@ patterns.
   shape as `_facts_for_cik`, but the cache-hit check is "have we cached at least `limit`
   filings for this issuer" rather than "do we have this company at all" — `limit` bounds
   filings fetched, not rows, so a smaller cached limit isn't a superset of a larger one.
-- **Planned, not yet built:** a `HoldingsSnapshotRepository`, same
-  interface-then-SQLite-impl shape as the repositories above. Right now
-  `/managers/{manager_cik}/holdings` and `/managers/{manager_cik}/activity` still
-  re-fetch and re-parse from SEC on *every* call — there is no cache-aside read for
-  either the way `_facts_for_cik` / `_insider_transactions_for_cik` give statements and
-  insider trades (see §4 and `docs/ROADMAP.md`'s Milestone 2).
+- `storage/holdings_repository.py` — abstract `HoldingsSnapshotRepository`, and
+  `storage/sqlite_holdings_repository.py`'s SQLite impl (own connection, same db file).
+  Keyed on `(manager_cik, report_period)` — not per accession like the insider store,
+  because a 13F CAN be superseded (an original 13F-HR plus a later 13F-HR/A for the same
+  quarter; the newer-filed one wins), so a re-store replaces that quarter's holdings
+  wholesale. `api/routes.py`'s `_manager_snapshot` serves both
+  `/managers/{manager_cik}/holdings` and `/managers/{manager_cik}/activity` cache-aside
+  from it. Resolved CUSIP→CIK is deliberately not persisted — every cached row comes
+  back `cik=None`, so `normalize/cusip.resolve_snapshot_cusips` always re-runs on read
+  (see §4), letting CUSIPs that were unresolved at cache time resolve later as the
+  mapping improves. **Known, deliberate staleness window:** once a quarter is cached,
+  the read path never re-checks SEC for a later amendment — same trade-off
+  `_facts_for_cik` already makes for statements.
 
 ### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
 
@@ -189,17 +196,18 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
   at least `limit` filings already cached for the issuer, since `limit` bounds filings
   fetched, not rows; a miss re-fetches the full requested `limit` from SEC and grows the
   cache.
-- `GET /v1/managers/{manager_cik}/holdings?period=` — one manager's 13F snapshot
-  (`fetch_13f_snapshot`), with CUSIPs resolved to CIKs in place via
-  `normalize/cusip.resolve_snapshot_cusips` before returning. 404 if that manager has no
-  13F-HR for the given quarter-end.
+- `GET /v1/managers/{manager_cik}/holdings?period=` — one manager's 13F snapshot, served
+  cache-aside via `_manager_snapshot` + `HoldingsSnapshotRepository` (§3a), with CUSIPs
+  resolved to CIKs in place via `normalize/cusip.resolve_snapshot_cusips` before
+  returning (cache hit or miss — resolution is never cached, see §3a). 404 if that
+  manager has no 13F-HR for the given quarter-end.
 - `GET /v1/managers/{manager_cik}/activity?period=&include_unchanged=` — DERIVED buy/sell
   for one manager: fetches the requested quarter's snapshot and the prior one
   (`normalize/flows.prior_quarter_end`; a missing prior quarter — e.g. the manager's
-  first 13F — is treated as `None`, so `diff_snapshots` reports everything "new"),
-  resolves CUSIPs on both, and returns `diff_snapshots`' output alongside an
-  always-present `caveats` list (derived-not-reported, long-only, ~45-day lag). No
-  cache-aside store yet — both endpoints re-fetch and re-parse from SEC on every call.
+  first 13F — is treated as `None`, so `diff_snapshots` reports everything "new"), each
+  via the same cache-aside `_manager_snapshot`, resolves CUSIPs on both, and returns
+  `diff_snapshots`' output alongside an always-present `caveats` list
+  (derived-not-reported, long-only, ~45-day lag).
 - `GET /v1/companies/{symbol}/institutional-holders`,
   `GET /v1/companies/{symbol}/institutional-activity` (501 until implemented — these are
   *issuer*-centric and need the cross-manager 13F index from Milestone 2.5, unlike the

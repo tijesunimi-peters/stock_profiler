@@ -65,11 +65,25 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       incremental top-up. Verified end-to-end against real AAPL data (2026-07-05): cold
       `limit=5` populated the cache (~1s); repeat `limit=5` hit in <0.05s; `limit=10`
       correctly missed, grew the cache to 10 filings, then hit on repeat.
-- [ ] Cache-aside store for 13F holdings snapshots -- add a `HoldingsSnapshotRepository`
-      (interface + SQLite impl) and change `fetch_13f_snapshot`'s caller(s) to read
-      through it first, keyed on `(manager_cik, report_period)`. Same rationale as
-      above: repeated per-manager/per-quarter requests currently re-fetch and re-parse
-      from SEC every time.
+- [x] Cache-aside store for 13F holdings snapshots -- `HoldingsSnapshotRepository`
+      (`storage/holdings_repository.py`) + `SQLiteHoldingsSnapshotRepository`
+      (`storage/sqlite_holdings_repository.py`), wired into both
+      `/managers/{manager_cik}/holdings` and `/managers/{manager_cik}/activity` via
+      `_manager_snapshot`. Keyed on `(manager_cik, report_period)` -- NOT per accession
+      like the insider store, because a 13F CAN be superseded (an original 13F-HR plus a
+      later 13F-HR/A for the same quarter; the newer-filed one wins), so a re-store
+      replaces that quarter's holdings wholesale rather than merging rows.
+      **Deliberately not cached:** resolved CUSIP→CIK -- every cached row comes back
+      `cik=None`, so `resolve_snapshot_cusips` always re-runs on read (hit or miss),
+      letting a CUSIP unresolved at cache time resolve later as the mapping improves,
+      instead of freezing that outcome. **Known, accepted trade-off:** once a quarter is
+      cached, the read path never re-checks SEC for a later amendment -- same as
+      `_facts_for_cik`'s existing behavior for statements; picking up new data is
+      `ingest/`'s job, not the read path's, and there's no 13F bulk-ingest job yet.
+      Verified end-to-end against real Berkshire Hathaway 13F data (2026-07-05): a cold
+      fetch for one quarter populated the cache (~0.8s, 90 holdings); a repeat request
+      for the same quarter hit instantly with identical data; a different,
+      never-fetched quarter still correctly missed.
 - [x] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot` --
       `parse_info_table_xml` (pure) + `fetch_13f_snapshot` (submissions.json -> match
       quarter -> locate info table via directory listing -> fetch -> parse); verified
@@ -197,9 +211,13 @@ rather than another API-serving query.
 
 - [ ] Confirm current SEC fair-access + redistribution terms
 - [ ] Verify User-Agent is enforced everywhere and throttle can't be bypassed
-- [ ] Load test the cache path (financials `/statements`) — the fast path under subscriber load
-- [ ] Load / failure test the **uncached live-SEC endpoints** (`/insider-trades`, `/managers/*`)
-      separately — these hit SEC on every request and are the real rate-limit exposure, not the
-      cache path. Verify behavior as concurrent traffic approaches the 8 req/s ceiling, and what
-      a mid-request SEC 403/throttle does to a response. Depends on the M2 cache-aside stores:
-      either land those first, or keep these endpoints out of the launched surface until cached.
+- [ ] Load test the cache path (financials `/statements`, and now `/insider-trades` and
+      `/managers/*` too — all three are cache-aside as of this pass) — the fast path under
+      subscriber load.
+- [ ] Load / failure test the **cold path** (a genuine cache miss) on all three cache-aside
+      endpoints separately — a miss still hits SEC live and is the real rate-limit exposure, not
+      the warm-cache path. Verify behavior as concurrent *cold* traffic approaches the 8 req/s
+      ceiling, and what a mid-request SEC 403/throttle does to a response. Worth noting: the
+      insider/13F caches only ever grow via live requests today (no bulk-ingest job seeds them
+      the way `ingest/backfill.py` does for statements), so "mostly cold" traffic patterns are
+      more likely for those two than for `/statements` at launch.

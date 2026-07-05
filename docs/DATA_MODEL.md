@@ -223,10 +223,27 @@ The diff lives in `normalize/flows.py` (`diff_snapshots`) and is fully implement
 submissions.json, matches `reportDate` to the requested quarter-end, locates the info
 table (see below), and parses it via `parse_info_table_xml` — pure and network-free, same
 design intent as `companyfacts.flatten_company_facts` / `insider.parse_ownership_xml`.
-No cache-aside store yet either — every call re-fetches and re-parses from SEC, same
-situation as insider transactions above. Tracked as its own roadmap item ("Cache-aside
-store for 13F holdings snapshots", `docs/ROADMAP.md` Milestone 2), keyed on
-`(manager_cik, report_period)`.
+
+**Cache-aside store, keyed on `(manager_cik, report_period)`** —
+`HoldingsSnapshotRepository` (`storage/holdings_repository.py`) +
+`SQLiteHoldingsSnapshotRepository` (`storage/sqlite_holdings_repository.py`), wired into
+`/managers/{manager_cik}/holdings` and `/managers/{manager_cik}/activity` via
+`api/routes.py`'s `_manager_snapshot`. Unlike the insider store (keyed at filing/accession
+granularity, since a Form 3/4/5 is immutable once accepted), this is keyed at
+**quarter** granularity, matching what `fetch_13f_snapshot` itself resolves to — a 13F
+CAN be superseded (an original 13F-HR + a later 13F-HR/A for the same quarter; the newer
+filed one wins), so a re-store (e.g. from a future bulk-ingest job) replaces the whole
+snapshot's holdings wholesale rather than merging rows. **Known, deliberate staleness
+window:** once a quarter is cached, the live read path serves it forever and never
+re-checks SEC for a later amendment — the same trade-off `_facts_for_cik` already makes
+for statements (picking up new data is `ingest/`'s job, not the read path's). Resolved
+CUSIP→CIK (`InstitutionalHolding.cik`) is deliberately **not** persisted — every cached
+row comes back with `cik=None`, so `resolve_snapshot_cusips` always re-runs on read
+(cache hit or miss), letting a CUSIP that was unresolved at cache time resolve later as
+the CUSIP map improves, instead of freezing that outcome forever. Verified end-to-end
+against real Berkshire Hathaway 13F data (2026-07-05): a cold fetch for one quarter
+populated the cache (~0.8s, 90 holdings); a repeat request for the same quarter hit
+instantly with identical data; a different, never-fetched quarter still correctly missed.
 
 **Confirmed quirk (2026-07-04, against real Berkshire Hathaway 13F-HR filings):** unlike
 Forms 3/4/5, a 13F's `primaryDocument` in `filings.recent` is the *cover page* (filer

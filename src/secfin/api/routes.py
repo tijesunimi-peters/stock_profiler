@@ -29,6 +29,7 @@ from secfin.sec.companyfacts import fetch_raw_facts
 from secfin.sec.insider import fetch_insider_transactions_with_filings
 from secfin.sec.institutional import fetch_13f_snapshot
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 
@@ -59,6 +60,10 @@ def get_cusip_resolver(request: Request) -> CusipResolver:
 
 def get_insider_repo(request: Request) -> InsiderTransactionRepository:
     return request.app.state.insider_repo
+
+
+def get_holdings_repo(request: Request) -> HoldingsSnapshotRepository:
+    return request.app.state.holdings_repo
 
 
 async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol: str) -> int:
@@ -100,16 +105,22 @@ async def _insider_transactions_for_cik(
     return transactions
 
 
-async def _manager_snapshot(client: SECClient, manager_cik: int, period: str) -> HoldingsSnapshot:
-    """fetch_13f_snapshot, translating "no filing for that quarter" into a 404.
-
-    No cache-aside store yet -- every call re-fetches and re-parses from SEC (see
-    docs/ROADMAP.md's "Cache-aside store for 13F holdings snapshots").
+async def _manager_snapshot(
+    repo: HoldingsSnapshotRepository, client: SECClient, manager_cik: int, period: str
+) -> HoldingsSnapshot:
+    """Cache-aside read keyed on (manager_cik, period), translating "no filing for that
+    quarter" into a 404 on a cache miss. See storage/holdings_repository.py for why this
+    doesn't re-check SEC for a later-filed amendment once a quarter is cached.
     """
+    cached = repo.get_snapshot(manager_cik, period)
+    if cached is not None:
+        return cached
     try:
-        return await fetch_13f_snapshot(client, manager_cik, period)
+        snapshot = await fetch_13f_snapshot(client, manager_cik, period)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    repo.upsert_snapshot(snapshot)
+    return snapshot
 
 
 @router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
@@ -218,6 +229,7 @@ async def get_manager_holdings(
     manager_cik: int,
     period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
     resolver: CusipResolver = Depends(get_cusip_resolver),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
 ) -> HoldingsSnapshot:
     """One manager's full 13F holdings snapshot for a quarter.
 
@@ -226,7 +238,7 @@ async def get_manager_holdings(
     caveats (long-only, ~45-day filing lag) apply here too.
     """
     async with SECClient() as client:
-        snapshot = await _manager_snapshot(client, manager_cik, period)
+        snapshot = await _manager_snapshot(holdings_repo, client, manager_cik, period)
         await resolve_snapshot_cusips(client, resolver, snapshot)
     return snapshot
 
@@ -239,6 +251,7 @@ async def get_manager_activity(
         False, description="Include positions with no share change since the prior quarter"
     ),
     resolver: CusipResolver = Depends(get_cusip_resolver),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
 ) -> dict:
     """DERIVED buy/sell activity for one manager: current 13F vs. the prior quarter's.
 
@@ -252,9 +265,9 @@ async def get_manager_activity(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
     async with SECClient() as client:
-        current = await _manager_snapshot(client, manager_cik, period)
+        current = await _manager_snapshot(holdings_repo, client, manager_cik, period)
         try:
-            prior = await _manager_snapshot(client, manager_cik, prior_period)
+            prior = await _manager_snapshot(holdings_repo, client, manager_cik, prior_period)
         except HTTPException:
             # No filing for the prior quarter (e.g. the manager's first 13F) -- every
             # current position is then "new", per flows.diff_snapshots' own handling.

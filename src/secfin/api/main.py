@@ -20,6 +20,7 @@ from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver
 from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
+from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
@@ -47,12 +48,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # api.routes.get_insider_repo / storage/insider_repository.py. Own connection to the
     # same db file, same as cusip_repo above (fine under WAL mode).
     app.state.insider_repo = SQLiteInsiderTransactionRepository(settings.secfin_db_path)
+    # Cache-aside store for 13F holdings snapshots, keyed on (manager_cik, report_period)
+    # -- see api.routes.get_holdings_repo / storage/holdings_repository.py.
+    app.state.holdings_repo = SQLiteHoldingsSnapshotRepository(settings.secfin_db_path)
     try:
         yield
     finally:
         app.state.repo.close()
         app.state.cusip_repo.close()
         app.state.insider_repo.close()
+        app.state.holdings_repo.close()
 
 
 app = FastAPI(
