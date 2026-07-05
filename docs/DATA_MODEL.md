@@ -253,10 +253,50 @@ item) — both re-fetch and re-parse from SEC on every call.
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —
-with owner, percent of class, shares, and event date. Event-driven, not periodic. Still a
-stub in `sec/institutional.py` — deliberately: these cover pages are far less uniformly
-structured than 13F's XML info table (older filings are HTML/text, not a fixed schema),
-so it's scoped as its own follow-up rather than rushed alongside 13F.
+with owner, percent of class, shares, and event date. Event-driven, not periodic.
+Implemented in `sec/institutional.py`: `parse_schedule_13dg_xml` (pure) +
+`fetch_beneficial_ownership(client, issuer_cik, limit)`.
+
+**Confirmed (2026-07-05): the SEC transitioned Schedule 13D/G to structured XML.**
+Real Apple filing history shows legacy form types (`SC 13G/A`, plain HTML/text) as
+recently as 2024-02-14, and modern structured-XML form types (`SCHEDULE 13G`,
+`SCHEDULE 13G/A`) from 2025-07-29 onward — mirroring the same transition Forms 3/4/5 and
+13F already went through. **Deliberate scope decision:** only the modern structured-XML
+form types are parsed (`FORM_13DG` in `sec/institutional.py`); the legacy HTML/text ones
+are silently excluded by `_recent_13dg_filings`, not attempted — parsing them would mean
+HTML scraping, which CLAUDE.md rules out. A company whose only beneficial-ownership
+history predates the transition returns an empty list, not an error. This also required
+correcting `BeneficialOwnership.form_type`'s `Literal` — it previously guessed the
+abbreviated `"SC 13D"`/`"SC 13G"` strings, but the real structured filings'
+`submissionType` (and `filings.recent`'s `form` field) use `"SCHEDULE 13D"`/
+`"SCHEDULE 13G"` instead.
+
+**13D and 13G are two different XML schemas**, not variants of one shared schema —
+confirmed against real filings for both: 13G's cover page has `issuerCik`/
+`issuerCusips`/`eventDateRequiresFilingThisStatement` and exactly ONE
+`coverPageHeaderReportingPersonDetails` block; 13D has `issuerCIK` (different casing!)/
+`issuerCUSIP`/`dateOfEvent` and a `reportingPersons` list that can hold SEVERAL
+`reportingPersonInfo` blocks for joint filers (confirmed against a real 6-reporting-person
+Schedule 13D/A — RSLGH, LLC's chain of parent entities up to Green Thumb Industries).
+`parse_schedule_13dg_xml` dispatches on the caller-supplied `form_type` to the matching
+parser and returns one `BeneficialOwnership` per reporting person — 1 row for a typical
+13G, N rows for a jointly-filed 13D. Dates are converted from the XML's MM/DD/YYYY to
+this app's ISO YYYY-MM-DD convention (`_mmddyyyy_to_iso`).
+
+**Confirmed real edge case:** a Schedule 13G/A can legitimately report 0 shares / 0% of
+class — verified via a live fetch against a real Vanguard amendment for Apple, filed
+after an internal corporate realignment moved beneficial ownership to subsidiaries.
+Surfaced as-is, not treated as missing data.
+
+**Not modeled (deliberately, not an oversight):** `typeOfReportingPerson` (e.g.
+"IA"/"OO"/"CO"), citizenship, the sole/shared voting-vs-dispositive power breakdown, and
+free-text comments/items are all present in the raw XML but not carried onto
+`BeneficialOwnership` — that model already answers "who crossed 5%, how much, when."
+See `tests/fixtures/institutional/README.md` for the fixtures this was verified against.
+
+No API endpoint yet — `fetch_beneficial_ownership` is a standalone building block for
+now, same position `sec/institutional.py`'s 13F functions and `normalize/cusip.py` were
+in before their endpoints were wired up.
 
 ### Limitations to surface (never hide these)
 

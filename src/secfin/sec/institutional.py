@@ -39,19 +39,44 @@ Honest limitations to surface in the API (do NOT hide these):
     or normalize it.
 
 --------------------------------------------------------------------------------------
-Schedules 13D / 13G  (5%+ beneficial ownership) -- still a stub
+Schedules 13D / 13G  (5%+ beneficial ownership) -- implemented for structured filings only
 --------------------------------------------------------------------------------------
-Filed against an issuer when someone crosses 5% ownership. 13D = activist intent,
-13G = passive. These are event-driven, not periodic, and their cover pages are far
-less uniformly structured than 13F's XML info table (older filings are HTML/text, not
-a fixed schema) -- deliberately left unimplemented here rather than rushed; it's its
-own roadmap line.
+Filed against an issuer when someone crosses 5% ownership. 13D = activist intent
+(more disclosure, e.g. purpose of the transaction); 13G = passive/institutional (a
+short cover-page form). Event-driven, not periodic.
 
-Implementation plan:
-  1. Discover via the issuer's filings or full-text index: form in
-     {"SC 13D","SC 13G","SC 13D/A","SC 13G/A"}.
-  2. Parse cover-page fields -> BeneficialOwnership (owner, percent_of_class,
-     shares_beneficially_owned, event_date). Start with the clearest fields and expand.
+**The SEC transitioned Schedule 13D/G to structured XML filings** -- confirmed against
+real data (2026-07-05): Apple's filing history shows legacy form types ("SC 13G/A",
+plain HTML/text documents) as recently as 2024-02-14, and new structured-XML form types
+("SCHEDULE 13G", "SCHEDULE 13G/A") from 2025-07-29 onward. This mirrors Forms 3/4/5 and
+13F's `xslVIEWER_PATH/primary_doc.xml`-is-rendered-HTML /
+plain-`primary_doc.xml`-is-raw-XML quirk (`SECClient.strip_viewer_subdir`) -- except here
+the raw XML *is* the filing's only document (no separate info-table file to locate, per
+13F).
+
+**Deliberate scope decision:** this module ONLY parses the modern structured-XML form
+types (`FORM_13DG` below). The legacy "SC 13D"/"SC 13G"/"SC 13D/A"/"SC 13G/A" form types
+are plain HTML or .txt documents with no fixed schema -- parsing those would mean HTML
+scraping, which CLAUDE.md rules out ("we ingest and re-shape structured data — we do not
+scrape or parse HTML"). `_recent_13dg_filings` filters them out silently rather than
+raising; a company whose only beneficial-ownership history predates the XML transition
+will come back with an empty list, not an error.
+
+**13D and 13G are two DIFFERENT XML schemas** (different XML namespaces, different tag
+names for the same concepts -- e.g. 13G's cover page has `issuerCik`/`issuerCusips`/
+`eventDateRequiresFilingThisStatement` and ONE `coverPageHeaderReportingPersonDetails`
+block, while 13D has `issuerCIK`/`issuerCUSIP`/`dateOfEvent` and a `reportingPersons`
+list that can hold SEVERAL `reportingPersonInfo` blocks for joint filers -- confirmed
+against a real 6-reporting-person Schedule 13D/A). `parse_schedule_13dg_xml` dispatches
+on the caller-supplied `form_type` (already known from `filings.recent`) to the matching
+parser, and returns one `BeneficialOwnership` per reporting person -- 1 row for a typical
+13G, N rows for a jointly-filed 13D.
+
+**Not modeled (kept out of the canonical schema for now):** `typeOfReportingPerson`
+(e.g. "IA"/"OO"/"CO"), citizenship, sole/shared voting vs. dispositive power breakdown,
+and free-text comments/items are all present in the raw XML but not carried onto
+`BeneficialOwnership` -- that model already answers "who crossed 5%, how much, when";
+richer fields are a deliberate future addition, not an oversight.
 """
 
 from __future__ import annotations
@@ -62,7 +87,9 @@ from secfin.normalize.schema import BeneficialOwnership, HoldingsSnapshot, Insti
 from secfin.sec.client import SECClient
 
 FORM_13F = {"13F-HR", "13F-HR/A"}
-FORM_13DG = {"SC 13D", "SC 13G", "SC 13D/A", "SC 13G/A"}
+# Structured-XML form types only -- see the module docstring for why the legacy
+# "SC 13D"/"SC 13G"/"SC 13D/A"/"SC 13G/A" (HTML/text) form types are deliberately absent.
+FORM_13DG = {"SCHEDULE 13D", "SCHEDULE 13G", "SCHEDULE 13D/A", "SCHEDULE 13G/A"}
 
 
 def _recent_13f_filings(payload: dict) -> list[dict]:
@@ -81,6 +108,27 @@ def _recent_13f_filings(payload: dict) -> list[dict]:
                 "accessionNumber": recent["accessionNumber"][i],
                 "filingDate": recent["filingDate"][i],
                 "reportDate": recent["reportDate"][i],
+                "primaryDocument": recent["primaryDocument"][i],
+            }
+        )
+    return out
+
+
+def _recent_13dg_filings(payload: dict) -> list[dict]:
+    """Filter submissions.json's `filings.recent` down to structured-XML Schedule 13D/G
+    filings only -- see the module docstring. Legacy HTML/text form types are silently
+    excluded, not raised as errors. Newest-first, same order the SEC serves them in.
+    """
+    recent = payload.get("filings", {}).get("recent", {})
+    out = []
+    for i, form in enumerate(recent.get("form", [])):
+        if form not in FORM_13DG:
+            continue
+        out.append(
+            {
+                "form": form,
+                "accessionNumber": recent["accessionNumber"][i],
+                "filingDate": recent["filingDate"][i],
                 "primaryDocument": recent["primaryDocument"][i],
             }
         )
@@ -164,6 +212,111 @@ def parse_info_table_xml(xml_bytes: bytes) -> list[InstitutionalHolding]:
     return holdings
 
 
+def _to_int(s: str | None) -> int | None:
+    if s is None:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
+def _mmddyyyy_to_iso(s: str | None) -> str | None:
+    """Schedule 13D/G XML dates are MM/DD/YYYY; the rest of this app uses ISO YYYY-MM-DD."""
+    if not s:
+        return None
+    parts = s.strip().split("/")
+    if len(parts) != 3:
+        return None
+    month, day, year = parts
+    try:
+        return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+    except ValueError:
+        return None
+
+
+def _parse_13g(
+    root: ET.Element, *, form_type: str, filed: str | None, accession: str | None
+) -> list[BeneficialOwnership]:
+    """Schedule 13G's cover page: ONE reporting person block per filing."""
+    cover = root.find("formData/coverPageHeader")
+    issuer = cover.find("issuerInfo") if cover is not None else None
+    issuer_cik = _to_int(issuer.findtext("issuerCik")) if issuer is not None else None
+    issuer_name = _clean(issuer.findtext("issuerName")) if issuer is not None else None
+    event_date = (
+        _mmddyyyy_to_iso(cover.findtext("eventDateRequiresFilingThisStatement"))
+        if cover is not None
+        else None
+    )
+
+    out = []
+    for details in root.findall("formData/coverPageHeaderReportingPersonDetails"):
+        out.append(
+            BeneficialOwnership(
+                issuer_cik=issuer_cik,
+                issuer_name=issuer_name,
+                owner_name=_clean(details.findtext("reportingPersonName")),
+                form_type=form_type,  # type: ignore[arg-type]
+                percent_of_class=_to_float(details.findtext("classPercent")),
+                shares_beneficially_owned=_to_float(
+                    details.findtext("reportingPersonBeneficiallyOwnedAggregateNumberOfShares")
+                ),
+                event_date=event_date,
+                filed=filed,
+                accession=accession,
+            )
+        )
+    return out
+
+
+def _parse_13d(
+    root: ET.Element, *, form_type: str, filed: str | None, accession: str | None
+) -> list[BeneficialOwnership]:
+    """Schedule 13D's cover page: one `reportingPersonInfo` per joint filer."""
+    cover = root.find("formData/coverPageHeader")
+    issuer = cover.find("issuerInfo") if cover is not None else None
+    issuer_cik = _to_int(issuer.findtext("issuerCIK")) if issuer is not None else None
+    issuer_name = _clean(issuer.findtext("issuerName")) if issuer is not None else None
+    event_date = _mmddyyyy_to_iso(cover.findtext("dateOfEvent")) if cover is not None else None
+
+    out = []
+    for person in root.findall("formData/reportingPersons/reportingPersonInfo"):
+        out.append(
+            BeneficialOwnership(
+                issuer_cik=issuer_cik,
+                issuer_name=issuer_name,
+                owner_name=_clean(person.findtext("reportingPersonName")),
+                form_type=form_type,  # type: ignore[arg-type]
+                percent_of_class=_to_float(person.findtext("percentOfClass")),
+                shares_beneficially_owned=_to_float(person.findtext("aggregateAmountOwned")),
+                event_date=event_date,
+                filed=filed,
+                accession=accession,
+            )
+        )
+    return out
+
+
+def parse_schedule_13dg_xml(
+    xml_bytes: bytes, *, form_type: str, filed: str | None, accession: str | None
+) -> list[BeneficialOwnership]:
+    """Parse one structured Schedule 13D or 13G XML document into BeneficialOwnership rows.
+
+    Pure and network-free (same design intent as flatten_company_facts /
+    parse_ownership_xml / parse_info_table_xml). Dispatches on `form_type` (already known
+    from filings.recent) since 13D and 13G are different XML schemas -- see the module
+    docstring. One row per reporting person: 1 for a typical 13G, N for a jointly-filed
+    13D.
+    """
+    root = ET.fromstring(xml_bytes)
+    _strip_namespaces(root)
+    if "13D" in form_type:
+        return _parse_13d(root, form_type=form_type, filed=filed, accession=accession)
+    if "13G" in form_type:
+        return _parse_13g(root, form_type=form_type, filed=filed, accession=accession)
+    raise ValueError(f"unrecognized Schedule 13D/G form type: {form_type!r}")
+
+
 async def fetch_13f_snapshot(
     client: SECClient, manager_cik: int, report_period: str
 ) -> HoldingsSnapshot:
@@ -203,8 +356,27 @@ async def fetch_13f_snapshot(
 async def fetch_beneficial_ownership(
     client: SECClient, issuer_cik: int, limit: int = 50
 ) -> list[BeneficialOwnership]:
-    """Fetch recent 13D/13G beneficial-ownership filings against an issuer.
+    """Fetch and parse an issuer's recent structured-XML Schedule 13D/13G filings.
 
-    TODO: implement per the plan in this module's docstring.
+    Only the modern structured-XML form types are fetched -- legacy "SC 13D"/"SC 13G"
+    HTML/text filings are excluded by `_recent_13dg_filings`, not attempted (see the
+    module docstring). `limit` bounds the number of *filings* fetched, not
+    BeneficialOwnership rows -- a jointly-filed Schedule 13D can produce several.
     """
-    raise NotImplementedError("13D/G ingestion not yet implemented (see docstring).")
+    payload = await client.get_json(client.submissions_url(issuer_cik))
+    filings = _recent_13dg_filings(payload)[:limit]
+
+    owners: list[BeneficialOwnership] = []
+    for f in filings:
+        doc = client.strip_viewer_subdir(f["primaryDocument"])
+        url = client.filing_document_url(issuer_cik, f["accessionNumber"], doc)
+        xml_bytes = await client.get_bytes(url)
+        owners.extend(
+            parse_schedule_13dg_xml(
+                xml_bytes,
+                form_type=f["form"],
+                filed=f["filingDate"],
+                accession=f["accessionNumber"],
+            )
+        )
+    return owners

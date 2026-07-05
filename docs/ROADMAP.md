@@ -90,9 +90,23 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       unresolved (e.g. "BANK AMERICA CORP", "CAPITAL ONE FINL CORP"), and correctly
       derived new/added/reduced/exited activity between 2025-12-31 and 2026-03-31. No
       cache-aside store yet (see the item above) -- both endpoints re-fetch from SEC live.
-- [ ] 13D/G beneficial-ownership parsing → `BeneficialOwnership` (still a stub in
-      `sec/institutional.py` -- cover pages are far less uniformly structured than 13F's
-      XML info table, scoped as its own follow-up)
+- [x] 13D/G beneficial-ownership parsing → `BeneficialOwnership` -- `parse_schedule_13dg_xml`
+      (pure) + `fetch_beneficial_ownership`. Confirmed the SEC transitioned Schedule
+      13D/G to structured XML (real Apple history: legacy "SC 13G/A" HTML/text through
+      2024-02-14, modern "SCHEDULE 13G"/"SCHEDULE 13G/A" from 2025-07-29 onward) --
+      **only the modern structured filings are parsed**; legacy HTML/text ones are
+      silently excluded (CLAUDE.md rules out HTML scraping), not attempted. Discovered
+      and fixed a wrong assumption baked into the schema: `BeneficialOwnership.form_type`
+      previously guessed `"SC 13D"`/`"SC 13G"`, but real filings use `"SCHEDULE 13D"`/
+      `"SCHEDULE 13G"`. 13D and 13G turned out to be two different XML schemas (not
+      variants of one) -- confirmed against a real 6-reporting-person Schedule 13D/A
+      (joint filers), which is why `parse_schedule_13dg_xml` dispatches to a separate
+      parser per form type and returns one row per reporting person. Verified end-to-end
+      against live SEC data (not just fixtures) -- including a real, legitimate 0-shares/
+      0%-of-class Schedule 13G/A (a corporate realignment, not a bug). No API endpoint
+      yet -- standalone building block, same position the 13F functions were in before
+      their endpoints existed. See `docs/DATA_MODEL.md` and
+      `tests/fixtures/institutional/README.md`.
 
 ## Milestone 2.5 — institutional aggregation (cross-manager)
 

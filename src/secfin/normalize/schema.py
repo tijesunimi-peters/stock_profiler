@@ -160,7 +160,14 @@ class BeneficialOwnership(BaseModel):
     issuer_cik: int | None = None
     issuer_name: str | None = None
     owner_name: str | None = None
-    form_type: Literal["SC 13D", "SC 13G", "SC 13D/A", "SC 13G/A"] | None = None
+    # NOTE: these are the real submissionType/form values used by the SEC's structured-
+    # XML Schedule 13D/G filings (confirmed against real filings, 2026-07-05) -- NOT the
+    # abbreviated "SC 13D"/"SC 13G" strings, which belong to the legacy HTML/text filings
+    # this module deliberately does not parse (see sec/institutional.py's module
+    # docstring).
+    form_type: (
+        Literal["SCHEDULE 13D", "SCHEDULE 13G", "SCHEDULE 13D/A", "SCHEDULE 13G/A"] | None
+    ) = None
     percent_of_class: float | None = None
     shares_beneficially_owned: float | None = None
     event_date: str | None = None  # date of the triggering event

@@ -29,8 +29,11 @@ Pipeline orchestration (downloading, multiprocessing, batching into the store) l
 - `insider.py` — pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s.
 - `institutional.py` — pulls Form 13F information-table XML → `HoldingsSnapshot`s
   (implemented; CUSIP→CIK resolution is a separate opt-in step, `normalize/cusip.py`).
-  Schedules 13D/G → `BeneficialOwnership` is still a stub. 13F is a quarter-end
-  *snapshot*, not trades.
+  13F is a quarter-end *snapshot*, not trades. Also pulls Schedules 13D/G → one
+  `BeneficialOwnership` per reporting person, but **only for the SEC's modern
+  structured-XML filings** (`SCHEDULE 13D`/`SCHEDULE 13G` form types) — legacy
+  "SC 13D"/"SC 13G" filings are plain HTML/text with no fixed schema, and parsing those
+  would mean HTML scraping (out of scope per CLAUDE.md).
 
 The financials source is already structured (companyfacts gives us clean data points), so
 there's no HTML parsing. Insider trades and 13F are structured XML — again no HTML scraping.

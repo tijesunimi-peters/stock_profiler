@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><edgarSubmission xmlns="http://www.sec.gov/edgar/schedule13D" xmlns:com="http://www.sec.gov/edgar/common">
+  <headerData>
+    <submissionType>SCHEDULE 13D/A</submissionType>
+    <filerInfo>
+      <filer>
+        <filerCredentials>
+          <!-- Field: Pseudo-Tag; ID: Name; Data: RSLGH, LLC -->
+          <cik>0002043397</cik>
+          <ccc>XXXXXXXX</ccc>
+        </filerCredentials>
+      </filer>
+      <liveTestFlag>LIVE</liveTestFlag>
+
+
+    </filerInfo>
+  </headerData>
+  <formData>
+    <coverPageHeader>
+      <amendmentNo>7</amendmentNo>
+      <securitiesClassTitle>Common Stock, $0.001 par value per share</securitiesClassTitle>
+      <dateOfEvent>03/01/2026</dateOfEvent>
+      <previouslyFiledFlag>false</previouslyFiledFlag>
+      <issuerInfo>
+        <issuerCIK>0001800637</issuerCIK>
+        <issuerCUSIP>00853E404</issuerCUSIP>
+        <issuerName>RYTHM, Inc.</issuerName>
+        <address>
+          <com:street1>2220 Hicks Road</com:street1>
+          <com:street2>Suite 210</com:street2>
+          <com:city>Rolling Meadows</com:city>
+          <com:stateOrCountry>IL</com:stateOrCountry>
+          <com:zipCode>60008</com:zipCode>
+        </address>
+      </issuerInfo>
+      <authorizedPersons>
+        <notificationInfo>
+          <personName>Bret Kravitz</personName>
+          <personPhoneNum>312.471.6720</personPhoneNum>
+          <personAddress>
+            <com:street1>325 West Huron Street,Suite 700</com:street1>
+            <com:city>Chicago</com:city>
+            <com:stateOrCountry>IL</com:stateOrCountry>
+            <com:zipCode>60654</com:zipCode>
+          </personAddress>
+        </notificationInfo>
+      </authorizedPersons>
+    </coverPageHeader>
+    <reportingPersons>
+      <reportingPersonInfo>
+        <reportingPersonCIK>0002043397</reportingPersonCIK>
+        <reportingPersonNoCIK>N</reportingPersonNoCIK>
+        <reportingPersonName>RSLGH, LLC</reportingPersonName>
+        <fundType>AF</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>OO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) 25,000 shares of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH, LLC ("RSLGH") and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying warrants (the "Interest Warrants") issued as payments of interest pursuant to the November 2024 Note and the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying a warrant (the "Conversion Warrant") issued on November 3, 2025 upon conversion of the November 2024 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying warrants issued pursuant to the Shared Services Agreement (as defined in Item 3) (the "SSA Warrants"), subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonNoCIK>Y</reportingPersonNoCIK>
+        <reportingPersonName>WELLNESS MGMT, LLC</reportingPersonName>
+        <fundType>AF</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>CA</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>OO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) 25,000 of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying the Interest Warrants, subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying the Conversion Warrant, subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying the SSA Warrants, subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonNoCIK>Y</reportingPersonNoCIK>
+        <reportingPersonName>FOR SUCCESS HOLDING COMPANY</reportingPersonName>
+        <fundType>AF</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>OO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) 25,000 of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying the Interest Warrants, subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying the Conversion Warrant, subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying the SSA Warrants, subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonNoCIK>Y</reportingPersonNoCIK>
+        <reportingPersonName>VCP23, LLC</reportingPersonName>
+        <fundType>AF</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>OO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying the Interest Warrants, subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying the Conversion Warrant, subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying the SSA Warrants, subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonNoCIK>Y</reportingPersonNoCIK>
+        <reportingPersonName>GTI23, INC.</reportingPersonName>
+        <fundType>AF</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>DE</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>OO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) 25,000 shares of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying the Interest Warrants, subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying the Conversion Warrant, subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying the SSA Warrants, subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+      <reportingPersonInfo>
+        <reportingPersonNoCIK>Y</reportingPersonNoCIK>
+        <reportingPersonName>GREEN THUMB INDUSTRIES INC.</reportingPersonName>
+        <fundType>WC</fundType>
+        <legalProceedings>N</legalProceedings>
+        <citizenshipOrOrganization>A1</citizenshipOrOrganization>
+        <soleVotingPower>0.00</soleVotingPower>
+        <sharedVotingPower>13211928.00</sharedVotingPower>
+        <soleDispositivePower>0.00</soleDispositivePower>
+        <sharedDispositivePower>13211928.00</sharedDispositivePower>
+        <aggregateAmountOwned>13211928.00</aggregateAmountOwned>
+        <isAggregateExcludeShares>N</isAggregateExcludeShares>
+        <percentOfClass>49.99</percentOfClass>
+        <typeOfReportingPerson>CO</typeOfReportingPerson>
+        <commentContent>This amount includes (a) of Common Stock purchased on May 27, 2025; (b) 7,300 shares of Common Stock purchased on May 28, 2025; (c) 666,661 shares of Common Stock acquired on November 5, 2024; (d) 6,169,702 shares of Common Stock underlying warrants acquired on November 5, 2024, subject to a 49.99% beneficial ownership limitation; (e) 185,500 shares of Common Stock underlying warrants acquired pursuant to the warrant purchase agreement between RSLGH and Double or Nothing LLC dated December 12, 2024, subject to a 4.99% beneficial ownership limitation; (f) 119,136 shares of Common Stock underlying the Interest Warrants, subject to a 49.99% beneficial ownership limitation; (g) 1,147,520 shares of Common Stock underlying the May 2025 Note (as defined in Item 4), subject to a 49.99% beneficial ownership limitation; (h) 1,526,769 shares of Common Stock underlying the August 2025 Note (as defined in item 4), subject to a 49.99% beneficial ownership limitation; (i) 3,222,997 shares of Common Stock underlying the Conversion Warrant, subject to a 49.99% beneficial ownership limitation, and (j) 141,343 shares of Common Stock underlying the SSA Warrants, subject to a 49.99% beneficial ownership limitation. The Conversion Warrant, the Interest Warrants, the May 2025 Note, the August 2025 Note and the SSA Warrants are subject to restrictions on conversion or exercise, as applicable, to the extent required under applicable Nasdaq rules.</commentContent>
+      </reportingPersonInfo>
+    </reportingPersons>
+    <items1To7>
+      <item1>
+        <securityTitle>Common Stock, $0.001 par value per share</securityTitle>
+        <issuerName>RYTHM, Inc.</issuerName>
+        <issuerPrincipalAddress>
+          <com:street1>2220 Hicks Road</com:street1>
+          <com:street2>Suite 210</com:street2>
+          <com:city>Rolling Meadows</com:city>
+          <com:stateOrCountry>IL</com:stateOrCountry>
+          <com:zipCode>60008</com:zipCode>
+        </issuerPrincipalAddress>
+        <commentText>SCHEDULE 13D - EXPLANATORY NOTE
+
+This Amendment No. 7 to the statement on Schedule 13D ("Amendment No. 7") amends the Schedule 13D originally filed by the Reporting Persons (as defined herein) on November 13, 2024 and as amended by Amendment No. 1 thereto on December 16, 2024, Amendment No. 2 thereto on May 22, 2025, Amendment No. 3 thereto on May 29, 2025, Amendment No. 4 thereto on August 27, 2025, Amendment No. 5 thereto on October 20, 2025, and Amendment No. 6 thereto on November 4, 2025 (as amended, the "Schedule 13D") and relates to the shares of common stock, par value $0.001 ("Common Stock") of RYTHM, Inc. (the "Company" or the "Issuer") beneficially owned by (1) RSLGH, LLC, a Delaware limited liability company ("RSLGH"); (2) Wellness Mgmt, LLC, a California limited liability company and the sole member of RSLGH ("Wellness Mgmt"); (3) For Success Holding Company, a Delaware corporation and the sole member of Wellness Mgmt ("For Success Holding"); (4) VCP23, LLC, a Delaware limited liability company and the sole shareholder of For Success Holding ("VCP23"); (5) GTI23, Inc., a Delaware corporation and the sole member of VCP23 ("GTI23"); and (6) Green Thumb Industries Inc., a British Columbia corporation and the sole shareholder of GTI23 ("GTI" or "Green Thumb") (RSLGH, Wellness Mgmt, For Success Holding, VCP23, GTI23 and GTI, collectively, the "Reporting Persons").
+
+In accordance with Rule 13d-2 of the Securities Exchange Act of 1934, as amended, except as specifically provided herein, this Amendment No. 7 does not modify any of the information previously reported on the Schedule 13D. Capitalized terms used but not otherwise defined in this Amendment No. 7 shall have the meanings ascribed to them in the Schedule 13D.</commentText>
+      </item1>
+      <item2>
+        <filingPersonName>N/A</filingPersonName>
+        <principalBusinessAddress>N/A</principalBusinessAddress>
+        <principalJob>N/A</principalJob>
+        <hasBeenConvicted>N/A</hasBeenConvicted>
+        <convictionDescription>N/A</convictionDescription>
+        <citizenship>N/A</citizenship>
+      </item2>
+      <item3>
+        <fundsSource>Item 3 of the Schedule 13D is hereby amended and supplemented as follows (which shall be in addition to the information previously included in the Schedule 13D):
+
+In aggregate, the Reporting Persons are deemed to have voting and dispositive power over 13,211,928 shares of Common Stock of the Company. On March 1, 2026, the Company issued Interest Warrants exercisable for up to 57,377 shares of Common Stock as a payment of interest under the May 2025 Note. The number of shares of Common Stock underlying such Interest Warrants was determined pursuant to the terms of the May 2025 Note by dividing the dollar amount of the outstanding accrued but unpaid interest as of such date by the warrant conversion price as set forth in the May 2025 Note. As of the date of this filing, the Reporting Persons have no margin or other loans outstanding secured by Common Stock.</fundsSource>
+      </item3>
+      <item4>
+        <transactionPurpose>Item 4 of the Schedule 13D is hereby amended and supplemented as follows (which shall be in addition to the information previously included in the Schedule 13D):
+
+--Warrant Issuance--
+
+On March 1, 2026, the Company issued Interest Warrants exercisable for up to 57,377 shares of Common Stock as a payment of interest under the May 2025 Note. The number of shares of Common Stock underlying such Interest Warrants was determined pursuant to the terms of the May 2025 Note by dividing the dollar amount of the outstanding accrued but unpaid interest as of such date by the warrant conversion price as set forth in the May 2025 Note.
+
+--General--
+
+To the extent the actions described herein may be deemed to constitute a "control purpose" with respect to the Securities Exchange Act of 1934, as amended, and the regulations thereunder, the Reporting Persons have such a purpose. Except as noted in this Schedule 13D, the Reporting Persons do not have any plans or proposals, which relate to, or would result in, any of the matters referred to in paragraphs (b) through (j), inclusive of Item (4) of Schedule 13D. The Reporting Persons may, at any time and from time to time, review or reconsider their positions and formulate plans or proposals with respect thereto. Depending on various factors including, without limitation, the Issuer's financial position and investment strategy, the price levels of the Common Stock, conditions in the securities markets and general economic and industry conditions, the Reporting Persons may in the future take such actions with respect to their investment in the Issuer as they deem appropriate including, without limitation, engaging in communications with management and the board of directors of the Issuer (the "Board"), engaging in discussions with stockholders of the Issuer or other third parties about the Issuer and the Reporting Persons' investment, including potential business combinations or dispositions involving the Issuer or certain of its businesses, making recommendations or proposals to the Issuer concerning changes to the capitalization of the Issuer, ownership structure, Board structure (including Board composition), potential business combinations or dispositions involving the Issuer or certain of its businesses, or suggestions for improving the Issuer's financial and/or operational performance, purchasing additional shares securities of the Issuer, and/or selling some or all of the Investors securities in the Issuer.</transactionPurpose>
+      </item4>
+      <item5>
+        <percentageOfClassSecurities>The aggregate percentage of Common Stock reported owned by each Reporting Person is based upon approximately 2,149,148 shares of Common Stock outstanding as of March 1, 2026. As of the date hereof, each Reporting Person may be deemed to beneficially own 49.99% of the outstanding shares of Common Stock of the Issuer.</percentageOfClassSecurities>
+        <numberOfShares>Because Wellness Mgmt is the sole member of RSLGH, For Success Holding is the sole member of Wellness Mgmt, VCP23 is the sole shareholder of For Success Holding, GTI23 is the sole member of VCP23, and GTI is the sole shareholder of GTI23 (collectively, other than RSLGH, the "GTI Parties"), the GTI Parties are deemed to share the voting and dispositive power over the 13,211,928 shares of Common Stock directly beneficially owned by RSLGH.</numberOfShares>
+        <transactionDesc>The Reporting Persons have not made any transactions in the Common Stock within the past 60 days other than as provided in Item 4 above, including Item 4 of the Schedule 13D, including all amendments thereto.</transactionDesc>
+        <listOfShareholders>N/A</listOfShareholders>
+        <date5PercentOwnership>N/A</date5PercentOwnership>
+      </item5>
+      <item6>
+        <contractDescription>See the disclosure in Item 4 and Item 5 above and in the Schedule 13D, including all amendments thereto, which is incorporated into this Item 6, and see the joint filing agreement of the Reporting Persons.</contractDescription>
+      </item6>
+      <item7>
+        <filedExhibits>99.1 - Joint Filing Agreement - https://www.sec.gov/Archives/edgar/data/1800637/000121390025047011/ea024332701ex99-1_agrify.htm
+99.2 - Purchase Agreement dated November 5, 2024 -https://www.sec.gov/Archives/edgar/data/1800637/000121390024097577/ea022100501ex99-2_agrify.htm
+99.3 - Secured Convertible Note dated November 5, 2024 -https://www.sec.gov/Archives/edgar/data/1800637/000121390024094613/ea022010001ex4-1_agrify.htm
+99.4 - Purchase Agreement dated December 12, 2024 -https://www.sec.gov/Archives/edgar/data/1800637/000121390024109041/ea022484801ex99-4_agrify.htm
+99.5 - Form of Secured Convertible Note dated May 22, 2025 - https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex4-2_agrify.htm
+99.6 - Form of Pre-Funded Common Stock Purchase Warrant -https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex4-1_agrify.htm
+99.7 - Amendment and Waiver to Secured Convertible Note dated May 8, 2025 - sec.gov/Archives/edgar/data/1800637/000121390025041201/ea023943501ex4-1_agrify.htm
+99.8 - Second Amendment to Secured Convertible Note, dated May 22, 2025 - https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex4-3_agrify.htm
+99.9 - Purchase Agreement, dated May 20, 2025, by and between VCP IP Holdings, LLC and Agrify Corporation - https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex10-1_agrify.htm
+99.10 - Trademark and Recipe License Agreement, dated May 20, 2025, by and between MC Brands LLC and GTI Core, LLC -https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex10-2_agrify.htm
+99.11 - Amended and Restated Shared Services Agreement, dated May 22, 2025, by and between Agrify Corporation and Vision Management Services, LLC - https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea024318601ex10-5_agrify.htm
+99.12 - Current Report on Form 8-K dated May 20, 2025 as filed on May 22, 2025 - https://www.sec.gov/Archives/edgar/data/1800637/000121390025046875/ea0243186-8k_agrify.htm
+99.13 - Form of Secured Convertible Note dated August 25, 2025 - sec.gov/Archives/edgar/data/1800637/000121390025081148/ea025469501ex4-1_agrify.htm
+99.14 - Form of Pre-Funded Common Stock Purchase Warrant -  sec.gov/Archives/edgar/data/1800637/000121390025081148/ea025469501ex4-2_agrify.htm
+99.15- Current Report on Form 8-K as filed on August 27, 2025 - sec.gov/Archives/edgar/data/1800637/000121390025081148/ea0254695-8k_agrify.htm
+99.16 - Purchase Agreement, dated August 27, 2025, by and between VCP23, LLC and Agrify Corporation - sec.gov/Archives/edgar/data/1800637/000121390025081148/ea025469501ex10-1_agrify.htm
+99.17 - Trademark and Recipe License Agreement, dated August 27, 2025, by and between VCP IP Holdings, LLC and GTI Core, LLC - sec.gov/Archives/edgar/data/1800637/000121390025081148/ea025469501ex10-2_agrify.htm</filedExhibits>
+      </item7>
+    </items1To7>
+    <signatureInfo>
+      <signaturePerson>
+        <signatureReportingPerson>RSLGH, LLC</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Bret Kravitz</signature>
+          <title>Bret Kravitz/Corporate Secretary</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+      <signaturePerson>
+        <signatureReportingPerson>WELLNESS MGMT, LLC</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Benjamin Kovler</signature>
+          <title>Benjamin Kovler/Authorized Signatory</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+      <signaturePerson>
+        <signatureReportingPerson>FOR SUCCESS HOLDING COMPANY</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Benjamin Kovler</signature>
+          <title>Benjamin Kovler/CEO &amp; President</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+      <signaturePerson>
+        <signatureReportingPerson>VCP23, LLC</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Benjamin Kovler</signature>
+          <title>Benjamin Kovler/Manager</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+      <signaturePerson>
+        <signatureReportingPerson>GTI23, INC.</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Benjamin Kovler</signature>
+          <title>Benjamin Kovler/Director &amp; Authorized Signatory</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+      <signaturePerson>
+        <signatureReportingPerson>GREEN THUMB INDUSTRIES INC.</signatureReportingPerson>
+        <signatureDetails>
+          <signature>/s/ Benjamin Kovler</signature>
+          <title>Benjamin Kovler/Chairman and Chief Executive Officer</title>
+          <date>03/03/2026</date>
+        </signatureDetails>
+      </signaturePerson>
+    </signatureInfo>
+  </formData>
+</edgarSubmission>
