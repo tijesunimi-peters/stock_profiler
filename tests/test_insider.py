@@ -112,6 +112,27 @@ def test_form5_director_relationship_uses_1_0_flag_format():
     assert records[0].owner_relationship == "director"
 
 
+def test_form4_joint_filers_emit_one_row_per_reporting_owner():
+    # Real Berkshire Hathaway / Warren Buffett joint Form 4 on DaVita Inc. (DVA) -- a
+    # single shared sale transaction, reported jointly by the corporate 10% owner and
+    # its controlling stockholder. See tests/fixtures/insider/README.md.
+    records = parse_ownership_xml(
+        _read("brka_form4_davita_joint.xml"),
+        form_type="4",
+        filed="2026-05-05",
+        accession="0001193125-26-207021",
+    )
+    # 1 nonDerivativeTransaction row x 2 reportingOwners -> 2 records, not 1.
+    assert len(records) == 2
+    assert {r.owner_name for r in records} == {"BERKSHIRE HATHAWAY INC", "BUFFETT WARREN E"}
+    assert all(r.issuer_cik == 927066 for r in records)
+    assert all(r.issuer_name == "DAVITA INC." for r in records)
+    assert all(r.security_title == "Common Stock" for r in records)
+    assert all(r.shares == 1220376 for r in records)
+    assert all(r.acquired_disposed == "D" for r in records)
+    assert all(r.owner_relationship == "10% owner" for r in records)
+
+
 def test_parse_ownership_xml_requires_issuer_cik():
     with pytest.raises(ValueError, match="issuerCik"):
         parse_ownership_xml(

@@ -159,8 +159,15 @@ path — fetching that exact URL returns HTML, not XML. The raw ownership XML li
 filing's directory root under the same filename, with the `xslF345X0N/` viewer prefix
 stripped (`_raw_document_name`). See `tests/fixtures/insider/README.md`.
 
-**Known limitation:** a filing can have more than one `<reportingOwner>` (joint filers) —
-only the first is parsed; multi-owner attribution isn't implemented.
+**Joint filers:** a filing can have more than one `<reportingOwner>` — confirmed against
+real Berkshire Hathaway Inc. / Warren E. Buffett and JPMorgan Chase & Co. / DNT Asset Trust
+Form 4s (`tests/fixtures/insider/brka_form4_davita_joint.xml`). The XML doesn't attribute a
+transaction/holding row to one specific owner — a joint filing's tables apply to all listed
+owners jointly — so `parse_ownership_xml` emits one `InsiderTransaction` per
+(reporting owner x row), the same "duplicate the shared row per filer" shape used for 13D/G
+joint filers below. A cluster of 3 joint filers reporting the same sale therefore reads as 3
+rows sharing one `transaction_date`/`shares`/`accession`, not 1 — this is what makes insider
+cluster-buying detection possible.
 
 **API:** `GET /v1/companies/{symbol}/insider-trades?limit=` (`api/routes.py`) wires
 `fetch_insider_transactions` straight through — fetched live from SEC on every request.

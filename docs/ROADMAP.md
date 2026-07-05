@@ -40,8 +40,8 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
 - [x] Implement `sec/insider.py` (Forms 3/4/5 XML parsing) -- `parse_ownership_xml`
       (pure) + `fetch_insider_transactions` (submissions.json -> filter -> fetch -> parse);
       verified against real Apple Form 3/4/5 fixtures, including the primaryDocument
-      viewer-vs-raw-XML quirk (see `docs/DATA_MODEL.md`). Known gap: joint filers
-      (multiple `<reportingOwner>` per filing) only capture the first owner.
+      viewer-vs-raw-XML quirk (see `docs/DATA_MODEL.md`). Joint-filer capture (multiple
+      `<reportingOwner>` per filing) fixed below.
 - [x] Insider-trades endpoint -- `GET /v1/companies/{symbol}/insider-trades?limit=`
       wires `fetch_insider_transactions` straight through, fetched live from SEC on
       every request (no cache-aside store for insider transactions yet -- unlike
@@ -107,14 +107,16 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       yet -- standalone building block, same position the 13F functions were in before
       their endpoints existed. See `docs/DATA_MODEL.md` and
       `tests/fixtures/institutional/README.md`.
-- [ ] **Fix joint-filer capture in INSIDER (Forms 3/4/5) parsing (promoted from "known gap" —
-      must-fix before any insider-activity analysis).** `parse_ownership_xml` keeps only the
-      first `<reportingOwner>`, so a filing where several insiders report together collapses to
-      one row — directly breaking **insider cluster-buying** (several insiders buying at once),
-      one of the stronger signals in the literature and the exact case it exists to catch (a real
-      cluster of 3 becomes "1"). Emit one row per reporting owner — the same shape as the
-      multi-reporting-person handling already done in `parse_schedule_13dg_xml`.
-      (`DATA_MODEL.md` insider section, "known limitation".)
+- [x] **Fix joint-filer capture in INSIDER (Forms 3/4/5) parsing** -- `parse_ownership_xml`
+      now iterates every `<reportingOwner>` and emits one `InsiderTransaction` per
+      (reporting owner x transaction/holding row), the same "duplicate the shared row per
+      filer" shape `parse_schedule_13dg_xml` already used for 13D/G joint filers, instead of
+      collapsing a joint filing to its first owner. Verified against a real joint Form 4
+      (Berkshire Hathaway Inc. / Warren E. Buffett, DaVita Inc., accession
+      `0001193125-26-207021`) -- one shared `nonDerivativeTransaction` row correctly yields 2
+      records, not 1 -- plus a second real example (JPMorgan Chase & Co. / DNT Asset Trust)
+      confirming the pattern isn't Berkshire-specific. See
+      `tests/fixtures/insider/brka_form4_davita_joint.xml` and `DATA_MODEL.md` insider section.
 - [ ] **Separately: 13F joint filers are also unattributed** (distinct from the insider gap
       above — don't let "fix joint filers" be mistaken for one fix). A 13F can list co-filing
       managers via the cover page's `otherManagers2Info`; the snapshot is keyed on the filing

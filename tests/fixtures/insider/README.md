@@ -9,6 +9,7 @@ trimmed to keep the repo small — not synthetic, not hand-edited beyond trimmin
 | `aapl_form4_newstead.xml` | Raw ownership XML, accession `0001140361-26-025622` | A Form 4 with both non-derivative transactions (an RSU vesting `M` and a tax-withholding `F`) and a derivative transaction — exercises both tables, `isOfficer` reported as `"true"`/`"false"` (not `"1"`/`"0"` — schema version X0609), and a transaction with no `<value>` under `transactionPricePerShare` (only a footnote — RSU settlement has no cash price). |
 | `aapl_form3_newstead.xml` | Raw ownership XML, accession `0001780525-26-000003` | An initial Form 3: `nonDerivativeTable` is empty, only `derivativeHolding` rows (no transaction, no `postTransactionAmounts`) — exercises the holdings path. |
 | `aapl_form5_wagner.xml` | Raw ownership XML, accession `0000320193-24-000102` | A director (`isDirector` = `"1"`, no officer title) filing Form 5 — exercises the `isDirector`/`isOfficer` `"1"`/`"0"` flag format (older schema than the Form 4 above). |
+| `brka_form4_davita_joint.xml` | Raw ownership XML, accession `0001193125-26-207021`, issuer DaVita Inc. (CIK 927066), fetched live 2026-07-05 | A **joint filer** Form 4 — two `<reportingOwner>` blocks (Berkshire Hathaway Inc. and Warren E. Buffett) sharing one `nonDerivativeTransaction` row. Exercises `parse_ownership_xml` emitting one row per reporting owner instead of collapsing to the first. |
 
 ## Quirk this confirmed (see `sec/insider.py` module docstring)
 

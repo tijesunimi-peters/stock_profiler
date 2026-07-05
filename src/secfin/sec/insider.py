@@ -14,8 +14,13 @@ insider trades come as ownership XML documents attached to individual filings:
    `companyfacts.flatten_company_facts`) turns one ownership document into
    `InsiderTransaction` rows: one per non-derivative/derivative transaction or holding.
 
-Known limitation: a filing can have more than one `<reportingOwner>` (joint filers). This
-parses only the first -- multi-owner attribution is not implemented.
+Joint filers: a filing can have more than one `<reportingOwner>` (e.g. an insider and a
+trust or holding company filing together -- confirmed against real Berkshire Hathaway /
+Warren Buffett and JPMorgan Chase / DNT Asset Trust Form 4s). The XML doesn't attribute
+individual transaction/holding rows to a specific owner -- a joint filing's tables apply
+to all listed owners jointly -- so `parse_ownership_xml` emits one row per
+(reporting owner x transaction/holding row), the same "duplicate the shared row per
+filer" shape `institutional.py`'s `parse_schedule_13dg_xml` uses for 13D/G joint filers.
 """
 
 from __future__ import annotations
@@ -146,34 +151,37 @@ def parse_ownership_xml(
     issuer_cik = int(issuer_cik_text)
     issuer_name = _text(issuer, "issuerName")
 
-    owner = root.find("reportingOwner")
-    owner_id = owner.find("reportingOwnerId") if owner is not None else None
-    owner_name = _text(owner_id, "rptOwnerName")
-    relationship = owner.find("reportingOwnerRelationship") if owner is not None else None
-    owner_relationship = _relationship_label(relationship)
-
-    common = {
-        "issuer_cik": issuer_cik,
-        "issuer_name": issuer_name,
-        "owner_name": owner_name,
-        "owner_relationship": owner_relationship,
-        "form_type": form_type,
-        "filed": filed,
-        "accession": accession,
-    }
-
-    records: list[InsiderTransaction] = []
+    tables = []
     for table_tag, txn_tag, holding_tag in (
         ("nonDerivativeTable", "nonDerivativeTransaction", "nonDerivativeHolding"),
         ("derivativeTable", "derivativeTransaction", "derivativeHolding"),
     ):
         table = root.find(table_tag)
-        if table is None:
-            continue
-        for row in table.findall(txn_tag):
-            records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=False)))
-        for row in table.findall(holding_tag):
-            records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=True)))
+        if table is not None:
+            tables.append((table, txn_tag, holding_tag))
+
+    records: list[InsiderTransaction] = []
+    for owner in root.findall("reportingOwner"):
+        owner_id = owner.find("reportingOwnerId")
+        owner_name = _text(owner_id, "rptOwnerName")
+        relationship = owner.find("reportingOwnerRelationship")
+        owner_relationship = _relationship_label(relationship)
+
+        common = {
+            "issuer_cik": issuer_cik,
+            "issuer_name": issuer_name,
+            "owner_name": owner_name,
+            "owner_relationship": owner_relationship,
+            "form_type": form_type,
+            "filed": filed,
+            "accession": accession,
+        }
+
+        for table, txn_tag, holding_tag in tables:
+            for row in table.findall(txn_tag):
+                records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=False)))
+            for row in table.findall(holding_tag):
+                records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=True)))
 
     return records
 
