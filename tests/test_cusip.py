@@ -9,7 +9,13 @@ the actual real-world mismatch (13F says "ALLY FINL INC", SEC's registered title
 
 from __future__ import annotations
 
-from secfin.normalize.cusip import CusipResolver, normalize_issuer_name, parse_company_name_index
+from secfin.normalize.cusip import (
+    CusipResolver,
+    normalize_issuer_name,
+    parse_company_name_index,
+    resolve_snapshot_cusips,
+)
+from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 
 _COMPANY_TICKERS_PAYLOAD = {
@@ -93,4 +99,31 @@ async def test_resolver_serves_repeat_lookups_from_the_repo_without_refetching(t
     assert first == second == 320193
     # Second call was a repo cache hit -- the name index was fetched only once.
     assert client.calls == 1
+    repo.close()
+
+
+async def test_resolve_snapshot_cusips_populates_cik_in_place(tmp_path):
+    repo = SQLiteCusipMapRepository(tmp_path / "secfin.db")
+    resolver = CusipResolver(repo, ttl_seconds=3600)
+    client = _FakeClient(_COMPANY_TICKERS_PAYLOAD)
+    snapshot = HoldingsSnapshot(
+        manager_cik=1000,
+        report_period="2026-03-31",
+        holdings=[
+            InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC"),
+            InstitutionalHolding(cusip="02079K107", issuer_name="ALPHABET INC"),
+            # Real, deliberately-unresolvable case (see module docstring).
+            InstitutionalHolding(cusip="02005N100", issuer_name="ALLY FINL INC"),
+            # No issuer_name at all -- nothing to match against, must not raise.
+            InstitutionalHolding(cusip="000000000", issuer_name=None),
+        ],
+    )
+
+    await resolve_snapshot_cusips(client, resolver, snapshot)
+
+    by_cusip = {h.cusip: h.cik for h in snapshot.holdings}
+    assert by_cusip["037833100"] == 320193
+    assert by_cusip["02079K107"] == 1652044
+    assert by_cusip["02005N100"] is None
+    assert by_cusip["000000000"] is None
     repo.close()

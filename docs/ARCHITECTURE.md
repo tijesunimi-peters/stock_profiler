@@ -89,7 +89,12 @@ of that onto one small, stable canonical schema.
 - `statements.py` — assembles a `Statement` for a company+period by choosing, per concept,
   the first candidate tag that has a value (latest-filed wins for restatements).
 - `flows.py` — derives institutional buy/sell (`HoldingDelta`) by diffing two consecutive
-  13F `HoldingsSnapshot`s. Implemented; the parsing that feeds it is the `institutional.py` stub.
+  13F `HoldingsSnapshot`s (`diff_snapshots`), plus `prior_quarter_end` (pure quarter-end
+  date arithmetic). Wired into `GET /v1/managers/{manager_cik}/activity` (see §4).
+- `cusip.py` — resolves 13F CUSIPs to issuer CIKs by exact-normalized-name match against
+  SEC's `company_tickers.json` (`CusipResolver`), and `resolve_snapshot_cusips` to apply
+  it across a whole `HoldingsSnapshot` in place. Deliberately conservative — no fuzzy
+  matching (see `DATA_MODEL.md`).
 
 See `DATA_MODEL.md` for the schema and mapping details.
 
@@ -124,14 +129,17 @@ patterns.
   companies have been ingested per source (`bulk_companyfacts` / `daily_incremental`), so a
   crashed backfill resumes without re-parsing already-done companies and without re-hitting
   the SEC (the zip is already local).
+- `storage/cusip_repository.py` — abstract `CusipMapRepository`, and
+  `storage/sqlite_cusip_repository.py`'s SQLite impl. Its own connection to the same db
+  file (fine under WAL mode). Persists CUSIP→CIK resolutions and tracks unresolved
+  CUSIPs; wired in via `normalize/cusip.py`'s `CusipResolver` (see §4).
 - **Planned, not yet built:** an `InsiderTransactionRepository` and a
   `HoldingsSnapshotRepository`, same interface-then-SQLite-impl shape as
-  `RawFactRepository`/`SQLiteRawFactRepository` above. Right now `/insider-trades` and
-  `fetch_13f_snapshot` re-fetch and re-parse from SEC on *every* call — there is no
-  cache-aside read for either the way `_facts_for_cik` gives statements (see §4 and
-  `docs/ROADMAP.md`'s Milestone 2). Also already present but not yet wired into either
-  of those: `CusipMapRepository` (`storage/cusip_repository.py`), which resolves 13F
-  CUSIPs to issuer CIKs.
+  `RawFactRepository`/`SQLiteRawFactRepository` above. Right now `/insider-trades`,
+  `/managers/{manager_cik}/holdings`, and `/managers/{manager_cik}/activity` all
+  re-fetch and re-parse from SEC on *every* call — there is no cache-aside read for any
+  of them the way `_facts_for_cik` gives statements (see §4 and `docs/ROADMAP.md`'s
+  Milestone 2).
 
 ### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
 
@@ -162,10 +170,21 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 - `GET /v1/companies/{symbol}/insider-trades?limit=` — fetched live from SEC on every
   request; no cache-aside store for insider transactions yet (unlike statements below —
   see §3a's "planned, not yet built" note and `docs/ROADMAP.md`).
+- `GET /v1/managers/{manager_cik}/holdings?period=` — one manager's 13F snapshot
+  (`fetch_13f_snapshot`), with CUSIPs resolved to CIKs in place via
+  `normalize/cusip.resolve_snapshot_cusips` before returning. 404 if that manager has no
+  13F-HR for the given quarter-end.
+- `GET /v1/managers/{manager_cik}/activity?period=&include_unchanged=` — DERIVED buy/sell
+  for one manager: fetches the requested quarter's snapshot and the prior one
+  (`normalize/flows.prior_quarter_end`; a missing prior quarter — e.g. the manager's
+  first 13F — is treated as `None`, so `diff_snapshots` reports everything "new"),
+  resolves CUSIPs on both, and returns `diff_snapshots`' output alongside an
+  always-present `caveats` list (derived-not-reported, long-only, ~45-day lag). No
+  cache-aside store yet — both endpoints re-fetch and re-parse from SEC on every call.
 - `GET /v1/companies/{symbol}/institutional-holders`,
-  `GET /v1/companies/{symbol}/institutional-activity`,
-  `GET /v1/managers/{manager_cik}/holdings` (501 until implemented — need the
-  cross-manager 13F index from Milestone 2.5)
+  `GET /v1/companies/{symbol}/institutional-activity` (501 until implemented — these are
+  *issuer*-centric and need the cross-manager 13F index from Milestone 2.5, unlike the
+  *manager*-centric endpoints above which only need one manager's filings)
 
 `symbol` accepts a ticker or a raw CIK. Statement/period facts are served cache-aside from
 the storage layer (§3a): populated by `ingest/`, or by the route itself on a cache miss.

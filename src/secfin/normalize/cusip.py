@@ -23,6 +23,7 @@ import asyncio
 import re
 import time
 
+from secfin.normalize.schema import HoldingsSnapshot
 from secfin.sec.client import SECClient
 from secfin.storage.cusip_repository import CusipMapRepository
 
@@ -126,3 +127,17 @@ class CusipResolver:
         else:
             self._repo.record_unresolved(cusip, issuer_name)
         return cik
+
+
+async def resolve_snapshot_cusips(
+    client: SECClient, resolver: CusipResolver, snapshot: HoldingsSnapshot
+) -> None:
+    """Populate InstitutionalHolding.cik in place for every holding the resolver matches.
+
+    Mutates `snapshot.holdings` -- callers that need to keep the unresolved values should
+    resolve a copy. Skips rows with no issuer_name (nothing to match against); leaves
+    `cik` as None wherever the resolver can't find an exact match, same as `resolve`.
+    """
+    for holding in snapshot.holdings:
+        if holding.issuer_name:
+            holding.cik = await resolver.resolve(client, holding.cusip, holding.issuer_name)

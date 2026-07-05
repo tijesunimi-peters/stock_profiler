@@ -10,6 +10,30 @@ from __future__ import annotations
 
 from secfin.normalize.schema import HoldingDelta, HoldingsSnapshot
 
+# 13F report periods are always a calendar quarter-end. (month, day) -> the prior
+# quarter-end's (month, day) plus a year offset (-1 only for Q1, whose prior quarter
+# is Q4 of the previous year).
+_PRIOR_QUARTER_END = {
+    (3, 31): (12, 31, -1),
+    (6, 30): (3, 31, 0),
+    (9, 30): (6, 30, 0),
+    (12, 31): (9, 30, 0),
+}
+
+
+def prior_quarter_end(period: str) -> str:
+    """Return the quarter-end (YYYY-MM-DD) immediately before `period`.
+
+    Pure date arithmetic -- no knowledge of whether a filing actually exists for either
+    quarter. Raises ValueError if `period` isn't one of the four calendar quarter-ends.
+    """
+    year_s, month_s, day_s = period.split("-")
+    key = (int(month_s), int(day_s))
+    if key not in _PRIOR_QUARTER_END:
+        raise ValueError(f"not a 13F quarter-end date: {period!r}")
+    prior_month, prior_day, year_offset = _PRIOR_QUARTER_END[key]
+    return f"{int(year_s) + year_offset:04d}-{prior_month:02d}-{prior_day:02d}"
+
 
 def _by_cusip(snapshot: HoldingsSnapshot | None) -> dict[str, float]:
     """Sum shares per CUSIP within a snapshot (a manager may list a CUSIP more than once)."""

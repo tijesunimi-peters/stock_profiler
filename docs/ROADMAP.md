@@ -74,10 +74,22 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       `company_tickers.json`, exact-normalized-match only, no fuzzy matching). Persists
       both resolved and unresolved CUSIPs; `unresolved_cusips()` surfaces the latter for
       review. Confirmed against a real, deliberately-declined mismatch (Berkshire's
-      "ALLY FINL INC" vs SEC's "Ally Financial Inc.") -- see `docs/DATA_MODEL.md`. Not
-      yet wired into `sec/institutional.py`'s snapshot builder or any endpoint --
-      standalone building block for now, same as `normalize/flows.py` was before this.
-- [ ] Wire `normalize/flows.diff_snapshots` into a per-manager activity endpoint
+      "ALLY FINL INC" vs SEC's "Ally Financial Inc.") -- see `docs/DATA_MODEL.md`. Now
+      wired into the two manager endpoints below via `resolve_snapshot_cusips`.
+- [x] Wire `normalize/flows.diff_snapshots` into a per-manager activity endpoint --
+      `GET /v1/managers/{manager_cik}/holdings?period=` (implemented `get_manager_holdings`,
+      previously a 501 stub) and new `GET /v1/managers/{manager_cik}/activity?period=`,
+      which fetches the current snapshot, computes the prior quarter-end
+      (`normalize/flows.prior_quarter_end`), fetches that snapshot (treating "no filing"
+      as `prior=None`, i.e. everything "new" -- the manager's first 13F), resolves CUSIPs
+      on both via `CusipResolver` (its first real caller), and returns `diff_snapshots`'
+      output alongside an always-present `caveats` list (derived-not-reported, long-only,
+      ~45-day lag -- CLAUDE.md's non-negotiable 13F caveats). Verified end-to-end against
+      the real running API with real Berkshire Hathaway data (2026-07-05): resolved CIKs
+      for cleanly-matching issuers (Alphabet, Apple, Amazon, ...), left abbreviated ones
+      unresolved (e.g. "BANK AMERICA CORP", "CAPITAL ONE FINL CORP"), and correctly
+      derived new/added/reduced/exited activity between 2025-12-31 and 2026-03-31. No
+      cache-aside store yet (see the item above) -- both endpoints re-fetch from SEC live.
 - [ ] 13D/G beneficial-ownership parsing → `BeneficialOwnership` (still a stub in
       `sec/institutional.py` -- cover pages are far less uniformly structured than 13F's
       XML info table, scoped as its own follow-up)

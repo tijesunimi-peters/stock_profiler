@@ -225,6 +225,31 @@ concept on the 13F side too (multiple managers filing jointly, listed in the cov
 `otherManagers2Info`) — not resolved or attributed here; the snapshot is keyed on the
 filing manager only.
 
+### API: per-manager endpoints
+
+`GET /v1/managers/{manager_cik}/holdings?period=` (`api/routes.py`) wires
+`fetch_13f_snapshot` straight through, then resolves CUSIPs to CIKs in place via
+`normalize/cusip.resolve_snapshot_cusips` — `CusipResolver`'s first real caller. 404s if
+that manager has no `13F-HR`/`13F-HR/A` for the requested quarter-end.
+
+`GET /v1/managers/{manager_cik}/activity?period=&include_unchanged=` wires
+`normalize/flows.diff_snapshots` into an endpoint: fetches the requested quarter's
+snapshot and, via the new `normalize/flows.prior_quarter_end`, the immediately preceding
+one; resolves CUSIPs on both; diffs them. A missing prior quarter (e.g. the manager's
+first-ever 13F) is treated as `prior=None`, so every current position comes back as
+`"new"` — the same designed behavior `diff_snapshots` already had, just reachable from
+the API now. The response always carries a `caveats` list (derived-not-reported,
+long-only, ~45-day lag) alongside `activity` — CLAUDE.md is explicit that these three
+facts must never be left implicit in an institutional response.
+
+Verified end-to-end against the real running API with real Berkshire Hathaway data
+(2026-07-05): cleanly-matching issuers resolved (Alphabet, Apple, Amazon, Chevron,
+Coca-Cola, ...), abbreviated ones correctly stayed unresolved (e.g. `"BANK AMERICA
+CORP"`, `"CAPITAL ONE FINL CORP"`, `"LOUISIANA PAC CORP"`), and the 2025-12-31 →
+2026-03-31 diff produced real new/added/reduced/exited activity. Neither endpoint has a
+cache-aside store yet (see the "Cache-aside store for 13F holdings snapshots" roadmap
+item) — both re-fetch and re-parse from SEC on every call.
+
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from secfin.normalize.flows import diff_snapshots
+import pytest
+
+from secfin.normalize.flows import diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
 
 
@@ -47,3 +49,20 @@ def test_unchanged_hidden_by_default():
     current = _snap("2024-06-30", {"AAA": 100})
     assert diff_snapshots(current, prior) == []
     assert diff_snapshots(current, prior, include_unchanged=True)[0].action == "unchanged"
+
+
+def test_prior_quarter_end_within_a_year():
+    assert prior_quarter_end("2026-06-30") == "2026-03-31"
+    assert prior_quarter_end("2026-09-30") == "2026-06-30"
+    assert prior_quarter_end("2026-12-31") == "2026-09-30"
+
+
+def test_prior_quarter_end_crosses_a_year_boundary():
+    assert prior_quarter_end("2026-03-31") == "2025-12-31"
+
+
+def test_prior_quarter_end_rejects_non_quarter_end_dates():
+    with pytest.raises(ValueError, match="not a 13F quarter-end"):
+        prior_quarter_end("2026-06-15")
+    with pytest.raises(ValueError, match="not a 13F quarter-end"):
+        prior_quarter_end("2026-01-31")

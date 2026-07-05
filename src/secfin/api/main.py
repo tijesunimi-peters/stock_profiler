@@ -17,7 +17,9 @@ from fastapi.staticfiles import StaticFiles
 
 from secfin.api.routes import router
 from secfin.config import settings
+from secfin.normalize.cusip import CusipResolver
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -32,10 +34,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Likewise, one in-memory ticker->CIK cache for the process lifetime -- see
     # sec/ticker_cache.py and api.routes.get_ticker_cache.
     app.state.ticker_cache = TickerCache(ttl_seconds=settings.secfin_ticker_cache_ttl_seconds)
+    # CUSIP -> CIK resolution for 13F holdings (normalize/cusip.py). Own connection to
+    # the same db file (fine under WAL mode) plus an in-memory name-index cache with the
+    # same refresh shape as TickerCache above -- reuses its TTL setting since both cache
+    # the same company_tickers.json source with the same staleness tolerance.
+    app.state.cusip_repo = SQLiteCusipMapRepository(settings.secfin_db_path)
+    app.state.cusip_resolver = CusipResolver(
+        app.state.cusip_repo, ttl_seconds=settings.secfin_ticker_cache_ttl_seconds
+    )
     try:
         yield
     finally:
         app.state.repo.close()
+        app.state.cusip_repo.close()
 
 
 app = FastAPI(

@@ -13,8 +13,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from secfin.normalize.cusip import CusipResolver, resolve_snapshot_cusips
+from secfin.normalize.flows import diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import (
     FiscalPeriod,
+    HoldingsSnapshot,
     InsiderTransaction,
     RawFact,
     Statement,
@@ -24,10 +27,21 @@ from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts
 from secfin.sec.insider import fetch_insider_transactions
+from secfin.sec.institutional import fetch_13f_snapshot
 from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.repository import RawFactRepository
 
 router = APIRouter()
+
+# Surfaced on every institutional (13F-derived) response per CLAUDE.md: never present
+# derived deltas as reported trades, and always carry the long-only / lag caveats.
+_13F_CAVEATS = [
+    "DERIVED by diffing two 13F quarterly snapshots -- not reported trades.",
+    "13F covers long positions in Section 13(f) securities only -- no shorts, cash, "
+    "or non-US holdings.",
+    "13F filings lag up to ~45 days after quarter-end -- this reflects stale, not "
+    "real-time, positions.",
+]
 
 
 def get_repo(request: Request) -> RawFactRepository:
@@ -36,6 +50,10 @@ def get_repo(request: Request) -> RawFactRepository:
 
 def get_ticker_cache(request: Request) -> TickerCache:
     return request.app.state.ticker_cache
+
+
+def get_cusip_resolver(request: Request) -> CusipResolver:
+    return request.app.state.cusip_resolver
 
 
 async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol: str) -> int:
@@ -57,6 +75,18 @@ async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -
     if facts:
         repo.upsert_raw_facts(facts)
     return facts
+
+
+async def _manager_snapshot(client: SECClient, manager_cik: int, period: str) -> HoldingsSnapshot:
+    """fetch_13f_snapshot, translating "no filing for that quarter" into a 404.
+
+    No cache-aside store yet -- every call re-fetches and re-parses from SEC (see
+    docs/ROADMAP.md's "Cache-aside store for 13F holdings snapshots").
+    """
+    try:
+        return await fetch_13f_snapshot(client, manager_cik, period)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
@@ -158,10 +188,63 @@ async def get_institutional_activity(
     )
 
 
-@router.get("/managers/{manager_cik}/holdings")
+@router.get("/managers/{manager_cik}/holdings", response_model=HoldingsSnapshot)
 async def get_manager_holdings(
     manager_cik: int,
     period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+    resolver: CusipResolver = Depends(get_cusip_resolver),
+) -> HoldingsSnapshot:
+    """One manager's full 13F holdings snapshot for a quarter.
+
+    This is a reported point-in-time SNAPSHOT, not trade data -- see
+    /managers/{manager_cik}/activity for DERIVED buy/sell vs. the prior quarter, and its
+    caveats (long-only, ~45-day filing lag) apply here too.
+    """
+    async with SECClient() as client:
+        snapshot = await _manager_snapshot(client, manager_cik, period)
+        await resolve_snapshot_cusips(client, resolver, snapshot)
+    return snapshot
+
+
+@router.get("/managers/{manager_cik}/activity")
+async def get_manager_activity(
+    manager_cik: int,
+    period: str = Query(..., description="Current quarter-end, e.g. 2024-06-30"),
+    include_unchanged: bool = Query(
+        False, description="Include positions with no share change since the prior quarter"
+    ),
+    resolver: CusipResolver = Depends(get_cusip_resolver),
 ) -> dict:
-    """One manager's full 13F holdings snapshot for a quarter. Not yet implemented."""
-    raise HTTPException(status_code=501, detail="Manager holdings endpoint not yet implemented.")
+    """DERIVED buy/sell activity for one manager: current 13F vs. the prior quarter's.
+
+    IMPORTANT: this is a COMPUTED result (normalize/flows.diff_snapshots) from two 13F
+    holdings snapshots -- never reported trade data. `caveats` is always present in the
+    response; see CLAUDE.md's 13F section for why.
+    """
+    try:
+        prior_period = prior_quarter_end(period)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    async with SECClient() as client:
+        current = await _manager_snapshot(client, manager_cik, period)
+        try:
+            prior = await _manager_snapshot(client, manager_cik, prior_period)
+        except HTTPException:
+            # No filing for the prior quarter (e.g. the manager's first 13F) -- every
+            # current position is then "new", per flows.diff_snapshots' own handling.
+            prior = None
+
+        await resolve_snapshot_cusips(client, resolver, current)
+        if prior is not None:
+            await resolve_snapshot_cusips(client, resolver, prior)
+
+    deltas = diff_snapshots(current, prior, include_unchanged=include_unchanged)
+    return {
+        "manager_cik": manager_cik,
+        "manager_name": current.manager_name,
+        "from_period": None if prior is None else prior.report_period,
+        "to_period": current.report_period,
+        "caveats": _13F_CAVEATS,
+        "activity": deltas,
+    }
