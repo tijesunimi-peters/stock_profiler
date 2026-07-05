@@ -109,3 +109,28 @@ class SECClient:
         """
         acc_nodash = accession.replace("-", "")
         return f"{WWW_HOST}/Archives/edgar/data/{int(cik)}/{acc_nodash}/{document}"
+
+    @staticmethod
+    def filing_index_json_url(cik: int, accession: str) -> str:
+        """List every document in a filing's EDGAR directory.
+
+        Needed when a filing's data document isn't the submissions.json `primaryDocument`
+        (the rendered cover page) -- e.g. a 13F's information table, whose filename isn't
+        standardized across filer software (confirmed against real Berkshire Hathaway
+        13Fs: one quarter names it an arbitrary digit string, an older one names it
+        "form13fInfoTable.xml").
+        """
+        acc_nodash = accession.replace("-", "")
+        return f"{WWW_HOST}/Archives/edgar/data/{int(cik)}/{acc_nodash}/index.json"
+
+    @staticmethod
+    def strip_viewer_subdir(document: str) -> str:
+        """Strip a viewer subdirectory (e.g. "xslF345X06/") off a primaryDocument path.
+
+        submissions.json's `primaryDocument` for XML-native filings (ownership Forms
+        3/4/5, 13F) points at EDGAR's *rendered-HTML* viewer path, not the raw XML --
+        confirmed against a real Apple Form 4 (2026-07-04): fetching that exact path
+        returns HTML. The raw XML sits at the filing's directory root under the same
+        filename, with the viewer prefix stripped.
+        """
+        return document.rsplit("/", 1)[-1]

@@ -34,9 +34,11 @@ def _raw_document_name(primary_document: str) -> str:
     """Strip a viewer subdirectory (e.g. "xslF345X06/") off a submissions.json primaryDocument.
 
     See the module docstring -- the viewer path renders HTML, the raw XML sits alongside
-    it at the filing's directory root under the same filename.
+    it at the filing's directory root under the same filename. Delegates to
+    SECClient.strip_viewer_subdir, the shared home for this EDGAR quirk (also used by
+    sec/institutional.py).
     """
-    return primary_document.rsplit("/", 1)[-1]
+    return SECClient.strip_viewer_subdir(primary_document)
 
 
 def _recent_filings(payload: dict, forms: set[str]) -> list[dict]:

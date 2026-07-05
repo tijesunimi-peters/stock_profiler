@@ -157,19 +157,56 @@ So the models split cleanly:
   (`new` / `added` / `reduced` / `exited` / `unchanged`). This is a *computed* result, and
   the API surfaces it as such — we never present it as reported trade data.
 
-The diff lives in `normalize/flows.py` (`diff_snapshots`) and is fully implemented; the
-13F XML parsing that feeds it lives in `sec/institutional.py` (stub + plan).
+The diff lives in `normalize/flows.py` (`diff_snapshots`) and is fully implemented.
+13F XML parsing (`sec/institutional.py`) is now implemented too:
+`fetch_13f_snapshot(client, manager_cik, report_period)` reads the manager's
+submissions.json, matches `reportDate` to the requested quarter-end, locates the info
+table (see below), and parses it via `parse_info_table_xml` — pure and network-free, same
+design intent as `companyfacts.flatten_company_facts` / `insider.parse_ownership_xml`.
+
+**Confirmed quirk (2026-07-04, against real Berkshire Hathaway 13F-HR filings):** unlike
+Forms 3/4/5, a 13F's `primaryDocument` in `filings.recent` is the *cover page* (filer
+info, signature — no holdings at all), not the information table. The info table's
+filename isn't standardized across filer software — one quarter names it an arbitrary
+digit string (`"53405.xml"`), an older one names it `"form13fInfoTable.xml"`. The one
+constant: it's the filing's other top-level `.xml` document, so
+`_find_info_table_document` lists the filing directory (`SECClient.filing_index_json_url`)
+and picks whichever `.xml` isn't the cover page. See
+`tests/fixtures/institutional/README.md`.
+
+**Confirmed UNIT CAVEAT:** the SEC's convention for `InstitutionalHolding.value` changed
+from thousands of dollars to whole dollars at some point around 2023 — confirmed by
+cross-checking real filings against real share prices, not assumed. A 2016 Berkshire info
+table reports `$488,930` (thousands) for 13.36M American Airlines shares (≈$36.60/share
+once scaled); a 2026 one reports `$498,992,850` (whole dollars, no scaling needed) for
+12.72M Ally Financial shares (≈$39.23/share directly). `value` is stored exactly as
+reported — this module does **not** detect or normalize the convention change; a caller
+comparing `value` across quarters spanning it must account for the shift itself.
+
+CUSIP→issuer-CIK resolution is explicitly **not** done here — `InstitutionalHolding.cik`
+is always `None` from this parser. That's its own roadmap item (a maintained mapping
+table + backfill), not something to half-implement inline.
+
+**Known limitation:** a filing can have more than one `<reportingOwner>`-equivalent
+concept on the 13F side too (multiple managers filing jointly, listed in the cover page's
+`otherManagers2Info`) — not resolved or attributed here; the snapshot is keyed on the
+filing manager only.
 
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —
-with owner, percent of class, shares, and event date. Event-driven, not periodic.
+with owner, percent of class, shares, and event date. Event-driven, not periodic. Still a
+stub in `sec/institutional.py` — deliberately: these cover pages are far less uniformly
+structured than 13F's XML info table (older filings are HTML/text, not a fixed schema),
+so it's scoped as its own follow-up rather than rushed alongside 13F.
 
 ### Limitations to surface (never hide these)
 
 - 13F is **long positions in 13(f) securities only** — no shorts, no cash, no non-US.
 - **~45-day reporting lag** after quarter-end, so the data is inherently stale.
 - Amendments (`13F-HR/A`) can restate a quarter; keep both, latest filed is current.
+- The `value` unit convention (thousands vs. whole dollars) changed mid-history — see
+  above.
 - Answering "who holds AAPL?" requires **aggregating across all managers' 13Fs** and
   inverting the index by security — closer to the cross-company/frames problem than to a
   per-company lookup, so it's more infrastructure than just another endpoint.

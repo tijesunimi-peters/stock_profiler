@@ -43,10 +43,18 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       viewer-vs-raw-XML quirk (see `docs/DATA_MODEL.md`). Known gap: joint filers
       (multiple `<reportingOwner>` per filing) only capture the first owner.
 - [ ] Insider-trades endpoint
-- [ ] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot`
+- [x] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot` --
+      `parse_info_table_xml` (pure) + `fetch_13f_snapshot` (submissions.json -> match
+      quarter -> locate info table via directory listing -> fetch -> parse); verified
+      against real Berkshire Hathaway 13F-HR fixtures spanning 2016-2026, including the
+      cover-page-vs-info-table filename quirk and a confirmed `value` unit convention
+      change (thousands -> whole dollars, ~2023) -- see `docs/DATA_MODEL.md`. `cik`
+      (CUSIP resolution) intentionally left `None` -- that's the next item below.
 - [ ] CUSIP→CIK mapping table (+ track unresolved CUSIPs)
 - [ ] Wire `normalize/flows.diff_snapshots` into a per-manager activity endpoint
-- [ ] 13D/G beneficial-ownership parsing → `BeneficialOwnership`
+- [ ] 13D/G beneficial-ownership parsing → `BeneficialOwnership` (still a stub in
+      `sec/institutional.py` -- cover pages are far less uniformly structured than 13F's
+      XML info table, scoped as its own follow-up)
 
 ## Milestone 2.5 — institutional aggregation (cross-manager)
 
