@@ -13,10 +13,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from secfin.normalize.schema import FiscalPeriod, RawFact, Statement, StatementType
+from secfin.normalize.schema import (
+    FiscalPeriod,
+    InsiderTransaction,
+    RawFact,
+    Statement,
+    StatementType,
+)
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts
+from secfin.sec.insider import fetch_insider_transactions
 from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.repository import RawFactRepository
 
@@ -93,10 +100,25 @@ async def get_periods(
     }
 
 
-@router.get("/companies/{symbol}/insider-trades")
-async def get_insider_trades(symbol: str) -> dict:
-    """Insider trades (Forms 3/4/5) — not yet implemented (see sec/insider.py)."""
-    raise HTTPException(status_code=501, detail="Insider-trade endpoint not yet implemented.")
+@router.get("/companies/{symbol}/insider-trades", response_model=list[InsiderTransaction])
+async def get_insider_trades(
+    symbol: str,
+    limit: int = Query(
+        50, ge=1, le=200, description="Max number of Form 3/4/5 filings to fetch, newest first"
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> list[InsiderTransaction]:
+    """Insider transactions (Forms 3/4/5) for a company, most recent filings first.
+
+    Fetched live from SEC on every request -- there is no cache-aside store for insider
+    transactions yet (unlike statements' `_facts_for_cik`), so this is a heavier request
+    than /statements: one submissions.json fetch plus one ownership-XML fetch per
+    matching filing. `limit` bounds the number of *filings* fetched, not transaction
+    rows -- a single filing can contain several (see sec/insider.py).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        return await fetch_insider_transactions(client, cik, limit=limit)
 
 
 # --- Institutional ownership (13F, 13D/G) ------------------------------------------

@@ -137,6 +137,15 @@ stripped (`_raw_document_name`). See `tests/fixtures/insider/README.md`.
 **Known limitation:** a filing can have more than one `<reportingOwner>` (joint filers) —
 only the first is parsed; multi-owner attribution isn't implemented.
 
+**API:** `GET /v1/companies/{symbol}/insider-trades?limit=` (`api/routes.py`) wires
+`fetch_insider_transactions` straight through — fetched live from SEC on every request.
+Unlike `/statements`, there's no cache-aside store for insider transactions yet (no
+`InsiderTransactionRepository`), so this is a heavier request: one submissions.json fetch
+plus one ownership-XML fetch per matching filing, up to `limit` filings (default 50, max
+200). Verified end-to-end against the real API (2026-07-05) — deliberately not treated
+as a gap to close in the same pass as the endpoint itself; if usage warrants it, add a
+repository the same shape as `storage/repository.py`'s.
+
 ## Institutional ownership (13F, 13D/G)
 
 This is the "ownership & flows" module that pairs with insider trades. It answers "who

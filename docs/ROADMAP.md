@@ -42,7 +42,12 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       verified against real Apple Form 3/4/5 fixtures, including the primaryDocument
       viewer-vs-raw-XML quirk (see `docs/DATA_MODEL.md`). Known gap: joint filers
       (multiple `<reportingOwner>` per filing) only capture the first owner.
-- [ ] Insider-trades endpoint
+- [x] Insider-trades endpoint -- `GET /v1/companies/{symbol}/insider-trades?limit=`
+      wires `fetch_insider_transactions` straight through, fetched live from SEC on
+      every request (no cache-aside store for insider transactions yet -- unlike
+      `/statements`, that's a deliberate gap, not an oversight). Verified end-to-end
+      against the real running API (Docker) with real AAPL data, ticker + CIK symbol
+      forms, unknown-ticker 404, and `limit` validation.
 - [x] Implement `sec/institutional.py` 13F info-table XML parsing → `HoldingsSnapshot` --
       `parse_info_table_xml` (pure) + `fetch_13f_snapshot` (submissions.json -> match
       quarter -> locate info table via directory listing -> fetch -> parse); verified

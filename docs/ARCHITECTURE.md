@@ -26,9 +26,11 @@ Pipeline orchestration (downloading, multiprocessing, batching into the store) l
 - `companyfacts.py` — pulls the `companyfacts` JSON (all XBRL numbers for a company) and
   flattens it to `RawFact`s via `flatten_company_facts`, a pure function with no I/O. Also
   resolves ticker → CIK.
-- `insider.py` — (stub) pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s.
-- `institutional.py` — (stub) pulls Form 13F information-table XML → `HoldingsSnapshot`s, and
-  Schedules 13D/G → `BeneficialOwnership`. 13F is a quarter-end *snapshot*, not trades.
+- `insider.py` — pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s.
+- `institutional.py` — pulls Form 13F information-table XML → `HoldingsSnapshot`s
+  (implemented; CUSIP→CIK resolution is a separate opt-in step, `normalize/cusip.py`).
+  Schedules 13D/G → `BeneficialOwnership` is still a stub. 13F is a quarter-end
+  *snapshot*, not trades.
 
 The financials source is already structured (companyfacts gives us clean data points), so
 there's no HTML parsing. Insider trades and 13F are structured XML — again no HTML scraping.
@@ -149,7 +151,12 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 
 - `GET /v1/companies/{symbol}/statements/{income|balance|cashflow}?year=&period=`
 - `GET /v1/companies/{symbol}/periods`
-- `GET /v1/companies/{symbol}/insider-trades` (501 until implemented)
+- `GET /v1/companies/{symbol}/insider-trades?limit=` — fetched live from SEC on every
+  request; no cache-aside store for insider transactions yet (unlike statements below).
+- `GET /v1/companies/{symbol}/institutional-holders`,
+  `GET /v1/companies/{symbol}/institutional-activity`,
+  `GET /v1/managers/{manager_cik}/holdings` (501 until implemented — need the
+  cross-manager 13F index from Milestone 2.5)
 
 `symbol` accepts a ticker or a raw CIK. Statement/period facts are served cache-aside from
 the storage layer (§3a): populated by `ingest/`, or by the route itself on a cache miss.
