@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from secfin.normalize.schema import InsiderTransaction
+from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
 from secfin.sec.client import SECClient
 
 INSIDER_FORMS = {"3", "4", "5", "3/A", "4/A", "5/A"}
@@ -186,22 +186,29 @@ def parse_ownership_xml(
     return records
 
 
-async def fetch_insider_transactions(
+async def fetch_insider_transactions_with_filings(
     client: SECClient, cik: int, limit: int = 50
-) -> list[InsiderTransaction]:
-    """Fetch and parse a company's most recent insider transactions (Forms 3/4/5).
+) -> tuple[list[InsiderFilingMeta], list[InsiderTransaction]]:
+    """Fetch and parse a company's most recent insider transactions (Forms 3/4/5),
+    also returning which filings were fetched.
 
     `limit` bounds the number of *filings* fetched (newest first), not transaction rows --
-    each filing can contain several transaction/holding rows.
+    each filing can contain several transaction/holding rows. The filing metadata is what
+    `storage/insider_repository.py`'s cache-aside store keys its "have we cached at least
+    `limit` filings" check on -- a filing can legitimately parse to zero rows (e.g. an
+    initial Form 3 with no reportable holdings), so tracking filings fetched separately
+    from rows produced is required for the cache to register a hit for it.
     """
     payload = await client.get_json(client.submissions_url(cik))
     filings = _recent_filings(payload, INSIDER_FORMS)[:limit]
 
+    filing_meta: list[InsiderFilingMeta] = []
     transactions: list[InsiderTransaction] = []
     for f in filings:
         doc = _raw_document_name(f["primaryDocument"])
         url = client.filing_document_url(cik, f["accessionNumber"], doc)
         xml_bytes = await client.get_bytes(url)
+        filing_meta.append(InsiderFilingMeta(f["accessionNumber"], f["filingDate"], f["form"]))
         transactions.extend(
             parse_ownership_xml(
                 xml_bytes,
@@ -210,4 +217,16 @@ async def fetch_insider_transactions(
                 accession=f["accessionNumber"],
             )
         )
+    return filing_meta, transactions
+
+
+async def fetch_insider_transactions(
+    client: SECClient, cik: int, limit: int = 50
+) -> list[InsiderTransaction]:
+    """Fetch and parse a company's most recent insider transactions (Forms 3/4/5).
+
+    Thin wrapper over `fetch_insider_transactions_with_filings` for callers that don't
+    need filing metadata (e.g. one-off scripts, tests).
+    """
+    _, transactions = await fetch_insider_transactions_with_filings(client, cik, limit)
     return transactions

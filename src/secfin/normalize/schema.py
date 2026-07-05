@@ -11,7 +11,7 @@ auditability and to keep improving the mapping. Canonical models are what subscr
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, Field
 
@@ -91,6 +91,19 @@ class InsiderTransaction(BaseModel):
     accession: str | None = None
     filed: str | None = None
     is_holding: bool = False  # True if this is a holding, not a transaction
+
+
+class InsiderFilingMeta(NamedTuple):
+    """One Form 3/4/5 filing that's been fetched and parsed, independent of how many
+    (if any) InsiderTransaction rows it produced -- a filing can legitimately yield zero
+    rows (e.g. an initial Form 3 with no reportable holdings at all). Used by
+    `storage/insider_repository.py`'s cache to track "how many filings have we cached"
+    separately from transaction-row counts. See sec/insider.py.
+    """
+
+    accession: str
+    filed: str | None
+    form_type: str
 
 
 # --- Institutional ownership (13F) -------------------------------------------------

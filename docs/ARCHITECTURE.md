@@ -139,13 +139,24 @@ patterns.
   `storage/sqlite_cusip_repository.py`'s SQLite impl. Its own connection to the same db
   file (fine under WAL mode). Persists CUSIP→CIK resolutions and tracks unresolved
   CUSIPs; wired in via `normalize/cusip.py`'s `CusipResolver` (see §4).
-- **Planned, not yet built:** an `InsiderTransactionRepository` and a
-  `HoldingsSnapshotRepository`, same interface-then-SQLite-impl shape as
-  `RawFactRepository`/`SQLiteRawFactRepository` above. Right now `/insider-trades`,
-  `/managers/{manager_cik}/holdings`, and `/managers/{manager_cik}/activity` all
-  re-fetch and re-parse from SEC on *every* call — there is no cache-aside read for any
-  of them the way `_facts_for_cik` gives statements (see §4 and `docs/ROADMAP.md`'s
-  Milestone 2).
+- `storage/insider_repository.py` — abstract `InsiderTransactionRepository`, and
+  `storage/sqlite_insider_repository.py`'s SQLite impl (own connection, same db file).
+  Unlike `RawFactRepository`, caching is keyed at **filing** granularity (an
+  `insider_filings` table of fetched accessions), not per transaction row — a Form 3/4/5
+  is immutable once accepted (an amendment gets its own accession, never rewrites a
+  prior one), so there's no restatement-in-place case to handle, and filing-level dedup
+  sidesteps a schema gap where two distinct real rows in one filing can be
+  field-for-field identical (see `docs/DATA_MODEL.md`). `api/routes.py`'s
+  `_insider_transactions_for_cik` serves `/insider-trades` cache-aside from it, the same
+  shape as `_facts_for_cik`, but the cache-hit check is "have we cached at least `limit`
+  filings for this issuer" rather than "do we have this company at all" — `limit` bounds
+  filings fetched, not rows, so a smaller cached limit isn't a superset of a larger one.
+- **Planned, not yet built:** a `HoldingsSnapshotRepository`, same
+  interface-then-SQLite-impl shape as the repositories above. Right now
+  `/managers/{manager_cik}/holdings` and `/managers/{manager_cik}/activity` still
+  re-fetch and re-parse from SEC on *every* call — there is no cache-aside read for
+  either the way `_facts_for_cik` / `_insider_transactions_for_cik` give statements and
+  insider trades (see §4 and `docs/ROADMAP.md`'s Milestone 2).
 
 ### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
 
@@ -173,9 +184,11 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 
 - `GET /v1/companies/{symbol}/statements/{income|balance|cashflow}?year=&period=`
 - `GET /v1/companies/{symbol}/periods`
-- `GET /v1/companies/{symbol}/insider-trades?limit=` — fetched live from SEC on every
-  request; no cache-aside store for insider transactions yet (unlike statements below —
-  see §3a's "planned, not yet built" note and `docs/ROADMAP.md`).
+- `GET /v1/companies/{symbol}/insider-trades?limit=` — cache-aside via
+  `_insider_transactions_for_cik` + `InsiderTransactionRepository` (§3a): a hit requires
+  at least `limit` filings already cached for the issuer, since `limit` bounds filings
+  fetched, not rows; a miss re-fetches the full requested `limit` from SEC and grows the
+  cache.
 - `GET /v1/managers/{manager_cik}/holdings?period=` — one manager's 13F snapshot
   (`fetch_13f_snapshot`), with CUSIPs resolved to CIKs in place via
   `normalize/cusip.resolve_snapshot_cusips` before returning. 404 if that manager has no

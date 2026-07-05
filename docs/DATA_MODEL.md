@@ -169,15 +169,33 @@ joint filers below. A cluster of 3 joint filers reporting the same sale therefor
 rows sharing one `transaction_date`/`shares`/`accession`, not 1 — this is what makes insider
 cluster-buying detection possible.
 
-**API:** `GET /v1/companies/{symbol}/insider-trades?limit=` (`api/routes.py`) wires
-`fetch_insider_transactions` straight through — fetched live from SEC on every request.
-Unlike `/statements`, there's no cache-aside store for insider transactions yet (no
-`InsiderTransactionRepository`), so this is a heavier request: one submissions.json fetch
-plus one ownership-XML fetch per matching filing, up to `limit` filings (default 50, max
-200). Verified end-to-end against the real API (2026-07-05) — deliberately not treated
-as a gap to close in the same pass as the endpoint itself; tracked as its own roadmap
-item ("Cache-aside store for insider transactions", `docs/ROADMAP.md` Milestone 2) —
-a repository the same shape as `storage/repository.py`'s.
+**API:** `GET /v1/companies/{symbol}/insider-trades?limit=` (`api/routes.py`) is now
+cache-aside via `_insider_transactions_for_cik` + `InsiderTransactionRepository`
+(`storage/insider_repository.py` / `storage/sqlite_insider_repository.py`) — same spirit
+as `/statements`' `_facts_for_cik`, but keyed at **filing** granularity, not per
+transaction row, since (unlike XBRL facts) a Form 3/4/5 is immutable once accepted — an
+amendment gets its own accession ("4/A"), it never rewrites a prior one. Caching by
+filing also sidesteps a real gap in `InsiderTransaction`'s current fields: two genuinely
+distinct rows in the same filing can be field-for-field identical under our schema (two
+`derivativeHolding` rows with the same security title and ownership type, differing only
+in the underlying-security share count we don't parse — see
+`aapl_form3_newstead.xml`) — a natural-key UNIQUE constraint built from those fields would
+silently collapse them, so identity is tracked at the filing level instead.
+
+**Cache-hit rule:** `limit` bounds *filings* fetched, not rows, so a cache holding 10
+filings can answer `limit=5` but not `limit=50` — a smaller previously-cached limit is
+not a superset of a larger one. `_insider_transactions_for_cik` checks
+`cached_filing_count(cik) >= limit` before trusting the cache; on a miss it re-fetches
+the **full** requested `limit` from SEC (not just the delta) and re-upserts — safe
+because `upsert_insider_transactions` skips rows for any filing already cached, so
+re-fetching overlapping filings is a no-op, just wasted SEC calls for the overlap
+(a deliberate v1 simplicity trade-off, not incremental top-up). A filing that parses to
+zero transaction rows (e.g. a Form 3 with no reportable holdings) still counts as
+"cached" via a separate `insider_filings` table, or the cache would never register a hit
+for it. Verified end-to-end against real AAPL data (2026-07-05): a cold `limit=5` call
+populated the cache in ~1s; a repeat `limit=5` call returned identically in <0.05s (no
+SEC call); a `limit=10` call correctly missed, grew the cache to 10 filings, and a repeat
+`limit=10` call then hit.
 
 ## Institutional ownership (13F, 13D/G)
 

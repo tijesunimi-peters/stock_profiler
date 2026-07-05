@@ -20,6 +20,7 @@ from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver
 from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
+from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -42,11 +43,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.cusip_resolver = CusipResolver(
         app.state.cusip_repo, ttl_seconds=settings.secfin_ticker_cache_ttl_seconds
     )
+    # Cache-aside store for insider (Forms 3/4/5) transactions -- see
+    # api.routes.get_insider_repo / storage/insider_repository.py. Own connection to the
+    # same db file, same as cusip_repo above (fine under WAL mode).
+    app.state.insider_repo = SQLiteInsiderTransactionRepository(settings.secfin_db_path)
     try:
         yield
     finally:
         app.state.repo.close()
         app.state.cusip_repo.close()
+        app.state.insider_repo.close()
 
 
 app = FastAPI(

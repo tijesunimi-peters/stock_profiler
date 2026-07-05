@@ -48,14 +48,23 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       `/statements`, that's a deliberate gap, not an oversight). Verified end-to-end
       against the real running API (Docker) with real AAPL data, ticker + CIK symbol
       forms, unknown-ticker 404, and `limit` validation.
-- [ ] Cache-aside store for insider transactions -- add an `InsiderTransactionRepository`
-      (interface + SQLite impl) the same shape as `storage/repository.py` /
-      `sqlite_repository.py`, and change `get_insider_trades` to read it first the way
-      `_facts_for_cik` does for statements, only calling SEC (+ writing back) on a miss.
-      Needs an idempotency key (e.g. `(issuer_cik, accession, ...)` — a filing can carry
-      multiple transaction/holding rows) and a decision on what "cache hit" means for a
-      `limit`-bounded live source (a smaller cached `limit` isn't a superset of a larger
-      one the way a company's full RawFact set is).
+- [x] Cache-aside store for insider transactions -- `InsiderTransactionRepository`
+      (`storage/insider_repository.py`) + `SQLiteInsiderTransactionRepository`
+      (`storage/sqlite_insider_repository.py`), wired into `get_insider_trades` via
+      `_insider_transactions_for_cik`. **Keyed at filing granularity, not per
+      transaction row** -- resolved the idempotency-key question by observing a Form
+      3/4/5 is immutable once accepted (an amendment gets its own accession, never
+      rewrites a prior one), unlike XBRL facts which restate in place; this also
+      sidesteps a real schema gap where two distinct rows in one filing can be
+      field-for-field identical under `InsiderTransaction`'s current fields (see
+      `DATA_MODEL.md`, `aapl_form3_newstead.xml`). **Cache-hit decision:** a hit
+      requires `cached_filing_count(cik) >= limit` (a smaller cached limit is not a
+      superset of a larger one); a miss re-fetches the *full* requested `limit` from SEC
+      (not just the delta) and re-upserts, which is safe (already-cached filings are
+      skipped) but wastes the overlap -- a deliberate v1 simplicity trade-off, not
+      incremental top-up. Verified end-to-end against real AAPL data (2026-07-05): cold
+      `limit=5` populated the cache (~1s); repeat `limit=5` hit in <0.05s; `limit=10`
+      correctly missed, grew the cache to 10 filings, then hit on repeat.
 - [ ] Cache-aside store for 13F holdings snapshots -- add a `HoldingsSnapshotRepository`
       (interface + SQLite impl) and change `fetch_13f_snapshot`'s caller(s) to read
       through it first, keyed on `(manager_cik, report_period)`. Same rationale as

@@ -26,9 +26,10 @@ from secfin.normalize.schema import (
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts
-from secfin.sec.insider import fetch_insider_transactions
+from secfin.sec.insider import fetch_insider_transactions_with_filings
 from secfin.sec.institutional import fetch_13f_snapshot
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 
 router = APIRouter()
@@ -56,6 +57,10 @@ def get_cusip_resolver(request: Request) -> CusipResolver:
     return request.app.state.cusip_resolver
 
 
+def get_insider_repo(request: Request) -> InsiderTransactionRepository:
+    return request.app.state.insider_repo
+
+
 async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol: str) -> int:
     """Accept either a raw CIK (digits) or a ticker symbol."""
     if symbol.isdigit():
@@ -75,6 +80,24 @@ async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -
     if facts:
         repo.upsert_raw_facts(facts)
     return facts
+
+
+async def _insider_transactions_for_cik(
+    repo: InsiderTransactionRepository, client: SECClient, cik: int, limit: int
+) -> list[InsiderTransaction]:
+    """Cache-aside read, bounded by FILINGS cached rather than rows (see
+    storage/insider_repository.py) -- a cache hit requires at least `limit` filings
+    already cached for this issuer; a smaller previously-cached limit is not a superset
+    of a larger one. On a miss, re-fetches the full requested `limit` from SEC (not just
+    the delta) -- `upsert_insider_transactions` is safe to call with filings already
+    cached, since it skips re-storing rows for any filing it already has.
+    """
+    if repo.cached_filing_count(cik) >= limit:
+        return repo.get_insider_transactions(cik, limit)
+    filings, transactions = await fetch_insider_transactions_with_filings(client, cik, limit=limit)
+    if filings:
+        repo.upsert_insider_transactions(cik, filings, transactions)
+    return transactions
 
 
 async def _manager_snapshot(client: SECClient, manager_cik: int, period: str) -> HoldingsSnapshot:
@@ -137,18 +160,20 @@ async def get_insider_trades(
         50, ge=1, le=200, description="Max number of Form 3/4/5 filings to fetch, newest first"
     ),
     ticker_cache: TickerCache = Depends(get_ticker_cache),
+    insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
 ) -> list[InsiderTransaction]:
     """Insider transactions (Forms 3/4/5) for a company, most recent filings first.
 
-    Fetched live from SEC on every request -- there is no cache-aside store for insider
-    transactions yet (unlike statements' `_facts_for_cik`), so this is a heavier request
-    than /statements: one submissions.json fetch plus one ownership-XML fetch per
-    matching filing. `limit` bounds the number of *filings* fetched, not transaction
-    rows -- a single filing can contain several (see sec/insider.py).
+    Cache-aside via `_insider_transactions_for_cik`: a request is served from SQLite only
+    if at least `limit` filings are already cached for this issuer (a cache holding 10
+    filings can't answer `limit=50`) -- otherwise it re-fetches from SEC (one
+    submissions.json fetch plus one ownership-XML fetch per matching filing) and
+    populates the cache. `limit` bounds the number of *filings*, not transaction rows --
+    a single filing can contain several (see sec/insider.py).
     """
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
-        return await fetch_insider_transactions(client, cik, limit=limit)
+        return await _insider_transactions_for_cik(insider_repo, client, cik, limit)
 
 
 # --- Institutional ownership (13F, 13D/G) ------------------------------------------
