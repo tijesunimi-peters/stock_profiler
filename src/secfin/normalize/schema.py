@@ -222,3 +222,21 @@ class CusipResolutionStats(BaseModel):
     unresolved: int
     total: int
     resolution_rate: float | None = None  # None when total == 0 (nothing attempted yet)
+
+
+class IssuerHolder(BaseModel):
+    """One manager's reported position in one of an issuer's CUSIPs, for one quarter.
+
+    The issuer-centric inverse of `InstitutionalHolding` -- that's "one position line
+    from one manager's 13F"; this is "one manager, from the perspective of one issuer,
+    across ALL managers" (`storage/holdings_repository.py`'s `holders_of`). A live query
+    over the same `holdings` rows, not a new canonical concept.
+    """
+
+    manager_cik: int
+    manager_name: str | None = None
+    cusip: str  # which of the issuer's CUSIPs this row is (multi-class issuers have >1)
+    issuer_name: str | None = None
+    shares: float | None = None
+    value: float | None = None
+    other_managers: list[int] = Field(default_factory=list)

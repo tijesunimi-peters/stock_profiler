@@ -14,7 +14,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
-from secfin.normalize.flows import diff_snapshots, prior_quarter_end
+from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import (
     CusipResolutionStats,
     FiscalPeriod,
@@ -45,6 +45,17 @@ _13F_CAVEATS = [
     "or non-US holdings.",
     "13F filings lag up to ~45 days after quarter-end -- this reflects stale, not "
     "real-time, positions.",
+]
+
+# Additional caveat specific to the issuer-centric endpoints below: unlike the
+# manager-centric ones, these read live from whatever's been ingested so far (no
+# precomputed cross-manager inversion -- a single issuer's holder list is a fast
+# indexed point lookup, not the whole-quarter aggregate DuckDB was benchmarked for; see
+# docs/ARCHITECTURE.md 3b), so an empty result can mean either "no manager reported
+# holding this issuer" or "this quarter hasn't been ingested for any manager yet."
+_ISSUER_CENTRIC_CAVEATS = _13F_CAVEATS + [
+    "An empty holder list does not confirm zero institutional ownership -- it may mean "
+    "this quarter hasn't been ingested yet for any manager holding this issuer.",
 ]
 
 
@@ -215,34 +226,100 @@ async def get_cusip_resolution_stats(
     return cusip_resolution_stats(cusip_repo)
 
 
+async def _cusips_for_issuer(cusip_repo: CusipMapRepository, cik: int) -> list[str]:
+    """CUSIP(s) resolved to this issuer so far, or a 404 if none -- covers both "nobody
+    has reported holding this issuer yet" and "its CUSIP hasn't been resolved yet"
+    (see storage/cusip_repository.py's `cusips_for_cik` and
+    /v1/cusip-resolution-stats for the aggregate coverage picture).
+    """
+    cusips = cusip_repo.cusips_for_cik(cik)
+    if not cusips:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No resolved CUSIP found for CIK {cik}. Either no manager has reported "
+                "holding this issuer yet, or its CUSIP hasn't been resolved yet -- see "
+                "GET /v1/cusip-resolution-stats for overall coverage."
+            ),
+        )
+    return cusips
+
+
 @router.get("/companies/{symbol}/institutional-holders")
 async def get_institutional_holders(
     symbol: str,
     period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
 ) -> dict:
-    """Managers holding this issuer as of a quarter-end (aggregated across 13F filings).
+    """Managers holding this issuer as of a quarter-end, aggregated across ALL 13F
+    filings for that quarter -- the issuer-centric inverse of
+    `/managers/{manager_cik}/holdings`.
 
-    Requires the cross-manager 13F index + CUSIP→CIK resolution. Not yet implemented.
+    Served live from the operational store (`HoldingsSnapshotRepository.holders_of`), a
+    fast indexed point lookup by CUSIP -- not a precomputed cross-manager inversion (see
+    `_ISSUER_CENTRIC_CAVEATS` and `docs/ARCHITECTURE.md` 3b for why that distinction
+    matters for reading an empty result).
     """
-    raise HTTPException(
-        status_code=501,
-        detail="Institutional holders endpoint not yet implemented (needs 13F aggregation).",
-    )
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+    holders = holdings_repo.holders_of(cusips, period)
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "caveats": _ISSUER_CENTRIC_CAVEATS,
+        "holders": holders,
+    }
 
 
 @router.get("/companies/{symbol}/institutional-activity")
 async def get_institutional_activity(
     symbol: str,
     period: str = Query(..., description="Current quarter-end, e.g. 2024-06-30"),
+    include_unchanged: bool = Query(
+        False, description="Include positions with no share change since the prior quarter"
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
 ) -> dict:
-    """DERIVED buy/sell activity for this issuer (current vs. prior quarter 13F diff).
+    """DERIVED buy/sell activity for this issuer (current vs. prior quarter 13F diff),
+    aggregated across ALL managers -- the issuer-centric inverse of
+    `/managers/{manager_cik}/activity`.
 
-    Values are computed by diffing snapshots — not reported trades. Not yet implemented.
+    IMPORTANT: this is a COMPUTED result (`normalize/flows.diff_holders`) from two
+    issuer-centric holder lists -- never reported trade data. `caveats` is always
+    present; see CLAUDE.md's 13F section.
     """
-    raise HTTPException(
-        status_code=501,
-        detail="Institutional activity endpoint not yet implemented (derived from 13F diffs).",
+    try:
+        prior_period = prior_quarter_end(period)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    current = holdings_repo.holders_of(cusips, period)
+    prior = holdings_repo.holders_of(cusips, prior_period)
+    deltas = diff_holders(
+        current,
+        prior,
+        to_period=period,
+        from_period=prior_period,
+        include_unchanged=include_unchanged,
     )
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "from_period": prior_period,
+        "to_period": period,
+        "caveats": _ISSUER_CENTRIC_CAVEATS,
+        "activity": deltas,
+    }
 
 
 @router.get("/managers/{manager_cik}/holdings", response_model=HoldingsSnapshot)

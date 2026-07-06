@@ -30,6 +30,16 @@ class CusipMapRepository(ABC):
         """Previously resolved CIK for this CUSIP, or None if unresolved/never seen."""
 
     @abstractmethod
+    def cusips_for_cik(self, cik: int) -> list[str]:
+        """Every CUSIP resolved to this issuer CIK so far -- the reverse of `get_cik`.
+
+        A multi-class issuer (e.g. Alphabet) can have more than one. Only reflects
+        CUSIPs actually seen and resolved in a 13F filing to date; an issuer nobody has
+        reported holding yet (or whose only reported CUSIP is still unresolved) returns
+        an empty list, not an error.
+        """
+
+    @abstractmethod
     def record_resolved(self, cusip: str, cik: int, issuer_name: str) -> None:
         """Persist a successful resolution (upgrading a prior unresolved row, if any)."""
 

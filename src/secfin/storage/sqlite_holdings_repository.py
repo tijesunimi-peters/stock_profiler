@@ -8,7 +8,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding, OtherManager13F
+from secfin.normalize.schema import (
+    HoldingsSnapshot,
+    InstitutionalHolding,
+    IssuerHolder,
+    OtherManager13F,
+)
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 
 _SCHEMA = """
@@ -39,6 +44,12 @@ CREATE TABLE IF NOT EXISTS holdings (
 
 CREATE INDEX IF NOT EXISTS idx_holdings_manager_period
     ON holdings (manager_cik, report_period);
+
+-- Issuer-centric reads (holders_of) look up by cusip within a quarter, the opposite
+-- axis from the manager-centric index above -- a live point lookup, not the
+-- whole-quarter aggregate scan benchmarked with DuckDB (see docs/ARCHITECTURE.md 3b).
+CREATE INDEX IF NOT EXISTS idx_holdings_cusip_period
+    ON holdings (cusip, report_period);
 
 -- The cover page's otherManagers2Info roster: co-filing managers, numbered by
 -- sequenceNumber. `holdings.other_managers` references these numbers per-position.
@@ -215,6 +226,34 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         if row is None:
             return None
         return row[0] or None
+
+    def holders_of(self, cusips: list[str], report_period: str) -> list[IssuerHolder]:
+        if not cusips:
+            return []
+        placeholders = ",".join("?" for _ in cusips)
+        cur = self._conn.execute(
+            f"SELECT h.manager_cik, hs.manager_name, h.cusip, h.issuer_name, h.shares, "
+            f"h.value, h.other_managers "
+            f"FROM holdings h "
+            f"JOIN holdings_snapshots hs "
+            f"  ON h.manager_cik = hs.manager_cik AND h.report_period = hs.report_period "
+            f"WHERE h.report_period = ? AND h.cusip IN ({placeholders}) "
+            f"ORDER BY h.shares DESC",
+            (report_period, *cusips),
+        )
+        return [
+            IssuerHolder(
+                manager_cik=manager_cik,
+                manager_name=manager_name,
+                cusip=cusip,
+                issuer_name=issuer_name,
+                shares=shares,
+                value=value,
+                other_managers=_split_refs(other_managers),
+            )
+            for manager_cik, manager_name, cusip, issuer_name, shares, value, other_managers
+            in cur.fetchall()
+        ]
 
     def close(self) -> None:
         self._conn.close()

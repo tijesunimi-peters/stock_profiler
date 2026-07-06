@@ -174,6 +174,78 @@ def test_cached_accession_reflects_latest_upsert_without_loading_holdings():
     repo.close()
 
 
+def test_holders_of_returns_all_managers_holding_a_cusip():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    other_cik = 1364742  # BlackRock
+    repo.upsert_snapshot(_snapshot("2026-03-31"))  # holds 037833100 (APPLE INC)
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            manager_cik=other_cik,
+            manager_name="BLACKROCK",
+            holdings=[
+                InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC", shares=50_000_000)
+            ],
+        )
+    )
+
+    holders = repo.holders_of(["037833100"], "2026-03-31")
+
+    assert {h.manager_cik for h in holders} == {MANAGER_CIK, other_cik}
+    by_manager = {h.manager_name: h.shares for h in holders}
+    assert by_manager["BERKSHIRE HATHAWAY INC"] == 300_000_000
+    assert by_manager["BLACKROCK"] == 50_000_000
+    repo.close()
+
+
+def test_holders_of_is_empty_for_an_unheld_cusip_or_period():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31"))
+
+    assert repo.holders_of(["037833100"], "2026-06-30") == []  # no data that quarter
+    assert repo.holders_of(["00000000X"], "2026-03-31") == []  # cusip nobody holds
+    assert repo.holders_of([], "2026-03-31") == []  # nothing to look up
+    repo.close()
+
+
+def test_holders_of_filters_to_only_the_requested_cusips():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            holdings=[
+                InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC", shares=1),
+                InstitutionalHolding(cusip="02079K107", issuer_name="ALPHABET INC", shares=2),
+            ],
+        )
+    )
+
+    holders = repo.holders_of(["037833100"], "2026-03-31")
+
+    assert len(holders) == 1
+    assert holders[0].cusip == "037833100"
+    repo.close()
+
+
+def test_holders_of_carries_other_managers_attribution():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            holdings=[
+                InstitutionalHolding(
+                    cusip="037833100", issuer_name="APPLE INC", shares=1, other_managers=[2, 4]
+                ),
+            ],
+        )
+    )
+
+    holders = repo.holders_of(["037833100"], "2026-03-31")
+
+    assert holders[0].other_managers == [2, 4]
+    repo.close()
+
+
 def test_re_upserting_replaces_joint_filer_roster_wholesale():
     repo = SQLiteHoldingsSnapshotRepository(":memory:")
     repo.upsert_snapshot(

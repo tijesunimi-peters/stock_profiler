@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from secfin.normalize.schema import HoldingsSnapshot
+from secfin.normalize.schema import HoldingsSnapshot, IssuerHolder
 
 
 class HoldingsSnapshotRepository(ABC):
@@ -65,6 +65,21 @@ class HoldingsSnapshotRepository(ABC):
         case where nothing needs re-fetching -- it compares this against the winning
         filing's accession it already knows from a local `submissions.zip` scan, and
         only fetches+upserts on a mismatch (first ingest, or a newer amendment).
+        """
+
+    @abstractmethod
+    def holders_of(self, cusips: list[str], report_period: str) -> list[IssuerHolder]:
+        """Every manager holding any of `cusips` as of `report_period`, across ALL
+        managers -- the issuer-centric inverse of `get_snapshot`'s manager-centric read.
+
+        A live indexed query (see the `(cusip, report_period)` index in
+        `sqlite_holdings_repository.py`), not a precomputed batch job: a single issuer's
+        holder list is a point lookup, not the whole-quarter aggregate scan DuckDB was
+        benchmarked for (see `docs/ARCHITECTURE.md` 3b) -- that benchmark answers a
+        different, more expensive question than this one. An empty result is ambiguous
+        between "no manager reported holding this issuer" and "this quarter hasn't been
+        ingested for any manager yet" -- callers must surface that ambiguity, not treat
+        it as a confirmed zero.
         """
 
     @abstractmethod

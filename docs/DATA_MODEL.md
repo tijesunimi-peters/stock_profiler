@@ -351,11 +351,17 @@ item) — both re-fetch and re-parse from SEC on every call.
 ### Bulk ingest (Milestone 2.5)
 
 The per-manager cache above only grows one manager at a time, via live requests. Answering
-"who holds this issuer, across all managers, this quarter?" (the M2.5 cross-manager
-inversion, still open) needs *every* manager's 13F for a quarter first — that's what
-`ingest/institutional_backfill.py` (`python -m secfin.ingest.institutional_backfill
---period YYYY-MM-DD`) produces, seeding the exact same `HoldingsSnapshotRepository` the
-manager endpoints read from.
+"who holds this issuer, across all managers, this quarter?" needs *every* manager's 13F for
+a quarter first — that's what `ingest/institutional_backfill.py`
+(`python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD`) produces, seeding the
+exact same `HoldingsSnapshotRepository` the manager endpoints read from.
+
+**Also resolves CUSIPs as it goes** (added when the issuer-centric endpoints below were
+built): the job now calls `normalize/cusip.resolve_snapshot_cusips` on every fetched
+snapshot before upserting it. This was a real gap, not a hypothetical one — CUSIP
+resolution previously only ran on the live manager-read path, so a snapshot that only ever
+arrived via this bulk job left `cusip_map` with no entry for its CUSIPs, and the
+issuer-centric endpoints' CIK→CUSIP reverse lookup would find nothing for it.
 
 Candidate managers are found **offline**: the job scans `submissions.zip` (already
 downloaded by `ingest/backfill.py` for exactly this; fetched standalone here via
@@ -381,6 +387,44 @@ job's cost is network I/O (1 directory listing + 2 document fetches per manager)
 the same rate-limited `SECClient`, so extra processes wouldn't help — same reasoning
 `ingest/incremental.py` already documents ("the fair-access limit is per-IP, not
 per-process").
+
+### API: issuer-centric endpoints
+
+`GET /v1/companies/{symbol}/institutional-holders?period=` and
+`GET /v1/companies/{symbol}/institutional-activity?period=&include_unchanged=` answer "who
+holds this issuer" and its DERIVED buy/sell — the inverse of the per-manager endpoints
+above (those start from a manager and ask "what does it hold"; these start from an issuer
+and ask "who holds it").
+
+**Deliberately NOT built on a precomputed cross-manager inversion or DuckDB**, confirmed
+with the user before building: a single issuer's holder list is a point lookup ("every
+`holdings` row for this CUSIP this quarter"), not the whole-quarter, every-security
+aggregate the DuckDB-vs-SQLite benchmark was about (see `docs/ARCHITECTURE.md` §3b) — that
+benchmark answers a different, more expensive question. Instead:
+
+- `CusipMapRepository.cusips_for_cik(cik)` — new, the reverse of the existing CUSIP→CIK
+  `get_cik`. `cusip_map` already stores this; nothing new to persist, just a new read
+  direction. A multi-class issuer (Alphabet) can resolve to more than one CUSIP.
+- `HoldingsSnapshotRepository.holders_of(cusips, report_period)` — new, a live join against
+  `holdings_snapshots` (for `manager_name`, not stored on `holdings` rows) backed by a new
+  `(cusip, report_period)` index. Returns `IssuerHolder` rows: one per (manager, CUSIP,
+  quarter) — the issuer-centric inverse of `InstitutionalHolding`.
+- `normalize/flows.diff_holders` — new, `diff_snapshots`' transpose: one issuer's CUSIP(s),
+  many managers, instead of one manager, many securities. Classifies each
+  **(manager_cik, cusip)** pair independently via the same `_classify` helper
+  `diff_snapshots` uses — deliberately does **not** sum a multi-class issuer's several
+  CUSIPs into one manager-level position (unlike `_by_cusip`, which sums same-cusip
+  duplicate rows *within* one manager's snapshot); collapsing distinct share classes
+  together would conflate different instruments. Returns plain `HoldingDelta` rows — no new
+  model needed, this is genuinely the same shape as the manager-centric activity endpoint's
+  output, just inverted which axis is "the one" and which is "the many."
+
+**New caveat, honestly surfaced rather than hidden:** because both endpoints read live from
+whatever's been ingested so far (no precomputed, coverage-guaranteed inversion table), an
+empty holder list is ambiguous between "no manager reported holding this issuer" and "this
+quarter hasn't been ingested for any manager yet." `_ISSUER_CENTRIC_CAVEATS`
+(`api/routes.py`) carries this alongside the existing derived-not-reported / long-only /
+45-day-lag caveats on every response.
 
 ### 13D / 13G
 

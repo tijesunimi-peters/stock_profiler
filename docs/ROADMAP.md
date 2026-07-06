@@ -246,8 +246,28 @@ it), rather than a prerequisite for 2.5.
       (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means the
       "who holds X" view has holes proportional to `unresolved` here — this metric is what
       lets that be surfaced as "coverage improving," not hidden.
-- [ ] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints — the
-      user-facing payoff, and correctly the *last* step (blocked on the inversion above).
+- [x] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints — the
+      user-facing payoff. **Turned out not to need a precomputed cross-manager inversion at
+      all:** a single issuer's holder list is a point lookup ("every `holdings` row for this
+      CUSIP this quarter"), not the whole-quarter aggregate scan DuckDB was benchmarked for
+      (confirmed with the user before building — see the DuckDB item below). Served live from
+      the operational store via a new `HoldingsSnapshotRepository.holders_of(cusips,
+      report_period)` (a join against `holdings_snapshots` for `manager_name`, backed by a
+      new `(cusip, report_period)` index) and a new reverse lookup,
+      `CusipMapRepository.cusips_for_cik(cik)`, to get from an issuer's CIK to its CUSIP(s)
+      in the first place. New `normalize/flows.diff_holders` is `diff_snapshots`' transpose
+      (one issuer's CUSIP(s), many managers, instead of one manager, many securities) —
+      classifies each `(manager_cik, cusip)` pair independently, deliberately not summing a
+      multi-class issuer's several CUSIPs (e.g. Alphabet's Class A/C) into one manager-level
+      number, which would conflate distinct instruments. **Real gap discovered and fixed
+      along the way:** `ingest/institutional_backfill.py` was upserting snapshots without
+      ever resolving CUSIPs, so `cusip_map` had no reverse-lookup entries for anything only
+      ever seen via the bulk path — it now calls `resolve_snapshot_cusips` per snapshot
+      before upserting. Both endpoints carry a new caveat (`_ISSUER_CENTRIC_CAVEATS`)
+      alongside the existing 13F ones: an empty holder list is ambiguous between "no manager
+      reported holding this issuer" and "this quarter hasn't been ingested for any manager
+      yet," since this is a live query over whatever's been ingested so far, not a
+      precomputed, coverage-guaranteed index.
 - [x] ~~Surface long-only / 45-day-lag caveats in every institutional response~~ — **already done
       for the manager endpoints** (`/activity` returns an always-present `caveats` list). Remaining
       2.5 work is only to carry that same `caveats` list into the two issuer-centric endpoints when
@@ -268,7 +288,20 @@ it), rather than a prerequisite for 2.5.
 - [ ] Stand up the analytical query path as infrastructure separate from the serving path —
       DuckDB never sits behind a live API request; batch jobs write results the operational store
       (or a cache) serves from. (M4 cross-company screening is the second consumer — design the
-      query path to serve both.)
+      query path to serve both.) **Still genuinely open:** the DuckDB evaluation above was a
+      benchmark only — no production batch job writes DuckDB-computed results anywhere yet. The
+      issuer-centric endpoints landed without needing this (see above), so this item is now purely
+      about future whole-market aggregates (a holders leaderboard, M4 screening), not a blocker for
+      anything shipped so far.
+
+**M2.5 status: effectively complete for single-issuer / single-manager use cases.** Bulk
+ingest, amendment freshness, the CUSIP resolution-rate metric, the DuckDB-vs-SQLite
+evaluation, and both issuer-centric endpoints are all done. What's left is explicitly
+whole-market-scale work that nothing shipped so far depends on: the CUSIP resolution-rate
+metric's underlying map still improves gradually rather than being backfilled in bulk, and
+the analytical query path (DuckDB batch jobs actually writing somewhere) stays deferred
+until a feature needs a genuine whole-market aggregate rather than one issuer or manager at
+a time.
 
 ## Milestone 3 — productization
 

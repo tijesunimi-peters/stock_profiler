@@ -59,6 +59,10 @@ class SQLiteCusipMapRepository(CusipMapRepository):
         row = cur.fetchone()
         return row[0] if row and row[0] is not None else None
 
+    def cusips_for_cik(self, cik: int) -> list[str]:
+        cur = self._conn.execute("SELECT cusip FROM cusip_map WHERE cik = ?", (cik,))
+        return [row[0] for row in cur.fetchall()]
+
     def record_resolved(self, cusip: str, cik: int, issuer_name: str) -> None:
         self._conn.execute(_UPSERT_RESOLVED_SQL, (cusip, cik, issuer_name))
 

@@ -1,8 +1,9 @@
 """Tests for the bulk 13F ingest job (secfin.ingest.institutional_backfill).
 
-Covers only the local, network-free candidate-discovery piece
-(`find_13f_candidates`) -- the fetch step reuses `sec.institutional
-.fetch_13f_snapshot_for_filing`, already covered in test_institutional.py.
+Covers the local, network-free candidate-discovery piece (`find_13f_candidates`) -- the
+fetch step reuses `sec.institutional.fetch_13f_snapshot_for_filing`, already covered in
+test_institutional.py -- plus `_process_candidate`'s CUSIP-resolution wiring (monkeypatched,
+same style as tests/test_manager_routes.py).
 """
 
 from __future__ import annotations
@@ -11,7 +12,10 @@ import json
 import zipfile
 from pathlib import Path
 
+from secfin.ingest import institutional_backfill as backfill_module
 from secfin.ingest.institutional_backfill import find_13f_candidates
+from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
+from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 
 BERKSHIRE_CIK = 1067983
 BLACKROCK_CIK = 1364742
@@ -168,3 +172,78 @@ def test_find_13f_candidates_skips_malformed_entry(tmp_path):
 
     assert len(candidates) == 1
     assert candidates[0]["manager_cik"] == BLACKROCK_CIK
+
+
+def _candidate(accession: str) -> dict:
+    return {
+        "manager_cik": BERKSHIRE_CIK,
+        "manager_name": "BERKSHIRE HATHAWAY INC",
+        "filing": {
+            "form": "13F-HR",
+            "accessionNumber": accession,
+            "filingDate": "2026-05-15",
+            "reportDate": "2026-03-31",
+            "primaryDocument": "xslForm13F_X02/primary_doc.xml",
+        },
+    }
+
+
+async def test_process_candidate_resolves_cusips_before_upserting(monkeypatch):
+    """The bulk job must resolve CUSIPs (durable side effect: cusip_map rows) before
+    upserting -- otherwise the issuer-centric endpoints' reverse CIK->CUSIP lookup would
+    never find anything for a manager only ever ingested via this job."""
+    snapshot = HoldingsSnapshot(
+        manager_cik=BERKSHIRE_CIK,
+        manager_name="BERKSHIRE HATHAWAY INC",
+        report_period="2026-03-31",
+        accession="0001-1",
+        holdings=[InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC")],
+    )
+
+    async def _fake_fetch(client, cik, manager_name, report_period, filing):
+        return snapshot
+
+    resolve_calls = []
+
+    async def _fake_resolve(client, resolver, snap):
+        resolve_calls.append(snap)
+
+    monkeypatch.setattr(backfill_module, "fetch_13f_snapshot_for_filing", _fake_fetch)
+    monkeypatch.setattr(backfill_module, "resolve_snapshot_cusips", _fake_resolve)
+
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    outcome = await backfill_module._process_candidate(
+        None, repo, object(), "2026-03-31", _candidate("0001-1")
+    )
+
+    assert outcome == "fetched"
+    assert resolve_calls == [snapshot]
+    assert repo.get_snapshot(BERKSHIRE_CIK, "2026-03-31") is not None
+    repo.close()
+
+
+async def test_process_candidate_skips_without_resolving_when_already_current(monkeypatch):
+    async def _boom_fetch(*args, **kwargs):
+        raise AssertionError("should not fetch when the cache is already current")
+
+    async def _boom_resolve(*args, **kwargs):
+        raise AssertionError("should not resolve when nothing was fetched")
+
+    monkeypatch.setattr(backfill_module, "fetch_13f_snapshot_for_filing", _boom_fetch)
+    monkeypatch.setattr(backfill_module, "resolve_snapshot_cusips", _boom_resolve)
+
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        HoldingsSnapshot(
+            manager_cik=BERKSHIRE_CIK,
+            report_period="2026-03-31",
+            accession="0001-1",
+        )
+    )
+
+    outcome = await backfill_module._process_candidate(
+        None, repo, object(), "2026-03-31", _candidate("0001-1")
+    )
+
+    assert outcome == "skipped"
+    repo.close()

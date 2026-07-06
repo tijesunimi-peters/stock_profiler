@@ -37,6 +37,16 @@ quarter, which is what this job produces.
   per manager, since this job already knows the winning filing from the local zip scan.
   Same reasoning as `ingest/incremental.py`: "do not add processes here to go faster --
   the fair-access limit is per-IP, not per-process."
+- **Also resolves CUSIPs as it goes.** `normalize/cusip.resolve_snapshot_cusips` used to
+  run only on the live per-manager read path (`GET /managers/{cik}/holdings`); a snapshot
+  that only ever arrived via this bulk job left its CUSIPs unresolved in `cusip_map`. The
+  issuer-centric endpoints (`GET /companies/{symbol}/institutional-holders` /
+  `.../institutional-activity`) start from an issuer's CIK and need the *reverse* lookup
+  (`CusipMapRepository.cusips_for_cik`), so this job now calls `resolve_snapshot_cusips`
+  on every fetched snapshot before upserting it -- the durable effect is
+  `cusip_map` gaining rows via the resolver's own `record_resolved`/`record_unresolved`;
+  the per-row `cik` the resolver sets on the snapshot itself is still never persisted to
+  `holdings` (unchanged, see `storage/holdings_repository.py`).
 
 Run: `python -m secfin.ingest.institutional_backfill --period 2026-03-31`
 """
@@ -53,9 +63,11 @@ from pathlib import Path
 
 from secfin.config import settings
 from secfin.ingest.downloader import download_submissions_file
+from secfin.normalize.cusip import CusipResolver, resolve_snapshot_cusips
 from secfin.sec.client import SECClient
 from secfin.sec.institutional import fetch_13f_snapshot_for_filing, recent_13f_filings
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
+from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 
 logger = logging.getLogger(__name__)
@@ -102,11 +114,12 @@ def find_13f_candidates(zip_path: Path, report_period: str) -> list[dict]:
 async def _process_candidate(
     client: SECClient,
     repo: HoldingsSnapshotRepository,
+    cusip_resolver: CusipResolver,
     report_period: str,
     candidate: dict,
 ) -> str:
-    """Fetch + upsert one candidate unless it's already current. Returns "fetched",
-    "skipped", or "failed" for the caller's tally."""
+    """Fetch + resolve + upsert one candidate unless it's already current. Returns
+    "fetched", "skipped", or "failed" for the caller's tally."""
     cik = candidate["manager_cik"]
     filing = candidate["filing"]
     if repo.cached_accession(cik, report_period) == filing["accessionNumber"]:
@@ -118,6 +131,7 @@ async def _process_candidate(
     except Exception:
         logger.exception("failed to fetch 13F for CIK %d at %s", cik, report_period)
         return "failed"
+    await resolve_snapshot_cusips(client, cusip_resolver, snapshot)
     repo.upsert_snapshot(snapshot)
     return "fetched"
 
@@ -134,11 +148,17 @@ async def run_institutional_backfill(
         return
 
     repo = SQLiteHoldingsSnapshotRepository(db_path)
+    cusip_repo = SQLiteCusipMapRepository(db_path)
+    cusip_resolver = CusipResolver(
+        cusip_repo, ttl_seconds=settings.secfin_ticker_cache_ttl_seconds
+    )
     tally = {"fetched": 0, "skipped": 0, "failed": 0}
     try:
         async with SECClient() as client:
             for i, candidate in enumerate(candidates, start=1):
-                outcome = await _process_candidate(client, repo, report_period, candidate)
+                outcome = await _process_candidate(
+                    client, repo, cusip_resolver, report_period, candidate
+                )
                 tally[outcome] += 1
                 if i % _PROGRESS_EVERY == 0:
                     logger.info(
@@ -160,6 +180,7 @@ async def run_institutional_backfill(
         )
     finally:
         repo.close()
+        cusip_repo.close()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

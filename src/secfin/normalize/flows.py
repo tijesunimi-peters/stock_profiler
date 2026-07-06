@@ -8,7 +8,7 @@ derivation lives here so the rest of the system treats it as a first-class, clea
 
 from __future__ import annotations
 
-from secfin.normalize.schema import HoldingDelta, HoldingsSnapshot
+from secfin.normalize.schema import HoldingDelta, HoldingsSnapshot, IssuerHolder
 
 # 13F report periods are always a calendar quarter-end. (month, day) -> the prior
 # quarter-end's (month, day) plus a year offset (-1 only for Q1, whose prior quarter
@@ -100,6 +100,57 @@ def diff_snapshots(
                 cik=ciks.get(cusip),
                 from_period=None if prior is None else prior.report_period,
                 to_period=current.report_period,
+                shares_before=before or None,
+                shares_after=after or None,
+                shares_change=after - before,
+                action=action,  # type: ignore[arg-type]
+            )
+        )
+    return deltas
+
+
+def diff_holders(
+    current: list[IssuerHolder],
+    prior: list[IssuerHolder] | None,
+    *,
+    to_period: str,
+    from_period: str | None,
+    include_unchanged: bool = False,
+) -> list[HoldingDelta]:
+    """Issuer-centric DERIVED buy/sell -- the transpose of `diff_snapshots`.
+
+    `diff_snapshots` is one manager, many securities; this is one issuer's CUSIP(s),
+    many managers. Each **(manager_cik, cusip)** pair is classified independently via
+    the same `_classify` used above -- deliberately NOT summing a multi-class issuer's
+    several CUSIPs (e.g. Alphabet's Class A/C) into one manager-level position the way
+    `_by_cusip` sums same-cusip duplicate rows *within* one manager's snapshot;
+    collapsing distinct share classes together would conflate different instruments.
+    `prior=[]` or `None` (e.g. the issuer's first-ever reported quarter) means every
+    current holder comes back "new", same convention `diff_snapshots` uses for
+    `prior=None`.
+    """
+    cur = {(h.manager_cik, h.cusip): h.shares or 0.0 for h in current}
+    prev = {(h.manager_cik, h.cusip): h.shares or 0.0 for h in (prior or [])}
+    all_holders = current + (prior or [])
+    manager_names = {h.manager_cik: h.manager_name for h in all_holders}
+    issuer_names = {h.cusip: h.issuer_name for h in all_holders}
+
+    deltas: list[HoldingDelta] = []
+    for manager_cik, cusip in sorted(set(cur) | set(prev)):
+        before = prev.get((manager_cik, cusip), 0.0)
+        after = cur.get((manager_cik, cusip), 0.0)
+        action = _classify(before, after)
+        if action == "unchanged" and not include_unchanged:
+            continue
+        deltas.append(
+            HoldingDelta(
+                manager_cik=manager_cik,
+                manager_name=manager_names.get(manager_cik),
+                cusip=cusip,
+                issuer_name=issuer_names.get(cusip),
+                cik=None,
+                from_period=from_period,
+                to_period=to_period,
                 shares_before=before or None,
                 shares_after=after or None,
                 shares_change=after - before,

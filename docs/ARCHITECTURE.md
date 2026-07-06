@@ -240,8 +240,16 @@ for the single-quarter case, and it didn't. Revisit if/when the workload becomes
 inversion — that's a different data volume where a columnar landing may start to earn its
 keep; a serialization step purely for one quarter's ~560K rows would not.
 
-Standing up the actual inversion query and the M2.5 endpoints that serve it is the next
-step, not part of this evaluation — see `docs/ROADMAP.md`.
+**Follow-up (shipped): the issuer-centric endpoints did NOT end up using this path.**
+`GET /v1/companies/{symbol}/institutional-holders` / `.../institutional-activity` (§4)
+need one issuer's holder list, which is a point lookup by CUSIP — not the whole-quarter,
+every-security aggregate this benchmark was about. They're served by a plain indexed
+SQLite query (`HoldingsSnapshotRepository.holders_of`, a new `(cusip, report_period)`
+index) straight from the operational store, confirmed with the user before building
+rather than reflexively reusing the DuckDB result for a workload it wasn't benchmarked
+for. DuckDB-over-SQLite stays reserved for genuinely whole-market aggregates (a future
+holders leaderboard, M4 screening) — the "stand up the analytical query path" roadmap item
+is still open for exactly that, separate from what shipped here.
 
 ## 4. Serve — `src/secfin/api/`
 
@@ -266,10 +274,24 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
   via the same cache-aside `_manager_snapshot`, resolves CUSIPs on both, and returns
   `diff_snapshots`' output alongside an always-present `caveats` list
   (derived-not-reported, long-only, ~45-day lag).
-- `GET /v1/companies/{symbol}/institutional-holders`,
-  `GET /v1/companies/{symbol}/institutional-activity` (501 until implemented — these are
-  *issuer*-centric and need the cross-manager 13F index from Milestone 2.5, unlike the
-  *manager*-centric endpoints above which only need one manager's filings)
+- `GET /v1/companies/{symbol}/institutional-holders?period=` — managers holding this
+  issuer this quarter, across ALL 13F filings: the issuer-centric inverse of
+  `/managers/{cik}/holdings`. Resolves `symbol` → CIK → CUSIP(s) via a new
+  `CusipMapRepository.cusips_for_cik` (the reverse of the existing CUSIP→CIK direction),
+  then a new `HoldingsSnapshotRepository.holders_of(cusips, period)` — a live, indexed
+  point lookup (`(cusip, report_period)`), **not** a precomputed cross-manager inversion;
+  see §3b for why that distinction is deliberate. 404 if the issuer's CUSIP hasn't been
+  resolved yet (points at `/cusip-resolution-stats`). Response carries
+  `_ISSUER_CENTRIC_CAVEATS`: an empty holder list is ambiguous between "no manager holds
+  this issuer" and "this quarter isn't ingested yet" — a live-query trade-off, surfaced
+  rather than hidden.
+- `GET /v1/companies/{symbol}/institutional-activity?period=&include_unchanged=` — DERIVED
+  buy/sell for this issuer, aggregated across managers: same CIK/CUSIP resolution, then
+  `holders_of` at both the requested and prior quarter (`normalize/flows.prior_quarter_end`),
+  diffed via a new `normalize/flows.diff_holders` — `diff_snapshots`' transpose (one
+  issuer's CUSIP(s), many managers, instead of one manager, many securities), classifying
+  each `(manager_cik, cusip)` pair independently rather than summing a multi-class
+  issuer's CUSIPs together.
 - `GET /v1/cusip-resolution-stats` — coverage snapshot for 13F CUSIP→CIK resolution
   (`normalize/cusip.cusip_resolution_stats`), a first-class metric rather than an
   endpoint about any one company/manager. Not cached — a cheap single-COUNT query over
