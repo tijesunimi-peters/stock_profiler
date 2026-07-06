@@ -73,5 +73,12 @@ class SQLiteCusipMapRepository(CusipMapRepository):
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
 
+    def resolution_counts(self) -> tuple[int, int]:
+        # COUNT(cik) skips NULLs (unresolved rows); COUNT(*) is every row -- no need to
+        # materialize unresolved_cusips()'s full rows just to count them.
+        cur = self._conn.execute("SELECT COUNT(cik), COUNT(*) FROM cusip_map")
+        resolved, total = cur.fetchone()
+        return resolved, total - resolved
+
     def close(self) -> None:
         self._conn.close()

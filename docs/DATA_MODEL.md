@@ -287,6 +287,18 @@ unresolved one for data served as fact. See `tests/test_cusip.py`.
 (issuer name as last reported, attempt count, first/last seen) for review or a future,
 more capable resolver — not silently dropped.
 
+**Resolution rate is a first-class, surfaced metric** — `GET /v1/cusip-resolution-stats`
+(`api/routes.py`) returns `CusipResolutionStats` (`resolved`, `unresolved`, `total`,
+`resolution_rate`), built by `normalize/cusip.cusip_resolution_stats` over a cheap
+`CusipMapRepository.resolution_counts()` (`SELECT COUNT(cik), COUNT(*)` — one query, not
+`len(unresolved_cusips())` plus a second one). `resolution_rate` is `None`, not `0.0`, when
+`total == 0` — an empty map hasn't "failed," nothing has been attempted yet. The rate is
+monotonically non-decreasing, never a fixed number: `cusip_map` persists across runs (this
+is *unlike* the per-snapshot `InstitutionalHolding.cik`, which is genuinely re-resolved on
+every read — see the holdings-cache section above), and `record_unresolved` never clobbers
+an existing resolution, so a CUSIP unresolved on one attempt can only improve, never
+regress, as SEC's `company_tickers.json` grows.
+
 **Joint filers ARE attributed** (this used to be a known limitation — resolved). A 13F
 cover page's `otherManagers2Info` numbers each co-filing manager (`sequenceNumber`), and
 each infoTable row carries its own `<otherManager>` tag listing which of those numbers

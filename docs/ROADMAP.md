@@ -229,12 +229,23 @@ it), rather than a prerequisite for 2.5.
       operational/scheduling concern, not a code gap). Verified against real data
       (2026-07-06): re-running the job against the same already-cached manager+quarter
       correctly skipped (matching accession), with no second live document fetch.
-- [ ] **Track CUSIP resolution rate as a first-class metric.** Exact-normalized-match-only
-      resolution (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means
-      the "who holds X" view has holes proportional to the unresolved-CUSIP rate. Surface that
-      rate (built on `unresolved_cusips()`). Note it *drifts*: resolved CUSIP→CIK is deliberately
-      not persisted (re-runs on read), so the rate improves over time as the mapping does — arguably
-      worth surfacing as "coverage improving," not a fixed number.
+- [x] **Track CUSIP resolution rate as a first-class metric** —
+      `GET /v1/cusip-resolution-stats` (`api/routes.py`), backed by a new
+      `normalize/cusip.cusip_resolution_stats(repo) -> CusipResolutionStats` (pure) over a
+      new `CusipMapRepository.resolution_counts() -> (resolved, unresolved)` — a single
+      `COUNT(cik), COUNT(*)` query, deliberately not `len(unresolved_cusips())` plus a
+      second query, so this stays cheap as the map grows. `resolution_rate` is `None`
+      (not `0.0`) when nothing has been attempted yet — a fresh DB isn't "0% covered." Note
+      it *drifts upward, never down*: the global `cusip_map` table (unlike the per-snapshot
+      `InstitutionalHolding.cik`, which is genuinely never persisted — see
+      `storage/holdings_repository.py`) IS persisted across runs, and a CUSIP recorded
+      unresolved on one attempt can resolve on a later one as the SEC's own
+      `company_tickers.json` grows — `record_unresolved` never clobbers an existing
+      resolution (already enforced, see `test_record_unresolved_never_clobbers_an_existing_resolution`),
+      so the rate is monotonically non-decreasing. Exact-normalized-match-only resolution
+      (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means the
+      "who holds X" view has holes proportional to `unresolved` here — this metric is what
+      lets that be surfaced as "coverage improving," not hidden.
 - [ ] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints — the
       user-facing payoff, and correctly the *last* step (blocked on the inversion above).
 - [x] ~~Surface long-only / 45-day-lag caveats in every institutional response~~ — **already done

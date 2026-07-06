@@ -207,3 +207,18 @@ class BeneficialOwnership(BaseModel):
     event_date: str | None = None  # date of the triggering event
     filed: str | None = None
     accession: str | None = None
+
+
+class CusipResolutionStats(BaseModel):
+    """Coverage snapshot of 13F CUSIP -> issuer CIK resolution (normalize/cusip.py).
+
+    NOT a fixed data-quality ceiling: exact-normalized-match-only resolution means
+    `unresolved` holes the "who holds X" view proportional to this rate, but it drifts
+    upward over time as a CUSIP unresolved on one attempt matches on a later one (a
+    resolved CIK is never re-cleared; see storage/cusip_repository.py).
+    """
+
+    resolved: int
+    unresolved: int
+    total: int
+    resolution_rate: float | None = None  # None when total == 0 (nothing attempted yet)

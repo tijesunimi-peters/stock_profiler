@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from secfin.normalize.cusip import (
     CusipResolver,
+    cusip_resolution_stats,
     normalize_issuer_name,
     parse_company_name_index,
     resolve_snapshot_cusips,
@@ -126,4 +127,44 @@ async def test_resolve_snapshot_cusips_populates_cik_in_place(tmp_path):
     assert by_cusip["02079K107"] == 1652044
     assert by_cusip["02005N100"] is None
     assert by_cusip["000000000"] is None
+    repo.close()
+
+
+def test_cusip_resolution_stats_on_an_empty_repo_reports_no_rate(tmp_path):
+    repo = SQLiteCusipMapRepository(tmp_path / "secfin.db")
+    stats = cusip_resolution_stats(repo)
+
+    assert stats.resolved == 0
+    assert stats.unresolved == 0
+    assert stats.total == 0
+    assert stats.resolution_rate is None  # nothing attempted yet -- not a 0% rate
+    repo.close()
+
+
+def test_cusip_resolution_stats_computes_rate(tmp_path):
+    repo = SQLiteCusipMapRepository(tmp_path / "secfin.db")
+    repo.record_resolved("037833100", 320193, "APPLE INC")
+    repo.record_resolved("02079K107", 1652044, "ALPHABET INC")
+    repo.record_resolved("004962", 4962, "AMERICAN EXPRESS CO")
+    repo.record_unresolved("02005N100", "ALLY FINL INC")
+
+    stats = cusip_resolution_stats(repo)
+
+    assert stats.resolved == 3
+    assert stats.unresolved == 1
+    assert stats.total == 4
+    assert stats.resolution_rate == 0.75
+    repo.close()
+
+
+def test_cusip_resolution_stats_reflects_a_cusip_resolving_later():
+    """The rate is expected to drift upward over time, never downward, as a CUSIP
+    unresolved on one attempt matches on a later one (see the module docstring)."""
+    repo = SQLiteCusipMapRepository(":memory:")
+    repo.record_unresolved("02005N100", "ALLY FINL INC")
+    assert cusip_resolution_stats(repo).resolution_rate == 0.0
+
+    repo.record_resolved("02005N100", 40729, "Ally Financial Inc.")
+
+    assert cusip_resolution_stats(repo).resolution_rate == 1.0
     repo.close()

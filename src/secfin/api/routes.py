@@ -13,9 +13,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from secfin.normalize.cusip import CusipResolver, resolve_snapshot_cusips
+from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import (
+    CusipResolutionStats,
     FiscalPeriod,
     HoldingsSnapshot,
     InsiderTransaction,
@@ -29,6 +30,7 @@ from secfin.sec.companyfacts import fetch_raw_facts
 from secfin.sec.insider import fetch_insider_transactions_with_filings
 from secfin.sec.institutional import fetch_13f_snapshot
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
@@ -64,6 +66,10 @@ def get_insider_repo(request: Request) -> InsiderTransactionRepository:
 
 def get_holdings_repo(request: Request) -> HoldingsSnapshotRepository:
     return request.app.state.holdings_repo
+
+
+def get_cusip_repo(request: Request) -> CusipMapRepository:
+    return request.app.state.cusip_repo
 
 
 async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol: str) -> int:
@@ -192,6 +198,21 @@ async def get_insider_trades(
 # NOTE: 13F is a quarter-end HOLDINGS SNAPSHOT, not transactions. The "buy/sell" view
 # is DERIVED by diffing consecutive quarters (normalize/flows.py). Endpoints and their
 # responses must make that explicit and carry the ~45-day-lag / long-only caveats.
+
+
+@router.get("/cusip-resolution-stats", response_model=CusipResolutionStats)
+async def get_cusip_resolution_stats(
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+) -> CusipResolutionStats:
+    """Coverage snapshot for 13F CUSIP->CIK resolution (normalize/cusip.py).
+
+    Exact-normalized-match-only resolution means "who holds X" views have holes
+    proportional to `unresolved` here -- surfaced as a first-class metric so API
+    consumers can gauge current institutional-ownership coverage. NOT a fixed
+    ceiling: `resolution_rate` drifts upward over time as CUSIPs unresolved on one
+    attempt match on a later one (see CusipResolutionStats' docstring).
+    """
+    return cusip_resolution_stats(cusip_repo)
 
 
 @router.get("/companies/{symbol}/institutional-holders")

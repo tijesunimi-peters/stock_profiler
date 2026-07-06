@@ -23,7 +23,7 @@ import asyncio
 import re
 import time
 
-from secfin.normalize.schema import HoldingsSnapshot
+from secfin.normalize.schema import CusipResolutionStats, HoldingsSnapshot
 from secfin.sec.client import SECClient
 from secfin.storage.cusip_repository import CusipMapRepository
 
@@ -127,6 +127,24 @@ class CusipResolver:
         else:
             self._repo.record_unresolved(cusip, issuer_name)
         return cik
+
+
+def cusip_resolution_stats(repo: CusipMapRepository) -> CusipResolutionStats:
+    """Coverage snapshot for the M2.5 "track CUSIP resolution rate" roadmap item.
+
+    Pure over the repository's counts (no network) -- `total == 0` (nothing attempted
+    yet, e.g. a fresh DB) reports `resolution_rate=None` rather than a misleading 0%%.
+    See CusipResolutionStats' docstring for why this number is expected to drift
+    upward over time rather than being a fixed ceiling.
+    """
+    resolved, unresolved = repo.resolution_counts()
+    total = resolved + unresolved
+    return CusipResolutionStats(
+        resolved=resolved,
+        unresolved=unresolved,
+        total=total,
+        resolution_rate=(resolved / total) if total else None,
+    )
 
 
 async def resolve_snapshot_cusips(

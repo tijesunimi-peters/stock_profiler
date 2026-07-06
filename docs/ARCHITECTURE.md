@@ -232,6 +232,11 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
   `GET /v1/companies/{symbol}/institutional-activity` (501 until implemented — these are
   *issuer*-centric and need the cross-manager 13F index from Milestone 2.5, unlike the
   *manager*-centric endpoints above which only need one manager's filings)
+- `GET /v1/cusip-resolution-stats` — coverage snapshot for 13F CUSIP→CIK resolution
+  (`normalize/cusip.cusip_resolution_stats`), a first-class metric rather than an
+  endpoint about any one company/manager. Not cached — a cheap single-COUNT query over
+  `CusipMapRepository` on every call, since the whole point is to reflect current, drifting
+  coverage rather than a snapshot from whenever it was first requested.
 
 `symbol` accepts a ticker or a raw CIK. Statement/period facts are served cache-aside from
 the storage layer (§3a): populated by `ingest/`, or by the route itself on a cache miss.

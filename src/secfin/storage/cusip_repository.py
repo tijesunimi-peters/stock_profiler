@@ -46,5 +46,12 @@ class CusipMapRepository(ABC):
         """CUSIPs with no resolved CIK yet, most-attempted first -- for review/backfill."""
 
     @abstractmethod
+    def resolution_counts(self) -> tuple[int, int]:
+        """(resolved_count, unresolved_count) across the whole map -- a single COUNT
+        query, deliberately not `len(unresolved_cusips())` plus a second query, so a
+        resolution-rate metric stays cheap to compute even as the map grows large.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""
