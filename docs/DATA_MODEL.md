@@ -445,12 +445,16 @@ in before their endpoints were wired up.
   mapping table (`normalize/cusip.py`) that intentionally leaves ambiguous/abbreviated
   names unresolved rather than guessing; see `unresolved_cusips()` for what's tracked.
 
-## Analytical layer (planned, Milestone 2.5) — serialization, not a new model
+## Analytical layer (Milestone 2.5) — not a new model, no serialization step (for now)
 
-The DuckDB/Parquet analytical engine (see `ARCHITECTURE.md`, stage 3b) reads a **Parquet
-serialization of the existing `RawFact` and `HoldingsSnapshot` records** — it is not a new
-canonical model, and it does not get its own schema section here. Batch jobs land the same
-operational records to disk in columnar form so DuckDB can scan them; the shapes above stay
-the single source of truth. If a batch job needs a derived output (e.g. an inverted
-holder-by-security index for the 13F cross-manager view), that's a query result, not a new
-canonical concept.
+The DuckDB analytical engine (see `ARCHITECTURE.md`, stage 3b) reads the existing
+`holdings`/`holdings_snapshots` tables **directly from the live SQLite file**
+(`ATTACH ... (TYPE sqlite)`) — benchmarked against a Parquet-landing alternative and found
+unnecessary for the single-quarter cross-manager inversion (~2.8x faster than plain SQLite,
+zero ETL; see `ARCHITECTURE.md` §3b for the numbers). It is not a new canonical model and
+does not get its own schema section here: the shapes above (`InstitutionalHolding`,
+`HoldingsSnapshot`) stay the single source of truth, and a batch job's derived output (e.g.
+an inverted holder-by-security index for the 13F cross-manager view) is a query result, not
+a new canonical concept. A Parquet serialization stays deferred to Milestone 4, for if/when
+the workload becomes whole-market, multi-quarter screening rather than one quarter's
+inversion.

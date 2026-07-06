@@ -185,7 +185,7 @@ patterns.
   the read path never re-checks SEC for a later amendment — same trade-off
   `_facts_for_cik` already makes for statements.
 
-### 3b. Analytical engine — DuckDB over Parquet (planned, Milestone 2.5)
+### 3b. Analytical engine — DuckDB over SQLite, Parquet deferred (Milestone 2.5)
 
 Batch aggregation only. This is **not** the API's transactional backend and must **never**
 sit on the live per-request read path — it exists for jobs that need to scan across many
@@ -195,15 +195,53 @@ companies/managers at once, which a per-company operational store isn't shaped f
   managers, this quarter?"
 - cross-company screening via the SEC `frames` API (Milestone 4).
 
-Data pattern: cached SEC data is *also* landed as Parquet files on disk (a serialization of
-the same operational records — see `DATA_MODEL.md`), and DuckDB runs vectorized scans over
-those files as a separate batch job. Serverless — no DB process to run or pay for, which
-fits the cheap-subscription goal. DuckDB can also read the SQLite file directly via its
-`sqlite` extension, so the two stores coexist without a sync pipeline being mandatory.
+**Decision (benchmarked 2026-07-06, not assumed): DuckDB reads the live SQLite file
+directly (`ATTACH '<db>' (TYPE sqlite)`) — no Parquet landing for the single-quarter
+inversion.** The roadmap treated this as an open question ("evaluate before building");
+here's what the evaluation found, against a synthetic-but-realistic single quarter (5,500
+managers, 561,471 holding rows, 6,000 distinct CUSIPs, Zipf-weighted so large-caps cluster
+across many managers' books like real filings do — not a uniform distribution, which would
+make the aggregation unrealistically cheap):
 
-**Verify, don't assume:** DuckDB's multi-process read/write concurrency semantics have
-changed across releases. Pin a version and confirm the concurrency behavior in that
-version's docs before implementing anything on top of it.
+| Approach | Median latency (5 runs) |
+|---|---|
+| Plain SQLite, existing `(manager_cik, report_period)` index | 285ms |
+| Plain SQLite, **+ a new `(report_period, cusip)` index** | 946ms (slower — see below) |
+| DuckDB `ATTACH ... (TYPE sqlite)` over the same file, no new index | 103ms |
+
+The full-quarter inversion query (`GROUP BY cusip` across every row for one
+`report_period`) touches every row regardless of index, since `report_period` has only one
+distinct value within a single quarter's data — an index keyed on it adds random I/O
+(index → heap lookups) instead of avoiding a scan, which is *why the added index made it
+slower*, not faster. DuckDB's win is vectorized scan+aggregate, not index usage — a ~2.8×
+speedup with **zero ETL**: no serialization step, no second copy of the data to keep in
+sync, just a read-only attach to the file the API and `ingest/` already write to.
+
+**Concurrency, verified both directions against the pinned version (not assumed):**
+confirmed live (not just read from docs) that with the SQLite file in WAL mode (already
+true for every repository in `storage/` — see their `PRAGMA journal_mode=WAL`), a DuckDB
+`ATTACH` read succeeds while a writer holds an open, uncommitted transaction (and
+correctly does *not* see the uncommitted row — proper MVCC snapshot isolation), and
+symmetrically, a writer commits normally while DuckDB holds a long-running scan open
+against the same file. Neither direction blocks the other. This matches DuckDB's own
+`sqlite` extension docs ("more than one thread or process can read... at the same time...
+locking is handled by the SQLite library, not DuckDB") but was confirmed empirically here
+rather than taken on faith.
+
+**Pinned:** `duckdb==1.4.5` (the 1.4.x LTS line, not the newer 1.5.x — a batch-only
+dependency should need minimal maintenance attention; see `pyproject.toml`'s `analytical`
+extra, `pip install ".[analytical]"`). Never a dependency of the base install or the live
+API process.
+
+**Parquet is deferred to Milestone 4, not built now.** The roadmap's own fallback logic
+applies exactly as written: land Parquet only if DuckDB-over-SQLite proves insufficient
+for the single-quarter case, and it didn't. Revisit if/when the workload becomes
+*whole-market, multi-quarter* (M4 cross-company screening) rather than one quarter's
+inversion — that's a different data volume where a columnar landing may start to earn its
+keep; a serialization step purely for one quarter's ~560K rows would not.
+
+Standing up the actual inversion query and the M2.5 endpoints that serve it is the next
+step, not part of this evaluation — see `docs/ROADMAP.md`.
 
 ## 4. Serve — `src/secfin/api/`
 

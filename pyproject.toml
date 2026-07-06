@@ -18,6 +18,15 @@ dev = [
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
 ]
+# Milestone 2.5 batch/analytical jobs ONLY (13F cross-manager inversion, later
+# cross-company screening) -- never a runtime dependency of the live API. Pinned
+# exactly, not a range: see docs/ARCHITECTURE.md 3b for the benchmark + concurrency
+# verification this version was chosen against ("verify, don't assume" -- CLAUDE.md).
+# 1.4.x is DuckDB's LTS line; picked over the newer 1.5.x for a batch job that should
+# need the least maintenance attention.
+analytical = [
+    "duckdb==1.4.5",
+]
 
 [build-system]
 requires = ["hatchling"]

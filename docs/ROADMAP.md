@@ -252,10 +252,19 @@ it), rather than a prerequisite for 2.5.
       for the manager endpoints** (`/activity` returns an always-present `caveats` list). Remaining
       2.5 work is only to carry that same `caveats` list into the two issuer-centric endpoints when
       they land (reuse, not new work).
-- [ ] **Evaluate the analytical mechanism before building it:** benchmark DuckDB-over-SQLite (the
-      coexist path) for the single-quarter inversion first. Only land the Parquet serialization if
-      that proves insufficient — otherwise defer Parquet to M4. Pin a DuckDB version and confirm its
-      concurrency semantics either way ("verify, don't assume").
+- [x] **Evaluate the analytical mechanism before building it** — benchmarked
+      DuckDB-over-SQLite (the coexist path, `ATTACH ... (TYPE sqlite)`) against plain
+      SQLite for the single-quarter inversion, on a synthetic-but-realistic quarter
+      (5,500 managers, 561K holding rows, Zipf-weighted CUSIP distribution). DuckDB won
+      by ~2.8x (103ms vs. 285ms median) with **zero ETL** — no Parquet landing needed for
+      this workload, so Parquet is deferred to M4 per this item's own fallback rule.
+      Concurrency verified live in both directions, not assumed from docs: a DuckDB read
+      succeeds (and correctly excludes uncommitted rows) while a writer holds an open WAL
+      transaction, and a writer commits normally while DuckDB holds a long scan open —
+      neither blocks the other. Pinned `duckdb==1.4.5` (the LTS line) as a new
+      `analytical` extra, never a dependency of the base install or the live API. Full
+      writeup + numbers in `docs/ARCHITECTURE.md` §3b. Building the actual inversion query
+      and endpoints on top of this is the next step, not part of this evaluation.
 - [ ] Stand up the analytical query path as infrastructure separate from the serving path —
       DuckDB never sits behind a live API request; batch jobs write results the operational store
       (or a cache) serves from. (M4 cross-company screening is the second consumer — design the
