@@ -83,6 +83,26 @@ ingested via either path is indistinguishable in the store.
   so this runs as a single process — no pool, and no extra processes to "go faster", since
   the SEC's fair-access limit is per-IP, not per-process.
 
+- **Institutional (13F) bulk ingest** (`ingest/institutional_backfill.py`,
+  `python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD`) — Milestone 2.5's
+  whole-market ingest: unlike the two paths above (which target the *statements* store),
+  this seeds `storage.HoldingsSnapshotRepository`, which otherwise only grows one manager at
+  a time via live requests to `GET /managers/{cik}/holdings`. Candidate managers for a given
+  quarter are found **locally, offline** by scanning `submissions.zip` (`ingest/downloader
+  .download_submissions_file` — the same bulk file `ingest/backfill.py` already downloads,
+  fetched standalone here so this job doesn't force a companyfacts.zip download it doesn't
+  need) and reusing `sec/institutional.py`'s pure `recent_13f_filings` filter — no network
+  involved in discovery. For each candidate, a cheap `HoldingsSnapshotRepository
+  .cached_accession` lookup is compared against the winning filing's accession: a match
+  skips (already current), a mismatch (nothing cached yet, or a newer `13F-HR/A` appeared)
+  fetches via `sec.institutional.fetch_13f_snapshot_for_filing` — a variant of
+  `fetch_13f_snapshot` split out specifically so this job, which already knows the winning
+  filing from the local zip scan, skips the redundant live `submissions.json` lookup per
+  manager — and upserts. Single async process, sequential, same "the fair-access limit is
+  per-IP, not per-process" reasoning as daily incremental; this job's cost is network I/O
+  against the shared throttled `SECClient`, not CPU, so there's no producer/consumer pool
+  like the companyfacts backfill's.
+
 ## 2. Normalize — `src/secfin/normalize/`  ← the value-add
 
 The SEC's data is structured but *inconsistent*: companies use different us-gaap tags for

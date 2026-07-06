@@ -336,6 +336,40 @@ CORP"`, `"CAPITAL ONE FINL CORP"`, `"LOUISIANA PAC CORP"`), and the 2025-12-31 �
 cache-aside store yet (see the "Cache-aside store for 13F holdings snapshots" roadmap
 item) — both re-fetch and re-parse from SEC on every call.
 
+### Bulk ingest (Milestone 2.5)
+
+The per-manager cache above only grows one manager at a time, via live requests. Answering
+"who holds this issuer, across all managers, this quarter?" (the M2.5 cross-manager
+inversion, still open) needs *every* manager's 13F for a quarter first — that's what
+`ingest/institutional_backfill.py` (`python -m secfin.ingest.institutional_backfill
+--period YYYY-MM-DD`) produces, seeding the exact same `HoldingsSnapshotRepository` the
+manager endpoints read from.
+
+Candidate managers are found **offline**: the job scans `submissions.zip` (already
+downloaded by `ingest/backfill.py` for exactly this; fetched standalone here via
+`ingest/downloader.download_submissions_file`) and reuses `recent_13f_filings` — the same
+pure filter `fetch_13f_snapshot` uses — to pick each manager's winning 13F-HR/13F-HR/A for
+the target quarter, no network involved. Fetching then goes through a new
+`fetch_13f_snapshot_for_filing`, split out of `fetch_13f_snapshot` specifically so this job
+(which already knows the winning filing) doesn't repeat a live `submissions.json` lookup
+per manager the way the single-manager path needs to.
+
+**Amendment freshness solved via accession comparison, not a checkpoint table:** a new
+`HoldingsSnapshotRepository.cached_accession(manager_cik, report_period)` — one indexed
+lookup, no full snapshot deserialization — is compared against the winning filing's
+accession from the zip scan. Equal → already current, skip (this doubles as crash/resume
+safety). Unequal — including "nothing cached yet" — → fetch and upsert. A later-filed
+`13F-HR/A` always has a different accession than what's cached, so re-running the job for
+a quarter picks it up automatically; it does still require an operational re-run, not a
+one-time backfill, to actually catch amendments filed after the first pass.
+
+Single async process, sequential — no producer/consumer pool like the companyfacts
+backfill. That pipeline parallelizes because parsing huge local JSON is CPU-bound; this
+job's cost is network I/O (1 directory listing + 2 document fetches per manager) against
+the same rate-limited `SECClient`, so extra processes wouldn't help — same reasoning
+`ingest/incremental.py` already documents ("the fair-access limit is per-IP, not
+per-process").
+
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —

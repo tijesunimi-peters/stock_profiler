@@ -206,5 +206,15 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             other_managers=other_managers,
         )
 
+    def cached_accession(self, manager_cik: int, report_period: str) -> str | None:
+        cur = self._conn.execute(
+            "SELECT accession FROM holdings_snapshots WHERE manager_cik = ? AND report_period = ?",
+            (manager_cik, report_period),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        return row[0] or None
+
     def close(self) -> None:
         self._conn.close()

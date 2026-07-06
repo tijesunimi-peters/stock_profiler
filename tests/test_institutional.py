@@ -20,8 +20,9 @@ from secfin.sec.institutional import (
     _find_info_table_document,
     _parse_other_manager_refs,
     _recent_13dg_filings,
-    _recent_13f_filings,
+    recent_13f_filings,
     fetch_13f_snapshot,
+    fetch_13f_snapshot_for_filing,
     fetch_beneficial_ownership,
     parse_cover_page_xml,
     parse_info_table_xml,
@@ -82,7 +83,7 @@ ACCESSION = "0001193125-26-226661"
 
 def test_recent_13f_filings_filters_and_keeps_order():
     payload = _read_json("brk_submissions_trimmed.json")
-    filings = _recent_13f_filings(payload)
+    filings = recent_13f_filings(payload)
 
     assert all(f["form"] in FORM_13F for f in filings)
     # Only one 13F-HR falls inside the trimmed 40-entry slice (see README).
@@ -215,6 +216,39 @@ async def test_fetch_13f_snapshot_assembles_holdings_snapshot():
     # Joint-filer roster now fetched + attached alongside the holdings.
     assert len(snapshot.other_managers) == 14
     assert snapshot.holdings[0].other_managers == [4]
+
+
+async def test_fetch_13f_snapshot_for_filing_skips_submissions_lookup():
+    """A caller that already knows the winning filing (e.g. ingest/institutional_backfill.py,
+    which resolves it locally from a submissions.zip scan) must get the same snapshot
+    without fetch_13f_snapshot_for_filing ever touching submissions.json -- the fake
+    client below has no submissions_url entry at all, so a stray call would KeyError."""
+    index_url = SECClient.filing_index_json_url(BERKSHIRE_CIK, ACCESSION)
+    doc_url = SECClient.filing_document_url(BERKSHIRE_CIK, ACCESSION, "53405.xml")
+    cover_url = SECClient.filing_document_url(BERKSHIRE_CIK, ACCESSION, "primary_doc.xml")
+
+    payload = _read_json("brk_submissions_trimmed.json")
+    filing = recent_13f_filings(payload)[0]
+
+    client = _FakeSECClient(
+        json_by_url={index_url: _read_json("brk13f_2026q1_index.json")},
+        bytes_by_url={
+            doc_url: _read_bytes("brk13f_2026q1_infotable_trimmed.xml"),
+            cover_url: _read_bytes("brk13f_2026q1_coverpage.xml"),
+        },
+    )
+
+    snapshot = await fetch_13f_snapshot_for_filing(
+        client, BERKSHIRE_CIK, "BERKSHIRE HATHAWAY INC", "2026-03-31", filing
+    )
+
+    assert snapshot.manager_cik == BERKSHIRE_CIK
+    assert snapshot.manager_name == "BERKSHIRE HATHAWAY INC"
+    assert snapshot.report_period == "2026-03-31"
+    assert snapshot.accession == ACCESSION
+    assert snapshot.is_amendment is False
+    assert len(snapshot.holdings) == 5
+    assert len(snapshot.other_managers) == 14
 
 
 async def test_fetch_13f_snapshot_raises_when_quarter_not_found():

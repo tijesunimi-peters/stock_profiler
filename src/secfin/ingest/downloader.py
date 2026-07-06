@@ -124,3 +124,15 @@ def download_bulk_files(data_dir: Path | str) -> dict[str, Path]:
     download_resumable(BULK_COMPANYFACTS_URL, companyfacts_dest)
     download_resumable(BULK_SUBMISSIONS_URL, submissions_dest)
     return {"companyfacts": companyfacts_dest, "submissions": submissions_dest}
+
+
+def download_submissions_file(data_dir: Path | str) -> Path:
+    """Fetch only submissions.zip into `data_dir`.
+
+    A one-file sibling of `download_bulk_files` for jobs (e.g.
+    `ingest/institutional_backfill.py`) that only need filers' submission history and
+    shouldn't be forced into also downloading the much larger companyfacts.zip.
+    """
+    data_dir = Path(data_dir)
+    submissions_dest = data_dir / "submissions.zip"
+    return download_resumable(BULK_SUBMISSIONS_URL, submissions_dest)

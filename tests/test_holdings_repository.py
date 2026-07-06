@@ -158,6 +158,22 @@ def test_joint_filer_roster_and_per_holding_attribution_round_trip():
     repo.close()
 
 
+def test_cached_accession_is_none_on_cache_miss():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    assert repo.cached_accession(MANAGER_CIK, "2026-03-31") is None
+    repo.close()
+
+
+def test_cached_accession_reflects_latest_upsert_without_loading_holdings():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31", accession="0001-1"))
+    assert repo.cached_accession(MANAGER_CIK, "2026-03-31") == "0001-1"
+
+    repo.upsert_snapshot(_snapshot("2026-03-31", accession="0002-1", is_amendment=True))
+    assert repo.cached_accession(MANAGER_CIK, "2026-03-31") == "0002-1"
+    repo.close()
+
+
 def test_re_upserting_replaces_joint_filer_roster_wholesale():
     repo = SQLiteHoldingsSnapshotRepository(":memory:")
     repo.upsert_snapshot(

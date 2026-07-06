@@ -111,7 +111,7 @@ FORM_13F = {"13F-HR", "13F-HR/A"}
 FORM_13DG = {"SCHEDULE 13D", "SCHEDULE 13G", "SCHEDULE 13D/A", "SCHEDULE 13G/A"}
 
 
-def _recent_13f_filings(payload: dict) -> list[dict]:
+def recent_13f_filings(payload: dict) -> list[dict]:
     """Filter submissions.json's `filings.recent` parallel arrays down to Form 13F.
 
     Returned in the same (newest-first) order the SEC serves them in.
@@ -381,25 +381,23 @@ def parse_schedule_13dg_xml(
     raise ValueError(f"unrecognized Schedule 13D/G form type: {form_type!r}")
 
 
-async def fetch_13f_snapshot(
-    client: SECClient, manager_cik: int, report_period: str
+async def fetch_13f_snapshot_for_filing(
+    client: SECClient,
+    manager_cik: int,
+    manager_name: str | None,
+    report_period: str,
+    filing: dict,
 ) -> HoldingsSnapshot:
-    """Fetch and parse one manager's 13F for a given quarter-end.
+    """Fetch and parse one manager's 13F given an already-known filing record.
 
-    `report_period` is the quarter-end date as the SEC reports it, e.g. "2026-03-31".
-    If both an original and an amendment exist for that quarter, the newest-filed one
-    wins (submissions.json's arrays are already newest-filed-first).
+    `filing` has the same shape `recent_13f_filings` returns (`form`,
+    `accessionNumber`, `filingDate`, `reportDate`, `primaryDocument`) -- callers that
+    already know which filing wins for a manager+quarter (e.g.
+    `ingest/institutional_backfill.py`, which resolves this locally from a bulk
+    submissions.zip scan instead of a live `submissions.json` fetch) can skip straight
+    to this and save one network round-trip per manager. `fetch_13f_snapshot` below is
+    a thin wrapper over this for the single-manager, live-lookup case.
     """
-    payload = await client.get_json(client.submissions_url(manager_cik))
-    manager_name = payload.get("name")
-
-    filings = [f for f in _recent_13f_filings(payload) if f["reportDate"] == report_period]
-    if not filings:
-        raise ValueError(
-            f"no 13F-HR filing found for CIK {manager_cik} at report_period {report_period!r}"
-        )
-    filing = filings[0]
-
     info_doc = await _find_info_table_document(
         client, manager_cik, filing["accessionNumber"], filing["primaryDocument"]
     )
@@ -422,6 +420,30 @@ async def fetch_13f_snapshot(
         is_amendment=filing["form"].endswith("/A"),
         holdings=parse_info_table_xml(info_bytes),
         other_managers=parse_cover_page_xml(cover_bytes),
+    )
+
+
+async def fetch_13f_snapshot(
+    client: SECClient, manager_cik: int, report_period: str
+) -> HoldingsSnapshot:
+    """Fetch and parse one manager's 13F for a given quarter-end.
+
+    `report_period` is the quarter-end date as the SEC reports it, e.g. "2026-03-31".
+    If both an original and an amendment exist for that quarter, the newest-filed one
+    wins (submissions.json's arrays are already newest-filed-first). Live single-manager
+    lookup -- fetches submissions.json to find the winning filing, then delegates to
+    `fetch_13f_snapshot_for_filing`.
+    """
+    payload = await client.get_json(client.submissions_url(manager_cik))
+    manager_name = payload.get("name")
+
+    filings = [f for f in recent_13f_filings(payload) if f["reportDate"] == report_period]
+    if not filings:
+        raise ValueError(
+            f"no 13F-HR filing found for CIK {manager_cik} at report_period {report_period!r}"
+        )
+    return await fetch_13f_snapshot_for_filing(
+        client, manager_cik, manager_name, report_period, filings[0]
     )
 
 

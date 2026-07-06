@@ -198,17 +198,37 @@ SQLite (five repositories, WAL, online-backup) that DuckDB reading the SQLite fi
 Parquet landing as *evaluate, likely defer to M4* (whole-market screening scale is what justifies
 it), rather than a prerequisite for 2.5.
 
-- [ ] **Bulk-ingest a quarter's 13F filings** (the missing heart of 2.5). A whole-market ingest
-      job — distinct from the manager-scoped cache-aside store already built, which only holds
-      managers fetched on demand. This job is also what would *seed* the manager caches (today
-      they only grow via live requests; see pre-launch cold-path note). Then invert the index by
-      security (CUSIP/CIK).
-- [ ] **Amendment freshness across the aggregate** (new correctness item). The holdings cache has
-      a deliberate staleness window — once a quarter is cached it never re-checks SEC for a later
-      `13F-HR/A`. Fine per-manager, but the cross-manager inversion aggregates many managers'
-      cached quarters, so an issuer-level answer could mix amended and pre-amendment snapshots
-      depending on caching order. The bulk-ingest job must re-pull / reconcile amendments rather
-      than trust cache-aside snapshots.
+- [x] **Bulk-ingest a quarter's 13F filings** (the missing heart of 2.5) --
+      `ingest/institutional_backfill.py`, `python -m secfin.ingest.institutional_backfill
+      --period YYYY-MM-DD`. Candidate managers are discovered **locally, offline** from
+      `submissions.zip` (already downloaded by `ingest/backfill.py` for exactly this,
+      reusing `sec/institutional.py`'s `recent_13f_filings` pure filter) — no new download
+      step, and no live `submissions.json` round-trip per manager. Fetching reuses a new
+      `fetch_13f_snapshot_for_filing` (split out of `fetch_13f_snapshot`, which is now a
+      thin live-lookup wrapper over it) and writes through the same
+      `HoldingsSnapshotRepository.upsert_snapshot` the on-demand manager endpoints use —
+      this **is** the seed job for the manager caches (today they also still grow via live
+      requests; see pre-launch cold-path note, now narrowed by this job existing). Single
+      async process, sequential, same "don't add processes to go faster — the fair-access
+      limit is per-IP" reasoning as `ingest/incremental.py`. The cross-manager inversion by
+      security (CUSIP/CIK) is separate, still open below. Verified end-to-end against real
+      SEC data (2026-07-06): fetched Berkshire Hathaway's real `submissions.json`, ran it
+      through `find_13f_candidates` (correctly resolved to its real 2026 Q1 13F-HR,
+      accession `0001193125-26-226661`), then `fetch_13f_snapshot_for_filing` against the
+      real filing (90 holdings, 14 co-filing managers) and `upsert_snapshot` — then
+      confirmed `GET /v1/managers/1067983/holdings?period=2026-03-31` served that exact
+      data straight from the cache the job populated.
+- [x] **Amendment freshness across the aggregate** — resolved as a side effect of the bulk
+      job's skip-or-refresh design rather than a separate mechanism: a new
+      `HoldingsSnapshotRepository.cached_accession(manager_cik, report_period)` (a cheap
+      indexed lookup, no full snapshot deserialization) is compared against the winning
+      filing's accession from the local `submissions.zip` scan. A match skips (already
+      current — this is also what makes a crashed/resumed run cheap); a mismatch — including
+      a newer `13F-HR/A` that appeared since the last run — always re-fetches and upserts.
+      Requires periodic re-runs of a given quarter to actually catch late amendments (an
+      operational/scheduling concern, not a code gap). Verified against real data
+      (2026-07-06): re-running the job against the same already-cached manager+quarter
+      correctly skipped (matching accession), with no second live document fetch.
 - [ ] **Track CUSIP resolution rate as a first-class metric.** Exact-normalized-match-only
       resolution (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means
       the "who holds X" view has holes proportional to the unresolved-CUSIP rate. Surface that

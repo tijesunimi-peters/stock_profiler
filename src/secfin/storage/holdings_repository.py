@@ -56,5 +56,17 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def cached_accession(self, manager_cik: int, report_period: str) -> str | None:
+        """Accession of the currently-cached snapshot, or None if nothing is cached.
+
+        A single indexed lookup with no join to `holdings`/`holdings_other_managers`,
+        so `ingest/institutional_backfill.py` can cheaply check thousands of managers
+        per run without deserializing full snapshots for the (usual, on a re-run)
+        case where nothing needs re-fetching -- it compares this against the winning
+        filing's accession it already knows from a local `submissions.zip` scan, and
+        only fetches+upserts on a mismatch (first ingest, or a newer amendment).
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""
