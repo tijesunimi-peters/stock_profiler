@@ -209,6 +209,20 @@ class BeneficialOwnership(BaseModel):
     accession: str | None = None
 
 
+class BeneficialOwnershipFilingMeta(NamedTuple):
+    """One structured-XML Schedule 13D/G filing that's been fetched and parsed,
+    independent of how many `BeneficialOwnership` rows it produced. Same rationale as
+    `InsiderFilingMeta`: a 13D/G filing is immutable once accepted (an amendment gets its
+    own accession, "13D/A"/"13G/A", never rewriting a prior one), so
+    `storage/beneficial_ownership_repository.py`'s cache keys off the filing, not
+    individual rows. See sec/institutional.py.
+    """
+
+    accession: str
+    filed: str | None
+    form_type: str
+
+
 class CusipResolutionStats(BaseModel):
     """Coverage snapshot of 13F CUSIP -> issuer CIK resolution (normalize/cusip.py).
 

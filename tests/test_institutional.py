@@ -20,13 +20,14 @@ from secfin.sec.institutional import (
     _find_info_table_document,
     _parse_other_manager_refs,
     _recent_13dg_filings,
-    recent_13f_filings,
     fetch_13f_snapshot,
     fetch_13f_snapshot_for_filing,
     fetch_beneficial_ownership,
+    fetch_beneficial_ownership_with_filings,
     parse_cover_page_xml,
     parse_info_table_xml,
     parse_schedule_13dg_xml,
+    recent_13f_filings,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "institutional"
@@ -351,3 +352,21 @@ async def test_fetch_beneficial_ownership_fetches_only_structured_filings():
 
     assert len(owners) == 1
     assert owners[0].owner_name == "Vanguard Capital Management"
+
+
+async def test_fetch_beneficial_ownership_with_filings_returns_filing_metadata():
+    submissions_url = _submissions_url(AAPL_CIK)
+    doc_url = SECClient.filing_document_url(AAPL_CIK, "0002100119-26-000139", "primary_doc.xml")
+
+    client = _FakeSECClient(
+        json_by_url={submissions_url: _read_json("aapl_submissions_13dg_trimmed.json")},
+        bytes_by_url={doc_url: _read_bytes("aapl_schedule13g_vanguard.xml")},
+    )
+
+    filings, owners = await fetch_beneficial_ownership_with_filings(client, AAPL_CIK, limit=1)
+
+    assert len(filings) == 1
+    assert filings[0].accession == "0002100119-26-000139"
+    assert filings[0].form_type == "SCHEDULE 13G"
+    assert len(owners) == 1
+    assert owners[0].accession == "0002100119-26-000139"

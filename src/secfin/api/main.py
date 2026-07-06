@@ -19,6 +19,9 @@ from secfin.api.routes import router
 from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.sqlite_beneficial_ownership_repository import (
+    SQLiteBeneficialOwnershipRepository,
+)
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
@@ -51,6 +54,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Cache-aside store for 13F holdings snapshots, keyed on (manager_cik, report_period)
     # -- see api.routes.get_holdings_repo / storage/holdings_repository.py.
     app.state.holdings_repo = SQLiteHoldingsSnapshotRepository(settings.secfin_db_path)
+    # Cache-aside store for Schedule 13D/G beneficial-ownership rows, keyed at filing
+    # granularity like insider_repo above -- see
+    # api.routes.get_beneficial_ownership_repo / storage/beneficial_ownership_repository.py.
+    app.state.beneficial_ownership_repo = SQLiteBeneficialOwnershipRepository(
+        settings.secfin_db_path
+    )
     try:
         yield
     finally:
@@ -58,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.cusip_repo.close()
         app.state.insider_repo.close()
         app.state.holdings_repo.close()
+        app.state.beneficial_ownership_repo.close()
 
 
 app = FastAPI(

@@ -99,6 +99,7 @@ import xml.etree.ElementTree as ET
 
 from secfin.normalize.schema import (
     BeneficialOwnership,
+    BeneficialOwnershipFilingMeta,
     HoldingsSnapshot,
     InstitutionalHolding,
     OtherManager13F,
@@ -447,24 +448,33 @@ async def fetch_13f_snapshot(
     )
 
 
-async def fetch_beneficial_ownership(
+async def fetch_beneficial_ownership_with_filings(
     client: SECClient, issuer_cik: int, limit: int = 50
-) -> list[BeneficialOwnership]:
-    """Fetch and parse an issuer's recent structured-XML Schedule 13D/13G filings.
+) -> tuple[list[BeneficialOwnershipFilingMeta], list[BeneficialOwnership]]:
+    """Fetch and parse an issuer's recent structured-XML Schedule 13D/13G filings, also
+    returning which filings were fetched.
 
     Only the modern structured-XML form types are fetched -- legacy "SC 13D"/"SC 13G"
     HTML/text filings are excluded by `_recent_13dg_filings`, not attempted (see the
     module docstring). `limit` bounds the number of *filings* fetched, not
-    BeneficialOwnership rows -- a jointly-filed Schedule 13D can produce several.
+    BeneficialOwnership rows -- a jointly-filed Schedule 13D can produce several. Filing
+    metadata is returned separately so
+    `storage/beneficial_ownership_repository.py`'s cache-aside store can track "have we
+    cached at least `limit` filings", the same way `storage/insider_repository.py` does
+    for Forms 3/4/5.
     """
     payload = await client.get_json(client.submissions_url(issuer_cik))
     filings = _recent_13dg_filings(payload)[:limit]
 
+    filing_meta: list[BeneficialOwnershipFilingMeta] = []
     owners: list[BeneficialOwnership] = []
     for f in filings:
         doc = client.strip_viewer_subdir(f["primaryDocument"])
         url = client.filing_document_url(issuer_cik, f["accessionNumber"], doc)
         xml_bytes = await client.get_bytes(url)
+        filing_meta.append(
+            BeneficialOwnershipFilingMeta(f["accessionNumber"], f["filingDate"], f["form"])
+        )
         owners.extend(
             parse_schedule_13dg_xml(
                 xml_bytes,
@@ -473,4 +483,16 @@ async def fetch_beneficial_ownership(
                 accession=f["accessionNumber"],
             )
         )
+    return filing_meta, owners
+
+
+async def fetch_beneficial_ownership(
+    client: SECClient, issuer_cik: int, limit: int = 50
+) -> list[BeneficialOwnership]:
+    """Fetch and parse an issuer's recent structured-XML Schedule 13D/13G filings.
+
+    Thin wrapper over `fetch_beneficial_ownership_with_filings` for callers that don't
+    need filing metadata (e.g. one-off scripts, tests).
+    """
+    _, owners = await fetch_beneficial_ownership_with_filings(client, issuer_cik, limit)
     return owners

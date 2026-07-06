@@ -167,20 +167,35 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       in 2009→~2012, capped at each company's first XBRL filing). *(Corrects an earlier version of
       this item that wrongly implied the 13D/G floor was undocumented and cited a 2009-floor doc
       precedent that didn't exist — it does now.)*
-- [ ] **Expose 13D/G beneficial ownership via an endpoint** — the one remaining ownership
-      *serving* gap in M2. Parsing (`fetch_beneficial_ownership`) is done and verified above but
-      has no route. Add an issuer-centric `GET /v1/companies/{symbol}/beneficial-ownership`,
-      cache-aside like the others, carrying the coverage-floor note (structured-XML only,
-      ~mid-2025 floor) so a pre-transition company reads as "outside coverage window," not
-      "nobody filed." (Issuer-centric *aggregation* across 13F is separate — that's M2.5.)
+- [x] **Expose 13D/G beneficial ownership via an endpoint** — closes the last ownership
+      *serving* gap in M2. `GET /v1/companies/{symbol}/beneficial-ownership?limit=` (`api/routes.py`)
+      wraps rows in `{cik, caveats, beneficial_ownership}` -- `caveats` always present, carrying
+      the structured-XML/~mid-2025 coverage-floor note so a pre-transition company reads as
+      "outside coverage window," not "nobody filed" (same convention as the 13F caveats).
+      Cache-aside at **filing granularity**, mirroring `insider_repository.py` exactly (a 13D/G
+      filing is immutable once accepted -- an amendment gets its own accession, never rewrites a
+      prior one): new `BeneficialOwnershipRepository` / `SQLiteBeneficialOwnershipRepository`
+      (`storage/beneficial_ownership_repository.py`), fed by a new
+      `fetch_beneficial_ownership_with_filings` (`sec/institutional.py`, split out of
+      `fetch_beneficial_ownership` the same way `fetch_insider_transactions_with_filings` was
+      split out earlier) and a new `BeneficialOwnershipFilingMeta` (`normalize/schema.py`). A
+      cache hit requires `cached_filing_count(cik) >= limit`, same as insider trades. Verified
+      end-to-end against the real running API with real Apple data (2026-07-06): cold
+      `limit=5` returned 3 real structured Schedule 13G/13G-A rows (Vanguard) in ~1.2s (only 3
+      modern filings exist for AAPL within the fetch window, so `cached_filing_count` stayed
+      below 5); a subsequent `limit=2` request correctly hit the cache (3 cached >= 2) in
+      ~0.02s; the repeated `limit=5` request correctly missed again (3 cached < 5), re-fetching
+      live rather than silently returning a stale, incomplete answer. (Issuer-centric
+      *aggregation* across 13F is separate — that's M2.5.)
 - [ ] *(Known limitation, optional)* `InsiderTransaction` can't distinguish two field-for-field
       identical real rows within one filing; filing-granularity dedup sidesteps it for caching,
       but the model can't represent them distinctly. Only worth a schema change if the collision
       proves material in practice.
 
-**M2 status: effectively complete.** All ingestion, parsing, caching, both joint-filer fixes,
-and the manager-centric endpoints are done. Open: the 13D/G serving endpoint above (small) and
-the optional schema note. The issuer-centric aggregation endpoints are M2.5, below.
+**M2 status: complete.** All ingestion, parsing, caching, both joint-filer fixes, the
+manager-centric endpoints, and the 13D/G serving endpoint are done. Only the optional
+(not-yet-material) `InsiderTransaction` schema note above remains open. The issuer-centric
+aggregation endpoints are M2.5, below.
 
 ## Milestone 2.5 — institutional aggregation (cross-manager)
 

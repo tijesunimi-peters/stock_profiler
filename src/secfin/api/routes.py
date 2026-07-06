@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import (
+    BeneficialOwnership,
     CusipResolutionStats,
     FiscalPeriod,
     HoldingsSnapshot,
@@ -28,8 +29,9 @@ from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts
 from secfin.sec.insider import fetch_insider_transactions_with_filings
-from secfin.sec.institutional import fetch_13f_snapshot
+from secfin.sec.institutional import fetch_13f_snapshot, fetch_beneficial_ownership_with_filings
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
@@ -58,6 +60,17 @@ _ISSUER_CENTRIC_CAVEATS = _13F_CAVEATS + [
     "this quarter hasn't been ingested yet for any manager holding this issuer.",
 ]
 
+# Beneficial ownership (13D/13G) coverage floor -- see docs/DATA_MODEL.md's "Coverage
+# boundaries" section. Only modern structured-XML filings are parsed (sec/institutional.py);
+# an empty result for a company whose 5%+ history predates the ~mid-2025 XML transition
+# means "outside our coverage window", not "no one crossed 5%".
+_BENEFICIAL_OWNERSHIP_CAVEATS = [
+    "Only structured-XML Schedule 13D/13G filings are parsed (from ~mid-2025 onward) -- "
+    "legacy HTML/text filings are excluded by design, not scraped.",
+    "An empty result does not confirm no 5%+ beneficial owner exists -- it may mean this "
+    "issuer's relevant filings predate the structured-XML transition.",
+]
+
 
 def get_repo(request: Request) -> RawFactRepository:
     return request.app.state.repo
@@ -73,6 +86,10 @@ def get_cusip_resolver(request: Request) -> CusipResolver:
 
 def get_insider_repo(request: Request) -> InsiderTransactionRepository:
     return request.app.state.insider_repo
+
+
+def get_beneficial_ownership_repo(request: Request) -> BeneficialOwnershipRepository:
+    return request.app.state.beneficial_ownership_repo
 
 
 def get_holdings_repo(request: Request) -> HoldingsSnapshotRepository:
@@ -120,6 +137,20 @@ async def _insider_transactions_for_cik(
     if filings:
         repo.upsert_insider_transactions(cik, filings, transactions)
     return transactions
+
+
+async def _beneficial_ownership_for_cik(
+    repo: BeneficialOwnershipRepository, client: SECClient, cik: int, limit: int
+) -> list[BeneficialOwnership]:
+    """Cache-aside read, bounded by FILINGS cached rather than rows -- same shape as
+    `_insider_transactions_for_cik` (see storage/beneficial_ownership_repository.py).
+    """
+    if repo.cached_filing_count(cik) >= limit:
+        return repo.get_beneficial_ownership(cik, limit)
+    filings, owners = await fetch_beneficial_ownership_with_filings(client, cik, limit=limit)
+    if filings:
+        repo.upsert_beneficial_ownership(cik, filings, owners)
+    return owners
 
 
 async def _manager_snapshot(
@@ -202,6 +233,46 @@ async def get_insider_trades(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         return await _insider_transactions_for_cik(insider_repo, client, cik, limit)
+
+
+@router.get("/companies/{symbol}/beneficial-ownership")
+async def get_beneficial_ownership(
+    symbol: str,
+    limit: int = Query(
+        50,
+        ge=1,
+        le=200,
+        description="Max number of Schedule 13D/13G filings to fetch, newest first",
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    beneficial_ownership_repo: BeneficialOwnershipRepository = Depends(
+        get_beneficial_ownership_repo
+    ),
+) -> dict:
+    """Beneficial-ownership positions (Schedule 13D/13G, 5%+ crossings) for a company,
+    most recent filings first.
+
+    Only modern structured-XML filings are parsed (from ~mid-2025 onward) -- legacy
+    HTML/text filings are excluded, not scraped (CLAUDE.md rules out HTML parsing). A
+    company whose 5%+ history predates the transition comes back with an empty
+    `beneficial_ownership` list, not an error -- `caveats` is always present so that
+    reads as "outside coverage window", not "nobody crossed 5%". See
+    `docs/DATA_MODEL.md`'s "Coverage boundaries" section.
+
+    Cache-aside via `_beneficial_ownership_for_cik`, same filing-granularity shape as
+    `/insider-trades`: a request is served from SQLite only if at least `limit` filings
+    are already cached for this issuer, otherwise it re-fetches from SEC and populates
+    the cache. `limit` bounds the number of *filings*, not rows -- a jointly-filed
+    Schedule 13D can produce several rows from one filing.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        owners = await _beneficial_ownership_for_cik(beneficial_ownership_repo, client, cik, limit)
+    return {
+        "cik": cik,
+        "caveats": _BENEFICIAL_OWNERSHIP_CAVEATS,
+        "beneficial_ownership": owners,
+    }
 
 
 # --- Institutional ownership (13F, 13D/G) ------------------------------------------

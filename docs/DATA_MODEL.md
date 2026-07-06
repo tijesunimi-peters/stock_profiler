@@ -470,9 +470,16 @@ free-text comments/items are all present in the raw XML but not carried onto
 `BeneficialOwnership` — that model already answers "who crossed 5%, how much, when."
 See `tests/fixtures/institutional/README.md` for the fixtures this was verified against.
 
-No API endpoint yet — `fetch_beneficial_ownership` is a standalone building block for
-now, same position `sec/institutional.py`'s 13F functions and `normalize/cusip.py` were
-in before their endpoints were wired up.
+**API:** `GET /v1/companies/{symbol}/beneficial-ownership?limit=` (`api/routes.py`) wires
+`fetch_beneficial_ownership_with_filings` through, returning
+`{cik, caveats, beneficial_ownership}` — `caveats` always carries the structured-XML/
+~mid-2025 coverage-floor note above, so an empty list reads as "outside our coverage
+window," not "nobody filed." Cache-aside at **filing granularity** (a 13D/G filing is
+immutable once accepted — an amendment gets its own accession, never rewriting a prior
+one), the same shape as `insider_repository.py`: `BeneficialOwnershipRepository` /
+`SQLiteBeneficialOwnershipRepository` (`storage/beneficial_ownership_repository.py`)
+track `cached_filing_count(issuer_cik)`, and `limit` bounds *filings* fetched, not rows
+— a jointly-filed 13D can still produce several rows from one cached filing.
 
 ### Limitations to surface (never hide these)
 
