@@ -325,9 +325,33 @@ a time.
 - [x] Statements cache-warming — `ingest/backfill.py` (bulk `companyfacts.zip`) + daily
       `ingest/incremental.py` seed and refresh the `RawFact`/statements cache, respecting SEC
       limits.
-- [ ] **Ownership cache-warming** (the remaining half of "warm the cache"). Unlike statements,
-      the insider and 13F caches only grow via live requests — no batch job seeds them. Add
-      seed jobs (the 13F one overlaps the M2.5 bulk 13F ingest; build once, use for both).
+- [x] **Ownership cache-warming** (the remaining half of "warm the cache"). Unlike statements,
+      the insider and 13F caches only grew via live requests — no batch job seeded them. The
+      13F half reuses the M2.5 bulk 13F ingest (`ingest/institutional_backfill.py`) as-is. The
+      insider half is new: `ingest/insider_backfill.py`
+      (`python -m secfin.ingest.insider_backfill [--limit 10]`), seeding
+      `storage/insider_repository.py`'s cache for every company already ingested for
+      financials. **Real gap discovered along the way:** a naive "walk the SEC daily index (or
+      any filer's own `submissions.json`) for Forms 3/4/5 and fetch every CIK it mentions"
+      approach is unsafe — verified against real EDGAR data (2026-07-06) that a Form 4's CIK
+      can belong to a REPORTING OWNER (e.g. CIK 1972758, "325 Capital GP, LLC", a fund GP
+      entity), not the issuer being reported on; that CIK's own `submissions.json` lists Form
+      4s filed *about* some other company entirely. `sec/insider.py`'s
+      `fetch_insider_transactions_with_filings` trusts its `cik` argument as the issuer
+      identity, so blindly fetching a reporting-owner CIK this way would cache real rows under
+      the WRONG `issuer_cik`. Candidates are therefore restricted to the union of
+      `RawFactRepository.get_ingested_ciks` across both financials sources (`bulk_companyfacts`,
+      `daily_incremental`) — CIKs already known to be real operating companies, which also
+      naturally scopes the job to companies this API actually serves. Skip-or-refresh via
+      `cached_filing_count(cik) >= limit` (same check the live route uses) makes reruns cheap.
+      **Known, deliberate limitation:** once a company reaches `limit` cached filings, a rerun
+      always skips it, so this closes the "cache starts empty" gap but doesn't keep an
+      already-warmed company fresh as new Forms 3/4/5 are filed afterward — a daily-index-driven
+      incremental job (the `ingest/incremental.py` pattern, generalized to insider forms) is
+      left as later work. Verified end-to-end against real AAPL data (2026-07-06): seeding one
+      checkpoint (CIK 320193) and running `--limit 3` fetched 3 real Form 4 filings (10 rows,
+      Jennifer Newstead transactions) via live SEC calls; an immediate rerun at the same limit
+      skipped with zero HTTP requests.
 - [x] Deployment via Docker — `Dockerfile` + `docker-compose.yml` (single `api` service; ingest
       jobs as `docker compose run` overrides), documented in `docs/DEVELOPMENT.md`.
 - [x] Backup / restore tooling — `storage/backup.py` (sqlite3 online-backup API, safe on a live
