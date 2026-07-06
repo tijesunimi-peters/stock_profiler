@@ -126,7 +126,25 @@ class InstitutionalHolding(BaseModel):
     shares_or_principal: Literal["SH", "PRN"] | None = None
     put_call: Literal["Put", "Call"] | None = None  # set for option positions
     investment_discretion: str | None = None  # SOLE / DFND / OTR
+    # Sequence numbers into this holding's HoldingsSnapshot.other_managers -- the
+    # co-filing manager(s) exercising discretion for THIS specific position (from the
+    # infoTable row's own <otherManager> tag). Empty when only the filing manager itself
+    # has discretion. See sec/institutional.py.
+    other_managers: list[int] = Field(default_factory=list)
     cik: int | None = None  # issuer CIK, if resolved from CUSIP
+
+
+class OtherManager13F(BaseModel):
+    """One co-filing manager on a 13F cover page's `otherManagers2Info` roster.
+
+    `sequence_number` is how individual InstitutionalHolding rows attribute discretion
+    for a specific position to one of these managers via their own `other_managers`
+    field, instead of (or alongside) the filing manager itself.
+    """
+
+    sequence_number: int
+    name: str | None = None
+    file_number: str | None = None  # the co-manager's own 13F file number, e.g. "28-554"
 
 
 class HoldingsSnapshot(BaseModel):
@@ -140,6 +158,9 @@ class HoldingsSnapshot(BaseModel):
     accession: str | None = None
     is_amendment: bool = False
     holdings: list[InstitutionalHolding] = Field(default_factory=list)
+    # Roster of co-filing managers from the cover page (empty if this manager filed
+    # alone). See InstitutionalHolding.other_managers for per-holding attribution.
+    other_managers: list[OtherManager13F] = Field(default_factory=list)
 
 
 class HoldingDelta(BaseModel):

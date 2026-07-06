@@ -287,10 +287,29 @@ unresolved one for data served as fact. See `tests/test_cusip.py`.
 (issuer name as last reported, attempt count, first/last seen) for review or a future,
 more capable resolver — not silently dropped.
 
-**Known limitation:** a filing can have more than one `<reportingOwner>`-equivalent
-concept on the 13F side too (multiple managers filing jointly, listed in the cover page's
-`otherManagers2Info`) — not resolved or attributed here; the snapshot is keyed on the
-filing manager only.
+**Joint filers ARE attributed** (this used to be a known limitation — resolved). A 13F
+cover page's `otherManagers2Info` numbers each co-filing manager (`sequenceNumber`), and
+each infoTable row carries its own `<otherManager>` tag listing which of those numbers
+exercised discretion for THAT specific position — confirmed against a real Berkshire
+Hathaway 13F-HR (accession `0001193125-26-226661`, 2026-03-31) with **14 co-filing
+insurance-subsidiary managers** (GEICO Corp, National Indemnity Co, Buffett Warren E,
+...), where individual holdings are attributed to 1-3 of them (e.g. Ally Financial's two
+info-table rows are `[4]` and `[2, 4, 11]`). `sec/institutional.py`'s
+`parse_cover_page_xml` returns the numbered roster as `HoldingsSnapshot.other_managers`
+(`OtherManager13F`: `sequence_number`, `name`, `file_number`);
+`InstitutionalHolding.other_managers` carries each row's reference list — empty means
+the filing manager alone had discretion. `fetch_13f_snapshot` now fetches **both**
+top-level XML documents per snapshot (info table + cover page), not just one. Both
+fields are cached as-reported (unlike CUSIP→CIK, there's no resolution step to re-run on
+a hit) — see `storage/holdings_repository.py`. Verified end-to-end against the real
+running API (2026-07-06): a cold fetch for Berkshire's 2026 Q1 13F returned the 14-entry
+roster and correct per-holding attribution alongside the 90 holdings; a repeat request
+hit the cache with identical roster and attribution.
+
+**Deliberately not modeled:** some older filings (confirmed 2016 Berkshire) also carry a
+separate, unnumbered `<otherManagersInfo>` block — a flat list with no `sequenceNumber`,
+so nothing in the info table can reference it positionally. Only the numbered
+`otherManagers2Info` roster supports attribution, so only it is parsed.
 
 ### API: per-manager endpoints
 

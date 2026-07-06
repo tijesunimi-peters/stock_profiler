@@ -18,10 +18,12 @@ from secfin.sec.institutional import (
     FORM_13DG,
     FORM_13F,
     _find_info_table_document,
+    _parse_other_manager_refs,
     _recent_13dg_filings,
     _recent_13f_filings,
     fetch_13f_snapshot,
     fetch_beneficial_ownership,
+    parse_cover_page_xml,
     parse_info_table_xml,
     parse_schedule_13dg_xml,
 )
@@ -102,6 +104,41 @@ def test_parse_info_table_xml_2026_reports_whole_dollars():
     assert ally_rows[0].shares_or_principal == "SH"
     assert ally_rows[0].investment_discretion == "DFND"
     assert ally_rows[0].put_call is None  # no option positions in this real sample
+    # Real joint-filer attribution: each row's <otherManager> lists sequenceNumbers
+    # into the cover page's otherManagers2Info roster (see test_parse_cover_page_xml).
+    assert ally_rows[0].other_managers == [4]
+    assert ally_rows[1].other_managers == [2, 4, 11]
+
+
+def test_parse_other_manager_refs():
+    assert _parse_other_manager_refs(None) == []
+    assert _parse_other_manager_refs("") == []
+    assert _parse_other_manager_refs("   ") == []
+    assert _parse_other_manager_refs("4") == [4]
+    assert _parse_other_manager_refs("2,4,11") == [2, 4, 11]
+
+
+def test_parse_cover_page_xml_real_berkshire_2026_roster():
+    roster = parse_cover_page_xml(_read_bytes("brk13f_2026q1_coverpage.xml"))
+    # Real cover page: 14 co-filing Berkshire subsidiaries/insurers (otherManagers2Info).
+    assert len(roster) == 14
+    assert roster[0].sequence_number == 1
+    assert roster[0].name == "Berkshire Hathaway Homestate Insurance Co."
+    assert roster[0].file_number == "28-2226"
+    # sequenceNumber 4, referenced by the info table's ALLY FINL / ALPHABET rows above.
+    buffett = next(m for m in roster if m.sequence_number == 4)
+    assert buffett.name == "Buffett Warren E"
+
+
+def test_parse_cover_page_xml_ignores_legacy_unnumbered_other_managers_info():
+    # Real 2016 Berkshire cover page carries BOTH a legacy, unnumbered
+    # <otherManagersInfo> block (one entry: New England Asset Management Inc, no
+    # sequenceNumber) AND the numbered otherManagers2Info roster. Only the latter
+    # supports per-holding attribution, so only it is parsed -- "New England Asset
+    # Management" must not appear.
+    roster = parse_cover_page_xml(_read_bytes("brk13f_2016q3_coverpage.xml"))
+    assert len(roster) == 14
+    assert all(m.name != "New England Asset Management Inc" for m in roster)
 
 
 def test_parse_info_table_xml_2016_reports_thousands():
@@ -154,13 +191,17 @@ async def test_fetch_13f_snapshot_assembles_holdings_snapshot():
     submissions_url = _submissions_url(BERKSHIRE_CIK)
     index_url = SECClient.filing_index_json_url(BERKSHIRE_CIK, ACCESSION)
     doc_url = SECClient.filing_document_url(BERKSHIRE_CIK, ACCESSION, "53405.xml")
+    cover_url = SECClient.filing_document_url(BERKSHIRE_CIK, ACCESSION, "primary_doc.xml")
 
     client = _FakeSECClient(
         json_by_url={
             submissions_url: _read_json("brk_submissions_trimmed.json"),
             index_url: _read_json("brk13f_2026q1_index.json"),
         },
-        bytes_by_url={doc_url: _read_bytes("brk13f_2026q1_infotable_trimmed.xml")},
+        bytes_by_url={
+            doc_url: _read_bytes("brk13f_2026q1_infotable_trimmed.xml"),
+            cover_url: _read_bytes("brk13f_2026q1_coverpage.xml"),
+        },
     )
 
     snapshot = await fetch_13f_snapshot(client, BERKSHIRE_CIK, "2026-03-31")
@@ -171,6 +212,9 @@ async def test_fetch_13f_snapshot_assembles_holdings_snapshot():
     assert snapshot.accession == ACCESSION
     assert snapshot.is_amendment is False
     assert len(snapshot.holdings) == 5
+    # Joint-filer roster now fetched + attached alongside the holdings.
+    assert len(snapshot.other_managers) == 14
+    assert snapshot.holdings[0].other_managers == [4]
 
 
 async def test_fetch_13f_snapshot_raises_when_quarter_not_found():

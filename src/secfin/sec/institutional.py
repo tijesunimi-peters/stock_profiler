@@ -20,10 +20,24 @@ Form 13F  (institutional managers, quarterly holdings) -- implemented
 3. `parse_info_table_xml` (pure, network-free -- same design as
    `companyfacts.flatten_company_facts` / `insider.parse_ownership_xml`) turns the
    info table into `InstitutionalHolding` rows.
-4. `fetch_13f_snapshot` assembles those into a `HoldingsSnapshot`.
+4. `fetch_13f_snapshot` fetches BOTH top-level XML documents -- the info table (via
+   `parse_info_table_xml`) and the cover page (via `parse_cover_page_xml`, for the
+   `otherManagers2Info` co-filer roster, see point 6) -- and assembles them into one
+   `HoldingsSnapshot`.
 5. CUSIP -> issuer CIK resolution is NOT done here (`InstitutionalHolding.cik` is always
    None) -- that's its own roadmap item (a maintained mapping table + backfill), tracked
    separately rather than half-implemented inline.
+6. **Joint filers ARE attributed** (confirmed against a real Berkshire Hathaway 13F-HR
+   with 14 co-filing insurance-subsidiary managers, accession `0001193125-26-226661`):
+   the cover page's `otherManagers2Info` numbers each co-filer (`sequenceNumber`), and
+   each infoTable row's `<otherManager>` tag lists which of those numbers exercised
+   discretion for THAT specific position (e.g. `"2,4,11"`). `parse_cover_page_xml`
+   returns the numbered roster as `HoldingsSnapshot.other_managers`;
+   `InstitutionalHolding.other_managers` carries the per-row reference list -- empty
+   means the filing manager alone had discretion. Some older filings (confirmed 2016)
+   also carry a separate, unnumbered `<otherManagersInfo>` block that nothing can
+   reference positionally -- deliberately not modeled, see `parse_cover_page_xml`'s
+   docstring.
 
 Honest limitations to surface in the API (do NOT hide these):
   * long positions in 13(f) securities only -- no shorts, no cash, no non-US.
@@ -83,7 +97,12 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 
-from secfin.normalize.schema import BeneficialOwnership, HoldingsSnapshot, InstitutionalHolding
+from secfin.normalize.schema import (
+    BeneficialOwnership,
+    HoldingsSnapshot,
+    InstitutionalHolding,
+    OtherManager13F,
+)
 from secfin.sec.client import SECClient
 
 FORM_13F = {"13F-HR", "13F-HR/A"}
@@ -181,6 +200,27 @@ def _to_float(s: str | None) -> float | None:
         return None
 
 
+def _to_int(s: str | None) -> int | None:
+    if s is None:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
+def _parse_other_manager_refs(s: str | None) -> list[int]:
+    """Parse an infoTable row's `<otherManager>` tag, e.g. "2,4,11" -> [2, 4, 11].
+
+    These are sequenceNumber references into the cover page's `otherManagers2Info`
+    roster (see `parse_cover_page_xml`) -- empty when the tag is absent or blank, i.e.
+    only the filing manager itself exercises discretion for that row.
+    """
+    if not s or not s.strip():
+        return []
+    return [int(part) for part in s.split(",") if part.strip().isdigit()]
+
+
 def parse_info_table_xml(xml_bytes: bytes) -> list[InstitutionalHolding]:
     """Parse a 13F information-table XML document into InstitutionalHolding rows.
 
@@ -207,18 +247,42 @@ def parse_info_table_xml(xml_bytes: bytes) -> list[InstitutionalHolding]:
                 shares_or_principal=shares_type,  # type: ignore[arg-type]
                 put_call=put_call if put_call in ("Put", "Call") else None,
                 investment_discretion=_clean(row.findtext("investmentDiscretion")),
+                other_managers=_parse_other_manager_refs(row.findtext("otherManager")),
             )
         )
     return holdings
 
 
-def _to_int(s: str | None) -> int | None:
-    if s is None:
-        return None
-    try:
-        return int(s)
-    except ValueError:
-        return None
+def parse_cover_page_xml(xml_bytes: bytes) -> list[OtherManager13F]:
+    """Parse a 13F cover page's `otherManagers2Info` roster of co-filing managers.
+
+    Pure and network-free. Each entry's `sequenceNumber` is what individual infoTable
+    rows reference via their own `<otherManager>` tag (see `parse_info_table_xml` /
+    `_parse_other_manager_refs`) to attribute a specific holding to one or more of
+    these managers. Returns `[]` for a filing with no co-filers (the common case).
+
+    NOTE: some older filings (confirmed against a real 2016 Berkshire Hathaway 13F-HR)
+    also carry a separate, unnumbered `<otherManagersInfo>` block -- a flat list with no
+    `sequenceNumber`, so nothing in the info table can reference it positionally.
+    Deliberately not modeled here: only the numbered `otherManagers2Info` roster
+    supports per-holding attribution, which is the gap this function closes.
+    """
+    root = ET.fromstring(xml_bytes)
+    _strip_namespaces(root)
+
+    roster: list[OtherManager13F] = []
+    for entry in root.findall("formData/summaryPage/otherManagers2Info/otherManager2"):
+        manager = entry.find("otherManager")
+        roster.append(
+            OtherManager13F(
+                sequence_number=_to_int(entry.findtext("sequenceNumber")) or 0,
+                name=_clean(manager.findtext("name")) if manager is not None else None,
+                file_number=(
+                    _clean(manager.findtext("form13FFileNumber")) if manager is not None else None
+                ),
+            )
+        )
+    return roster
 
 
 def _mmddyyyy_to_iso(s: str | None) -> str | None:
@@ -339,8 +403,15 @@ async def fetch_13f_snapshot(
     info_doc = await _find_info_table_document(
         client, manager_cik, filing["accessionNumber"], filing["primaryDocument"]
     )
-    url = client.filing_document_url(manager_cik, filing["accessionNumber"], info_doc)
-    xml_bytes = await client.get_bytes(url)
+    info_url = client.filing_document_url(manager_cik, filing["accessionNumber"], info_doc)
+    info_bytes = await client.get_bytes(info_url)
+
+    # The cover page (submissions.json's primaryDocument) is also where the
+    # otherManagers2Info roster lives -- a second document fetch per snapshot, but the
+    # only place co-filing managers are named (see parse_cover_page_xml).
+    cover_doc = client.strip_viewer_subdir(filing["primaryDocument"])
+    cover_url = client.filing_document_url(manager_cik, filing["accessionNumber"], cover_doc)
+    cover_bytes = await client.get_bytes(cover_url)
 
     return HoldingsSnapshot(
         manager_cik=manager_cik,
@@ -349,7 +420,8 @@ async def fetch_13f_snapshot(
         filed=filing["filingDate"],
         accession=filing["accessionNumber"],
         is_amendment=filing["form"].endswith("/A"),
-        holdings=parse_info_table_xml(xml_bytes),
+        holdings=parse_info_table_xml(info_bytes),
+        other_managers=parse_cover_page_xml(cover_bytes),
     )
 
 

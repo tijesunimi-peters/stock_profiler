@@ -8,7 +8,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
+from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding, OtherManager13F
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 
 _SCHEMA = """
@@ -33,11 +33,23 @@ CREATE TABLE IF NOT EXISTS holdings (
     shares REAL,
     shares_or_principal TEXT,
     put_call TEXT,
-    investment_discretion TEXT
+    investment_discretion TEXT,
+    other_managers TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_holdings_manager_period
     ON holdings (manager_cik, report_period);
+
+-- The cover page's otherManagers2Info roster: co-filing managers, numbered by
+-- sequenceNumber. `holdings.other_managers` references these numbers per-position.
+CREATE TABLE IF NOT EXISTS holdings_other_managers (
+    manager_cik INTEGER NOT NULL,
+    report_period TEXT NOT NULL,
+    sequence_number INTEGER NOT NULL,
+    name TEXT,
+    file_number TEXT,
+    PRIMARY KEY (manager_cik, report_period, sequence_number)
+);
 """
 
 _UPSERT_SNAPSHOT_SQL = """
@@ -54,9 +66,25 @@ ON CONFLICT (manager_cik, report_period) DO UPDATE SET
 _INSERT_HOLDING_SQL = """
 INSERT INTO holdings (
     manager_cik, report_period, cusip, issuer_name, title_of_class, value, shares,
-    shares_or_principal, put_call, investment_discretion
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    shares_or_principal, put_call, investment_discretion, other_managers
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+_INSERT_OTHER_MANAGER_SQL = """
+INSERT INTO holdings_other_managers (
+    manager_cik, report_period, sequence_number, name, file_number
+) VALUES (?, ?, ?, ?, ?)
+"""
+
+
+def _join_refs(refs: list[int]) -> str:
+    return ",".join(str(n) for n in refs)
+
+
+def _split_refs(s: str | None) -> list[int]:
+    if not s:
+        return []
+    return [int(part) for part in s.split(",") if part]
 
 
 class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
@@ -90,6 +118,10 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
                 "DELETE FROM holdings WHERE manager_cik = ? AND report_period = ?",
                 (snapshot.manager_cik, snapshot.report_period),
             )
+            self._conn.execute(
+                "DELETE FROM holdings_other_managers WHERE manager_cik = ? AND report_period = ?",
+                (snapshot.manager_cik, snapshot.report_period),
+            )
             if snapshot.holdings:
                 self._conn.executemany(
                     _INSERT_HOLDING_SQL,
@@ -105,8 +137,23 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
                             h.shares_or_principal,
                             h.put_call,
                             h.investment_discretion,
+                            _join_refs(h.other_managers),
                         )
                         for h in snapshot.holdings
+                    ],
+                )
+            if snapshot.other_managers:
+                self._conn.executemany(
+                    _INSERT_OTHER_MANAGER_SQL,
+                    [
+                        (
+                            snapshot.manager_cik,
+                            snapshot.report_period,
+                            m.sequence_number,
+                            m.name,
+                            m.file_number,
+                        )
+                        for m in snapshot.other_managers
                     ],
                 )
             self._conn.execute("COMMIT")
@@ -127,13 +174,25 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
 
         cur = self._conn.execute(
             "SELECT cusip, issuer_name, title_of_class, value, shares, shares_or_principal, "
-            "put_call, investment_discretion FROM holdings "
+            "put_call, investment_discretion, other_managers FROM holdings "
             "WHERE manager_cik = ? AND report_period = ? ORDER BY id ASC",
             (manager_cik, report_period),
         )
         cols = [d[0] for d in cur.description]
-        holdings = [
-            InstitutionalHolding(**dict(zip(cols, row, strict=True))) for row in cur.fetchall()
+        holdings = []
+        for row in cur.fetchall():
+            fields = dict(zip(cols, row, strict=True))
+            fields["other_managers"] = _split_refs(fields.pop("other_managers"))
+            holdings.append(InstitutionalHolding(**fields))
+
+        cur = self._conn.execute(
+            "SELECT sequence_number, name, file_number FROM holdings_other_managers "
+            "WHERE manager_cik = ? AND report_period = ? ORDER BY sequence_number ASC",
+            (manager_cik, report_period),
+        )
+        other_managers = [
+            OtherManager13F(sequence_number=seq, name=name, file_number=file_number)
+            for seq, name, file_number in cur.fetchall()
         ]
 
         return HoldingsSnapshot(
@@ -144,6 +203,7 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             accession=accession or None,
             is_amendment=bool(is_amendment),
             holdings=holdings,
+            other_managers=other_managers,
         )
 
     def close(self) -> None:

@@ -6,7 +6,7 @@ report_period) rather than per accession, and why resolved CUSIP->CIK is never p
 
 from __future__ import annotations
 
-from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
+from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding, OtherManager13F
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 
 MANAGER_CIK = 1067983  # Berkshire Hathaway
@@ -121,4 +121,59 @@ def test_empty_holdings_list_round_trips():
     fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
     assert fetched is not None
     assert fetched.holdings == []
+    repo.close()
+
+
+def test_joint_filer_roster_and_per_holding_attribution_round_trip():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    snapshot = _snapshot(
+        "2026-03-31",
+        holdings=[
+            InstitutionalHolding(
+                cusip="02005N100", issuer_name="ALLY FINL INC", shares=12_719_675,
+                other_managers=[4],
+            ),
+            InstitutionalHolding(
+                cusip="02079K107", issuer_name="ALPHABET INC", shares=3_585_215,
+                other_managers=[2, 4, 11],
+            ),
+            InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC", shares=692_000),
+        ],
+        other_managers=[
+            OtherManager13F(sequence_number=2, name="Columbia Insurance Co", file_number="28-1517"),
+            OtherManager13F(sequence_number=4, name="Buffett Warren E", file_number="28-554"),
+            OtherManager13F(sequence_number=11, name="National Indemnity Co", file_number="28-718"),
+        ],
+    )
+    repo.upsert_snapshot(snapshot)
+
+    fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
+
+    assert [m.sequence_number for m in fetched.other_managers] == [2, 4, 11]
+    assert fetched.other_managers[1].name == "Buffett Warren E"
+    by_cusip = {h.cusip: h.other_managers for h in fetched.holdings}
+    assert by_cusip["02005N100"] == [4]
+    assert by_cusip["02079K107"] == [2, 4, 11]
+    assert by_cusip["037833100"] == []  # filing manager alone had discretion
+    repo.close()
+
+
+def test_re_upserting_replaces_joint_filer_roster_wholesale():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            other_managers=[OtherManager13F(sequence_number=1, name="Old Co", file_number="1")],
+        )
+    )
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            accession="0002-1",
+            other_managers=[OtherManager13F(sequence_number=9, name="New Co", file_number="9")],
+        )
+    )
+
+    fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
+    assert [m.name for m in fetched.other_managers] == ["New Co"]
     repo.close()

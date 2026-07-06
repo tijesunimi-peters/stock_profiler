@@ -140,11 +140,24 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       records, not 1 -- plus a second real example (JPMorgan Chase & Co. / DNT Asset Trust)
       confirming the pattern isn't Berkshire-specific. See
       `tests/fixtures/insider/brka_form4_davita_joint.xml` and `DATA_MODEL.md` insider section.
-- [ ] **Separately: 13F joint filers are also unattributed** (distinct from the insider gap
-      above — don't let "fix joint filers" be mistaken for one fix). A 13F can list co-filing
-      managers via the cover page's `otherManagers2Info`; the snapshot is keyed on the filing
-      manager only, so jointly-managed positions aren't attributed to co-managers. Lower priority
-      than the insider fix, but track it. (`DATA_MODEL.md` 13F CUSIP section, "known limitation".)
+- [x] **13F joint filers are now attributed** (distinct from the insider fix above — was
+      tracked separately deliberately). `sec/institutional.py`'s `parse_cover_page_xml`
+      parses the cover page's numbered `otherManagers2Info` roster into
+      `HoldingsSnapshot.other_managers` (`OtherManager13F`); each infoTable row's own
+      `<otherManager>` tag (a comma-separated list of `sequenceNumber`s) becomes
+      `InstitutionalHolding.other_managers`, attributing that specific position to 1+
+      co-filing managers instead of just the filing manager. `fetch_13f_snapshot` now
+      fetches both top-level XML documents per snapshot (info table + cover page).
+      Persisted in the holdings cache (`storage/sqlite_holdings_repository.py`, two new
+      columns/tables) as-reported -- no resolution step needed, unlike CUSIP→CIK.
+      Discovered a related, deliberately-unmodeled quirk along the way: some older
+      filings (confirmed 2016 Berkshire) also carry a separate, unnumbered
+      `<otherManagersInfo>` block that nothing can reference positionally -- only the
+      numbered roster is parsed. Verified end-to-end against the real running API with
+      real Berkshire Hathaway data (2026-07-06): a cold fetch for the 2026 Q1 13F
+      returned the real 14-co-filer roster (GEICO Corp, National Indemnity Co, Buffett
+      Warren E, ...) with correct per-holding attribution across all 90 holdings; a
+      repeat request hit the cache with identical roster and attribution.
 - [x] **Surface both data-coverage floors in the "Limitations to surface" list** (docs). The
       13D/G structured-XML floor is already *described* in `DATA_MODEL.md` ("13D / 13G" section) —
       the real gap was that neither it nor the ~2009 XBRL financials floor appeared in a

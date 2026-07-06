@@ -11,6 +11,8 @@ synthetic, not hand-edited beyond trimming rows / array slicing.
 | `brk13f_2026q1_index.json` | Real directory listing (`index.json`) for accession `0001193125-26-226661` | Shows the real document set: `primary_doc.xml` (cover page) + `53405.xml` (info table, arbitrarily named) — what `_find_info_table_document` has to disambiguate. |
 | `brk13f_2026q1_infotable_trimmed.xml` | Info table for the same 2026 Q1 13F-HR, trimmed to 5 `<infoTable>` rows | Modern filing: confirms `value` is whole dollars (e.g. $498,992,850 for 12,719,675 ALLY FINL shares ≈ $39.23/share). Includes 2 rows sharing one CUSIP (different sub-manager slices of the same position) to exercise multi-row-per-security. |
 | `brk13f_2016q3_infotable_trimmed.xml` | Info table for a 2016 Q3 13F-HR (accession `0000950123-16-022377`), trimmed to 5 rows | Older filing: confirms `value` was reported in **thousands** of dollars back then (e.g. $488,930 thousand for 13,355,099 AAL shares ≈ $36.60/share) — the unit convention change documented in `sec/institutional.py`'s module docstring. |
+| `brk13f_2026q1_coverpage.xml` | Full cover page (`primary_doc.xml`) for the same 2026 Q1 13F-HR, not trimmed (151 lines) | The `otherManagers2Info` roster of **14 co-filing Berkshire subsidiaries/insurers** (GEICO Corp, National Indemnity Co, Buffett Warren E, ...) that the info table's `<otherManager>` tags reference by `sequenceNumber` — confirms per-holding joint-filer attribution end to end. |
+| `brk13f_2016q3_coverpage.xml` | Full cover page for the 2016 Q3 13F-HR, not trimmed (159 lines) | Same 14-manager `otherManagers2Info` roster as above, PLUS a separate, unnumbered `<otherManagersInfo>` block (one entry: "New England Asset Management Inc") — confirms that legacy block is real, distinct from the numbered one, and deliberately not parsed (nothing in the info table can reference it positionally). |
 
 ### Quirks these confirmed (see `sec/institutional.py` module docstring)
 
@@ -20,6 +22,10 @@ synthetic, not hand-edited beyond trimming rows / array slicing.
 - The `value` field's unit (thousands vs. whole dollars) changed across these two real
   filings without any in-document flag saying so — confirmed by cross-checking
   value/shares against real historical share prices, not assumed.
+- Joint filers are real and attributed at the individual-holding level, not just
+  disclosed at the filing level: both cover pages list the same 14-manager
+  `otherManagers2Info` roster, and every info-table row in both trimmed fixtures
+  carries an `<otherManager>` tag (e.g. `"2,4,11"`) pointing at 1-3 of those managers.
 
 ## Schedule 13D/13G (Apple Inc. + RYTHM, Inc. — fetched 2026-07-05)
 

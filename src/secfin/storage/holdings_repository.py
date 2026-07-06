@@ -22,6 +22,11 @@ CUSIP -> CIK resolution (`InstitutionalHolding.cik`) is deliberately NOT cached 
 `normalize/cusip.resolve_snapshot_cusips` always runs on the snapshot after it's
 returned, cached or not, so previously-unresolved CUSIPs get a chance to resolve as the
 CUSIP map improves over time rather than being frozen at first-cache time.
+
+Unlike CUSIP->CIK, the cover page's co-filing-manager roster (`HoldingsSnapshot
+.other_managers`) and each holding's attribution to it (`InstitutionalHolding
+.other_managers`) ARE cached as-reported -- they're part of the filing itself (not a
+resolution this app performs), so there's nothing to re-run on a cache hit.
 """
 
 from __future__ import annotations
