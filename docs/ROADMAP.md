@@ -167,52 +167,106 @@ Track 1 = structured numeric data. Everything below stays inside Track 1 unless 
       in 2009→~2012, capped at each company's first XBRL filing). *(Corrects an earlier version of
       this item that wrongly implied the 13D/G floor was undocumented and cited a 2009-floor doc
       precedent that didn't exist — it does now.)*
+- [ ] **Expose 13D/G beneficial ownership via an endpoint** — the one remaining ownership
+      *serving* gap in M2. Parsing (`fetch_beneficial_ownership`) is done and verified above but
+      has no route. Add an issuer-centric `GET /v1/companies/{symbol}/beneficial-ownership`,
+      cache-aside like the others, carrying the coverage-floor note (structured-XML only,
+      ~mid-2025 floor) so a pre-transition company reads as "outside coverage window," not
+      "nobody filed." (Issuer-centric *aggregation* across 13F is separate — that's M2.5.)
+- [ ] *(Known limitation, optional)* `InsiderTransaction` can't distinguish two field-for-field
+      identical real rows within one filing; filing-granularity dedup sidesteps it for caching,
+      but the model can't represent them distinctly. Only worth a schema change if the collision
+      proves material in practice.
+
+**M2 status: effectively complete.** All ingestion, parsing, caching, both joint-filer fixes,
+and the manager-centric endpoints are done. Open: the 13D/G serving endpoint above (small) and
+the optional schema note. The issuer-centric aggregation endpoints are M2.5, below.
 
 ## Milestone 2.5 — institutional aggregation (cross-manager)
 
 Answering "who holds / is accumulating this stock?" needs the whole-market view, so it's
-its own step rather than part of the per-manager work above. This is also where the
-**analytical layer** (DuckDB over Parquet; see `ARCHITECTURE.md` 3b and `DATA_MODEL.md`)
-enters — the operational store (SQLite/Postgres) is shaped for per-company reads, not
-whole-market inversion, so the cross-manager view runs as a separate batch query path
-rather than another API-serving query.
+its own step rather than part of the per-manager work above.
 
-- [ ] Bulk-ingest a quarter's 13F filings and invert the index by security (CUSIP/CIK)
+**Re-scoped against what's now shipped:** the per-manager 13F cache (`HoldingsSnapshotRepository`)
+and a working `CusipResolver` are real building blocks — but they are *manager-scoped and
+on-demand*. Inversion needs *every* manager's 13F for a quarter, which is a different ingestion
+pattern (a bulk 13F backfill) that does not exist yet and is the actual heart of 2.5.
+
+**The analytical mechanism is now an open decision, not a given.** So much structure now lives in
+SQLite (five repositories, WAL, online-backup) that DuckDB reading the SQLite file directly (the
+`ARCHITECTURE.md` 3b "coexist" path) may be sufficient for a single-quarter inversion. Treat the
+Parquet landing as *evaluate, likely defer to M4* (whole-market screening scale is what justifies
+it), rather than a prerequisite for 2.5.
+
+- [ ] **Bulk-ingest a quarter's 13F filings** (the missing heart of 2.5). A whole-market ingest
+      job — distinct from the manager-scoped cache-aside store already built, which only holds
+      managers fetched on demand. This job is also what would *seed* the manager caches (today
+      they only grow via live requests; see pre-launch cold-path note). Then invert the index by
+      security (CUSIP/CIK).
+- [ ] **Amendment freshness across the aggregate** (new correctness item). The holdings cache has
+      a deliberate staleness window — once a quarter is cached it never re-checks SEC for a later
+      `13F-HR/A`. Fine per-manager, but the cross-manager inversion aggregates many managers'
+      cached quarters, so an issuer-level answer could mix amended and pre-amendment snapshots
+      depending on caching order. The bulk-ingest job must re-pull / reconcile amendments rather
+      than trust cache-aside snapshots.
 - [ ] **Track CUSIP resolution rate as a first-class metric.** Exact-normalized-match-only
       resolution (correctly declining "BANK AMERICA CORP", "CAPITAL ONE FINL CORP", etc.) means
-      the cross-manager "who holds X" view has holes proportional to the unresolved-CUSIP rate.
-      Surface that rate (built on `unresolved_cusips()`) as a headline number — it directly
-      bounds how complete the institutional-holders answer can be, and it's the signal for when
-      fuzzy matching or a real CUSIP source becomes worth the effort.
-- [ ] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints
-- [ ] Surface the long-only / 45-day-lag caveats in every institutional response
-- [ ] Land cached `RawFact`/`HoldingsSnapshot` data as Parquet on disk (a serialization of
-      existing records — no new canonical model; see `DATA_MODEL.md`)
-- [ ] Pin a DuckDB version and confirm its multi-process read/write concurrency semantics
-      in that version's docs before building on it ("verify, don't assume")
-- [ ] Build the 13F cross-manager inversion as a DuckDB-over-Parquet batch query
+      the "who holds X" view has holes proportional to the unresolved-CUSIP rate. Surface that
+      rate (built on `unresolved_cusips()`). Note it *drifts*: resolved CUSIP→CIK is deliberately
+      not persisted (re-runs on read), so the rate improves over time as the mapping does — arguably
+      worth surfacing as "coverage improving," not a fixed number.
+- [ ] `institutional-holders` and `institutional-activity` (issuer-centric) endpoints — the
+      user-facing payoff, and correctly the *last* step (blocked on the inversion above).
+- [x] ~~Surface long-only / 45-day-lag caveats in every institutional response~~ — **already done
+      for the manager endpoints** (`/activity` returns an always-present `caveats` list). Remaining
+      2.5 work is only to carry that same `caveats` list into the two issuer-centric endpoints when
+      they land (reuse, not new work).
+- [ ] **Evaluate the analytical mechanism before building it:** benchmark DuckDB-over-SQLite (the
+      coexist path) for the single-quarter inversion first. Only land the Parquet serialization if
+      that proves insufficient — otherwise defer Parquet to M4. Pin a DuckDB version and confirm its
+      concurrency semantics either way ("verify, don't assume").
 - [ ] Stand up the analytical query path as infrastructure separate from the serving path —
-      DuckDB never sits behind a live API request; batch jobs write results the operational
-      store (or a cache) serves from
-- [ ] Note: DuckDB can read the SQLite file directly via its `sqlite` extension, so the two
-      stores coexist without requiring a sync pipeline
-- [ ] Milestone 4's cross-company screening (below) is the second consumer of this same
-      analytical layer — design the Parquet landing and query path to serve both
+      DuckDB never sits behind a live API request; batch jobs write results the operational store
+      (or a cache) serves from. (M4 cross-company screening is the second consumer — design the
+      query path to serve both.)
 
 ## Milestone 3 — productization
 
 - [ ] API keys + auth + per-key rate limiting / quotas
 - [ ] Usage metering (for billing) + subscription tiers
-- [ ] Bulk/batch ingestion job to warm the cache (respecting SEC limits)
-- [ ] OpenAPI polish, examples, and docs site
+- [x] Statements cache-warming — `ingest/backfill.py` (bulk `companyfacts.zip`) + daily
+      `ingest/incremental.py` seed and refresh the `RawFact`/statements cache, respecting SEC
+      limits.
+- [ ] **Ownership cache-warming** (the remaining half of "warm the cache"). Unlike statements,
+      the insider and 13F caches only grow via live requests — no batch job seeds them. Add
+      seed jobs (the 13F one overlaps the M2.5 bulk 13F ingest; build once, use for both).
+- [x] Deployment via Docker — `Dockerfile` + `docker-compose.yml` (single `api` service; ingest
+      jobs as `docker compose run` overrides), documented in `docs/DEVELOPMENT.md`.
+- [x] Backup / restore tooling — `storage/backup.py` (sqlite3 online-backup API, safe on a live
+      WAL DB) + `storage/restore.py`, with a separate host-mounted backups dir; documented in
+      `DEVELOPMENT.md` §7.
+- [ ] OpenAPI polish, examples, and a public **docs site** (distinct from `DEVELOPMENT.md`, which
+      is internal dev/ops docs). FastAPI `/docs` (Swagger) is auto-generated but is not a portal.
+
+### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches")
+
+- [ ] Decide the test-in-Docker story: the shipped image installs prod-only deps and omits
+      `tests/`, so `docker compose run api pytest` fails. Either document the bind-mount base-image
+      pattern as the intended path, or add a dev image — but stop leaving it ambiguous.
+- [ ] Add the backfill tuning vars to `.env.example` (`SECFIN_BULK_DATA_DIR`,
+      `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`, `SECFIN_BACKFILL_QUEUE_MAXSIZE`) —
+      they're read by `config.py` but undocumented and not surfaced in compose.
+- [ ] Document (or smooth) the `SEC_USER_AGENT`-required-for-every-`docker compose`-subcommand
+      gotcha — interpolation fails even `build`/`config`/`down` without it.
 
 ## Milestone 4 — queryability beyond single-company lookups
 
 - [ ] Filtered listing endpoints (by concept, period)
 - [ ] Cross-company screening — **built on the SEC `frames` API** (one concept across all
-      companies for one period) rather than home-grown indexing where possible. Second
-      consumer of the analytical layer stood up in Milestone 2.5 (DuckDB over Parquet) —
-      reuses that batch query path rather than a new one.
+      companies for one period) rather than home-grown indexing where possible. Second consumer of
+      the analytical layer. **This — whole-market scale — is where the Parquet landing most likely
+      earns its place** (2.5's single-quarter inversion may not need it; see 2.5's "evaluate"
+      item). Reuse the same batch query path; don't stand up a second one.
 
 ## Deferred (NOT Track 1 — decide later, deliberately)
 
@@ -233,4 +287,9 @@ rather than another API-serving query.
       ceiling, and what a mid-request SEC 403/throttle does to a response. Worth noting: the
       insider/13F caches only ever grow via live requests today (no bulk-ingest job seeds them
       the way `ingest/backfill.py` does for statements), so "mostly cold" traffic patterns are
-      more likely for those two than for `/statements` at launch.
+      more likely for those two than for `/statements` at launch. *(The fix is the M3 "ownership
+      cache-warming" / M2.5 bulk-13F-ingest item — if that lands pre-launch, cold-path exposure
+      drops for ownership too.)*
+- [ ] Verify the backup/restore round-trip (`storage/backup.py` → `storage/restore.py`) into a
+      fresh volume before launch — the tooling exists (`DEVELOPMENT.md` §7); confirm a restored
+      DB opens clean (stale `-wal`/`-shm` handling) and serves.
