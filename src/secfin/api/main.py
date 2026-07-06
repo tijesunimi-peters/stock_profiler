@@ -11,14 +11,18 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from secfin.api.routes import router
+from secfin.api.auth import limit_anonymous_traffic, require_api_key
+from secfin.api.auth_routes import signup_router
+from secfin.api.routes import public_router, router
+from secfin.auth.rate_limiter import TokenBucketLimiter
 from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
 from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
 )
@@ -60,6 +64,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.beneficial_ownership_repo = SQLiteBeneficialOwnershipRepository(
         settings.secfin_db_path
     )
+    # API key store (Milestone 3 auth) + the in-memory rate limiter shared by
+    # api/auth.py's per-key and per-IP checks -- see auth/rate_limiter.py for why this
+    # is in-process rather than SQLite-backed.
+    app.state.api_key_repo = SQLiteApiKeyRepository(settings.secfin_db_path)
+    app.state.rate_limiter = TokenBucketLimiter()
     try:
         yield
     finally:
@@ -68,6 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.insider_repo.close()
         app.state.holdings_repo.close()
         app.state.beneficial_ownership_repo.close()
+        app.state.api_key_repo.close()
 
 
 app = FastAPI(
@@ -77,7 +87,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(router, prefix="/v1")
+app.include_router(
+    public_router, prefix="/v1", dependencies=[Depends(limit_anonymous_traffic)]
+)
+app.include_router(signup_router, prefix="/v1")
+app.include_router(router, prefix="/v1", dependencies=[Depends(require_api_key)])
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

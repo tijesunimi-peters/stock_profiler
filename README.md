@@ -74,9 +74,28 @@ resumable), and how to inspect the DB safely while a job is running.
 ## Example
 
 ```bash
-# income statement for Apple (ticker resolves to CIK internally)
+# income statement for Apple (ticker resolves to CIK internally) -- no API key needed,
+# same endpoint the public Data Explorer (/explorer) calls
 curl "http://127.0.0.1:8000/v1/companies/AAPL/statements/income?period=FY&year=2024"
 ```
+
+## Authentication
+
+`GET .../statements/{statement}` and `GET .../periods` are the only endpoints servable
+without a key (they back the public `/explorer` demo). Every other `/v1` endpoint
+requires an `X-API-Key` header. Get one:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/v1/signup" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com"}'
+# -> {"api_key": "sfk_...", "tier": "free", "rate_limit_per_sec": 5, "daily_quota": 1000}
+
+curl "http://127.0.0.1:8000/v1/companies/AAPL/insider-trades" -H "X-API-Key: sfk_..."
+```
+
+The key is shown once, at signup — there's no recovery flow yet, only one key per
+email. See `src/secfin/auth/` and `src/secfin/api/auth.py`.
 
 ## Project docs
 

@@ -320,8 +320,36 @@ a time.
 
 ## Milestone 3 — productization
 
-- [ ] API keys + auth + per-key rate limiting / quotas
-- [ ] Usage metering (for billing) + subscription tiers
+- [x] **API keys + auth + per-key rate limiting / quotas** — self-serve `POST
+      /v1/signup` (`api/auth_routes.py`) issues a free-tier key (`auth/tiers.py`); every
+      `/v1` endpoint except the two the public Data Explorer calls
+      (`.../statements/{statement}`, `.../periods`, now split onto `api/routes.py`'s
+      `public_router`) requires it via an `X-API-Key` header, enforced by
+      `api/auth.py`'s `require_api_key` applied at `include_router` granularity in
+      `api/main.py` (not per-route, so a new endpoint defaults to gated). **Real
+      conflict discovered and resolved before writing code:** the already-shipped
+      Data Explorer (`8fc75fd`) calls `/v1` directly from browser JS with no key, by
+      design (its own handoff doc: "public, unauthenticated ... deliberately scoped to
+      not need any"). A blanket key requirement would have broken it -- confirmed the
+      fix with the user first: split the router so those two endpoints stay keyless,
+      but gained a per-IP burst limiter (`limit_anonymous_traffic`,
+      `SECFIN_ANON_RATE_LIMIT_PER_SEC`) instead of a per-key one, so the public demo
+      surface isn't wide open to scraping. Keys are stored hashed (SHA-256 -- high
+      -entropy random tokens don't need a slow hash; `auth/keys.py`) in a new
+      `ApiKeyRepository` / `SQLiteApiKeyRepository`
+      (`storage/api_key_repository.py`); rate limiting is an in-memory per-key token
+      bucket (`auth/rate_limiter.py`, resets on restart -- fine, matches the
+      single-process deployment CLAUDE.md describes) while the daily quota is a SQLite
+      counter (`api_key_usage` table) since it must survive a restart to mean anything.
+      Verified end-to-end against the real running API (Docker, 2026-07-06): signup
+      issued a real key; a duplicate signup 409'd; the key worked against a gated
+      endpoint (real AAPL insider-trade data); 6 rapid requests against the free
+      tier's 5 req/s limit correctly returned `200 200 200 200 200 429`; the public
+      `/periods` endpoint kept serving real data with no key at all. No admin CLI /
+      key revocation yet -- unbuilt, later work if needed.
+- [ ] Usage metering (for billing) + subscription tiers -- the `tier` column and
+      `auth/tiers.py`'s dict already exist for this; only one tier ("free") is defined
+      today.
 - [x] Statements cache-warming — `ingest/backfill.py` (bulk `companyfacts.zip`) + daily
       `ingest/incremental.py` seed and refresh the `RawFact`/statements cache, respecting SEC
       limits.

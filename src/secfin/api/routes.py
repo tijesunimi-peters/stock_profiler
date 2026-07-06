@@ -37,6 +37,13 @@ from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 
+# `public_router` holds the two read-only endpoints the public Data Explorer
+# (`/explorer`, static/explorer.js) calls directly from browser JS with no API key --
+# `GET .../statements/{statement}` and `GET .../periods` below. Everything else lives on
+# `router`, which api/main.py includes with `Depends(require_api_key)`. Keep this split
+# deliberate: a new endpoint defaults to gated (`router`) unless it's specifically meant
+# to be part of the public demo surface. See api/auth.py.
+public_router = APIRouter()
 router = APIRouter()
 
 # Surfaced on every institutional (13F-derived) response per CLAUDE.md: never present
@@ -171,7 +178,7 @@ async def _manager_snapshot(
     return snapshot
 
 
-@router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
+@public_router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
 async def get_statement(
     symbol: str,
     statement: StatementType,
@@ -196,7 +203,7 @@ async def get_statement(
     return result
 
 
-@router.get("/companies/{symbol}/periods")
+@public_router.get("/companies/{symbol}/periods")
 async def get_periods(
     symbol: str,
     repo: RawFactRepository = Depends(get_repo),

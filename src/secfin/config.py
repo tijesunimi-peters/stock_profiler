@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # SEC's published guideline is 10 req/s per IP; 8 keeps a safety margin under it).
     sec_max_rps: int = 8
 
+    # Per-IP burst limit (req/s) for the keyless public endpoints (statements, periods)
+    # that api/routes.py's `public_router` serves -- see api/auth.py's
+    # `limit_anonymous_traffic`. Stricter than the default "free" tier's per-key limit
+    # (auth/tiers.py) since this protects an unauthenticated, unmetered surface.
+    secfin_anon_rate_limit_per_sec: float = 2.0
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).
