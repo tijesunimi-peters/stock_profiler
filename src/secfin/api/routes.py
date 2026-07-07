@@ -15,7 +15,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
+from secfin.normalize.metrics import compute_metrics
 from secfin.normalize.schema import (
+    CompanyMetrics,
     CusipResolutionStats,
     FiscalPeriod,
     HoldingsSnapshot,
@@ -26,7 +28,7 @@ from secfin.normalize.schema import (
 )
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
-from secfin.sec.companyfacts import fetch_raw_facts
+from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.sec.insider import fetch_insider_transactions_with_filings
 from secfin.sec.institutional import fetch_13f_snapshot
 from secfin.sec.ticker_cache import TickerCache
@@ -98,7 +100,7 @@ async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -
     cached = repo.get_raw_facts(cik)
     if cached:
         return cached
-    facts = await fetch_raw_facts(client, cik)
+    facts = await fetch_raw_facts_all(client, cik)
     if facts:
         repo.upsert_raw_facts(facts)
     return facts
@@ -179,6 +181,36 @@ async def get_periods(
         "cik": cik,
         "periods": [{"year": y, "period": p} for (y, p) in available_periods(facts)],
     }
+
+
+@router.get("/companies/{symbol}/metrics", response_model=CompanyMetrics)
+async def get_metrics(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CompanyMetrics:
+    """Fundamental metrics (profitability, growth, health, cash flow, efficiency, per-share)
+    for a company + fiscal period.
+
+    Computed on-demand over the cached RawFacts (cache-aside, same path as /statements) --
+    NOT the analytical layer, which is cross-company only. Each value carries its own status
+    (ok/approximate/na/nm), basis (TTM/as-of), and a reason when it's anything but a clean
+    number; see docs/ROADMAP_METRICS.md and docs/STYLE_GUIDE.md §7.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    result = compute_metrics(facts, cik, year, period)
+    if not result.metrics:
+        # Empty list means the period itself isn't in the data (no annual/quarter end
+        # resolved) -- distinct from "resolved, but individual metrics are N/A".
+        raise HTTPException(
+            status_code=404,
+            detail=f"No metrics available for {symbol} {period} {year}.",
+        )
+    return result
 
 
 @router.get("/companies/{symbol}/insider-trades", response_model=list[InsiderTransaction])

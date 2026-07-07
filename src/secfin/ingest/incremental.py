@@ -19,7 +19,7 @@ import re
 
 from secfin.config import settings
 from secfin.sec.client import SECClient
-from secfin.sec.companyfacts import fetch_raw_facts
+from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ async def run_incremental(
             logger.info("incremental %s: %d companies filed %s", date, len(ciks), sorted(forms))
             for i, cik in enumerate(ciks, start=1):
                 try:
-                    facts = await fetch_raw_facts(client, cik)
+                    facts = await fetch_raw_facts_all(client, cik)
                 except Exception:
                     logger.exception("failed to fetch companyfacts for CIK %d", cik)
                     continue

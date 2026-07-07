@@ -24,8 +24,11 @@ Pipeline orchestration (downloading, multiprocessing, batching into the store) l
 - `client.py` — one HTTP client for everything. Enforces the required `User-Agent` and
   throttles to the SEC fair-access rate. All SEC access goes through it.
 - `companyfacts.py` — pulls the `companyfacts` JSON (all XBRL numbers for a company) and
-  flattens it to `RawFact`s via `flatten_company_facts`, a pure function with no I/O. Also
-  resolves ticker → CIK.
+  flattens it to `RawFact`s via `flatten_company_facts`, a pure function with no I/O. Both
+  ingest paths and the live cache-aside read use the multi-taxonomy wrappers
+  (`flatten_all_taxonomies` / `fetch_raw_facts_all`, `INGEST_TAXONOMIES = ("us-gaap",
+  "dei")`) so cover-page `dei` facts — notably `EntityCommonStockSharesOutstanding`, the
+  `shares_outstanding` fallback the metrics need — land alongside us-gaap.
 - `insider.py` — pulls Forms 3/4/5 ownership XML and parses to `InsiderTransaction`s. Joint
   filers (multiple `<reportingOwner>` blocks — e.g. an insider and a trust or holding company
   filing together) yield one row per reporting owner per transaction/holding row, since the XML
@@ -121,6 +124,12 @@ of that onto one small, stable canonical schema.
   SEC's `company_tickers.json` (`CusipResolver`), and `resolve_snapshot_cusips` to apply
   it across a whole `HoldingsSnapshot` in place. Deliberately conservative — no fuzzy
   matching (see `DATA_MODEL.md`).
+- `metrics.py` — fundamental metrics (profitability, growth, financial-health, cash-flow,
+  efficiency, per-share) computed over the `RawFact` history → typed `MetricValue`s. Pure,
+  and served cache-first like statements (never the analytical layer). Anchors on
+  `period_end` rather than the SEC's `(fy, fp)` labels (more robust — see `DATA_MODEL.md`),
+  derives quarterly TTM by differencing YTD durations, and carries a status/basis/reason on
+  every value (R1–R8). Roadmap: `docs/ROADMAP_METRICS.md`.
 
 See `DATA_MODEL.md` for the schema and mapping details.
 
@@ -257,6 +266,11 @@ FastAPI. `main.py` wires the app; `routes.py` exposes:
 
 - `GET /v1/companies/{symbol}/statements/{income|balance|cashflow}?year=&period=`
 - `GET /v1/companies/{symbol}/periods`
+- `GET /v1/companies/{symbol}/metrics?year=&period=` — fundamental metrics for one company +
+  period (`normalize/metrics.compute_metrics`), served cache-aside via the same
+  `_facts_for_cik` path as `/statements`. Each value carries a status (ok/approximate/na/nm),
+  basis (TTM/as-of), and reason. 404 only when the period itself isn't in the data (distinct
+  from "resolved, but individual metrics are N/A"). See `DATA_MODEL.md`.
 - `GET /v1/companies/{symbol}/insider-trades?limit=` — cache-aside via
   `_insider_transactions_for_cik` + `InsiderTransactionRepository` (§3a): a hit requires
   at least `limit` filings already cached for the issuer, since `limit` bounds filings

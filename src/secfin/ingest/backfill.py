@@ -34,7 +34,7 @@ from pathlib import Path
 from secfin.config import settings
 from secfin.ingest.downloader import download_bulk_files
 from secfin.normalize.schema import RawFact
-from secfin.sec.companyfacts import flatten_company_facts
+from secfin.sec.companyfacts import flatten_all_taxonomies
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
@@ -66,7 +66,7 @@ def _parser_worker(zip_path: Path, work_queue: mp.Queue, result_queue: mp.Queue)
             cik, entry_name = item
             try:
                 payload = json.loads(zf.read(entry_name))
-                facts = flatten_company_facts(payload, cik)
+                facts = flatten_all_taxonomies(payload, cik)
             except Exception:
                 logger.exception("failed to parse %s (CIK %d)", entry_name, cik)
                 continue

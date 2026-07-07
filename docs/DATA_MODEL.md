@@ -131,15 +131,16 @@ doesn't use the commercial `CashAndCashEquivalentsAtCarryingValue` tag at all, r
   `stockholders_equity`, which is a "combine multiple tags" capability the mapping
   doesn't have (same category as the `debt_current` split limitation above) — tracked as
   a gap, not fixed here.
-- **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) is
-  currently dead in practice** — confirmed against the WMT fixture, which only tags
-  `CommonStockSharesOutstanding` in `us-gaap`... except it doesn't, either (WMT reports no
-  us-gaap shares-outstanding tag this period at all). `fetch_raw_facts`/`flatten_company_facts`
-  default to `taxonomy="us-gaap"` everywhere they're called (`ingest/backfill.py`,
-  `ingest/incremental.py`, `api/routes.py`), so `dei` facts are never actually ingested —
-  the fallback tag can't fire until something in the ingest path fetches `dei` too. Flagging
-  as a real, verified gap rather than fixing here: it's an ingestion-pipeline change (touches
-  all three call sites plus storage), not a mapping-table tweak.
+- **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) — now
+  ingested** (was previously dead in practice). The ingest path fetches `dei` alongside
+  `us-gaap` via `sec/companyfacts.INGEST_TAXONOMIES = ("us-gaap", "dei")` and the
+  `flatten_all_taxonomies` / `fetch_raw_facts_all` wrappers used by `ingest/backfill.py`,
+  `ingest/incremental.py`, and `api/routes.py`, so the cover-page fallback can now fire for
+  filers (e.g. WMT) that report no us-gaap shares-outstanding tag. This unblocks
+  book-value-per-share in the metrics engine (R6). **Fixture caveat:** the `tests/fixtures/*`
+  companyfacts payloads have `dei` stripped, so BVPS still reads `na` for WMT *in the
+  fixtures* — the dei→BVPS path is covered by a synthetic test in `tests/test_metrics.py`,
+  and resolves against real (dei-carrying) filings in production.
 
 ## Insider transactions
 
@@ -488,6 +489,94 @@ in before their endpoints were wired up.
   `company_tickers.json` has no CUSIP field) — it's a best-effort, exact-name-match
   mapping table (`normalize/cusip.py`) that intentionally leaves ambiguous/abbreviated
   names unresolved rather than guessing; see `unresolved_cusips()` for what's tracked.
+
+## Fundamental metrics (`normalize/metrics.py`)
+
+Derived ratios/signals computed over a company's `RawFact` history — the analytical payoff of
+the normalized data (roadmap: `docs/ROADMAP_METRICS.md`, Phase 1). Pure functions, no I/O; the
+API serves them cache-first over the same cached `RawFact`s as `/statements`
+(`GET /v1/companies/{symbol}/metrics?year=&period=`), **not** the cross-company analytical
+layer. Each result is a `MetricValue` (`normalize/schema.py`) carrying its own honesty metadata:
+`status` (`ok`/`approximate`/`na`/`nm`), `basis` (`TTM`/`as-of`), `restatement_basis`, `as_of`
+(provenance), and a `reason` for anything but a clean number — the same status vocabulary the
+UI style guide (§7) is built around.
+
+### Anchored on `period_end`, not `(fiscal_year, fiscal_period)`
+
+The metric engine deliberately does **not** key off the SEC's `fy`/`fp` labels the way
+`statements.py` does. Those labels reflect the *filing's* fiscal context, not the data point's
+own period: a 10-K stamps every comparative year it restates with the filing's own `fy`, so
+three distinct annual revenue figures can all arrive tagged `fp="FY", fy=2025`. The engine keys
+on the ground truth instead — the fact's `period_end` and, for durations, its length:
+
+- an annual (~350–380-day) duration ending in calendar year *Y* is fiscal year *Y*'s flow;
+- a balance-sheet instant at that same fiscal-year-end date is the as-of stock;
+- **discrete quarters are recovered by differencing the year-to-date durations that share a
+  common `period_start`** — so Q4 (= full-year − 9-month-YTD, which filers rarely tag directly)
+  falls out naturally, and quarterly TTM is the sum of the 4 trailing discrete quarters.
+
+Consequence: `/metrics?year=2024` means "the fiscal year ending in calendar 2024," which can
+differ from what `/statements?year=2024` returns for the same company, because the statements
+layer inherits the `fy`/`fp` mislabeling. This is intentional — the metric numbers are the
+correct ones.
+
+### Correctness rules (R1–R8), implemented centrally
+
+The roadmap's non-negotiable rules live once in `metrics.py`: point-in-time / as-restated basis
+(R1/R9, latest-filed wins per period); TTM for flows vs as-of for stocks read from the
+duration/instant flag (R2); average balance for TTM-flow-over-stock ratios, flagged
+`approximate` when no prior-period balance exists (R3); unit families on every value (R4);
+the `debt_current` split-undercount detection → `approximate` (R5); the dei ingestion
+dependency for `shares_outstanding` (R6, now satisfied — see below); data-driven `na` when a
+required input is absent (R7); and the arithmetic guards (R8) — ROIC effective-tax-rate clamp
+to 0–35% with a 21% statutory fallback, gross-profit fallback to `revenue − cost_of_revenue`,
+capex subtracted as a positive outflow, `nm` on a negative/zero growth base, and `na` on a
+near-zero denominator.
+
+**R6 / dei:** `shares_outstanding`'s cover-page fallback (`EntityCommonStockSharesOutstanding`,
+in the `dei` taxonomy) is now ingested — `sec/companyfacts.INGEST_TAXONOMIES = ("us-gaap",
+"dei")`, pulled by both ingest paths and the live cache-aside read. So book-value-per-share
+resolves for filers that tag shares only on the cover page. (The `tests/fixtures/*` payloads
+have `dei` stripped, so BVPS reads `na` for WMT *in the fixtures* even though it resolves in
+production; the dei→BVPS path is covered by a synthetic test in `tests/test_metrics.py`.)
+
+### Metric set & per-industry resolution (verified against the fixtures, latest FY)
+
+Formulas use canonical concept names from `mapping.py`; see `ROADMAP_METRICS.md` for the full
+formula table. `na`/`nm`/`approximate` below are **correct, honest outcomes**, not gaps to fix —
+they mirror the structural mapping limitations already documented above (banks, retailers).
+
+| Metric | AAPL | WMT | JPM (bank) |
+|---|---|---|---|
+| gross_margin | ok | ok | na |
+| operating_margin | ok | ok | na |
+| net_margin | ok | ok | ok |
+| roa | ok | ok | ok |
+| roe | ok | ok | ok |
+| roic | approximate¹ | approximate¹ | na |
+| revenue_growth_yoy | ok | ok | ok |
+| earnings_growth_yoy | ok | ok | ok |
+| ocf_growth_yoy | ok | ok | nm² |
+| growth_acceleration | ok | ok | ok |
+| current_ratio | ok | ok | na |
+| quick_ratio | ok | ok | na |
+| debt_to_equity | approximate¹ | approximate¹ | approximate¹ |
+| net_debt | approximate¹ | approximate¹ | approximate¹ |
+| interest_coverage | na³ | ok | na |
+| fcf / fcf_margin / accruals | ok | ok | ok |
+| asset_turnover | ok | ok | ok |
+| inventory_turnover | ok | ok | na |
+| dso | ok | ok | na |
+| eps_basic / eps_diluted | ok | ok | ok |
+| book_value_per_share | ok | na⁴ | ok |
+| fcf_per_share / share_count | ok | ok | ok |
+
+¹ `approximate` = R5 debt-split undercount (current debt split across component tags with no
+aggregate `DebtCurrent`). ² JPM's prior-year operating cash flow base is ≤ 0, so a YoY percent
+is `nm`. ³ Apple nets interest into other income/expense (no discrete `interest_expense`), so
+coverage is `na`. ⁴ `na` in the fixture only because `dei` is stripped there; resolves in
+production (see R6 above). Banks are `na` on the current/noncurrent-split and inventory metrics
+by structure — same limitation as their statements.
 
 ## Analytical layer (Milestone 2.5) — not a new model, no serialization step (for now)
 

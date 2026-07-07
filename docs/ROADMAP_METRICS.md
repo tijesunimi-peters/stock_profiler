@@ -171,20 +171,32 @@ Design intent:
 
 ### Phase 1 tasks
 
-- [ ] `MetricValue` result type (value, unit, period, filed/as-of basis, status + reason).
-- [ ] Central implementations of R1–R8 (TTM helper, average-balance helper, unit assertions,
-      tax clamp, sign/N-M handling, N/A reason codes, debt-split detection for R5).
-- [ ] One function per metric in the tables above.
-- [ ] Per-company metrics endpoint (e.g. `GET /v1/companies/{symbol}/metrics?period=&year=`),
-      cache-first over the existing store.
-- [ ] Run `coverage_report()` on the six newer concepts (esp. `shares_outstanding` for R6) against
-      the Apple/bank/retailer fixtures; record which `⚠️` metrics actually resolve per industry in
-      `docs/DATA_MODEL.md`.
-- [ ] Tests (no network) against saved fixtures: TTM correctness, average-balance, point-in-time
-      (restatement + filing-lag), each N/A and N/M path, ROIC tax clamp, gross-profit fallback,
-      capex sign, debt-split → approximate.
-- [ ] Docs: add a metrics section to `docs/DATA_MODEL.md` (formulas + R1–R8 + per-industry N/A map);
-      mark this phase in this roadmap.
+**Status: Phase 1 done** (`normalize/metrics.py`, `GET /v1/companies/{symbol}/metrics`,
+`tests/test_metrics.py`). Note one design decision made during the build: the engine anchors on
+`period_end` rather than the SEC's `(fy, fp)` labels — those labels stamp every restated
+comparative year with the *filing's* `fy`, which would collapse distinct annual figures. See the
+"Anchored on period_end" note in `docs/DATA_MODEL.md`. Series-by-default is provided at the
+concept-accessor level (`available_metric_periods` + the period-keyed helpers); the point-set
+endpoint is Phase 1, the trend/history endpoint is Phase 1b (below). Restatement basis: as-restated
+(latest-filed), labeled on every value.
+
+- [x] `MetricValue` result type (value, unit, period, filed/as-of basis, status + reason) --
+      plus a `CompanyMetrics` container (`normalize/schema.py`).
+- [x] Central implementations of R1–R8 (TTM helper with YTD-differencing + Q4 derivation,
+      average-balance helper flagging `approximate` when the prior balance is missing, tax clamp,
+      sign/N-M handling, N/A reason codes, debt-split detection for R5).
+- [x] One function per metric in the tables above (registered in `_METRICS`).
+- [x] Per-company metrics endpoint `GET /v1/companies/{symbol}/metrics?year=&period=`,
+      cache-first over the existing store (same `_facts_for_cik` path as `/statements`).
+- [x] dei ingestion added so `shares_outstanding`'s cover-page fallback resolves (R6) --
+      `sec/companyfacts.INGEST_TAXONOMIES`; per-industry resolution map recorded in
+      `docs/DATA_MODEL.md` (verified against the AAPL/WMT/JPM fixtures).
+- [x] Tests (no network) against saved fixtures + synthetic RawFacts: TTM correctness
+      (annual-direct, quarterly YTD-differencing, derived Q4, missing-quarter → None),
+      average-balance, restatement/period-end anchoring, each N/A and N/M path, ROIC tax clamp,
+      gross-profit fallback, capex sign, debt-split → approximate, dei → BVPS, endpoint 200/404.
+- [x] Docs: metrics section in `docs/DATA_MODEL.md` (formulas pointer + R1–R8 + per-industry N/A
+      map); this phase marked.
 
 ---
 

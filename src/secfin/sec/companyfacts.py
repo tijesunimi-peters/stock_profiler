@@ -12,8 +12,19 @@ normalize layer maps these onto canonical concepts.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from secfin.normalize.schema import RawFact
 from secfin.sec.client import SECClient
+
+# Taxonomies we ingest. us-gaap carries the accounting numbers (the bulk of the payload);
+# dei carries cover-page/entity facts -- notably EntityCommonStockSharesOutstanding, the
+# fallback tag for the `shares_outstanding` canonical concept (see normalize/mapping.py).
+# Both flatten through the same code and land in the same raw_facts table: RawFact.taxonomy
+# records which, so is_extension stays correct (both are non-extension). The store's UNIQUE
+# key omits taxonomy, which is safe because us-gaap and dei tag namespaces are disjoint (no
+# concept name appears in both).
+INGEST_TAXONOMIES: tuple[str, ...] = ("us-gaap", "dei")
 
 
 def flatten_company_facts(payload: dict, cik: int, taxonomy: str = "us-gaap") -> list[RawFact]:
@@ -56,3 +67,29 @@ async def fetch_raw_facts(client: SECClient, cik: int, taxonomy: str = "us-gaap"
     """Return every data point for a company under one taxonomy as flat RawFacts."""
     payload = await client.get_json(client.company_facts_url(cik))
     return flatten_company_facts(payload, cik, taxonomy)
+
+
+def flatten_all_taxonomies(
+    payload: dict, cik: int, taxonomies: Sequence[str] = INGEST_TAXONOMIES
+) -> list[RawFact]:
+    """Flatten a companyfacts payload across every ingested taxonomy (us-gaap + dei).
+
+    A thin fan-out over `flatten_company_facts` so the two paths stay identical: one
+    payload, flattened once per taxonomy, concatenated. Missing taxonomies yield nothing.
+    """
+    out: list[RawFact] = []
+    for taxonomy in taxonomies:
+        out.extend(flatten_company_facts(payload, cik, taxonomy))
+    return out
+
+
+async def fetch_raw_facts_all(
+    client: SECClient, cik: int, taxonomies: Sequence[str] = INGEST_TAXONOMIES
+) -> list[RawFact]:
+    """Fetch a company's facts once and flatten across every ingested taxonomy.
+
+    The multi-taxonomy live-fetch counterpart of `fetch_raw_facts`; the ingest paths use
+    this so dei facts are stored alongside us-gaap. One HTTP request, N taxonomies.
+    """
+    payload = await client.get_json(client.company_facts_url(cik))
+    return flatten_all_taxonomies(payload, cik, taxonomies)

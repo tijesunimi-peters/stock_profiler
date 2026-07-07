@@ -117,7 +117,7 @@ src/secfin/
   config.py                    # settings (User-Agent, DB path, backfill tuning) from env
   sec/
     client.py                  # rate-limited SEC HTTP client (User-Agent + throttle)
-    companyfacts.py            # fetch + shape companyfacts JSON -> RawFacts
+    companyfacts.py            # fetch + shape companyfacts JSON -> RawFacts (us-gaap + dei)
     ticker_cache.py            # in-memory ticker->CIK map (TickerCache), one per process
     insider.py                 # fetch + parse Forms 3/4/5 ownership XML (joint filers)
     institutional.py           # fetch + parse 13F info table + cover page, 13D/G
@@ -128,6 +128,8 @@ src/secfin/
     flows.py                   # derive 13F buy/sell by diffing snapshots (diff_snapshots,
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CUSIP->issuer-CIK resolution (exact-name-match, conservative)
+    metrics.py                 # fundamental metrics over RawFact history -> MetricValue
+                               #   (period_end-anchored, TTM/as-of, status+reason; R1-R8)
   storage/                     # all SQLite impls: WAL mode, own connection, same db file
     repository.py              # abstract RawFactRepository
     sqlite_repository.py       # RawFact SQLite impl: idempotent upsert, checkpoint
@@ -146,8 +148,8 @@ src/secfin/
     institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
   api/
     main.py                    # FastAPI app + wiring
-    routes.py                  # endpoints (statements, insider, 13F manager + issuer-centric,
-                               #   cusip-resolution-stats)
+    routes.py                  # endpoints (statements, periods, metrics, insider, 13F manager
+                               #   + issuer-centric, cusip-resolution-stats)
 tests/
 docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, ROADMAP,
                                #   ROADMAP_METRICS, STYLE_GUIDE
