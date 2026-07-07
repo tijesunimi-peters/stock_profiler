@@ -48,19 +48,29 @@ Everything below is **not built yet** unless noted.
 
 ---
 
-## Phase 0 — Shared shell & components (prerequisite)
+## Phase 0 — Shared shell & components (prerequisite) — **DONE**
 
-Build once, reuse on every page. Nothing else should ship before these exist as reusable
-pieces, or each page will re-implement the furniture inconsistently.
+Build once, reuse on every page. Shipped as `static/app.css` (the STYLE_GUIDE-canon data-page
+system: ink-blue accent, `#EDE4D0` paper, hard offset shadows, terracotta reserved for caveats)
+and `static/app.js` (`window.Profin` builders), kept **separate** from the marketing `style.css`.
+A kitchen-sink reference lives at **`/components`** (`static/components.html`) — the reference
+implementation Phase 1 builds against, and a manual test surface. Decision: data pages follow
+the written STYLE_GUIDE canon, not the shipped terracotta landing palette (confirmed with the
+user); the landing/explorer are left as-is and retrofitted later.
 
-- [ ] **Page shell** — masthead (eyebrow + h1 + as-of caption + double rule) and footer, per
-      `STYLE_GUIDE.md` §5. Color tokens, type scale, dotted-paper background, hard shadows.
-- [ ] **Global search / ticker resolver** — ticker-or-CIK input that routes to a company hub.
-- [ ] **Status legend + chip** (§7) — OK / APPROX / N/A / N/M by glyph + label + border.
-- [ ] **Provenance "show your work"** (§8) — formula + source basis (TTM/as-of, filing date,
-      accession) + reason-for-flag, closed by default.
-- [ ] **Disclosure block** (§9) — coverage floors, as-of-not-real-time, not-investment-advice.
-- [ ] **Shared states** — loading (cold-path note), empty-vs-404 (distinct), error.
+- [x] **Page shell** — `Profin.masthead()` (eyebrow + h1 + as-of caption + double rule) and
+      `Profin.footer()`; tokens, type scale, dotted-paper background, hard shadows in `app.css`.
+- [x] **Global search / ticker resolver** — `Profin.mountSearch()` resolves ticker-or-CIK live
+      via `/companies/{symbol}/periods`; Phase 1 passes an `onResolved` that navigates to the hub.
+- [x] **Status legend + chip** (§7) — `Profin.statusChip()` / `statusLegend()`, OK/APPROX/N/A/N/M
+      by glyph + label + border (never color alone).
+- [x] **Provenance "show your work"** (§8) — `Profin.provenance()` + built into `metricCard()`
+      (formula, basis, restatement basis, as-of, why-flagged); closed by default.
+- [x] **Disclosure block** (§9) — `Profin.disclosure()` with reusable coverage copy pulled to
+      match `DATA_MODEL.md` (XBRL floor, 13D/G floor, 13F caveats, not-investment-advice).
+- [x] **Shared states** — `Profin.states.loading/empty/notFound/error` (cold-path note, distinct
+      empty-vs-404).
+- [x] **Metric card** — `Profin.metricCard(mv)` renders a `MetricValue` end to end (Phase 1 ready).
 
 ## Phase 1 — Company core (backend ready; highest leverage)
 

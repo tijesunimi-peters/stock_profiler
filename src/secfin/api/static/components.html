@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profin — Components</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%232f5b8f'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="page">
+    <div id="masthead"></div>
+
+    <div class="section-head"><span class="n">00</span><h2>Component reference</h2></div>
+    <p class="lede" style="margin-top:0">
+      The shared data-page design system (docs/STYLE_GUIDE.md). Every Phase 1/2 page is built from
+      these pieces via <code>window.Profin</code> — the same shell, status vocabulary, and
+      provenance affordances, so a new screen looks like it was always part of Profin.
+    </p>
+
+    <div id="search-section"></div>
+
+    <div id="legend-section"></div>
+
+    <div id="cards-section"></div>
+
+    <div id="states-section"></div>
+
+    <div id="disclosure-section"></div>
+  </main>
+  <div id="footer"></div>
+
+  <script src="/static/app.js"></script>
+  <script>
+    (function () {
+      var P = window.Profin;
+      var $ = function (id) { return document.getElementById(id); };
+
+      $("masthead").innerHTML = P.masthead({
+        eyebrow: "Profin — SEC data, normalized",
+        title: "Design components",
+        meta: ["Reference / kitchen sink", "as-of build 2026-07-07"],
+        lede: "",
+      });
+      $("footer").innerHTML = P.footer();
+
+      // ----- global search (live ticker->CIK resolve) -----
+      $("search-section").innerHTML =
+        P.sectionHead("01", "Global search / ticker resolver") + '<div id="search"></div><div id="search-out" style="margin-top:14px"></div>';
+      var out = $("search-out");
+      P.mountSearch($("search"), {
+        onStart: function () { out.innerHTML = P.states.loading({ title: "Resolving" }); },
+        onResolved: function (symbol, data) {
+          var latest = data.periods && data.periods[0];
+          out.innerHTML =
+            '<div class="state"><div class="state-title">Resolved</div><div class="state-copy">' +
+            '<span class="ticker-chip">' + P.esc(symbol.toUpperCase()) + "</span> → CIK " +
+            '<span class="num">' + P.esc(data.cik) + "</span>" +
+            (latest ? " · latest period <span class=\"num\">" + P.esc(latest.year) + " " + P.esc(latest.period) + "</span>" : "") +
+            ' · <a href="/explorer">open in Data Explorer ↗</a></div></div>';
+        },
+        onNotFound: function (symbol) {
+          out.innerHTML = P.states.notFound({
+            copy: 'We don\'t carry "' + symbol + '". Check the ticker, or try a raw CIK.',
+            recovery: [{ label: "Data Explorer ↗", href: "/explorer" }],
+          });
+        },
+        onError: function (symbol, err) {
+          out.innerHTML = P.states.error({ copy: "Lookup failed (" + (err.status || "network") + ")." });
+        },
+      });
+
+      // ----- status legend (§7) -----
+      $("legend-section").innerHTML = P.sectionHead("02", "Status vocabulary") + P.statusLegend();
+
+      // ----- metric cards (§6) with sample MetricValues covering every status -----
+      var samples = [
+        { metric: "net_margin", label: "Net Margin", value: 0.2397, unit: "ratio", basis: "TTM",
+          restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
+          _formula: "Net income ÷ Revenue" },
+        { metric: "fcf", label: "Free Cash Flow", value: 108807000000, unit: "USD", basis: "TTM",
+          restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
+          _formula: "Operating cash flow − Capital expenditures" },
+        { metric: "debt_to_equity", label: "Debt to Equity", value: 1.6973, unit: "ratio", basis: "as-of",
+          restatement_basis: "as-restated", as_of: "2024-11-01", status: "approximate",
+          reason: "current debt split across component tags with no aggregate; total may be understated",
+          _formula: "(Long-term debt + Current debt) ÷ Equity" },
+        { metric: "book_value_per_share", label: "Book Value per Share", value: 3.7673, unit: "USD/shares",
+          basis: "as-of", restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
+          _formula: "Equity ÷ Shares outstanding" },
+        { metric: "current_ratio", label: "Current Ratio", value: null, unit: "ratio", basis: "as-of",
+          restatement_basis: "as-restated", as_of: "2025-02-27", status: "na",
+          reason: "no current/noncurrent split reported (structural — e.g. a bank)", _formula: "Current assets ÷ Current liabilities" },
+        { metric: "earnings_growth_yoy", label: "Earnings Growth (YoY)", value: null, unit: "ratio", basis: "TTM",
+          restatement_basis: "as-restated", as_of: "2025-02-27", status: "nm",
+          reason: "prior-period base is negative or zero", _formula: "Net income[t] ÷ Net income[t−4Q] − 1" },
+      ];
+      $("cards-section").innerHTML =
+        P.sectionHead("03", "Metric cards") +
+        '<div class="card-grid">' +
+        samples.map(function (mv) { return P.metricCard(mv, { formula: mv._formula }); }).join("") +
+        "</div>";
+
+      // ----- shared states (§6) -----
+      $("states-section").innerHTML =
+        P.sectionHead("04", "States") +
+        '<div class="card-grid">' +
+        P.states.loading({}) +
+        P.states.empty({}) +
+        P.states.notFound({ copy: "No metrics available for FOO FY1990.", recovery: [{ label: "Data Explorer ↗", href: "/explorer" }] }) +
+        P.states.error({}) +
+        "</div>";
+
+      // ----- disclosure (§9) -----
+      $("disclosure-section").innerHTML =
+        P.sectionHead("05", "Disclosure & coverage") +
+        P.disclosure(["financials_floor", "ownership_13dg_floor", "institutional_13f", "not_advice"], { open: true });
+    })();
+  </script>
+</body>
+</html>

@@ -81,6 +81,12 @@ async def data_explorer() -> FileResponse:
     return FileResponse(STATIC_DIR / "explorer.html")
 
 
+@app.get("/components", include_in_schema=False)
+async def component_reference() -> FileResponse:
+    # Kitchen-sink reference for the shared data-page design system (static/app.css + app.js).
+    return FileResponse(STATIC_DIR / "components.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
