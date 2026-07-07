@@ -364,9 +364,21 @@ a time.
       both 401; correct secret + unknown tier name 400s; correct secret + unregistered
       email 404s; correct secret + valid tier moves a real signed-up key from
       free (5/1000) to pro (100/250000) limits, persisted (not just returned in-memory).
-- [ ] Usage metering (for billing) -- the `api_key_usage` table (already there,
-      pre-M3) tracks daily request counts for quota enforcement, but nothing surfaces
-      them to the key holder yet.
+- [x] **Usage metering (billing half)** -- `GET /v1/usage` (`api/routes.py`, gated like
+      every other `/v1` endpoint) surfaces the calling key's own daily request counts
+      from the existing `api_key_usage` table, which previously fed only the quota check
+      and was never exposed. New `ApiKeyRepository.usage_by_day(api_key_id, since_day)`
+      returns the stored rows (sparse -- no row for a zero-request day); a new pure
+      `auth/usage.py`'s `usage_summary` fills the requested trailing window (`?days=`,
+      default 7, max 90) with explicit zero-count days so the response reads as a
+      complete billing series, not a sparse one -- same "pure function over a repository"
+      shape as `normalize/cusip.py`'s `cusip_resolution_stats`. Verified end-to-end
+      against the real running API (Docker, 2026-07-06): no key 401s; a brand-new key's
+      default 7-day window is all zeros except today (the `/usage` call itself counts,
+      being on the same gated router); after 2 more real requests against a gated
+      endpoint, `?days=1` correctly shows a request_count of 4 (1 prior `/usage` call + 2
+      insider-trades calls + this call); `days=90` succeeds, `days=91` 422s (FastAPI's
+      `Query(..., le=90)` bound).
 - [x] Statements cache-warming — `ingest/backfill.py` (bulk `companyfacts.zip`) + daily
       `ingest/incremental.py` seed and refresh the `RawFact`/statements cache, respecting SEC
       limits.

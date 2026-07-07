@@ -110,3 +110,25 @@ def test_admin_tier_change_end_to_end(tmp_path, monkeypatch):
             "/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key}
         )
         assert gated.status_code != 401
+
+
+def test_usage_endpoint_requires_a_key_and_reflects_recorded_requests(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        signup_resp = client.post("/v1/signup", json={"email": "a@example.com"})
+        api_key = signup_resp.json()["api_key"]
+
+        # No key -> 401, same as any other gated endpoint.
+        assert client.get("/v1/usage").status_code == 401
+
+        # Signup itself doesn't count against usage -- it's on signup_router, not the
+        # require_api_key-gated router. One gated call should show exactly 1 request today.
+        client.get("/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key})
+
+        usage_resp = client.get("/v1/usage", headers={"X-API-Key": api_key})
+        assert usage_resp.status_code == 200
+        body = usage_resp.json()
+        assert body["tier"] == "free"
+        assert len(body["usage_by_day"]) == 7
+        # The /usage call itself also counts (it's on the gated router), so by the time
+        # its own response is built, today's count already includes 2 requests.
+        assert body["usage_by_day"][-1]["request_count"] == 2

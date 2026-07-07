@@ -102,3 +102,57 @@ def test_record_usage_and_get_count_increments_per_day():
     # A different calendar day starts its own counter.
     assert repo.record_usage_and_get_count(record.id, "2026-07-07") == 1
     repo.close()
+
+
+def test_usage_by_day_returns_only_days_on_or_after_since_day_ordered():
+    repo = SQLiteApiKeyRepository(":memory:")
+    record = repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+    repo.record_usage_and_get_count(record.id, "2026-07-01")
+    repo.record_usage_and_get_count(record.id, "2026-07-03")
+    repo.record_usage_and_get_count(record.id, "2026-07-03")
+    repo.record_usage_and_get_count(record.id, "2026-07-05")
+
+    rows = repo.usage_by_day(record.id, since_day="2026-07-02")
+
+    assert [(r.date, r.request_count) for r in rows] == [
+        ("2026-07-03", 2),
+        ("2026-07-05", 1),
+    ]
+    repo.close()
+
+
+def test_usage_by_day_is_sparse_not_zero_filled():
+    repo = SQLiteApiKeyRepository(":memory:")
+    record = repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+    repo.record_usage_and_get_count(record.id, "2026-07-05")
+
+    rows = repo.usage_by_day(record.id, since_day="2026-07-01")
+
+    assert len(rows) == 1
+    assert rows[0].date == "2026-07-05"
+    repo.close()
+
+
+def test_usage_by_day_scopes_to_the_given_key():
+    repo = SQLiteApiKeyRepository(":memory:")
+    a = repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+    b = repo.create_key(
+        key_hash="hash-2", email="b@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+    repo.record_usage_and_get_count(a.id, "2026-07-05")
+    repo.record_usage_and_get_count(b.id, "2026-07-05")
+    repo.record_usage_and_get_count(b.id, "2026-07-05")
+
+    assert [r.request_count for r in repo.usage_by_day(a.id, "2026-07-01")] == [1]
+    assert [r.request_count for r in repo.usage_by_day(b.id, "2026-07-01")] == [2]
+    repo.close()

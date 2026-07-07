@@ -11,8 +11,13 @@ rather than per-company data.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
+from secfin.api.auth import get_api_key_repo, require_api_key
+from secfin.auth.models import ApiKeyRecord, UsageSummary
+from secfin.auth.usage import usage_summary
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.schema import (
@@ -31,6 +36,7 @@ from secfin.sec.companyfacts import fetch_raw_facts
 from secfin.sec.insider import fetch_insider_transactions_with_filings
 from secfin.sec.institutional import fetch_13f_snapshot, fetch_beneficial_ownership_with_filings
 from secfin.sec.ticker_cache import TickerCache
+from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
@@ -287,6 +293,34 @@ async def get_beneficial_ownership(
 # NOTE: 13F is a quarter-end HOLDINGS SNAPSHOT, not transactions. The "buy/sell" view
 # is DERIVED by diffing consecutive quarters (normalize/flows.py). Endpoints and their
 # responses must make that explicit and carry the ~45-day-lag / long-only caveats.
+
+
+@router.get(
+    "/usage",
+    response_model=UsageSummary,
+    tags=["Account"],
+    summary="Get your API key's tier, limits, and recent daily usage",
+)
+async def get_usage(
+    days: int = Query(
+        7, ge=1, le=90, description="Trailing days to include (default 7, max 90)"
+    ),
+    record: ApiKeyRecord = Depends(require_api_key),
+    api_key_repo: ApiKeyRepository = Depends(get_api_key_repo),
+) -> UsageSummary:
+    """Usage metering for the calling key -- the billing-relevant half of
+    docs/ROADMAP.md's "Usage metering + subscription tiers" item (tiers themselves
+    landed separately; see auth/tiers.py and the admin tier-change endpoint in
+    api/admin_routes.py). `record` re-resolves the same `X-API-Key` header
+    `require_api_key` already validated at `include_router` granularity -- FastAPI
+    dedupes the call within one request, so this doesn't re-check the key twice.
+    Gaps in the trailing window are filled with explicit zero-count days
+    (`auth/usage.py`), not omitted, so this reads as a complete billing series.
+    """
+    today = dt.datetime.now(dt.UTC).date()
+    since_day = (today - dt.timedelta(days=days - 1)).isoformat()
+    stored = api_key_repo.usage_by_day(record.id, since_day)
+    return usage_summary(record, stored, days, today)
 
 
 @router.get("/cusip-resolution-stats", response_model=CusipResolutionStats)

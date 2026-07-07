@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from secfin.auth.models import ApiKeyRecord
+from secfin.auth.models import ApiKeyRecord, DailyUsage
 from secfin.storage.api_key_repository import ApiKeyRepository
 
 _SCHEMA = """
@@ -119,6 +119,14 @@ class SQLiteApiKeyRepository(ApiKeyRepository):
             self._conn.execute("ROLLBACK")
             raise
         return count
+
+    def usage_by_day(self, api_key_id: int, since_day: str) -> list[DailyUsage]:
+        cur = self._conn.execute(
+            "SELECT usage_date, request_count FROM api_key_usage "
+            "WHERE api_key_id = ? AND usage_date >= ? ORDER BY usage_date",
+            (api_key_id, since_day),
+        )
+        return [DailyUsage(date=row[0], request_count=row[1]) for row in cur.fetchall()]
 
     def close(self) -> None:
         self._conn.close()

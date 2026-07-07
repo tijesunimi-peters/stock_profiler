@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from secfin.auth.models import ApiKeyRecord
+from secfin.auth.models import ApiKeyRecord, DailyUsage
 
 
 class ApiKeyRepository(ABC):
@@ -65,6 +65,14 @@ class ApiKeyRepository(ABC):
         even for the request that pushes a key over quota -- the counter reflects
         attempted, not just served, requests (useful for spotting abusive over-quota
         traffic), so it can end up above `daily_quota`.
+        """
+
+    @abstractmethod
+    def usage_by_day(self, api_key_id: int, since_day: str) -> list[DailyUsage]:
+        """Stored per-day usage rows for this key on/after `since_day` ('YYYY-MM-DD'
+        UTC), ordered by date ascending. Sparse -- a day with no recorded requests has no
+        row here; a caller needing a complete window (e.g. `GET /v1/usage`, via
+        `auth/usage.py`'s `usage_summary`) fills the gaps itself.
         """
 
     @abstractmethod
