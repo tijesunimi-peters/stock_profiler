@@ -152,7 +152,7 @@ src/secfin/
                                #   + issuer-centric, cusip-resolution-stats)
 tests/
 docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, ROADMAP,
-                               #   ROADMAP_METRICS, STYLE_GUIDE
+                               #   ROADMAP_METRICS, ROADMAP_UI, STYLE_GUIDE
 ```
 
 ## Conventions (follow these — they prevent whole classes of bugs)
