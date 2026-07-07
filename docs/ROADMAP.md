@@ -541,8 +541,40 @@ a time.
       filter returned an empty `results` list with `caveats` still present; a
       `total_assets` range filter (exercising the instant/`Q4I` frame path) correctly
       matched Exxon Mobil, Lincoln National, and Apple.
-- [ ] Filtered listing endpoints (by concept, period) -- narrower than screening above
-      (list, not filter-and-match); not yet built.
+- [x] **Filtered listing endpoints (by concept, period)** — the rank/browse complement to
+      screening above. `GET /v1/concepts/{concept}?fiscal_year=&fiscal_period=&sort=&limit=`
+      (`api/routes.py`) lists every reporting company's value for one
+      `SCREENABLE_CONCEPTS` entry + period, sorted (`asc`/`desc`, default `desc`) and
+      capped at `limit` (default 100, max 500) — no min/max thresholds, just a ranked
+      list (e.g. "top 10 companies by revenue this quarter"). Confirmed with the user
+      first which of two readings this roadmap line meant (a cross-company ranked list
+      vs. a single-company concept-history time series) before building, since the two
+      imply different data sources and infrastructure.
+
+      **Reuses essentially all of the screening infrastructure just built, so this
+      landed as a small addition, not a new subsystem:** a new `_list_concept`
+      (`api/routes.py`) is `_run_screen`'s sibling — same `RawFactRepository.screen()`
+      + `resolve_concept_values` call per concept, just sorted-and-capped instead of
+      threshold-filtered-and-intersected. The two endpoints' caveats were unified into
+      one renamed `_FRAMES_CAVEATS` (was `_SCREENING_CAVEATS`) since both read the same
+      frames-sourced data and share the same coverage gaps (calendar alignment,
+      extension-tag blind spot, XBRL floor). No new ingestion, no new storage, no new
+      analytical-engine question to re-benchmark.
+
+      Verified end-to-end against the real running API (Docker, 2026-07-07) using the
+      frames data already backfilled for the screening item above: `GET
+      /v1/concepts/revenue?fiscal_year=2023&fiscal_period=FY&sort=desc&limit=5`
+      correctly returned real Walmart ($642,637,000,000), Amazon ($574,785,000,000),
+      Apple ($383,285,000,000), UnitedHealth ($371,622,000,000), and CVS Health
+      ($357,776,000,000) in that order — the real top-5 US companies by FY2023 revenue;
+      `sort=asc` on `net_income` correctly surfaced the largest losses first; an unknown
+      concept 404'd; a request with no API key 401'd; an invalid `sort` value 422'd
+      (FastAPI's `Query(..., pattern=...)` validation).
+
+**M4 status: complete.** Both items — cross-company screening and concept
+listing/ranking — are done, verified against real SEC data end-to-end. What's left
+project-wide is the pre-launch checklist below and the deliberately-deferred Track 2
+items, neither of which is more Track-1 feature work.
 
 ## Deferred (NOT Track 1 — decide later, deliberately)
 

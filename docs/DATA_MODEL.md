@@ -549,8 +549,17 @@ the same way `mapping.py` itself grows, per CLAUDE.md guardrail 3.
 candidate tags — a company that tags a concept via a company-specific *extension* element
 is invisible to frames screening, even though `/statements` (which reads per-company
 `companyfacts`, not frames) does catch that same company's extension-tagged value. Surfaced
-in `_SCREENING_CAVEATS` (`api/routes.py`), always present on the response, alongside the
+in `_FRAMES_CAVEATS` (`api/routes.py`), always present on the response, alongside the
 existing ~2009–2012 XBRL coverage floor.
+
+**`GET /v1/concepts/{concept}`** is the rank/browse complement to `/screen` — no
+min/max thresholds, just every reporting company's value for one concept + period,
+sorted (`sort=asc|desc`) and capped at `limit` (max 500), e.g. "top 10 companies by
+revenue this quarter." Same frames-sourced data, same `_FRAMES_CAVEATS`. Shares
+`_list_concept`'s DB-only core with `_run_screen`'s equivalent for `/screen` — both call
+`RawFactRepository.screen()` + `normalize.screening.resolve_concept_values` and differ
+only in what they do with the resulting per-CIK value map (threshold-filter-and-intersect
+vs. sort-and-cap).
 
 **Analytical engine: benchmarked, not DuckDB.** `scripts/benchmark_screening.py` compared
 plain indexed SQLite against DuckDB-over-SQLite for a representative multi-concept AND

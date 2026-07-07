@@ -75,8 +75,8 @@ _OPENAPI_TAGS = [
     },
     {
         "name": "Screening",
-        "description": "Cross-company screening by financial-concept thresholds, built "
-        "on the SEC frames API (Milestone 4).",
+        "description": "Cross-company screening (filter/match) and concept listing "
+        "(rank/browse) by financial-concept, built on the SEC frames API (Milestone 4).",
     },
 ]
 

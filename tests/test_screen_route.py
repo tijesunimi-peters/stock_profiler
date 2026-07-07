@@ -1,13 +1,14 @@
-"""Tests for the cross-company screening route core (api/routes.py's `_run_screen`),
-called directly the same way tests/test_manager_routes.py calls other route helpers --
-this is the DB-only piece with no SECClient dependency (entity-name enrichment happens
-in the thin `screen_companies` route wrapper afterward and isn't covered by these tests,
-same convention as the rest of routes.py's cache-aside helpers).
+"""Tests for the cross-company screening/listing route cores (api/routes.py's
+`_run_screen` and `_list_concept`), called directly the same way
+tests/test_manager_routes.py calls other route helpers -- these are the DB-only pieces
+with no SECClient dependency (entity-name enrichment happens in the thin
+`screen_companies`/`list_concept_values` route wrappers afterward and isn't covered by
+these tests, same convention as the rest of routes.py's cache-aside helpers).
 """
 
 from __future__ import annotations
 
-from secfin.api.routes import _run_screen
+from secfin.api.routes import _list_concept, _run_screen
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.schema import RawFact
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
@@ -82,4 +83,56 @@ def test_run_screen_only_matches_the_exact_requested_frame(tmp_path):
     )
 
     assert matching == set()
+    repo.close()
+
+
+def test_list_concept_sorts_descending_by_default(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    revenue_tag = candidate_tags("revenue")[0]
+    repo.upsert_raw_facts(
+        [
+            _frame_fact(1, revenue_tag, 100.0, "CY2023"),
+            _frame_fact(2, revenue_tag, 500.0, "CY2023"),
+            _frame_fact(3, revenue_tag, 1000.0, "CY2023"),
+        ]
+    )
+
+    ranked = _list_concept(
+        repo, "revenue", fiscal_year=2023, fiscal_period="FY", sort="desc", limit=100
+    )
+
+    assert ranked == [(3, 1000.0), (2, 500.0), (1, 100.0)]
+    repo.close()
+
+
+def test_list_concept_sorts_ascending_when_requested(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    revenue_tag = candidate_tags("revenue")[0]
+    repo.upsert_raw_facts(
+        [
+            _frame_fact(1, revenue_tag, 100.0, "CY2023"),
+            _frame_fact(2, revenue_tag, 500.0, "CY2023"),
+        ]
+    )
+
+    ranked = _list_concept(
+        repo, "revenue", fiscal_year=2023, fiscal_period="FY", sort="asc", limit=100
+    )
+
+    assert ranked == [(1, 100.0), (2, 500.0)]
+    repo.close()
+
+
+def test_list_concept_respects_limit(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    revenue_tag = candidate_tags("revenue")[0]
+    repo.upsert_raw_facts(
+        [_frame_fact(cik, revenue_tag, float(cik), "CY2023") for cik in range(1, 6)]
+    )
+
+    ranked = _list_concept(
+        repo, "revenue", fiscal_year=2023, fiscal_period="FY", sort="desc", limit=2
+    )
+
+    assert ranked == [(5, 5.0), (4, 4.0)]
     repo.close()

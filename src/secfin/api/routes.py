@@ -90,15 +90,17 @@ _BENEFICIAL_OWNERSHIP_CAVEATS = [
     "issuer's relevant filings predate the structured-XML transition.",
 ]
 
-# Cross-company screening (Milestone 4, normalize/screening.py) caveats -- always
-# present, same convention as the institutional caveats above.
-_SCREENING_CAVEATS = [
-    "Screening uses SEC frame periods, which are CALENDAR-quarter aligned -- a company "
-    "with a non-calendar fiscal year is matched against the nearest calendar period "
-    "here, which will not exactly match its own fiscal-year label on /statements.",
+# Cross-company frames-based endpoints (Milestone 4, normalize/screening.py) --
+# GET /screen (filter/match) and GET /concepts/{concept} (list/rank) share this same
+# underlying frames data and its coverage gaps, so they share one caveats list too --
+# always present, same convention as the institutional caveats above.
+_FRAMES_CAVEATS = [
+    "Uses SEC frame periods, which are CALENDAR-quarter aligned -- a company with a "
+    "non-calendar fiscal year is matched against the nearest calendar period here, "
+    "which will not exactly match its own fiscal-year label on /statements.",
     "Only companies tagging a concept with one of its standard us-gaap candidate tags "
     "are visible here -- a company-specific extension tag for that concept is invisible "
-    "to frames screening, unlike /statements which does catch extension tags per-company.",
+    "to frames data, unlike /statements which does catch extension tags per-company.",
     "XBRL financial data is only available from ~2009, phased in through ~2012 -- a "
     "period before a company's first XBRL filing shows no data for it, not a zero value.",
 ]
@@ -740,7 +742,7 @@ def _run_screen(
                         "fiscal_year": 2023,
                         "fiscal_period": "FY",
                         "concepts_screened": ["revenue"],
-                        "caveats": _SCREENING_CAVEATS,
+                        "caveats": _FRAMES_CAVEATS,
                         "results": [
                             {
                                 "cik": 320193,
@@ -791,7 +793,7 @@ async def screen_companies(
     OR/nesting and no free-form query string, deliberately: this is a scoped MVP, not
     the open-ended "screening query language" CLAUDE.md flags as a separate, later
     decision. Requires at least one filter. `caveats` is always present -- see
-    `_SCREENING_CAVEATS` for the calendar-alignment and extension-tag coverage gaps
+    `_FRAMES_CAVEATS` for the calendar-alignment and extension-tag coverage gaps
     specific to frames-sourced data.
     """
     filters = {
@@ -834,6 +836,104 @@ async def screen_companies(
         "fiscal_year": fiscal_year,
         "fiscal_period": fiscal_period,
         "concepts_screened": list(active.keys()),
-        "caveats": _SCREENING_CAVEATS,
+        "caveats": _FRAMES_CAVEATS,
+        "results": results,
+    }
+
+
+# --- Cross-company concept listing (Milestone 4) -----------------------------------
+#
+# The rank/browse complement to /screen above: no min/max thresholds, just every
+# reporting company's value for one concept+period, sorted and capped at `limit`. Same
+# frames-sourced data (`RawFactRepository.screen()`), same coverage caveats
+# (_FRAMES_CAVEATS) -- narrower in a different direction than /screen: one concept only,
+# but no filter-and-match required, e.g. "top 10 companies by revenue this quarter."
+
+
+def _list_concept(
+    repo: RawFactRepository,
+    concept: str,
+    fiscal_year: int,
+    fiscal_period: FiscalPeriod,
+    sort: str,
+    limit: int,
+) -> list[tuple[int, float]]:
+    """DB-only listing core, no SECClient dependency -- same "extract the testable
+    piece" shape as `_run_screen`. Returns up to `limit` (cik, value) pairs sorted by
+    value, ascending or descending.
+    """
+    frame_period = frame_period_for_concept(concept, fiscal_year, fiscal_period)
+    rows = repo.screen(candidate_tags(concept), frame_period)
+    values = resolve_concept_values(rows, concept)
+    ordered = sorted(values.items(), key=lambda item: item[1], reverse=(sort == "desc"))
+    return ordered[:limit]
+
+
+@router.get(
+    "/concepts/{concept}",
+    tags=["Screening"],
+    summary="List/rank companies by one financial concept for one period",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "concept": "revenue",
+                        "fiscal_year": 2023,
+                        "fiscal_period": "FY",
+                        "caveats": _FRAMES_CAVEATS,
+                        "results": [
+                            {
+                                "cik": 104169,
+                                "entity_name": "Walmart Inc.",
+                                "value": 648125000000,
+                            },
+                            {"cik": 320193, "entity_name": "Apple Inc.", "value": 383285000000},
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
+async def list_concept_values(
+    concept: str,
+    fiscal_year: int = Query(..., description="Calendar year, e.g. 2023"),
+    fiscal_period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    sort: str = Query("desc", pattern="^(asc|desc)$", description="Sort by value"),
+    limit: int = Query(100, ge=1, le=500, description="Max companies to return"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """List every reporting company's value for one canonical concept + fiscal period,
+    sorted and capped at `limit` -- e.g. "top 10 companies by revenue this quarter."
+
+    The rank/browse complement to `GET /screen`: no thresholds, just a ranked list over
+    one of `normalize.screening.SCREENABLE_CONCEPTS`. `caveats` is always present -- see
+    `_FRAMES_CAVEATS` (same coverage gaps `/screen` carries, since both read the same
+    frames-sourced data).
+    """
+    if concept not in SCREENABLE_CONCEPTS:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Unknown concept: {concept!r}. Screenable concepts: "
+                f"{', '.join(SCREENABLE_CONCEPTS)}."
+            ),
+        )
+
+    ranked = _list_concept(repo, concept, fiscal_year, fiscal_period, sort, limit)
+
+    results = []
+    async with SECClient() as client:
+        for cik, value in ranked:
+            entity_name = await ticker_cache.resolve_name(client, cik)
+            results.append({"cik": cik, "entity_name": entity_name, "value": value})
+
+    return {
+        "concept": concept,
+        "fiscal_year": fiscal_year,
+        "fiscal_period": fiscal_period,
+        "caveats": _FRAMES_CAVEATS,
         "results": results,
     }
