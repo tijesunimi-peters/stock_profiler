@@ -1,9 +1,11 @@
-"""Tier defaults for newly-issued API keys.
+"""Tier definitions for API keys.
 
-Only one tier exists today ("free") -- paid subscription tiers are a separate,
-not-yet-built roadmap item (docs/ROADMAP.md's "Usage metering + subscription tiers").
-Keeping a `tier` column on the stored record now (storage/api_key_repository.py) avoids
-a migration when paid tiers land; this dict is where their limits will get added.
+`POST /v1/signup` always issues `DEFAULT_TIER` -- there's no self-service upgrade path
+yet (that needs real payment integration, a separate not-yet-decided task). Moving an
+existing key onto a paid tier is a manual, admin-secret-gated action
+(`api/admin_routes.py`) until then. No usage-metering rollup beyond the existing daily
+`api_key_usage` counter (storage/api_key_repository.py) is built here -- see
+docs/ROADMAP.md for that half of "Usage metering + subscription tiers".
 """
 
 from __future__ import annotations
@@ -21,4 +23,6 @@ DEFAULT_TIER = "free"
 
 TIERS: dict[str, TierLimits] = {
     DEFAULT_TIER: TierLimits(rate_limit_per_sec=5, daily_quota=1000),
+    "basic": TierLimits(rate_limit_per_sec=20, daily_quota=25_000),
+    "pro": TierLimits(rate_limit_per_sec=100, daily_quota=250_000),
 }

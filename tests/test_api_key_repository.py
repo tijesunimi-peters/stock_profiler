@@ -44,6 +44,51 @@ def test_create_key_rejects_duplicate_email():
     repo.close()
 
 
+def test_get_by_email_round_trips():
+    repo = SQLiteApiKeyRepository(":memory:")
+    record = repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    assert repo.get_by_email("a@example.com") == record
+    repo.close()
+
+
+def test_get_by_email_returns_none_for_unknown_email():
+    repo = SQLiteApiKeyRepository(":memory:")
+    assert repo.get_by_email("nope@example.com") is None
+    repo.close()
+
+
+def test_update_tier_changes_tier_and_limits():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    updated = repo.update_tier(
+        email="a@example.com", tier="pro", rate_limit_per_sec=100, daily_quota=250_000
+    )
+
+    assert updated is not None
+    assert updated.tier == "pro"
+    assert updated.rate_limit_per_sec == 100
+    assert updated.daily_quota == 250_000
+    # Persisted, not just returned in-memory.
+    assert repo.get_by_email("a@example.com") == updated
+    repo.close()
+
+
+def test_update_tier_returns_none_for_unknown_email():
+    repo = SQLiteApiKeyRepository(":memory:")
+    assert repo.update_tier(
+        email="nope@example.com", tier="pro", rate_limit_per_sec=100, daily_quota=250_000
+    ) is None
+    repo.close()
+
+
 def test_record_usage_and_get_count_increments_per_day():
     repo = SQLiteApiKeyRepository(":memory:")
     record = repo.create_key(

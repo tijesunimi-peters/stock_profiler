@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from secfin.api.admin_routes import admin_router
 from secfin.api.auth import limit_anonymous_traffic, require_api_key
 from secfin.api.auth_routes import signup_router
 from secfin.api.routes import public_router, router
@@ -92,6 +93,9 @@ app.include_router(
 )
 app.include_router(signup_router, prefix="/v1")
 app.include_router(router, prefix="/v1", dependencies=[Depends(require_api_key)])
+# Own gating (require_admin_secret, an admin shared secret) at the route level, not
+# require_api_key -- an admin isn't a paying customer. See admin_routes.py.
+app.include_router(admin_router, prefix="/v1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

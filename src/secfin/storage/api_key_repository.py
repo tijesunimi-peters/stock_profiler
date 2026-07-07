@@ -39,6 +39,24 @@ class ApiKeyRepository(ABC):
         """
 
     @abstractmethod
+    def get_by_email(self, email: str) -> ApiKeyRecord | None:
+        """The key record registered to this email, or None. Email is unique per key
+        (one key per email, same constraint `create_key` enforces) -- this is the lookup
+        an admin tier change (`api/admin_routes.py`) uses, since an operator knows the
+        customer's email, not their key hash.
+        """
+
+    @abstractmethod
+    def update_tier(
+        self, email: str, tier: str, rate_limit_per_sec: int, daily_quota: int
+    ) -> ApiKeyRecord | None:
+        """Move the key registered to `email` onto `tier` with the given limits, and
+        return the updated record -- or None if no key is registered to that email.
+        There's no self-service upgrade path (no payment integration yet); this is the
+        manual mechanism admin_routes.py's tier-change endpoint calls.
+        """
+
+    @abstractmethod
     def record_usage_and_get_count(self, api_key_id: int, day: str) -> int:
         """Atomically increment today's request count for this key and return the new
         total -- the caller compares it against `daily_quota` to decide whether to 429.

@@ -69,10 +69,17 @@ class SQLiteApiKeyRepository(ApiKeyRepository):
         return record
 
     def get_by_hash(self, key_hash: str) -> ApiKeyRecord | None:
+        return self._get_by(("key_hash", key_hash))
+
+    def get_by_email(self, email: str) -> ApiKeyRecord | None:
+        return self._get_by(("email", email))
+
+    def _get_by(self, column_value: tuple[str, str]) -> ApiKeyRecord | None:
+        column, value = column_value
         cur = self._conn.execute(
             "SELECT id, email, tier, rate_limit_per_sec, daily_quota, active, created_at "
-            "FROM api_keys WHERE key_hash = ?",
-            (key_hash,),
+            f"FROM api_keys WHERE {column} = ?",
+            (value,),
         )
         row = cur.fetchone()
         if row is None:
@@ -86,6 +93,18 @@ class SQLiteApiKeyRepository(ApiKeyRepository):
             active=bool(row[5]),
             created_at=row[6],
         )
+
+    def update_tier(
+        self, email: str, tier: str, rate_limit_per_sec: int, daily_quota: int
+    ) -> ApiKeyRecord | None:
+        cur = self._conn.execute(
+            "UPDATE api_keys SET tier = ?, rate_limit_per_sec = ?, daily_quota = ? "
+            "WHERE email = ?",
+            (tier, rate_limit_per_sec, daily_quota, email),
+        )
+        if cur.rowcount == 0:
+            return None
+        return self.get_by_email(email)
 
     def record_usage_and_get_count(self, api_key_id: int, day: str) -> int:
         self._conn.execute("BEGIN")

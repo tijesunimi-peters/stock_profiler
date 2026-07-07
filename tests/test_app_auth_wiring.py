@@ -67,3 +67,46 @@ def test_signup_rejects_duplicate_email(tmp_path, monkeypatch):
         assert first.status_code == 200
         second = client.post("/v1/signup", json={"email": "dup@example.com"})
         assert second.status_code == 409
+
+
+def test_admin_tier_change_is_503_when_admin_secret_unconfigured(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "secfin_admin_secret", "")
+    with _client(tmp_path, monkeypatch) as client:
+        client.post("/v1/signup", json={"email": "a@example.com"})
+        resp = client.post(
+            "/v1/admin/keys/a@example.com/tier",
+            json={"tier": "pro"},
+            headers={"X-Admin-Secret": "anything"},
+        )
+    assert resp.status_code == 503
+
+
+def test_admin_tier_change_end_to_end(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "secfin_admin_secret", "test-admin-secret")
+    with _client(tmp_path, monkeypatch) as client:
+        signup_resp = client.post("/v1/signup", json={"email": "a@example.com"})
+        api_key = signup_resp.json()["api_key"]
+
+        # Wrong secret is rejected.
+        wrong = client.post(
+            "/v1/admin/keys/a@example.com/tier",
+            json={"tier": "pro"},
+            headers={"X-Admin-Secret": "not-the-secret"},
+        )
+        assert wrong.status_code == 401
+
+        # Correct secret moves the key onto the new tier.
+        resp = client.post(
+            "/v1/admin/keys/a@example.com/tier",
+            json={"tier": "pro"},
+            headers={"X-Admin-Secret": "test-admin-secret"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tier"] == "pro"
+        assert resp.json()["daily_quota"] == 250_000
+
+        # The upgraded key's higher rate limit is now live on a gated endpoint.
+        gated = client.get(
+            "/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key}
+        )
+        assert gated.status_code != 401

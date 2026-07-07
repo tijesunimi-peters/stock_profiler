@@ -8,6 +8,7 @@ services:
       SECFIN_DB_PATH: "/app/data/secfin.db"
       SECFIN_BACKUP_DIR: "/app/backups"
       SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
+      SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"
     volumes:
       - secfin-data:/app/data
       # Host bind mount, deliberately separate from the secfin-data named volume above:

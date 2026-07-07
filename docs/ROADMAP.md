@@ -347,9 +347,26 @@ a time.
       tier's 5 req/s limit correctly returned `200 200 200 200 200 429`; the public
       `/periods` endpoint kept serving real data with no key at all. No admin CLI /
       key revocation yet -- unbuilt, later work if needed.
-- [ ] Usage metering (for billing) + subscription tiers -- the `tier` column and
-      `auth/tiers.py`'s dict already exist for this; only one tier ("free") is defined
-      today.
+- [x] **Subscription tiers (manual upgrade path)** -- `auth/tiers.py` now defines
+      "basic" (20 req/s, 25K/day) and "pro" (100 req/s, 250K/day) alongside "free". No
+      payment integration yet, so there's no self-service upgrade: `POST
+      /v1/signup` still always issues "free". Moving an existing key onto a paid tier is
+      a new admin-secret-gated `POST /v1/admin/keys/{email}/tier`
+      (`api/admin_routes.py`), backed by new `ApiKeyRepository.get_by_email` /
+      `update_tier` methods. Gated by a shared secret (`X-Admin-Secret` header vs.
+      `config.secfin_admin_secret`, compared with `secrets.compare_digest`), deliberately
+      not `require_api_key` -- an admin isn't a customer. **503s, not silently open, when
+      the secret is unset** -- caught a real gap during verification: `docker-compose.yml`
+      only forwards an explicit allowlist of env vars into the container (`SEC_USER_AGENT`,
+      `SECFIN_DB_PATH`, `SECFIN_BACKUP_DIR`, `SEC_MAX_RPS`), so `.env` alone wasn't enough;
+      added `SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"` there too. Verified
+      end-to-end against the real running API (Docker, 2026-07-06): missing/wrong secret
+      both 401; correct secret + unknown tier name 400s; correct secret + unregistered
+      email 404s; correct secret + valid tier moves a real signed-up key from
+      free (5/1000) to pro (100/250000) limits, persisted (not just returned in-memory).
+- [ ] Usage metering (for billing) -- the `api_key_usage` table (already there,
+      pre-M3) tracks daily request counts for quota enforcement, but nothing surfaces
+      them to the key holder yet.
 - [x] Statements cache-warming — `ingest/backfill.py` (bulk `companyfacts.zip`) + daily
       `ingest/incremental.py` seed and refresh the `RawFact`/statements cache, respecting SEC
       limits.

@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # (auth/tiers.py) since this protects an unauthenticated, unmetered surface.
     secfin_anon_rate_limit_per_sec: float = 2.0
 
+    # Shared secret for admin-only endpoints (api/admin_routes.py), sent as the
+    # `X-Admin-Secret` header. Empty by default -- admin_routes.py refuses every request
+    # with 503 while this is unset, rather than silently exposing tier changes on an
+    # empty-string-matches-empty-string comparison. Set a long random value before
+    # deploying anywhere reachable.
+    secfin_admin_secret: str = ""
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).
