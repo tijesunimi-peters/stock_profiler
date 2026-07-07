@@ -215,33 +215,48 @@ stopped first. `mode=ro` refuses to create the file if it doesn't exist yet (rat
 silently starting a new empty DB), which is a useful sanity check that you're pointed at
 real data.
 
-## Running tests / lint
+## Running tests / lint (Docker)
 
-The shipped image **does not** support this: the `Dockerfile` installs the package
-without the `[dev]` extra (no `pytest`/`ruff`), and only `COPY`s `pyproject.toml`,
-`README.md`, and `src/` — `tests/` is never added to the image (and is separately
-excluded via `.dockerignore`). `docker compose run --rm api pytest` will fail on a
-plain build of this image.
+The prod `api` image deliberately ships without `tests/` or the `[dev]` extra, so
+`docker compose run --rm api pytest` won't work. Instead, two **opt-in compose profiles**
+bind-mount the repo into the public `python:3.11-slim` (and the Puppeteer) image — they are
+NOT started by `docker compose up`. Both need `SEC_USER_AGENT` resolvable (see §Open
+questions), the same as every other compose command.
 
-If you still want to run tests via Docker rather than a local venv, the working pattern
-used during development of this pipeline does **not** use the project's own Dockerfile —
-it bind-mounts the repo into the public `python:3.11-slim` base image and installs dev
-deps fresh each time:
+### Unit tests
 
 ```bash
-docker run --rm -v "$(pwd)":/app -w /app python:3.11-slim \
-  bash -c "pip install -q -e '.[dev]' && pytest -q"
+docker compose --profile test run --rm test
 ```
 
-See "Open questions / mismatches" below — this is a real gap in the current setup, not
-a documented, first-class workflow.
+Bind-mounts the repo, `pip install -e ".[dev]"`, runs `pytest -q`. Same result as a local
+venv, no host Python needed.
+
+### Headless-browser e2e (real Chromium)
+
+```bash
+docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
+```
+
+Two containers: `e2e-app` seeds the AAPL/JPM/WMT fixtures into a throwaway DB
+(`scripts/seed_fixture.py`, no network) and serves the app with a `/health` healthcheck;
+once healthy, `e2e` runs `scripts/headless_check.js` in the official Puppeteer image against
+it — loading `/company/AAPL`, `/coverage`, `/components` in Chromium, **failing on any
+console/page/request error**, and writing a full-height screenshot per page to
+`./data/e2e-shots/` (gitignored). The `--exit-code-from e2e` makes the whole command exit
+with the check's pass/fail code (CI-friendly). Tear down with
+`docker compose --profile e2e down`.
+
+To point the check at a different app or page set, override `BASE_URL` / `PAGES` on the `e2e`
+service (see `scripts/headless_check.js`).
 
 ## Open questions / mismatches
 
-- **No tested path to run tests/lint via the project's own Docker image.** The
-  `Dockerfile` deliberately installs production-only deps and never copies `tests/`.
-  Whether that's intentional (image is meant to be a slim runtime artifact only) or an
-  oversight isn't stated anywhere in the repo — flagging rather than assuming either way.
+- ~~**No tested path to run tests/lint via the project's own Docker image.**~~ **Resolved:**
+  the prod image stays a slim runtime artifact (no `tests/`/`[dev]`); testing runs through the
+  `test` and `e2e` compose profiles above, which bind-mount the repo into the base/Puppeteer
+  images. Both verified: `test` → full pytest suite green; `e2e` → headless Chromium renders the
+  data pages with zero console errors.
 - **`.env.example` doesn't list the backfill tuning variables** that `config.py` actually
   reads (`SECFIN_BULK_DATA_DIR`, `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`,
   `SECFIN_BACKFILL_QUEUE_MAXSIZE`) — they work (confirmed via `--help`-equivalent

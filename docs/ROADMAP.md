@@ -323,9 +323,11 @@ a time.
 
 ### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches")
 
-- [ ] Decide the test-in-Docker story: the shipped image installs prod-only deps and omits
-      `tests/`, so `docker compose run api pytest` fails. Either document the bind-mount base-image
-      pattern as the intended path, or add a dev image — but stop leaving it ambiguous.
+- [x] Decide the test-in-Docker story — **done**: opt-in `test` and `e2e` compose profiles
+      bind-mount the repo into the base/Puppeteer images (prod image stays slim). `docker compose
+      --profile test run --rm test` runs pytest; `docker compose --profile e2e up
+      --exit-code-from e2e` runs a headless-Chromium render check of the data pages
+      (`scripts/headless_check.js` + `scripts/seed_fixture.py`). See `docs/DEVELOPMENT.md`.
 - [ ] Add the backfill tuning vars to `.env.example` (`SECFIN_BULK_DATA_DIR`,
       `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`, `SECFIN_BACKFILL_QUEUE_MAXSIZE`) —
       they're read by `config.py` but undocumented and not surfaced in compose.
