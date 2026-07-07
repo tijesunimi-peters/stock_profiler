@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docs — Profin</title>
+<meta name="description" content="Quickstart, authentication, rate limits, error codes, and the full endpoint reference for the Profin API.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/guide.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#covered">Coverage</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/guide" class="current">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/#covered">Coverage</a>
+    <a href="/#pricing">Pricing</a>
+    <a href="/guide" class="current">Docs</a>
+    <a href="/explorer">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="guide-hero">
+  <span class="eyebrow">Documentation</span>
+  <h1>Everything you need to call the API.</h1>
+  <p class="guide-hero-sub">This page covers the workflow: signing up, authenticating, rate limits, and reading a response. For the exhaustive, always-current shape of every field, use the <a href="/docs">API Reference</a> (auto-generated from the running API).</p>
+  <nav class="guide-toc" aria-label="On this page">
+    <a href="#quickstart">Quickstart</a>
+    <a href="#auth">Auth &amp; rate limits</a>
+    <a href="#errors">Error codes</a>
+    <a href="#endpoints">Endpoint reference</a>
+    <a href="#caveats">13F &amp; derived-data caveats</a>
+  </nav>
+</header>
+
+<section class="section guide-section" id="quickstart">
+  <span class="eyebrow">01</span>
+  <h2>Quickstart</h2>
+  <p class="body-text">Three steps: get a key, call an endpoint, read the response. No credit card, no email verification -- <code>POST /v1/signup</code> issues a free-tier key instantly.</p>
+
+  <p class="guide-step-label">1. Sign up for a key</p>
+  <div class="code-panel">
+    <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">signup.sh</span></div>
+    <pre class="code-body">curl -X POST https://api.example.com/v1/signup \
+  -H <span class="str">"Content-Type: application/json"</span> \
+  -d <span class="str">'{"email": "you@example.com"}'</span></pre>
+  </div>
+  <div class="code-panel">
+    <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">signup-response.json</span></div>
+    <pre class="code-body"><span class="punct">{</span>
+  <span class="key">"api_key"</span>: <span class="str">"sfk_...redacted, shown once..."</span>,
+  <span class="key">"tier"</span>: <span class="str">"free"</span>,
+  <span class="key">"rate_limit_per_sec"</span>: <span class="num">5</span>,
+  <span class="key">"daily_quota"</span>: <span class="num">1000</span>
+<span class="punct">}</span></pre>
+  </div>
+  <p class="guide-note">The plaintext key is returned exactly once, in this response. Only its hash is stored -- if you lose it, sign up with a different email (there's no reissue flow yet).</p>
+
+  <p class="guide-step-label">2. Call a gated endpoint with <code>X-API-Key</code></p>
+  <div class="code-panel">
+    <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">insider-trades.sh</span></div>
+    <pre class="code-body">curl https://api.example.com/v1/companies/AAPL/insider-trades?limit=5 \
+  -H <span class="str">"X-API-Key: sfk_..."</span></pre>
+  </div>
+
+  <p class="guide-step-label">3. Two endpoints need no key at all</p>
+  <p class="body-text"><code>/companies/{symbol}/statements/{statement}</code> and <code>/companies/{symbol}/periods</code> are public -- they power the <a href="/explorer">Data Explorer</a> directly from browser JS. They're rate-limited per-IP instead of per-key.</p>
+</section>
+
+<section class="section guide-section" id="auth">
+  <span class="eyebrow">02</span>
+  <h2>Auth &amp; rate limits</h2>
+  <p class="body-text">Every endpoint except the two statement/period endpoints above requires an <code>X-API-Key</code> header. An invalid, missing, or revoked key gets a <code>401</code> before any rate limit is even checked.</p>
+  <p class="body-text">Each key has two independent limits: a short-window <strong>burst rate</strong> (requests/sec, resets continuously) and a <strong>daily quota</strong> (resets at UTC midnight, tracked per calendar day). Either one being exceeded returns <code>429</code>. Call <code>GET /v1/usage</code> with your key to see your own trailing daily counts.</p>
+
+  <table class="guide-table">
+    <thead><tr><th>Tier</th><th>Rate limit</th><th>Daily quota</th><th>How to get it</th></tr></thead>
+    <tbody>
+      <tr><td>free</td><td>5 req/sec</td><td>1,000 req/day</td><td>Default -- issued by <code>POST /v1/signup</code></td></tr>
+      <tr><td>basic</td><td>20 req/sec</td><td>25,000 req/day</td><td>Manual upgrade (no self-serve billing yet)</td></tr>
+      <tr><td>pro</td><td>100 req/sec</td><td>250,000 req/day</td><td>Manual upgrade (no self-serve billing yet)</td></tr>
+    </tbody>
+  </table>
+  <p class="guide-note">Every signup is issued the free tier today -- there's no payment integration yet, so moving to a paid tier is a manual step on our end rather than something you can trigger yourself.</p>
+</section>
+
+<section class="section guide-section" id="errors">
+  <span class="eyebrow">03</span>
+  <h2>Error codes</h2>
+  <table class="guide-table">
+    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td><code>400</code></td><td>Bad request parameter -- e.g. a quarter-end date that isn't a valid calendar quarter-end.</td></tr>
+      <tr><td><code>401</code></td><td>Missing, unknown, or revoked <code>X-API-Key</code>.</td></tr>
+      <tr><td><code>404</code></td><td>Unknown ticker/CIK, or no data found for the requested company/period/CUSIP.</td></tr>
+      <tr><td><code>429</code></td><td>Per-key burst rate or daily quota exceeded (or, on the two public endpoints, the per-IP burst limit).</td></tr>
+      <tr><td><code>503</code></td><td>Reserved for internal admin operations -- not returned by any customer-facing endpoint.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section guide-section" id="endpoints">
+  <span class="eyebrow">04</span>
+  <h2>Endpoint reference</h2>
+  <p class="body-text">Grouped by domain. See the <a href="/docs">API Reference</a> for full request/response schemas and live "Try it out".</p>
+
+  <h3 class="guide-group-heading">Financials <span class="guide-group-tag">public, no key required</span></h3>
+  <table class="guide-table">
+    <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /v1/companies/{symbol}/statements/{statement}</code></td><td>One normalized income statement, balance sheet, or cash flow statement for a fiscal period.</td></tr>
+      <tr><td><code>GET /v1/companies/{symbol}/periods</code></td><td>Fiscal periods with data available for a company.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="guide-group-heading">Insider trades</h3>
+  <table class="guide-table">
+    <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /v1/companies/{symbol}/insider-trades</code></td><td>Form 3/4/5 insider transactions, most recent filings first.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="guide-group-heading">Institutional ownership</h3>
+  <table class="guide-table">
+    <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /v1/companies/{symbol}/beneficial-ownership</code></td><td>Schedule 13D/13G (5%+ crossing) filings for a company.</td></tr>
+      <tr><td><code>GET /v1/companies/{symbol}/institutional-holders</code></td><td>Managers holding a company as of a 13F quarter-end.</td></tr>
+      <tr><td><code>GET /v1/companies/{symbol}/institutional-activity</code></td><td>DERIVED buy/sell activity for a company, aggregated across all managers.</td></tr>
+      <tr><td><code>GET /v1/managers/{manager_cik}/holdings</code></td><td>One manager's full 13F holdings snapshot for a quarter.</td></tr>
+      <tr><td><code>GET /v1/managers/{manager_cik}/activity</code></td><td>DERIVED buy/sell activity for one manager vs. the prior quarter.</td></tr>
+      <tr><td><code>GET /v1/cusip-resolution-stats</code></td><td>Coverage snapshot for 13F CUSIP-to-company resolution.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="guide-group-heading">Account</h3>
+  <table class="guide-table">
+    <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>POST /v1/signup</code></td><td>Issue a free-tier API key for an email address.</td></tr>
+      <tr><td><code>GET /v1/usage</code></td><td>Your key's tier, limits, and recent daily request counts.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="section guide-section" id="caveats">
+  <span class="eyebrow">05</span>
+  <h2>13F &amp; derived-data caveats</h2>
+  <div class="guide-callout">
+    <p><strong>13F is a quarter-end holdings snapshot, not a transaction feed.</strong> Every "activity" endpoint above computes buy/sell by diffing two consecutive quarters -- it is never SEC-reported trade data. Each of those responses carries an always-present <code>caveats</code> field repeating this.</p>
+    <ul>
+      <li><strong>Long-only:</strong> 13F covers long positions in Section 13(f) securities only -- no shorts, cash, or non-US holdings.</li>
+      <li><strong>Filing lag:</strong> 13F filings lag up to ~45 days after quarter-end, so even a "current" snapshot reflects stale positions.</li>
+      <li><strong>Ambiguous empty results:</strong> for the issuer-centric endpoints (<code>institutional-holders</code>/<code>institutional-activity</code>), an empty list can mean "no manager reported holding this issuer" <em>or</em> "this quarter hasn't been ingested for any manager yet" -- it does not confirm zero institutional ownership.</li>
+      <li><strong>13D/13G coverage floor:</strong> only structured-XML Schedule 13D/13G filings are parsed (from ~mid-2025 onward). A company whose 5%+ history predates that transition returns an empty list, not zero beneficial owners.</li>
+      <li><strong>Financials coverage floor:</strong> XBRL was phased in by the SEC roughly 2009 to ~2012, so full-history statement coverage is capped at each company's first XBRL filing, not further back.</li>
+    </ul>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/guide">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/guide#quickstart">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="/#covered">Coverage</a>
+      <a href="/#covered">Schema</a>
+      <a href="/#covered">Sources</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/">About</a>
+      <a href="/">Changelog</a>
+      <a href="/">Contact</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

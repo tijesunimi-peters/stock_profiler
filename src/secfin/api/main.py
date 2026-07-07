@@ -34,6 +34,47 @@ from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Rendered as the overview on the Swagger UI (`/docs`) landing page. Narrative
+# quickstart/error-code/tier content lives on the static `/guide` page instead (see
+# `landing_page`/`docs_guide` below) -- this stays short, since Swagger already shows
+# per-endpoint detail from each route's own docstring.
+_OPENAPI_DESCRIPTION = """
+Normalized SEC financial data (Track 1: structured numeric data) -- income statements,
+balance sheets, cash flow, insider trades (Forms 3/4/5), and institutional ownership
+(13F, Schedule 13D/13G), served as clean JSON instead of raw XBRL/XML.
+
+**Auth:** every endpoint below except `/companies/{symbol}/statements/{statement}` and
+`/companies/{symbol}/periods` requires an `X-API-Key` header. `POST /v1/signup` issues a
+free-tier key. See `/guide` for a walkthrough, current tier limits, and error codes.
+
+**13F is a quarter-end holdings snapshot, not transactions.** Any "buy/sell" activity
+endpoint below DERIVES that view by diffing two quarters -- never reported trades. Every
+such response carries a `caveats` field spelling this out, plus the long-only /
+~45-day-filing-lag caveats.
+""".strip()
+
+_OPENAPI_TAGS = [
+    {
+        "name": "Financials",
+        "description": "Income statement, balance sheet, and cash flow -- public, keyless "
+        "endpoints (IP rate-limited instead).",
+    },
+    {
+        "name": "Insider Trades",
+        "description": "Forms 3/4/5 insider transactions.",
+    },
+    {
+        "name": "Institutional Ownership",
+        "description": "13F holdings/activity and Schedule 13D/13G beneficial ownership. "
+        "'Activity' endpoints are DERIVED by diffing snapshots -- see each endpoint's "
+        "own caveats.",
+    },
+    {
+        "name": "Account",
+        "description": "Signup and usage metering for your own API key.",
+    },
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -82,9 +123,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="sec-financials-api",
+    title="Profin API",
     version="0.1.0",
-    description="Normalized SEC financial data (Track 1: structured numeric data).",
+    description=_OPENAPI_DESCRIPTION,
+    openapi_tags=_OPENAPI_TAGS,
     lifespan=lifespan,
 )
 
@@ -107,6 +149,11 @@ async def landing_page() -> FileResponse:
 @app.get("/explorer", include_in_schema=False)
 async def data_explorer() -> FileResponse:
     return FileResponse(STATIC_DIR / "explorer.html")
+
+
+@app.get("/guide", include_in_schema=False)
+async def docs_guide() -> FileResponse:
+    return FileResponse(STATIC_DIR / "guide.html")
 
 
 @app.get("/health")

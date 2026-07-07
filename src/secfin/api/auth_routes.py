@@ -45,7 +45,11 @@ class SignupResponse(BaseModel):
 
 
 @signup_router.post(
-    "/signup", response_model=SignupResponse, dependencies=[Depends(limit_anonymous_traffic)]
+    "/signup",
+    response_model=SignupResponse,
+    dependencies=[Depends(limit_anonymous_traffic)],
+    tags=["Account"],
+    summary="Sign up for a free-tier API key",
 )
 async def signup(
     body: SignupRequest, repo: ApiKeyRepository = Depends(get_api_key_repo)

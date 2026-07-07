@@ -54,6 +54,7 @@ class TierChangeResponse(BaseModel):
     "/admin/keys/{email}/tier",
     response_model=TierChangeResponse,
     dependencies=[Depends(require_admin_secret)],
+    include_in_schema=False,
 )
 async def change_tier(
     email: str,

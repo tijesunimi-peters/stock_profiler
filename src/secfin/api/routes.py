@@ -184,7 +184,12 @@ async def _manager_snapshot(
     return snapshot
 
 
-@public_router.get("/companies/{symbol}/statements/{statement}", response_model=Statement)
+@public_router.get(
+    "/companies/{symbol}/statements/{statement}",
+    response_model=Statement,
+    tags=["Financials"],
+    summary="Get an income statement, balance sheet, or cash flow statement",
+)
 async def get_statement(
     symbol: str,
     statement: StatementType,
@@ -209,7 +214,26 @@ async def get_statement(
     return result
 
 
-@public_router.get("/companies/{symbol}/periods")
+@public_router.get(
+    "/companies/{symbol}/periods",
+    tags=["Financials"],
+    summary="List fiscal periods with data for a company",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "periods": [
+                            {"year": 2024, "period": "FY"},
+                            {"year": 2024, "period": "Q3"},
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_periods(
     symbol: str,
     repo: RawFactRepository = Depends(get_repo),
@@ -225,7 +249,12 @@ async def get_periods(
     }
 
 
-@router.get("/companies/{symbol}/insider-trades", response_model=list[InsiderTransaction])
+@router.get(
+    "/companies/{symbol}/insider-trades",
+    response_model=list[InsiderTransaction],
+    tags=["Insider Trades"],
+    summary="List Form 3/4/5 insider transactions for a company",
+)
 async def get_insider_trades(
     symbol: str,
     limit: int = Query(
@@ -248,7 +277,36 @@ async def get_insider_trades(
         return await _insider_transactions_for_cik(insider_repo, client, cik, limit)
 
 
-@router.get("/companies/{symbol}/beneficial-ownership")
+@router.get(
+    "/companies/{symbol}/beneficial-ownership",
+    tags=["Institutional Ownership"],
+    summary="List Schedule 13D/13G beneficial-ownership (5%+) filings for a company",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "caveats": _BENEFICIAL_OWNERSHIP_CAVEATS,
+                        "beneficial_ownership": [
+                            {
+                                "issuer_cik": 320193,
+                                "issuer_name": "Apple Inc.",
+                                "owner_name": "The Vanguard Group",
+                                "form_type": "SCHEDULE 13G",
+                                "percent_of_class": 8.3,
+                                "shares_beneficially_owned": 1_310_000_000,
+                                "event_date": "2025-08-08",
+                                "filed": "2025-08-12",
+                                "accession": "0000102909-25-012345",
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_beneficial_ownership(
     symbol: str,
     limit: int = Query(
@@ -323,7 +381,12 @@ async def get_usage(
     return usage_summary(record, stored, days, today)
 
 
-@router.get("/cusip-resolution-stats", response_model=CusipResolutionStats)
+@router.get(
+    "/cusip-resolution-stats",
+    response_model=CusipResolutionStats,
+    tags=["Institutional Ownership"],
+    summary="Get 13F CUSIP-to-company resolution coverage",
+)
 async def get_cusip_resolution_stats(
     cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
 ) -> CusipResolutionStats:
@@ -357,7 +420,36 @@ async def _cusips_for_issuer(cusip_repo: CusipMapRepository, cik: int) -> list[s
     return cusips
 
 
-@router.get("/companies/{symbol}/institutional-holders")
+@router.get(
+    "/companies/{symbol}/institutional-holders",
+    tags=["Institutional Ownership"],
+    summary="List institutional managers holding a company as of a 13F quarter-end",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "period": "2024-06-30",
+                        "caveats": _ISSUER_CENTRIC_CAVEATS,
+                        "holders": [
+                            {
+                                "manager_cik": 1067983,
+                                "manager_name": "Berkshire Hathaway Inc",
+                                "cusip": "037833100",
+                                "issuer_name": "Apple Inc.",
+                                "shares": 300_000_000,
+                                "value": 71_400_000_000,
+                                "other_managers": [],
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_institutional_holders(
     symbol: str,
     period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
@@ -387,7 +479,41 @@ async def get_institutional_holders(
     }
 
 
-@router.get("/companies/{symbol}/institutional-activity")
+@router.get(
+    "/companies/{symbol}/institutional-activity",
+    tags=["Institutional Ownership"],
+    summary="Get DERIVED institutional buy/sell activity for a company (13F diff)",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "from_period": "2024-03-31",
+                        "to_period": "2024-06-30",
+                        "caveats": _ISSUER_CENTRIC_CAVEATS,
+                        "activity": [
+                            {
+                                "manager_cik": 1067983,
+                                "manager_name": "Berkshire Hathaway Inc",
+                                "cusip": "037833100",
+                                "issuer_name": "Apple Inc.",
+                                "cik": 320193,
+                                "from_period": "2024-03-31",
+                                "to_period": "2024-06-30",
+                                "shares_before": 320_000_000,
+                                "shares_after": 300_000_000,
+                                "shares_change": -20_000_000,
+                                "action": "reduced",
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_institutional_activity(
     symbol: str,
     period: str = Query(..., description="Current quarter-end, e.g. 2024-06-30"),
@@ -434,7 +560,12 @@ async def get_institutional_activity(
     }
 
 
-@router.get("/managers/{manager_cik}/holdings", response_model=HoldingsSnapshot)
+@router.get(
+    "/managers/{manager_cik}/holdings",
+    response_model=HoldingsSnapshot,
+    tags=["Institutional Ownership"],
+    summary="Get one manager's full 13F holdings snapshot for a quarter",
+)
 async def get_manager_holdings(
     manager_cik: int,
     period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
@@ -453,7 +584,41 @@ async def get_manager_holdings(
     return snapshot
 
 
-@router.get("/managers/{manager_cik}/activity")
+@router.get(
+    "/managers/{manager_cik}/activity",
+    tags=["Institutional Ownership"],
+    summary="Get DERIVED buy/sell activity for one manager (13F diff)",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "manager_cik": 1067983,
+                        "manager_name": "Berkshire Hathaway Inc",
+                        "from_period": "2024-03-31",
+                        "to_period": "2024-06-30",
+                        "caveats": _13F_CAVEATS,
+                        "activity": [
+                            {
+                                "manager_cik": 1067983,
+                                "manager_name": "Berkshire Hathaway Inc",
+                                "cusip": "037833100",
+                                "issuer_name": "Apple Inc.",
+                                "cik": 320193,
+                                "from_period": "2024-03-31",
+                                "to_period": "2024-06-30",
+                                "shares_before": 320_000_000,
+                                "shares_after": 300_000_000,
+                                "shares_change": -20_000_000,
+                                "action": "reduced",
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
 async def get_manager_activity(
     manager_cik: int,
     period: str = Query(..., description="Current quarter-end, e.g. 2024-06-30"),

@@ -414,8 +414,31 @@ a time.
 - [x] Backup / restore tooling — `storage/backup.py` (sqlite3 online-backup API, safe on a live
       WAL DB) + `storage/restore.py`, with a separate host-mounted backups dir; documented in
       `DEVELOPMENT.md` §7.
-- [ ] OpenAPI polish, examples, and a public **docs site** (distinct from `DEVELOPMENT.md`, which
-      is internal dev/ops docs). FastAPI `/docs` (Swagger) is auto-generated but is not a portal.
+- [x] **OpenAPI polish + a public docs site**. Two pieces, scoped with the user first:
+      (1) **OpenAPI polish**, entirely inside FastAPI's auto-generated `/docs`: app-level
+      `title`/`description`/`openapi_tags` (`api/main.py`), a `tags=` + `summary=` on
+      every `/v1` endpoint grouping them into Financials / Insider Trades / Institutional
+      Ownership / Account, and hand-written JSON `responses={...}` examples on the
+      endpoints that return a bare `dict` (`periods`, `beneficial-ownership`,
+      `institutional-holders`, `institutional-activity`, `managers/.../activity`) --
+      those had no schema at all in Swagger before, unlike the `response_model=`
+      endpoints. The admin tier-change endpoint (`api/admin_routes.py`) got
+      `include_in_schema=False` -- it's not a customer-facing operation and doesn't
+      belong in the public spec. (2) **A new static docs page**, `GET /guide`
+      (`api/static/guide.html` + `guide.css`, served by `api/main.py` the same way
+      `/explorer` is) -- what "Docs" in the landing-page nav actually points to now,
+      distinct from "API Reference" (`/docs`, Swagger). Covers quickstart (signup →
+      authenticated request), auth/rate-limit tiers, error codes, a grouped endpoint
+      reference table, and the 13F/derived-data caveats (long-only, ~45-day lag,
+      ambiguous-empty-result, and both coverage floors -- XBRL ~2009, 13D/G structured-XML
+      ~mid-2025). Reuses the existing brand design system (`style.css`'s nav/footer/
+      code-panel), not a new visual language. `index.html`/`explorer.html`'s nav and
+      footer links updated to point "Docs" at `/guide` (previously both "Docs" and "API
+      Reference" pointed at the same `/docs` Swagger UI). Verified: full test suite green
+      (192 tests), `app.openapi()` schema inspected directly (title, tags, every `/v1`
+      endpoint has a summary, admin endpoint absent from `paths`), and the built Docker
+      image serves `/guide` and `/docs` with 200s and correct tags/summaries in the live
+      `/openapi.json`.
 
 ### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches")
 
