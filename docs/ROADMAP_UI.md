@@ -50,13 +50,17 @@ Everything below is **not built yet** unless noted.
 
 ## Phase 0 — Shared shell & components (prerequisite) — **DONE**
 
-Build once, reuse on every page. Shipped as `static/app.css` (the STYLE_GUIDE-canon data-page
-system: ink-blue accent, `#EDE4D0` paper, hard offset shadows, terracotta reserved for caveats)
-and `static/app.js` (`window.Profin` builders), kept **separate** from the marketing `style.css`.
-A kitchen-sink reference lives at **`/components`** (`static/components.html`) — the reference
-implementation Phase 1 builds against, and a manual test surface. Decision: data pages follow
-the written STYLE_GUIDE canon, not the shipped terracotta landing palette (confirmed with the
-user); the landing/explorer are left as-is and retrofitted later.
+Build once, reuse on every page. Shipped as `static/app.css` + `static/app.js`
+(`window.Profin` builders) and a kitchen-sink reference at **`/components`**
+(`static/components.html`) — the reference the other pages build against, and a manual test
+surface.
+
+**Design-system decision (revised):** data pages are **children of `/explorer`** and use the
+shipped warm palette — paper `#F6F3EE`, terracotta `--accent`, rounded corners, soft shadows —
+loading `style.css` (tokens + shared nav) then `app.css` (data components). *(This reverses an
+earlier call to build a separate ink-blue "ledger" system; `STYLE_GUIDE.md` was rewritten to the
+Explorer canon to match.)* The status vocabulary still reads distinctly because it's keyed on
+glyph + label + border, not color alone — APPROX uses the redder `--ext-*` flag family.
 
 - [x] **Page shell** — `Profin.masthead()` (eyebrow + h1 + as-of caption + double rule) and
       `Profin.footer()`; tokens, type scale, dotted-paper background, hard shadows in `app.css`.
@@ -72,24 +76,36 @@ user); the landing/explorer are left as-is and retrofitted later.
       empty-vs-404).
 - [x] **Metric card** — `Profin.metricCard(mv)` renders a `MetricValue` end to end (Phase 1 ready).
 
-## Phase 1 — Company core (backend ready; highest leverage)
+## Phase 1 — Company core (backend ready; highest leverage) — **DONE**
 
-The payoff of the normalized data, all backed by shipped endpoints.
+The payoff of the normalized data, all backed by shipped endpoints. Delivered as
+`static/company.{html,css,js}` (the hub, served at `/company/{symbol}`, hosting the
+Fundamentals + Statements tabs) and `static/coverage.html` (served at `/coverage`), built from
+the Phase 0 `Profin` components. The global search now navigates to the hub.
 
-- [ ] **Company hub / profile** *(ready)* — tabbed shell for one symbol: Fundamentals ·
-      Statements · Insiders · Ownership. Resolves the symbol once; each tab is a Phase 1/2 page.
-- [ ] **Company Fundamentals** *(ready — designed)* — the metric cards page. Consumes
-      **`GET /v1/companies/{symbol}/metrics?year=&period=`**. Each card = name + status chip +
-      big value + basis tag + provenance; sparkline placeholder until Phase 1b history lands.
-      **Highest-leverage first build**: backend just shipped (`normalize/metrics.py`,
-      `MetricValue`), and it's already a reference design. `MetricValue.status`/`basis`/`reason`/
-      `as_of` map 1:1 onto §7/§8 — no invented precision.
-- [ ] **Statements viewer** *(ready)* — income / balance / cash flow with a period selector,
-      cleaner than the raw Explorer. Consumes `GET /v1/companies/{symbol}/statements/{type}`
-      and `GET /v1/companies/{symbol}/periods`. Show `source_tag` + `is_extension` (EXT badge).
-- [ ] **Data coverage / quality** *(ready)* — CUSIP resolution rate + the coverage-floor
-      disclosures as a first-class page, not a footnote. Consumes
-      `GET /v1/cusip-resolution-stats`.
+- [x] **Company hub / profile** — tabbed shell at `/company/{symbol}`: ticker-chip header,
+      search, FY period selector (from `/periods`), Fundamentals + Statements tabs. Resolves the
+      symbol once via `/periods`. (Insiders/Ownership tabs are Phase 2 — the shell is ready for
+      them.)
+- [x] **Company Fundamentals** — metric cards grouped by category (display-only category +
+      formula maps in `company.js`), status legend, provenance, disclosure. Consumes
+      **`/companies/{symbol}/metrics?year=&period=`**; each card renders via `Profin.metricCard`
+      with status/basis/reason/as-of — no invented precision.
+- [x] **Statements viewer** — income / balance / cash flow segmented toggle sharing the year
+      selector; consumes `/companies/{symbol}/statements/{type}` + `/periods`; table shows
+      `source_tag` + a US-GAAP/EXT badge, with empty-vs-404 states.
+- [x] **Data coverage / quality** — `/coverage`: CUSIP resolution rate (or "nothing attempted
+      yet") + counts from `/cusip-resolution-stats`, plus the coverage floors as first-class
+      copy (matched to `DATA_MODEL.md`).
+
+**Quarterly (done):** Fundamentals now offers annual **and quarterly** periods, driven by a new
+`GET /companies/{symbol}/metric-periods` (the engine's own resolvable `{year, period, period_end}`
+axis, period_end-anchored — the authoritative selector source, unlike `/periods`' `(fy, fp)`
+labels). The metric engine resolves quarters in an in-progress fiscal year too, so the latest
+quarter is reachable before its 10-K lands. The quarterly view is framed honestly: flows are TTM
+(labeled), EPS shows N/M (not summable across quarters), and early-history quarters carry more
+N/A/APPROX (average balance needs the year-ago quarter). The Statements tab stays FY-only (its
+`(fy, fp)`-keyed backend is a separate axis).
 
 ## Phase 2 — Ownership & flows (backend ready except 13D/G)
 

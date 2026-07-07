@@ -203,6 +203,31 @@ class _Anchor:
         self.prior2_end = prior2_end
 
 
+def _quarters_in_fy(all_q: list[str], fye: dict[int, str], year: int) -> list[str]:
+    """Ordered discrete-quarter ends belonging to fiscal year `year`.
+
+    A completed fiscal year is the window (prior FYE, this FYE] -- four quarters, Q4 ending at
+    the FYE. An IN-PROGRESS fiscal year (no FYE for `year` yet, but the prior year closed) is
+    open-ended: every quarter-end after the prior FYE, however many have been filed so far. This
+    is what makes the latest quarter reachable before its 10-K lands.
+    """
+    lo = fye.get(year - 1)
+    hi = fye.get(year)
+    if hi is not None:
+        return [e for e in all_q if (lo is None or e > lo) and e <= hi]
+    if lo is not None:
+        return [e for e in all_q if e > lo]  # in-progress fiscal year
+    return []
+
+
+def _quarter_end(
+    all_q: list[str], fye: dict[int, str], year: int, period: FiscalPeriod
+) -> str | None:
+    ends = _quarters_in_fy(all_q, fye, year)
+    idx = int(period[1]) - 1  # "Q3" -> 2
+    return ends[idx] if 0 <= idx < len(ends) else None
+
+
 def _resolve_anchor(
     index: dict[str, _ConceptData], fiscal_year: int, fiscal_period: FiscalPeriod
 ) -> _Anchor | None:
@@ -214,25 +239,16 @@ def _resolve_anchor(
             return None
         return _Anchor(fiscal_year, "FY", end, fye.get(fiscal_year - 1), fye.get(fiscal_year - 2))
 
-    # Quarter: the N-th discrete-quarter end within (prior FYE, this FYE].
-    def _quarter_end(year: int, period: FiscalPeriod) -> str | None:
-        hi = fye.get(year)
-        if hi is None:
-            return None
-        lo = fye.get(year - 1)
-        ends = [e for e in _all_quarter_ends(index) if (lo is None or e > lo) and e <= hi]
-        idx = int(period[1]) - 1  # "Q3" -> 2
-        return ends[idx] if 0 <= idx < len(ends) else None
-
-    end = _quarter_end(fiscal_year, fiscal_period)
+    all_q = _all_quarter_ends(index)
+    end = _quarter_end(all_q, fye, fiscal_year, fiscal_period)
     if end is None:
         return None
     return _Anchor(
         fiscal_year,
         fiscal_period,
         end,
-        _quarter_end(fiscal_year - 1, fiscal_period),
-        _quarter_end(fiscal_year - 2, fiscal_period),
+        _quarter_end(all_q, fye, fiscal_year - 1, fiscal_period),
+        _quarter_end(all_q, fye, fiscal_year - 2, fiscal_period),
     )
 
 
@@ -745,3 +761,30 @@ def available_metric_periods(facts: list[RawFact]) -> list[tuple[int, str]]:
     """Fiscal years for which an annual metric set can be computed, newest first."""
     index = _index_concepts(facts)
     return [(y, "FY") for y in sorted(_fiscal_year_ends(index), reverse=True)]
+
+
+def metric_periods(facts: list[RawFact]) -> list[dict]:
+    """Every (year, period) the engine can actually compute, newest period-end first.
+
+    Each entry is {"year", "period", "period_end"} for an annual (FY) or quarterly (Q1-Q4)
+    metric set -- including quarters of an in-progress fiscal year. This is the authoritative
+    axis for a UI period selector: it reflects what `compute_metrics` will resolve, unlike the
+    statement-layer `(fy, fp)` labels (which the metric engine deliberately doesn't key on).
+    """
+    index = _index_concepts(facts)
+    fye = _fiscal_year_ends(index)
+    all_q = _all_quarter_ends(index)
+    out: list[dict] = []
+    for year, end in fye.items():
+        out.append({"year": year, "period": "FY", "period_end": end})
+    # Quarters for every fiscal year that has quarter data -- completed years plus the one
+    # in-progress year (the year after the latest FYE), so the freshest quarters appear.
+    candidate_years = set(fye)
+    if fye:
+        candidate_years.add(max(fye) + 1)
+    for year in candidate_years:
+        for i, end in enumerate(_quarters_in_fy(all_q, fye, year), start=1):
+            if i <= 4:
+                out.append({"year": year, "period": "Q" + str(i), "period_end": end})
+    out.sort(key=lambda p: p["period_end"], reverse=True)
+    return out

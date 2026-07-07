@@ -25,6 +25,7 @@ from secfin.normalize.metrics import (
     _ttm_flow,
     available_metric_periods,
     compute_metrics,
+    metric_periods,
 )
 from secfin.normalize.schema import RawFact
 from secfin.sec.companyfacts import flatten_company_facts
@@ -307,6 +308,31 @@ def test_dei_share_count_enables_book_value_per_share():
     assert bvps.value == pytest.approx(10.0)
 
 
+def test_quarter_resolves_in_an_in_progress_fiscal_year():
+    # FY2024 closed (annual duration -> FYE); FY2025 has only Q1 filed and no 10-K yet. The
+    # latest quarter must still resolve (the whole point of the in-progress-FY fix).
+    facts = [
+        _rf("Revenues", 1000, start="2024-01-01", end="2024-12-31"),
+        _rf("Revenues", 260, start="2025-01-01", end="2025-03-31"),
+        _rf("NetIncomeLoss", 40, start="2025-01-01", end="2025-03-31"),
+    ]
+    res = compute_metrics(facts, 1, 2025, "Q1")
+    assert res.metrics  # resolved despite FY2025 being open
+    assert res.metrics[0].period_end == "2025-03-31"
+
+
+def test_metric_periods_lists_fy_and_quarters_newest_first():
+    mp = metric_periods(_load("aapl_companyfacts.json", 320193))
+    keys = {(e["year"], e["period"]) for e in mp}
+    # both annual and an in-progress-year quarter are offered
+    assert (2025, "FY") in keys
+    assert (2026, "Q2") in keys
+    # the freshest entry is the most recent quarter, and the list is period_end-desc
+    assert mp[0]["period"].startswith("Q")
+    ends = [e["period_end"] for e in mp]
+    assert ends == sorted(ends, reverse=True)
+
+
 def test_eps_is_nm_for_a_quarter_not_summed():
     # EPS is per-period and not summable across quarters; a quarterly request is nm, not a
     # bogus sum. (Build two fiscal years of quarters so the quarter resolves.)
@@ -365,3 +391,30 @@ async def test_metrics_endpoint_returns_set_and_404s_on_unknown_period(monkeypat
             symbol="AAPL", year=1990, period="FY", repo=None, ticker_cache=None
         )
     assert exc_info.value.status_code == 404
+
+
+async def test_metric_periods_endpoint_lists_resolvable_periods(monkeypatch):
+    facts = _load("aapl_companyfacts.json", 320193)
+
+    class _DummyClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def _fake_cik(client, ticker_cache, symbol):
+        return 320193
+
+    async def _fake_facts(repo, client, cik):
+        return facts
+
+    monkeypatch.setattr(routes_module, "SECClient", lambda: _DummyClient())
+    monkeypatch.setattr(routes_module, "_cik_from_symbol", _fake_cik)
+    monkeypatch.setattr(routes_module, "_facts_for_cik", _fake_facts)
+
+    out = await routes_module.get_metric_periods(symbol="AAPL", repo=None, ticker_cache=None)
+    assert out["cik"] == 320193
+    keys = {(p["year"], p["period"]) for p in out["periods"]}
+    assert (2025, "FY") in keys and (2026, "Q2") in keys
+    assert all("period_end" in p for p in out["periods"])

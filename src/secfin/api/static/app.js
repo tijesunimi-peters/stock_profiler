@@ -151,8 +151,9 @@
 
   function footer() {
     return (
-      '<footer class="site-footer">' +
+      '<footer class="app-footer">' +
       '<a href="/explorer">Data Explorer ↗</a>' +
+      '<a href="/coverage">Data coverage ↗</a>' +
       '<a href="/docs">API reference ↗</a>' +
       '<span class="tagline">Profin · public SEC data, cleaned &amp; queryable</span>' +
       "</footer>"

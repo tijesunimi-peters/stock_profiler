@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profin — Company</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/company.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo" aria-label="Profin home">
+        <span class="logo-mark"><span class="logo-dot"></span></span>
+        <span class="logo-word">Profin</span>
+      </a>
+      <div class="nav-links">
+        <a href="/coverage">Coverage</a>
+        <a href="/docs">Docs</a>
+        <a href="/explorer">Data Explorer</a>
+        <a href="/docs" class="pill">API Reference</a>
+      </div>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="nav-mobile" id="navMobile">
+      <a href="/coverage">Coverage</a>
+      <a href="/docs">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+  </nav>
+  <main class="page">
+    <div id="masthead"></div>
+    <div class="co-search" id="search"></div>
+
+    <div class="controls" id="controls" hidden>
+      <div class="controls-left">
+        <div class="segmented" id="tabs">
+          <button data-tab="fundamentals" class="on">Fundamentals</button>
+          <button data-tab="statements">Statements</button>
+        </div>
+        <div class="segmented" id="stmt-types" hidden>
+          <button data-stmt="income" class="on">Income</button>
+          <button data-stmt="balance">Balance</button>
+          <button data-stmt="cashflow">Cash Flow</button>
+        </div>
+      </div>
+      <div class="controls-right">
+        <span class="period-label" id="period-label">Period</span>
+        <select class="period-select" id="period-select"></select>
+      </div>
+    </div>
+
+    <div id="legend"></div>
+    <div id="view" style="margin-top:18px"></div>
+    <div id="disclosure"></div>
+  </main>
+  <div id="footer"></div>
+
+  <script src="/static/script.js"></script>
+  <script src="/static/app.js"></script>
+  <script src="/static/company.js"></script>
+</body>
+</html>

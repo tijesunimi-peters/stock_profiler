@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
-from secfin.normalize.metrics import compute_metrics
+from secfin.normalize.metrics import compute_metrics, metric_periods
 from secfin.normalize.schema import (
     CompanyMetrics,
     CusipResolutionStats,
@@ -211,6 +211,24 @@ async def get_metrics(
             detail=f"No metrics available for {symbol} {period} {year}.",
         )
     return result
+
+
+@router.get("/companies/{symbol}/metric-periods")
+async def get_metric_periods(
+    symbol: str,
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """The (year, period) combinations `/metrics` can actually compute for this company —
+    annual (FY) and quarterly (Q1-Q4, including the in-progress fiscal year), newest first.
+
+    This is the authoritative axis for a period selector: it reflects what the metric engine
+    resolves (period_end-anchored), unlike `/periods` (statement-layer fiscal-label pairs).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    return {"cik": cik, "periods": metric_periods(facts)}
 
 
 @router.get("/companies/{symbol}/insider-trades", response_model=list[InsiderTransaction])
