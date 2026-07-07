@@ -54,11 +54,13 @@ and is a deliberate later decision.
   canonical schema. **This is the moat — most of our real work lives here.**
 - **store** (`src/secfin/storage/`): two distinct stores, not one replacing the other:
   - *Operational* — SQLite now (WAL mode, concurrent point reads for the API), with a planned
-    path to Postgres. Stays behind the `RawFactRepository` interface. This is what `serve`
-    reads from (once routes are wired to it — see ROADMAP), and what `ingest/` writes to.
-  - *Analytical* — DuckDB querying Parquet on disk, for batch aggregation only (13F
-    cross-manager inversion, cross-company screening). Never on the live request path.
-    See `docs/ARCHITECTURE.md`.
+    path to Postgres. Stays behind repository interfaces (`RawFactRepository` and the
+    insider/holdings/CUSIP repositories). This is what `serve` reads from (routes are wired
+    cache-aside), and what `ingest/` writes to.
+  - *Analytical* — DuckDB, for batch aggregation only (13F cross-manager inversion,
+    cross-company screening). Never on the live request path. **Reads the live SQLite file
+    directly** (`ATTACH ... (TYPE sqlite)`) — a Parquet landing was benchmarked and deferred
+    to Milestone 4. See `docs/ARCHITECTURE.md` §3b.
 - **serve** (`src/secfin/api/`): FastAPI endpoints returning canonical JSON.
 
 ## Data sources (SEC — all public, all free)
@@ -95,40 +97,60 @@ Base host for structured data: `https://data.sec.gov`
 - `FastAPI` + `uvicorn` — API layer
 - `pytest` — tests
 - SQLite for local dev; keep DB access behind a small interface so Postgres is a drop-in later.
-- `DuckDB` (planned, Milestone 2.5) — **analytical only**, querying Parquet files on disk for
-  batch jobs (13F cross-manager inversion, cross-company screening). Not the API's transactional
-  backend; never on the live per-request read path. Serverless — no DB process to run or pay
-  for, which fits the cheap-subscription goal. Pin a version and verify its multi-process
-  read/write concurrency semantics against that version's docs before implementing — this has
-  changed across DuckDB releases, so "verify, don't assume."
+- `DuckDB` (`analytical` extra, pinned `duckdb==1.4.5`) — **analytical only**, for batch jobs
+  (13F cross-manager inversion, cross-company screening). Not the API's transactional backend;
+  never on the live per-request read path. Serverless — no DB process to run or pay for, which
+  fits the cheap-subscription goal. **Decided (benchmarked 2026-07-06):** it reads the live
+  SQLite file directly via `ATTACH '<db>' (TYPE sqlite)` — no Parquet landing for the
+  single-quarter inversion (~2.8× faster than plain SQLite, zero ETL; both-directions WAL
+  concurrency verified live, not assumed). Parquet stays deferred to Milestone 4 (whole-market,
+  multi-quarter scale). Never a dependency of the base install or the live API. See
+  `docs/ARCHITECTURE.md` §3b.
 
 ## Repository layout
 
+Everything below is implemented unless noted. See `docs/ROADMAP.md` for what's shipped
+per milestone and what's still open.
+
 ```
 src/secfin/
-  config.py              # settings (User-Agent, DB path, backfill tuning) from env
+  config.py                    # settings (User-Agent, DB path, backfill tuning) from env
   sec/
-    client.py            # rate-limited SEC HTTP client (User-Agent + throttle)  [implemented]
-    companyfacts.py      # fetch + shape companyfacts JSON                        [implemented]
-    insider.py           # fetch + parse Forms 3/4/5 ownership XML               [stub]
-    institutional.py     # fetch + parse 13F info table, 13D/G                   [stub]
+    client.py                  # rate-limited SEC HTTP client (User-Agent + throttle)
+    companyfacts.py            # fetch + shape companyfacts JSON -> RawFacts
+    ticker_cache.py            # in-memory ticker->CIK map (TickerCache), one per process
+    insider.py                 # fetch + parse Forms 3/4/5 ownership XML (joint filers)
+    institutional.py           # fetch + parse 13F info table + cover page, 13D/G
   normalize/
-    schema.py            # canonical Pydantic models                            [implemented]
-    mapping.py           # canonical concept -> candidate US-GAAP tags (the moat) [starter]
-    statements.py        # build canonical statements from company facts         [implemented]
-    flows.py             # derive 13F buy/sell by diffing snapshots              [implemented]
-  storage/
-    repository.py        # abstract RawFactRepository                          [implemented]
-    sqlite_repository.py # SQLite impl: WAL mode, idempotent upsert, checkpoint [implemented]
+    schema.py                  # canonical Pydantic models
+    mapping.py                 # canonical concept -> candidate US-GAAP tags (the moat)
+    statements.py              # build canonical statements from company facts
+    flows.py                   # derive 13F buy/sell by diffing snapshots (diff_snapshots,
+                               #   diff_holders, prior_quarter_end)
+    cusip.py                   # CUSIP->issuer-CIK resolution (exact-name-match, conservative)
+  storage/                     # all SQLite impls: WAL mode, own connection, same db file
+    repository.py              # abstract RawFactRepository
+    sqlite_repository.py       # RawFact SQLite impl: idempotent upsert, checkpoint
+    insider_repository.py      # abstract InsiderTransactionRepository (filing-granular cache)
+    sqlite_insider_repository.py
+    holdings_repository.py     # abstract HoldingsSnapshotRepository (13F, (cik, period) key)
+    sqlite_holdings_repository.py
+    cusip_repository.py        # abstract CusipMapRepository (CUSIP<->CIK, unresolved tracking)
+    sqlite_cusip_repository.py
+    backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
+    restore.py                 # hydrate a fresh volume from a backup
   ingest/
-    downloader.py         # resumable download of SEC bulk zips                [implemented]
-    backfill.py           # bulk backfill: downloader -> N parsers -> 1 writer [implemented]
-    incremental.py         # daily incremental via SEC daily index + SECClient  [implemented]
+    downloader.py              # resumable download of SEC bulk zips
+    backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
+    incremental.py             # daily incremental via SEC daily index + SECClient
+    institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
   api/
-    main.py              # FastAPI app + wiring
-    routes.py            # endpoints
+    main.py                    # FastAPI app + wiring
+    routes.py                  # endpoints (statements, insider, 13F manager + issuer-centric,
+                               #   cusip-resolution-stats)
 tests/
-docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP
+docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, ROADMAP,
+                               #   ROADMAP_METRICS, STYLE_GUIDE
 ```
 
 ## Conventions (follow these — they prevent whole classes of bugs)
@@ -187,6 +209,13 @@ python -m secfin.ingest.backfill
 
 # daily incremental (companies that filed 10-K/10-Q recently, via the throttled SECClient)
 python -m secfin.ingest.incremental
+
+# bulk-ingest one quarter's 13F filings (offline candidate discovery from submissions.zip,
+# seeds the same HoldingsSnapshotRepository the manager endpoints read from)
+python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD
+
+# analytical extra (DuckDB, batch/analytical jobs only — never the live API)
+pip install -e ".[analytical]"
 ```
 
 Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must
@@ -199,6 +228,7 @@ docker compose build
 docker compose up api                                          # API on :8000
 docker compose run --rm api python -m secfin.ingest.backfill    # same image, same volume
 docker compose run --rm api python -m secfin.ingest.incremental
+docker compose run --rm api python -m secfin.ingest.institutional_backfill --period 2026-03-31
 
 docker compose run --rm api python -m secfin.storage.backup            # snapshot -> ./data/backups
 docker compose run --rm api python -m secfin.storage.restore --latest  # hydrate a fresh volume
