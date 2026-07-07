@@ -18,10 +18,19 @@ services:
     environment:
       SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
       SECFIN_DB_PATH: "/app/data/secfin.db"
+      SECFIN_BACKUP_DIR: "/app/backups"
       SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
+      SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"
+      SECFIN_BACKFILL_WORKERS: "${SECFIN_BACKFILL_WORKERS:-0}"
+      SECFIN_BACKFILL_BATCH_SIZE: "${SECFIN_BACKFILL_BATCH_SIZE:-5000}"
+      SECFIN_BACKFILL_QUEUE_MAXSIZE: "${SECFIN_BACKFILL_QUEUE_MAXSIZE:-50}"
     volumes:
       - secfin-data:/app/data
+      - ./data/backups:/app/backups
 ```
+
+(The repo also has a separate `docker-compose.test.yml`, a one-service file for
+tests/lint that is never merged with this one; see "Running tests / lint" below.)
 
 `Dockerfile` builds a `python:3.11-slim` image, `WORKDIR /app`, and runs
 `pip install --no-cache-dir .` (production deps only, **not** the `[dev]` extra) against
@@ -43,6 +52,18 @@ default and **every** `docker compose` subcommand fails at parse time, including
 error while interpolating services.api.environment.SEC_USER_AGENT: required variable SEC_USER_AGENT is missing a value
 ```
 
+**This is deliberate, not a bug to smooth over** — `SEC_USER_AGENT` is CLAUDE.md's
+non-negotiable SEC-compliance requirement (requests without a descriptive User-Agent +
+contact email get blocked), so making it impossible to `docker compose up` without
+setting one for real is the intended forcing function. Compose interpolates the
+**entire file up front**, regardless of which service or subcommand you actually asked
+for, so this hard-fails `build`, `config`, `down`, `ps`, etc. too — not just `up`/`run` —
+even though those don't make any SEC request themselves. Knowing that going in avoids
+being confused by, say, `docker compose down` failing on a repo you haven't touched yet.
+(`docker-compose.test.yml`, used in "Running tests / lint" below, is a separate compose
+file with no `api` service in it at all, specifically so running tests never needs
+`.env`/`SEC_USER_AGENT` to exist.)
+
 Set it up once:
 
 ```bash
@@ -53,7 +74,8 @@ cp .env.example .env
 
 `SECFIN_DB_PATH` and `SEC_MAX_RPS` also come from `.env`/the shell if set; compose
 otherwise falls back to the defaults baked into `docker-compose.yml`
-(`/app/data/secfin.db`, `8`).
+(`/app/data/secfin.db`, `8`). The bulk-backfill tuning vars
+(`SECFIN_BACKFILL_WORKERS`/`_BATCH_SIZE`/`_QUEUE_MAXSIZE`) work the same way — see §4.
 
 ## 2. Build the image
 
@@ -104,6 +126,16 @@ docker compose run --rm api python -m secfin.ingest.backfill \
 Paths are relative to the container's `WORKDIR` (`/app`), so the defaults
 (`./data/bulk`, `./data/secfin.db`) resolve to `/app/data/bulk` and
 `/app/data/secfin.db` — both under the one mounted volume (see §6).
+
+The same three tuning values (workers/batch-size/queue-maxsize, everything but
+`--data-dir`) can also be set once in `.env` instead of passed as flags every time —
+`docker-compose.yml`'s `environment:` block now forwards `SECFIN_BACKFILL_WORKERS`,
+`SECFIN_BACKFILL_BATCH_SIZE`, and `SECFIN_BACKFILL_QUEUE_MAXSIZE` (each with the same
+default `config.py` itself uses, so leaving them unset in `.env` changes nothing). CLI
+flags still win if you pass both. `SECFIN_BULK_DATA_DIR` is deliberately not
+forwarded here the same way -- it's a path under the same `secfin-data` volume as
+`SECFIN_DB_PATH`, so like that one it's meant to stay fixed inside the container, not be
+tuned per run.
 
 ## 5. Run the daily incremental job
 
@@ -217,39 +249,40 @@ real data.
 
 ## Running tests / lint
 
-The shipped image **does not** support this: the `Dockerfile` installs the package
-without the `[dev]` extra (no `pytest`/`ruff`), and only `COPY`s `pyproject.toml`,
-`README.md`, and `src/` — `tests/` is never added to the image (and is separately
-excluded via `.dockerignore`). `docker compose run --rm api pytest` will fail on a
-plain build of this image.
-
-If you still want to run tests via Docker rather than a local venv, the working pattern
-used during development of this pipeline does **not** use the project's own Dockerfile —
-it bind-mounts the repo into the public `python:3.11-slim` base image and installs dev
-deps fresh each time:
+**Decided:** the project's own image (`Dockerfile`/`docker-compose.yml`'s `api` service)
+is a slim runtime artifact and deliberately stays that way — it installs production-only
+deps and never copies `tests/` (excluded via `.dockerignore`), so `docker compose run
+--rm api pytest` will always fail. That's not a gap to fix; the first-class way to run
+tests/lint via Docker is the separate `docker-compose.test.yml`, which bind-mounts the
+repo into a plain `python:3.11-slim` base image and installs `[dev]` deps fresh each
+run (deliberately not baked into a committed image — this is a dev-only path, and
+"reinstall every run" keeps it from silently drifting out of sync with `pyproject.toml`):
 
 ```bash
-docker run --rm -v "$(pwd)":/app -w /app python:3.11-slim \
-  bash -c "pip install -q -e '.[dev]' && pytest -q"
+docker compose -f docker-compose.test.yml run --rm test
 ```
 
-See "Open questions / mismatches" below — this is a real gap in the current setup, not
-a documented, first-class workflow.
+That's `pytest -q` by default. Override the command for lint or a subset of tests
+(compose still installs `[dev]` fresh, since the image itself has no deps baked in):
+
+```bash
+docker compose -f docker-compose.test.yml run --rm test \
+  bash -c "pip install -q -e '.[dev]' && ruff check ."
+
+docker compose -f docker-compose.test.yml run --rm test \
+  bash -c "pip install -q -e '.[dev]' && pytest -q tests/test_auth.py"
+```
+
+This file has no `api` service and no `SEC_USER_AGENT` reference at all, so none of
+these commands need `.env` to exist — unlike every command against the main
+`docker-compose.yml` (see §1's callout).
 
 ## Open questions / mismatches
 
-- **No tested path to run tests/lint via the project's own Docker image.** The
-  `Dockerfile` deliberately installs production-only deps and never copies `tests/`.
-  Whether that's intentional (image is meant to be a slim runtime artifact only) or an
-  oversight isn't stated anywhere in the repo — flagging rather than assuming either way.
-- **`.env.example` doesn't list the backfill tuning variables** that `config.py` actually
-  reads (`SECFIN_BULK_DATA_DIR`, `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`,
-  `SECFIN_BACKFILL_QUEUE_MAXSIZE`) — they work (confirmed via `--help`-equivalent
-  defaults in `backfill.build_arg_parser`), just via their own hardcoded defaults unless
-  passed as CLI flags or set directly in the shell/`.env` by hand.
-  `docker-compose.yml`'s `environment:` block doesn't surface them either, so today the
-  only way to override them for a Docker-run backfill is the CLI flags shown in §4.
-- **Every `docker compose` subcommand — including `build`, `config`, `down` — fails
-  without `SEC_USER_AGENT` resolvable**, since compose interpolates the whole file
-  up front. This is easy to trip over if you `docker compose build` before creating
-  `.env`; worth knowing going in rather than discovering via the error.
+- **Every `docker compose` subcommand against the main `docker-compose.yml` — including
+  `build`, `config`, `down` — fails without `SEC_USER_AGENT` resolvable**, since compose
+  interpolates the whole file up front. Documented rather than smoothed away (see §1) —
+  weakening this would undercut CLAUDE.md's non-negotiable SEC User-Agent requirement,
+  since a soft fallback would let `docker compose up` silently start the API in a state
+  the SEC blocks. `docker-compose.test.yml` sidesteps this entirely for the one workflow
+  (tests/lint) that never needs it.

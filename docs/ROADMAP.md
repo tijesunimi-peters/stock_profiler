@@ -440,16 +440,46 @@ a time.
       image serves `/guide` and `/docs` with 200s and correct tags/summaries in the live
       `/openapi.json`.
 
-### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches")
+### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches") -- all resolved
 
-- [ ] Decide the test-in-Docker story: the shipped image installs prod-only deps and omits
-      `tests/`, so `docker compose run api pytest` fails. Either document the bind-mount base-image
-      pattern as the intended path, or add a dev image — but stop leaving it ambiguous.
-- [ ] Add the backfill tuning vars to `.env.example` (`SECFIN_BULK_DATA_DIR`,
-      `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`, `SECFIN_BACKFILL_QUEUE_MAXSIZE`) —
-      they're read by `config.py` but undocumented and not surfaced in compose.
-- [ ] Document (or smooth) the `SEC_USER_AGENT`-required-for-every-`docker compose`-subcommand
-      gotcha — interpolation fails even `build`/`config`/`down` without it.
+- [x] **Decided the test-in-Docker story**: the project's own image stays a slim runtime
+      artifact (no `[dev]` extra, no `tests/`) -- that's a deliberate choice, not a gap.
+      New `docker-compose.test.yml` (repo root) is the first-class path instead: a
+      one-service file (no `api` service, no `SEC_USER_AGENT` reference at all) that
+      bind-mounts the repo into plain `python:3.11-slim` and installs `[dev]` deps fresh
+      each run -- formalizes the bind-mount pattern DEVELOPMENT.md already described as
+      "the working pattern used during development" into an actual committed,
+      one-command entry point: `docker compose -f docker-compose.test.yml run --rm
+      test` (default command `pytest -q`; override for `ruff check .` or a test
+      subset). Deliberately a *separate* compose file, not a second service merged into
+      `docker-compose.yml` -- compose interpolates a whole file up front regardless of
+      which service you target, so merging it would still require `.env`/
+      `SEC_USER_AGENT` to run tests, which is exactly what this is meant to avoid.
+      Verified: `docker compose -f docker-compose.test.yml run --rm test` (192 passed)
+      and the `ruff check .` override both ran successfully with zero `.env` present.
+- [x] **Added the backfill tuning vars to `.env.example`** (`SECFIN_BULK_DATA_DIR`,
+      `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`,
+      `SECFIN_BACKFILL_QUEUE_MAXSIZE`), and went further than the item literally asked --
+      wired the three tuning *integers* (not the path) into `docker-compose.yml`'s `api`
+      service `environment:` block too (`${VAR:-default}`, matching each one's real
+      `config.py` default), so setting them in `.env` actually reaches a
+      Docker-run backfill instead of silently doing nothing (the same class of gap
+      caught with `SECFIN_ADMIN_SECRET` in an earlier pass -- compose only forwards an
+      explicit allowlist of vars into the container, `.env` alone isn't enough).
+      `SECFIN_BULK_DATA_DIR` itself is deliberately NOT forwarded the same way -- it's a
+      path under the same `secfin-data` volume as `SECFIN_DB_PATH`, so like that one it
+      stays a fixed in-container path rather than something to tune per run. Verified:
+      `docker compose config` resolves all three with correct defaults; a full
+      `docker compose build api && docker compose up -d api` smoke-tested clean
+      (`/health` → `200`).
+- [x] **Documented (chose not to smooth) the `SEC_USER_AGENT` gotcha** -- weakening the
+      hard `${SEC_USER_AGENT:?...}` requirement (e.g. a soft fallback) would undercut
+      CLAUDE.md's non-negotiable SEC User-Agent rule by letting `docker compose up`
+      silently start the API in a blocked state, so this stays a hard failure by design.
+      `DEVELOPMENT.md` §1 now says so explicitly, spells out that compose interpolates
+      the *whole file* up front (so `build`/`config`/`down`/`ps` fail too, not just
+      `up`/`run`), and points at `docker-compose.test.yml` as the one workflow
+      (tests/lint) that was made to need neither `.env` nor `SEC_USER_AGENT` at all.
 
 ## Milestone 4 — queryability beyond single-company lookups
 

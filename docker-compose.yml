@@ -9,6 +9,13 @@ services:
       SECFIN_BACKUP_DIR: "/app/backups"
       SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
       SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"
+      # Bulk backfill tuning (ingest/backfill.py) -- SECFIN_BULK_DATA_DIR is deliberately
+      # NOT surfaced here, unlike these three: it's a path under the same secfin-data
+      # volume as SECFIN_DB_PATH above, so it's fixed like that one rather than
+      # user-tunable via .env. These three are plain performance knobs.
+      SECFIN_BACKFILL_WORKERS: "${SECFIN_BACKFILL_WORKERS:-0}"
+      SECFIN_BACKFILL_BATCH_SIZE: "${SECFIN_BACKFILL_BATCH_SIZE:-5000}"
+      SECFIN_BACKFILL_QUEUE_MAXSIZE: "${SECFIN_BACKFILL_QUEUE_MAXSIZE:-50}"
     volumes:
       - secfin-data:/app/data
       # Host bind mount, deliberately separate from the secfin-data named volume above:

@@ -1,0 +1,7 @@
+services:
+  test:
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bash -c "pip install -q -e '.[dev]' && pytest -q"
