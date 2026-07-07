@@ -156,6 +156,20 @@ class SQLiteRawFactRepository(RawFactRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_fact(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def get_raw_facts_for_period(
+        self, cik: int, fiscal_year: int, fiscal_period: str
+    ) -> list[RawFact]:
+        cur = self._conn.execute(
+            "SELECT * FROM raw_facts WHERE cik = ? AND fiscal_year = ? AND fiscal_period = ?",
+            (cik, fiscal_year, fiscal_period),
+        )
+        cols = [d[0] for d in cur.description]
+        return [self._row_to_fact(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
+
+    def has_any_facts(self, cik: int) -> bool:
+        cur = self._conn.execute("SELECT 1 FROM raw_facts WHERE cik = ? LIMIT 1", (cik,))
+        return cur.fetchone() is not None
+
     def get_ingested_ciks(self, source: str) -> set[int]:
         cur = self._conn.execute("SELECT cik FROM ingest_checkpoint WHERE source = ?", (source,))
         return {row[0] for row in cur.fetchall()}

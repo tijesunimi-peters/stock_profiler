@@ -150,3 +150,25 @@ def test_screen_with_no_tags_returns_empty(tmp_path):
     repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
     assert repo.screen([], "CY2023") == []
     repo.close()
+
+
+def test_get_raw_facts_for_period_only_returns_the_matching_period(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    fy2024 = _fact("acc-2024", 100, "2024-11-01")
+    fy2023 = RawFact(**{**fy2024.model_dump(), "fiscal_year": 2023, "accession": "acc-2023"})
+    repo.upsert_raw_facts([fy2024, fy2023])
+
+    rows = repo.get_raw_facts_for_period(320193, 2024, "FY")
+
+    assert len(rows) == 1
+    assert rows[0].fiscal_year == 2024
+    repo.close()
+
+
+def test_has_any_facts_distinguishes_known_from_unknown_companies(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    repo.upsert_raw_facts([_fact("acc-1", 100, "2024-11-01")])
+
+    assert repo.has_any_facts(320193) is True
+    assert repo.has_any_facts(999999) is False
+    repo.close()

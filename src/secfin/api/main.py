@@ -11,8 +11,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
-from fastapi.responses import FileResponse
+import httpx
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from secfin.api.admin_routes import admin_router
@@ -134,6 +135,44 @@ app = FastAPI(
     openapi_tags=_OPENAPI_TAGS,
     lifespan=lifespan,
 )
+
+
+# Pre-launch cold-path finding (2026-07-07): a cache MISS on any cache-aside endpoint
+# fetches from SEC live, uncaught -- an upstream SEC failure (rate-limited/blocked/down)
+# previously propagated as a bare, unhandled 500 ("Internal Server Error", no body),
+# Starlette's generic default. That's technically safe (nothing sensitive leaks) but
+# wrong in two ways: a 500 tells the caller WE are broken, when the real cause is
+# upstream; and it gives an API consumer nothing actionable to distinguish "retry later"
+# from "this is a bug, report it". These two handlers translate the two real failure
+# shapes seen from `httpx` (raised by sec/client.py's `get_json`/`get_bytes`, uncaught by
+# every route handler that does `async with SECClient() as client: ...`) into a
+# gateway-style response instead -- 502 for "SEC responded but with an error status" vs.
+# 503 for "couldn't complete the request at all" (timeout/connect failure), matching
+# standard proxy semantics for "the thing I depend on failed", not "I am broken".
+@app.exception_handler(httpx.HTTPStatusError)
+async def _handle_upstream_http_error(request: Request, exc: httpx.HTTPStatusError) -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={
+            "detail": (
+                "Upstream SEC request failed "
+                f"(HTTP {exc.response.status_code}). This is transient -- please retry."
+            )
+        },
+    )
+
+
+@app.exception_handler(httpx.TransportError)
+async def _handle_upstream_transport_error(
+    request: Request, exc: httpx.TransportError
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Upstream SEC request timed out or could not connect. Please retry."
+        },
+    )
+
 
 app.include_router(
     public_router, prefix="/v1", dependencies=[Depends(limit_anonymous_traffic)]

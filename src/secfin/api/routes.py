@@ -145,7 +145,12 @@ async def _cik_from_symbol(client: SECClient, ticker_cache: TickerCache, symbol:
 
 
 async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -> list[RawFact]:
-    """Cache-aside read: SQLite if we have it, else fetch SEC live and populate it."""
+    """Cache-aside read: SQLite if we have it, else fetch SEC live and populate it.
+
+    Full company history -- used by `/periods`, which genuinely needs every period to
+    enumerate what's available. `get_statement` uses the period-scoped
+    `_statement_facts_for_cik` below instead; see its docstring for why.
+    """
     cached = repo.get_raw_facts(cik)
     if cached:
         return cached
@@ -153,6 +158,40 @@ async def _facts_for_cik(repo: RawFactRepository, client: SECClient, cik: int) -
     if facts:
         repo.upsert_raw_facts(facts)
     return facts
+
+
+async def _statement_facts_for_cik(
+    repo: RawFactRepository, client: SECClient, cik: int, fiscal_year: int, fiscal_period: str
+) -> list[RawFact]:
+    """Cache-aside read scoped to ONE (fiscal_year, fiscal_period) -- avoids
+    fetching+Pydantic-validating a company's ENTIRE fact history just to serve one
+    statement.
+
+    Pre-launch load-test finding (2026-07-07): `get_statement` was using
+    `_facts_for_cik` (full history) and filtering to one period in Python
+    (`build_statement`) -- ~220ms for an established filer like Apple (24,765 stored
+    facts across ~15 years) vs. a period-filtered SQL query using the existing
+    `(cik, fiscal_year, fiscal_period)` index.
+
+    A period-scoped miss is ambiguous by itself -- it could mean "this company was
+    never ingested at all" (needs a live SEC fetch) or "ingested, but this exact period
+    genuinely has no data" (e.g. before the company's first XBRL filing -- a real,
+    expected empty result, not a caching gap). `has_any_facts` disambiguates the two
+    without a second full-history fetch, so an out-of-range period on an
+    already-cached company stays a cheap local negative instead of refetching the
+    whole company from SEC on every request.
+    """
+    cached = repo.get_raw_facts_for_period(cik, fiscal_year, fiscal_period)
+    if cached:
+        return cached
+    if repo.has_any_facts(cik):
+        return []
+    facts = await fetch_raw_facts(client, cik)
+    if facts:
+        repo.upsert_raw_facts(facts)
+    return [
+        f for f in facts if f.fiscal_year == fiscal_year and f.fiscal_period == fiscal_period
+    ]
 
 
 async def _insider_transactions_for_cik(
@@ -222,7 +261,7 @@ async def get_statement(
     """Return one normalized statement for a company + fiscal period."""
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
-        facts = await _facts_for_cik(repo, client, cik)
+        facts = await _statement_facts_for_cik(repo, client, cik, year, period)
     result = build_statement(facts, cik, statement, year, period)
     if not result.lines and result.accession is None:
         # No facts at all for this period (as opposed to facts that exist but didn't map

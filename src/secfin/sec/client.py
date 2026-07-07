@@ -39,6 +39,33 @@ class RateLimiter:
             self._last = time.monotonic()
 
 
+# One process-wide RateLimiter shared by every default-configured SECClient instance.
+#
+# Pre-launch audit finding (2026-07-07): api/routes.py constructs a fresh `SECClient()`
+# inside EVERY request handler (`async with SECClient() as client:`), and until this fix
+# each one built its own private RateLimiter. Under concurrent API traffic, N simultaneous
+# cache-miss requests each got an INDEPENDENT throttle budget, so the *effective*
+# aggregate request rate against SEC scaled with concurrency instead of staying capped at
+# `sec_max_rps` process-wide -- the throttle was structurally bypassable, not just
+# theoretically. The deployed API is a single uvicorn process (Dockerfile has no
+# `--workers`), so a module-level singleton is the correct fix, not a bug: every
+# default-configured SECClient() in this process now coordinates through the same budget.
+# Batch jobs (ingest/backfill.py, incremental.py, institutional_backfill.py,
+# insider_backfill.py, frames_backfill.py) are unaffected -- each already constructs
+# exactly one SECClient for its whole single-process, sequential lifetime, so sharing a
+# limiter changes nothing there. An explicit `max_rps=` override still gets its own
+# independent limiter (e.g. for tests that want isolation), bypassing the shared instance
+# entirely.
+_shared_limiter: RateLimiter | None = None
+
+
+def _shared_default_limiter(max_rps: int) -> RateLimiter:
+    global _shared_limiter
+    if _shared_limiter is None:
+        _shared_limiter = RateLimiter(max_rps)
+    return _shared_limiter
+
+
 class SECClient:
     """Thin async wrapper over the SEC APIs."""
 
@@ -49,7 +76,10 @@ class SECClient:
                 "SEC_USER_AGENT is not configured. The SEC blocks requests without a "
                 "descriptive User-Agent. Set it in .env (see .env.example)."
             )
-        self._limiter = RateLimiter(max_rps or settings.sec_max_rps)
+        if max_rps is None:
+            self._limiter = _shared_default_limiter(settings.sec_max_rps)
+        else:
+            self._limiter = RateLimiter(max_rps)
         self._client = httpx.AsyncClient(
             headers={"User-Agent": ua, "Accept-Encoding": "gzip, deflate"},
             timeout=30.0,

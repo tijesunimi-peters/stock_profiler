@@ -50,6 +50,30 @@ class RawFactRepository(ABC):
         """All facts stored for a company, across all restatement versions."""
 
     @abstractmethod
+    def get_raw_facts_for_period(
+        self, cik: int, fiscal_year: int, fiscal_period: str
+    ) -> list[RawFact]:
+        """Facts for one company, scoped to a single (fiscal_year, fiscal_period).
+
+        Pre-launch load-test finding (2026-07-07): `get_statement` only ever needs one
+        period, but was calling `get_raw_facts` (fetch + Pydantic-validate a company's
+        ENTIRE history) and filtering in Python -- ~220ms for an established filer like
+        Apple (24,765 rows) vs. a period-filtered SQL query using the existing
+        `(cik, fiscal_year, fiscal_period)` index. `get_raw_facts` stays as-is for
+        `/periods`, which genuinely needs every period to enumerate what's available.
+        """
+
+    @abstractmethod
+    def has_any_facts(self, cik: int) -> bool:
+        """Cheap existence check: has this company EVER been ingested (any period at
+        all)? Lets the period-scoped cache-aside helper (`api/routes.py`'s
+        `_statement_facts_for_cik`) distinguish "never ingested, fetch from SEC" from
+        "ingested, but this specific period genuinely has no data" -- without which a
+        request for an out-of-range period on an already-cached company would refetch
+        the whole company from SEC on every single request.
+        """
+
+    @abstractmethod
     def get_ingested_ciks(self, source: str) -> set[int]:
         """CIKs already checkpointed as ingested for a given source (e.g.
         "bulk_companyfacts"), so a crashed backfill can resume without re-parsing them.

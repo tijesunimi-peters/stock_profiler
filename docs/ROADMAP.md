@@ -584,20 +584,115 @@ items, neither of which is more Track-1 feature work.
 
 ## Pre-launch checklist
 
-- [ ] Confirm current SEC fair-access + redistribution terms
-- [ ] Verify User-Agent is enforced everywhere and throttle can't be bypassed
-- [ ] Load test the cache path (financials `/statements`, and now `/insider-trades` and
-      `/managers/*` too — all three are cache-aside as of this pass) — the fast path under
-      subscriber load.
-- [ ] Load / failure test the **cold path** (a genuine cache miss) on all three cache-aside
-      endpoints separately — a miss still hits SEC live and is the real rate-limit exposure, not
-      the warm-cache path. Verify behavior as concurrent *cold* traffic approaches the 8 req/s
-      ceiling, and what a mid-request SEC 403/throttle does to a response. Worth noting: the
-      insider/13F caches only ever grow via live requests today (no bulk-ingest job seeds them
-      the way `ingest/backfill.py` does for statements), so "mostly cold" traffic patterns are
-      more likely for those two than for `/statements` at launch. *(The fix is the M3 "ownership
-      cache-warming" / M2.5 bulk-13F-ingest item — if that lands pre-launch, cold-path exposure
-      drops for ownership too.)*
-- [ ] Verify the backup/restore round-trip (`storage/backup.py` → `storage/restore.py`) into a
-      fresh volume before launch — the tooling exists (`DEVELOPMENT.md` §7); confirm a restored
-      DB opens clean (stale `-wal`/`-shm` handling) and serves.
+- [x] **Confirm current SEC fair-access + redistribution terms.** Fetched
+      `sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data` and
+      `.../edgar-application-programming-interfaces` directly with `curl` + our own
+      compliant User-Agent (2026-07-07) -- generic `WebFetch` got 403'd by SEC's own WAF,
+      itself a live confirmation of exactly the policy being verified. Confirmed: rate
+      limit is "10 requests/second" (matches `config.py`'s `sec_max_rps=8`, described as
+      staying under it); SEC's own sample `User-Agent`/`Accept-Encoding` header format
+      matches `SECClient`'s exactly; `companyfacts.zip`/`submissions.zip` URLs and the
+      "recompiled nightly" cadence match `CLAUDE.md`'s existing notes exactly. New detail:
+      frames aggregates "the last filed fact that most closely fits the calendrical period
+      requested" -- confirms the calendar-alignment behavior M4 already found live.
+      Redistribution: no explicit restriction found on SEC's developer docs or privacy
+      page (consistent with EDGAR's established public-domain status), but no explicit
+      clause to quote either -- noted honestly rather than overclaimed.
+- [x] **Verify User-Agent is enforced everywhere and throttle can't be bypassed.** Found
+      and fixed two real gaps:
+      1. `ingest/downloader.py`'s `download_resumable` (used by `ingest/backfill.py` and
+         `ingest/institutional_backfill.py`, both of which call it *before* any
+         `SECClient` is ever constructed) never checked the `"unset@example.com"`
+         placeholder the way `SECClient.__init__` does -- a misconfigured
+         `SEC_USER_AGENT` would silently send real requests to SEC's bulk endpoints with
+         that literal placeholder. `docker-compose.yml`'s `${SEC_USER_AGENT:?...}` only
+         guards the containerized path; this is now guarded at the lowest common point
+         (`download_resumable` itself) for a bare `pip install -e .` run too. Covered by
+         `tests/test_downloader.py`.
+      2. **The bigger finding: the SEC-bound rate limiter was per-`SECClient`-instance,
+         not process-wide.** Every `/v1` route handler constructs its own `SECClient()`
+         (`async with SECClient() as client:`), and each one built an independent
+         `RateLimiter` -- under concurrent cache-miss traffic, N simultaneous requests
+         each got their own uncoordinated throttle budget, so the *effective* aggregate
+         request rate against SEC scaled with concurrency instead of staying capped at
+         `sec_max_rps` process-wide. The throttle was structurally bypassable, not just
+         theoretically. Fixed with `sec/client.py`'s `_shared_default_limiter` -- one
+         process-wide `RateLimiter` shared by every default-configured `SECClient`
+         (correct for this deployment: `Dockerfile` runs a single uvicorn process, no
+         `--workers`); an explicit `max_rps=` override still gets its own independent
+         limiter. Covered by `tests/test_sec_client.py`, and empirically verified against
+         the real API below.
+- [x] **Load test the warm cache path** (`/statements`, `/insider-trades`,
+      `/managers/{cik}/holdings` -- all three cache-aside). Found and fixed a real
+      latency bug along the way: `/statements` took a consistent ~220ms on a genuine
+      cache HIT for an established filer (Apple, 24,765 stored `raw_facts` rows) --
+      `_facts_for_cik` fetched and Pydantic-validated the company's ENTIRE fact history
+      on every request, then filtered to one period in Python
+      (`normalize/statements.build_statement`), even though only ~15 rows were ever
+      relevant. Fixed with a period-scoped cache-aside helper,
+      `_statement_facts_for_cik` (`api/routes.py`), backed by two new repository
+      methods -- `get_raw_facts_for_period` (SQL-filtered via the existing
+      `(cik, fiscal_year, fiscal_period)` index) and `has_any_facts` (a cheap existence
+      check so an out-of-range period on an already-cached company stays a local
+      negative instead of re-triggering a live SEC fetch on every request). `/periods`
+      keeps using the original full-history `_facts_for_cik` -- it genuinely needs every
+      period. Verified end-to-end against the real running API (Docker, 2026-07-07):
+      warm `/statements` for Apple dropped from ~220ms to ~11-14ms (matches the ~15-20x
+      estimate), same response content confirmed byte-for-byte equivalent (the fix only
+      changes fetch efficiency, not `build_statement`'s selection logic). A committed,
+      reusable load-test script (`scripts/load_test_cache_path.py`) signs up multiple
+      free-tier keys via the real `POST /v1/signup` flow (simulating distinct
+      subscribers, since the per-key token-bucket limiter gives each an independent
+      budget) and drives concurrent traffic at `/insider-trades` and
+      `/managers/.../holdings`: 120 concurrent requests sustained 113-164 req/s
+      aggregate with median latency 93-124ms and only the EXPECTED per-key 429s (a few
+      of one key's 8 rapid requests exceeding its own 5 req/s free-tier budget -- the
+      auth layer working as designed, not a cache-path defect). A single non-concurrent
+      request to the same endpoints confirmed ~12ms baseline -- the elevated burst
+      latency is pure single-process event-loop/SQLite-connection queueing under an
+      artificial simultaneous-120-request burst, not a per-request inefficiency like the
+      `/statements` case, and stays well within acceptable bounds.
+- [x] **Load / failure test the cold path.** Two parts:
+      1. *Concurrent cold traffic approaching the 8 req/s ceiling:* a committed script
+         (`scripts/load_test_cold_path.py`) found 3,907 genuinely never-ingested real
+         CIKs (diffed the cached set against a live `company_tickers.json` fetch --
+         mostly foreign private issuers: ASML, HSBC, Novartis, Shell, Toyota, etc.) and
+         fired 8 concurrent first-ever requests using 8 distinct free-tier keys (so the
+         app's own per-key/anon limiters couldn't reject the burst before it reached the
+         SEC-facing throttle being tested). Verified end-to-end against real SEC data
+         (2026-07-07): all 8 succeeded (200), took 3.88s aggregate (not the ~0s a broken
+         throttle would allow), with visibly increasing per-request latency (416ms up to
+         3,877ms) as later requests queued behind the shared limiter -- direct empirical
+         confirmation the process-wide `RateLimiter` fix above holds under real
+         concurrent load, not just in a unit test.
+      2. *What a mid-request SEC 403/throttle does to a response:* found that an
+         upstream `httpx.HTTPStatusError` or `httpx.TransportError` (timeout/connect
+         failure) during a live fetch previously propagated uncaught, becoming a bare,
+         unhandled `500 Internal Server Error` with no body (Starlette's generic
+         default) -- safe (nothing leaked) but wrong: tells the caller WE are broken
+         when the real cause is upstream, with no actionable retry signal. Fixed with
+         two global FastAPI exception handlers (`api/main.py`) -- `HTTPStatusError` ->
+         `502` ("Upstream SEC request failed (HTTP `<code>`)... please retry"),
+         `TransportError` -> `503` ("...timed out or could not connect... please
+         retry") -- applied uniformly across every endpoint via `@app.exception_handler`,
+         no per-route changes needed. Covered by `tests/test_upstream_error_handling.py`
+         (full-stack `TestClient` with `raise_server_exceptions=False`, confirming the
+         real Starlette response a client would see, not just that Python code doesn't
+         crash). Simulated only (no real SEC 403s exist to trigger on demand) -- the
+         concurrency half above already exercises the real live-SEC path.
+      Note superseded from an earlier draft of this item: the insider/13F caches now DO
+      have a bulk-seeding path (M2.5's `institutional_backfill.py`, M3's
+      `insider_backfill.py`), so "mostly cold" traffic is less of a given at launch than
+      originally assumed here -- though still not guaranteed for every company a
+      subscriber might request.
+- [x] **Verify the backup/restore round-trip into a fresh volume.** Executed the exact
+      documented `DEVELOPMENT.md` §7 workflow against the real live volume (2026-07-07),
+      not a toy example: `storage.backup` (156MB, online backup API against a live DB),
+      recorded baseline counts (6,735 distinct `raw_facts` CIKs, 395,518 total rows, 72
+      insider filings, 2 holdings snapshots, 50 API keys), `docker compose down -v`
+      (genuinely destroyed the volume), `storage.restore --latest` into the fresh
+      volume, then verified: `PRAGMA integrity_check` -> `ok`; no stale `-wal`/`-shm`
+      sidecars; every count matched the baseline EXACTLY; the live API served real data
+      correctly afterward (`GET /statements` for Apple returned the correct 15 lines,
+      ~10ms -- confirming the warm-path fix above also survives a restore, since it's a
+      fresh WAL-mode reinit, not a carried-over state).

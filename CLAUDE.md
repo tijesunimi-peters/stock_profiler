@@ -149,8 +149,9 @@ src/secfin/
     incremental.py        # daily incremental via SEC daily index + SECClient  [implemented]
     frames_backfill.py    # bulk-ingest frames data for cross-company screening [implemented]
   api/
-    main.py              # FastAPI app + wiring                                [implemented]
+    main.py              # FastAPI app + wiring + upstream-SEC-error handlers  [implemented]
     routes.py            # endpoints (statements, insider, manager 13F, ...)   [implemented]
+scripts/                 # committed, reusable one-off scripts (benchmarks, load tests)
 tests/
 docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP, DEVELOPMENT
 ```
@@ -184,11 +185,22 @@ docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP, DEVELOPMENT
 ## SEC compliance (non-negotiable — do not bypass)
 
 - **Every request must send a descriptive `User-Agent`** identifying the app and a contact email
-  (set via `SEC_USER_AGENT` env var). Requests without it get blocked.
+  (set via `SEC_USER_AGENT` env var). Requests without it get blocked. Enforced at construction in
+  both `SECClient.__init__` and `ingest/downloader.py`'s `download_resumable` (the latter doesn't
+  go through `SECClient` — see its module docstring — so it needed its own copy of the same guard;
+  found missing and fixed 2026-07-07).
 - **Respect the SEC fair-access rate limit** (the client throttles requests). Do not remove or raise
-  the throttle to "go faster."
-- SEC data is public domain, but **verify current fair-access / redistribution terms** before launch
-  at the SEC developer resources page — treat the numbers in `client.py` as "verify, don't assume."
+  the throttle to "go faster." The throttle is a single **process-wide** `RateLimiter`
+  (`sec/client.py`'s `_shared_default_limiter`), not one per `SECClient` instance — every `/v1`
+  route handler constructs its own `SECClient()`, so a per-instance limiter (the pre-2026-07-07
+  behavior) let concurrent requests each get an independent, uncoordinated budget. Don't
+  reintroduce that by passing an explicit `max_rps=` at a real call site (that path exists so
+  tests can get an isolated limiter, not for production use).
+- Confirmed live 2026-07-07 (`docs/ROADMAP.md`'s pre-launch checklist) against SEC's own developer
+  pages, fetched with our own compliant User-Agent (generic tools get 403'd by SEC's WAF): current
+  max rate is 10 req/s (config.py's `sec_max_rps=8` stays under it); no explicit redistribution
+  restriction found (consistent with EDGAR's public-domain status, but re-verify before launch if
+  much time has passed — treat this as "verify, don't assume" like everything else here).
 
 ## Common commands
 

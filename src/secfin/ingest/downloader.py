@@ -56,8 +56,20 @@ def download_resumable(url: str, dest: Path, user_agent: str | None = None) -> P
     Completeness/resume state is tracked via a sidecar `<dest>.meta.json` (expected
     size + sha256), since the SEC bulk endpoints don't publish a checksum of their own
     to compare against.
+
+    Doesn't go through SECClient (see module docstring), so it doesn't get that
+    class's placeholder-User-Agent guard for free -- checked here instead, same
+    condition `SECClient.__init__` raises on. `docker-compose.yml`'s
+    `${SEC_USER_AGENT:?...}` only protects the containerized path; this is the
+    guard for a bare `pip install -e .` / host-Python run (`docs/ROADMAP.md`'s
+    pre-launch "User-Agent enforced everywhere" check).
     """
     ua = user_agent or settings.sec_user_agent
+    if "unset@example.com" in ua:
+        raise RuntimeError(
+            "SEC_USER_AGENT is not configured. The SEC blocks requests without a "
+            "descriptive User-Agent. Set it in .env (see .env.example)."
+        )
     dest.parent.mkdir(parents=True, exist_ok=True)
     meta_file = _meta_path(dest)
 
