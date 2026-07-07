@@ -289,6 +289,14 @@
     } else {
       elLabel.textContent = "";
     }
+    // Contextual jump to the full metrics hub, shown once a company is resolved.
+    var link = qs("viewFundamentals");
+    if (state.symbol && state.cik) {
+      link.href = "/company/" + encodeURIComponent(state.symbol);
+      link.hidden = false;
+    } else {
+      link.hidden = true;
+    }
   }
 
   function hideAllStates() {

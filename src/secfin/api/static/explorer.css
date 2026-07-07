@@ -114,6 +114,17 @@
 .query-panel-resolved.is-known { color: var(--ink); font-weight: 600; }
 .query-panel-resolved.is-404 { color: var(--ext-color); }
 
+.query-panel-right { display: flex; align-items: center; gap: 14px; }
+.view-fundamentals {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.view-fundamentals:hover { color: var(--accent-hover); text-decoration: underline; }
+
 .query-panel-body {
   padding: 20px;
   display: flex;
