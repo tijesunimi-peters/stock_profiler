@@ -24,6 +24,7 @@ from secfin.normalize.metrics import (
     _index_concepts,
     _ttm_flow,
     available_metric_periods,
+    compute_fy_metrics_with_trend,
     compute_metrics,
     metric_periods,
 )
@@ -321,7 +322,24 @@ def test_quarter_resolves_in_an_in_progress_fiscal_year():
     assert res.metrics[0].period_end == "2025-03-31"
 
 
-def test_metric_periods_lists_fy_and_quarters_newest_first():
+def test_fy_metrics_carry_an_intra_year_quarterly_trend():
+    facts = _load("aapl_companyfacts.json", 320193)
+    fy = compute_fy_metrics_with_trend(facts, 320193, 2025)
+    by = {m.metric: m for m in fy.metrics}
+
+    nm = by["net_margin"]
+    # A full fiscal year -> four quarterly trend points, in order.
+    assert [p.period for p in nm.trend] == ["Q1", "Q2", "Q3", "Q4"]
+    # Flow metric is TTM at each quarter, so the Q4 (fiscal-year-end) point equals the annual.
+    assert nm.trend[-1].value == pytest.approx(nm.value)
+    # Plain compute_metrics (quarterly) has no trend.
+    assert compute_metrics(facts, 320193, 2025, "Q2").metrics[0].trend == []
+    # EPS isn't summable across quarters, so Q1-Q3 are nm gaps (value None); only Q4 (which
+    # coincides with the fiscal-year-end) resolves to the annual figure. Too few numeric points
+    # for a real quarterly series -> the UI shows no sparkline, and nothing is fabricated.
+    eps = by["eps_basic"]
+    assert [p.status for p in eps.trend[:3]] == ["nm", "nm", "nm"]
+    assert len([p for p in eps.trend if p.value is not None]) < 2
     mp = metric_periods(_load("aapl_companyfacts.json", 320193))
     keys = {(e["year"], e["period"]) for e in mp}
     # both annual and an in-progress-year quarter are offered

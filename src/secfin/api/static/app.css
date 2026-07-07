@@ -234,6 +234,19 @@
   padding-left: 8px;
 }
 
+/* intra-year quarterly sparkline (FY cards) */
+.spark-wrap { display: flex; align-items: center; gap: 8px; }
+.spark { display: block; overflow: visible; }
+.spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.spark circle { fill: var(--accent); }
+.spark-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mono-muted);
+}
+
 /* ---------- provenance / "show your work" ---------- */
 
 .provenance { margin-top: 2px; }

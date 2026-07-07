@@ -178,6 +178,43 @@
     );
   }
 
+  // ---------- sparkline (§6) ----------
+
+  // points: ordered [{value, status}] (a metric's intra-year quarters). Draws a self-scaling
+  // polyline over the numeric points, breaking at na/nm gaps (never interpolating across them),
+  // with the last point dotted. Returns "" when there aren't >=2 numeric points (no fake trend).
+  function sparkline(points) {
+    var W = 108, H = 26, PAD = 3;
+    var n = points.length;
+    var vals = points.map(function (p) {
+      return p && p.value !== null && p.value !== undefined && p.status !== "na" && p.status !== "nm"
+        ? p.value
+        : null;
+    });
+    var present = vals.filter(function (v) { return v !== null; });
+    if (present.length < 2) return "";
+    var min = Math.min.apply(null, present), max = Math.max.apply(null, present);
+    var span = max - min || 1;
+    var xat = function (i) { return PAD + (n <= 1 ? 0 : (i * (W - 2 * PAD)) / (n - 1)); };
+    var yat = function (v) { return H - PAD - ((v - min) / span) * (H - 2 * PAD); };
+    var segs = [], cur = [], lastI = -1;
+    vals.forEach(function (v, i) {
+      if (v === null) { if (cur.length) segs.push(cur); cur = []; return; }
+      cur.push(xat(i).toFixed(1) + "," + yat(v).toFixed(1));
+      lastI = i;
+    });
+    if (cur.length) segs.push(cur);
+    var polys = segs
+      .filter(function (s) { return s.length >= 2; })
+      .map(function (s) { return '<polyline points="' + s.join(" ") + '"/>'; })
+      .join("");
+    var dot = lastI >= 0 ? '<circle cx="' + xat(lastI).toFixed(1) + '" cy="' + yat(vals[lastI]).toFixed(1) + '" r="2"/>' : "";
+    return (
+      '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H +
+      '" preserveAspectRatio="none" aria-hidden="true">' + polys + dot + "</svg>"
+    );
+  }
+
   // ---------- metric card (§6) ----------
 
   // mv = MetricValue; opts.formula = plain-language formula string (optional).
@@ -197,11 +234,21 @@
       ["As of", esc(mv.as_of)],
       [mv.status === "ok" ? "" : "Why " + (STATUS[mv.status] || {}).label, mv.reason ? esc(mv.reason) : ""],
     ]);
+    // FY cards carry an intra-year quarterly trend; render a sparkline when it has enough points.
+    var spark = "";
+    if (mv.trend && mv.trend.length) {
+      var svg = sparkline(mv.trend);
+      if (svg) {
+        var lbl = mv.basis === "TTM" ? "TTM by quarter" : "by quarter-end";
+        spark = '<div class="spark-wrap">' + svg + '<span class="spark-label">' + esc(lbl) + "</span></div>";
+      }
+    }
     return (
       '<article class="metric-card' + (isNa ? " na" : "") + '">' +
       '<div class="metric-head"><span class="metric-name">' + esc(mv.label) + "</span>" + statusChip(mv.status) + "</div>" +
       '<div class="' + valueCls + '">' + esc(f.text) + "</div>" +
       '<div class="metric-basis">' + esc(mv.basis) + "</div>" +
+      spark +
       note +
       prov +
       "</article>"
@@ -320,6 +367,7 @@
     DISCLOSURES: DISCLOSURES,
     statusChip: statusChip,
     statusLegend: statusLegend,
+    sparkline: sparkline,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

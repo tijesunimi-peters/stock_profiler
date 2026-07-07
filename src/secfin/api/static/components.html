@@ -108,7 +108,11 @@
       var samples = [
         { metric: "net_margin", label: "Net Margin", value: 0.2397, unit: "ratio", basis: "TTM",
           restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
-          _formula: "Net income ÷ Revenue" },
+          _formula: "Net income ÷ Revenue",
+          trend: [
+            { period: "Q1", value: 0.252, status: "ok" }, { period: "Q2", value: 0.247, status: "ok" },
+            { period: "Q3", value: 0.243, status: "ok" }, { period: "Q4", value: 0.2397, status: "ok" },
+          ] },
         { metric: "fcf", label: "Free Cash Flow", value: 108807000000, unit: "USD", basis: "TTM",
           restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
           _formula: "Operating cash flow − Capital expenditures" },

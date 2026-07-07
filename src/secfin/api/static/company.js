@@ -114,9 +114,11 @@
     P.api("/companies/" + encodeURIComponent(symbol) + "/metric-periods").then(
       function (mp) {
         state.fundPeriods = mp.periods || [];
-        state.fundValue = state.fundPeriods.length
-          ? state.fundPeriods[0].year + "|" + state.fundPeriods[0].period
-          : null;
+        // Default to the latest FULL fiscal year so the annual view (with the intra-year
+        // quarterly sparklines) is what loads; fall back to the newest period otherwise.
+        var def = state.fundPeriods.filter(function (p) { return p.period === "FY"; })[0]
+          || state.fundPeriods[0];
+        state.fundValue = def ? def.year + "|" + def.period : null;
         if (!state.fundPeriods.length && !state.fyYears.length) {
           $("view").innerHTML = P.states.empty({ title: "No computable periods", copy: "Filings are on record but no complete period to compute from yet." });
           return;

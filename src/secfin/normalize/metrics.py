@@ -34,6 +34,7 @@ from secfin.normalize.schema import (
     CompanyMetrics,
     FiscalPeriod,
     MetricBasis,
+    MetricPoint,
     MetricValue,
     RawFact,
 )
@@ -755,6 +756,33 @@ def compute_metrics(
         fiscal_period=fiscal_period,
         metrics=[fn(ctx) for fn in _METRICS],
     )
+
+
+def compute_fy_metrics_with_trend(facts: list[RawFact], cik: int, year: int) -> CompanyMetrics:
+    """FY metric set, each metric augmented with its intra-year quarterly trend (Q1..Q4).
+
+    The annual card values are unchanged; `MetricValue.trend` adds the same metric computed at
+    each resolvable quarter of the fiscal year, for a sparkline. Flow metrics are TTM at each
+    quarter (so the last point matches the annual value); stocks are the quarter-end level; a
+    quarter that's na/nm for a metric contributes a gap point (value None), never a fake number.
+    """
+    annual = compute_metrics(facts, cik, year, "FY")
+    if not annual.metrics:
+        return annual
+
+    index = _index_concepts(facts)
+    quarter_ends = _quarters_in_fy(_all_quarter_ends(index), _fiscal_year_ends(index), year)[:4]
+    # metric_key -> ordered list of MetricPoint across the year's quarters
+    trends: dict[str, list[MetricPoint]] = {}
+    for i, end in enumerate(quarter_ends):
+        period = "Q" + str(i + 1)
+        for mv in compute_metrics(facts, cik, year, period).metrics:
+            trends.setdefault(mv.metric, []).append(
+                MetricPoint(period=period, period_end=end, value=mv.value, status=mv.status)
+            )
+
+    metrics = [m.model_copy(update={"trend": trends.get(m.metric, [])}) for m in annual.metrics]
+    return annual.model_copy(update={"metrics": metrics})
 
 
 def available_metric_periods(facts: list[RawFact]) -> list[tuple[int, str]]:

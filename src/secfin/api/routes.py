@@ -15,7 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
-from secfin.normalize.metrics import compute_metrics, metric_periods
+from secfin.normalize.metrics import (
+    compute_fy_metrics_with_trend,
+    compute_metrics,
+    metric_periods,
+)
 from secfin.normalize.schema import (
     CompanyMetrics,
     CusipResolutionStats,
@@ -202,7 +206,11 @@ async def get_metrics(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
-    result = compute_metrics(facts, cik, year, period)
+    # FY cards carry an intra-year quarterly trend (sparkline); quarters are single values.
+    if period == "FY":
+        result = compute_fy_metrics_with_trend(facts, cik, year)
+    else:
+        result = compute_metrics(facts, cik, year, period)
     if not result.metrics:
         # Empty list means the period itself isn't in the data (no annual/quarter end
         # resolved) -- distinct from "resolved, but individual metrics are N/A".

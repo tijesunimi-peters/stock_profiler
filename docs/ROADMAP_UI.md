@@ -90,7 +90,10 @@ the Phase 0 `Profin` components. The global search now navigates to the hub.
 - [x] **Company Fundamentals** — metric cards grouped by category (display-only category +
       formula maps in `company.js`), status legend, provenance, disclosure. Consumes
       **`/companies/{symbol}/metrics?year=&period=`**; each card renders via `Profin.metricCard`
-      with status/basis/reason/as-of — no invented precision.
+      with status/basis/reason/as-of — no invented precision. **FY cards carry an intra-year
+      quarterly sparkline** (`MetricValue.trend` = the metric at each quarter of the fiscal year;
+      flows are TTM-by-quarter so the last point = the annual value; na/nm quarters break the line,
+      never interpolated). This is Phase 1b Tier-1 (the series) delivered within a single FY.
 - [x] **Statements viewer** — income / balance / cash flow segmented toggle sharing the year
       selector; consumes `/companies/{symbol}/statements/{type}` + `/periods`; table shows
       `source_tag` + a US-GAAP/EXT badge, with empty-vs-404 states.

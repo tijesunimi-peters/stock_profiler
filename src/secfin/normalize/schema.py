@@ -257,6 +257,15 @@ MetricBasis = Literal["TTM", "as-of"]
 RestatementBasis = Literal["as-restated", "as-originally-reported"]
 
 
+class MetricPoint(BaseModel):
+    """One point in a metric's intra-fiscal-year quarterly trend (see MetricValue.trend)."""
+
+    period: FiscalPeriod  # Q1..Q4
+    period_end: str | None = None
+    value: float | None = None  # None when this quarter's status is na/nm
+    status: MetricStatus = "ok"
+
+
 class MetricValue(BaseModel):
     """One fundamental metric for one company + fiscal period (a computed result).
 
@@ -280,6 +289,11 @@ class MetricValue(BaseModel):
 
     status: MetricStatus = "ok"
     reason: str | None = None  # reason code / human reason for approximate/na/nm
+
+    # For an FY response only: this metric across the fiscal year's quarters (Q1..Q4), for a
+    # sparkline. Empty for quarterly requests. Flow metrics are TTM at each quarter-end, so the
+    # last point equals the annual value; stock metrics are the quarter-end level.
+    trend: list[MetricPoint] = Field(default_factory=list)
 
 
 class CompanyMetrics(BaseModel):
