@@ -10,7 +10,7 @@ metrics + filters).
 
 1. Read `CLAUDE.md`, `src/secfin/normalize/mapping.py`, `src/secfin/normalize/schema.py`,
    `src/secfin/normalize/statements.py`, and `docs/DATA_MODEL.md` first. Match existing
-   conventions (repository interface, cache-first serving, analytical layer for cross-company).
+   conventions (repository interface, cache-aside serving, analytical layer for cross-company).
 2. **Build order: Phase 1 → Phase 1b → Phase 2.** Phase 1 (per-company metric engine) and Phase 1b
    (trend analysis) are concrete and ready — 1b is a small extension of 1, not a separate build.
    Phase 2 (peer comparison) is a design sketch — confirm the open questions before building.
@@ -21,7 +21,7 @@ metrics + filters).
 
 ## Prerequisites (already in place)
 
-- MVP financials: normalized `Statement`/`RawFact` history in SQLite, cache-first routes.
+- MVP financials: normalized `Statement`/`RawFact` history in SQLite, cache-aside routes.
 - Mapping concepts required by these metrics are all present in `mapping.py` as of the latest
   update: including `accounts_receivable`, `inventory`, `debt_current`, `shares_outstanding`,
   `shares_basic`, `shares_diluted`. No metric below is blocked on a missing tag.
@@ -166,7 +166,7 @@ Design intent:
 - One function per metric; a TTM helper and an average-balance helper shared across them, both keyed
   off the duration/instant flag (R2/R3).
 - Serving: per-company metrics can be computed on-demand over cached `RawFact`s and cached like
-  statements (cache-first, same pattern as `_facts_for_cik`). They are NOT cross-company, so they do
+  statements (cache-aside, same pattern as `_facts_for_cik`). They are NOT cross-company, so they do
   not need the analytical layer.
 
 ### Phase 1 tasks
@@ -176,7 +176,7 @@ Design intent:
       tax clamp, sign/N-M handling, N/A reason codes, debt-split detection for R5).
 - [ ] One function per metric in the tables above.
 - [ ] Per-company metrics endpoint (e.g. `GET /v1/companies/{symbol}/metrics?period=&year=`),
-      cache-first over the existing store.
+      cache-aside over the existing store.
 - [ ] Run `coverage_report()` on the six newer concepts (esp. `shares_outstanding` for R6) against
       the Apple/bank/retailer fixtures; record which `⚠️` metrics actually resolve per industry in
       `docs/DATA_MODEL.md`.
@@ -191,9 +191,11 @@ Design intent:
 ## Phase 1b — Trend analysis (build with / right after Phase 1)
 
 Trend analysis is the **same metric engine run across the quarterly history** — not a new data source.
-The full history is already in the `RawFact` store (~2009 onward), so once Phase 1 returns series by
-default (above), trend is mostly already in hand. **This is fundamentals-over-time, NOT price/OHLC** —
-it carries none of the market-data licensing baggage of the deferred daily-signals work.
+The full history is already in the `RawFact` store (~2009 onward, bounded per company by the XBRL
+coverage floor — see DATA_MODEL.md "Coverage boundaries"; a recent IPO simply has a shorter series,
+per R10), so once Phase 1 returns series by default (above), trend is mostly already in hand. **This
+is fundamentals-over-time, NOT price/OHLC** — it carries none of the market-data licensing baggage of
+the deferred daily-signals work.
 
 **Tier 1 — the series itself (free with Phase 1).** The quarter-by-quarter sequence of each metric.
 Powers the sparklines in the design briefs and the "compare trajectories" mode. No work beyond
@@ -232,7 +234,7 @@ axis across companies) and **R9** (each series internally point-in-time correct,
 - [ ] Implement **R9** (one labeled restatement basis per series; gaps not interpolated) and **R10**
       (calendar-axis alignment for multi-company trend).
 - [ ] Endpoint: per-company metric history (e.g. `GET /v1/companies/{symbol}/metrics/{metric}/history`),
-      cache-first on the serving path (single-company trend is NOT cross-company).
+      cache-aside on the serving path (single-company trend is NOT cross-company).
 - [ ] Tests (no network): every point in a series is point-in-time correct (restatement + filing-lag
       across the whole line); single-basis consistency; streak/CAGR correctness; gap handling (no
       interpolation); calendar alignment across two companies with different fiscal years.
@@ -247,9 +249,11 @@ Phase 2 / screening, so don't stand up a separate path for it.
 ## Phase 2 — Peer comparison & ranking (design sketch, build after Phase 1)
 
 Turns per-company metrics into "how does this company stack up in its industry." This is inherently
-**cross-company**, so it runs on the **analytical layer** (DuckDB over Parquet; see `ARCHITECTURE.md`
-3b and Milestone 2.5), NOT the per-company serving path. It is the second consumer of that layer
-alongside 13F inversion and Milestone 4 screening — reuse the same Parquet landing + batch query path.
+**cross-company**, so it runs on the **analytical layer** (DuckDB; see `ARCHITECTURE.md` 3b and
+ROADMAP 2.5), NOT the per-company serving path. It is a consumer of that layer alongside the 13F
+inversion and Milestone 4 screening — **reuse whatever analytical mechanism 2.5 settles on**
+(DuckDB-over-SQLite, or a Parquet landing — TBD, do not presuppose Parquet) and its batch query path,
+rather than standing up a new one.
 
 Approach:
 1. **Peer grouping.** Group by **SIC code** (already available in the submissions metadata used for
@@ -272,8 +276,10 @@ Approach:
 ### Phase 2 tasks
 
 - [ ] Confirm SIC grouping + min-peer-size decisions above.
-- [ ] Land per-company metric outputs as Parquet (serialization of Phase 1 results — no new canonical
-      model), reusing the Milestone 2.5 Parquet landing path.
+- [ ] Serialize per-company metric outputs into the analytical store (a serialization of Phase 1
+      results — no new canonical model), reusing whatever mechanism 2.5 stands up (a Parquet landing,
+      or DuckDB reading SQLite directly — see ROADMAP 2.5). Don't build a metrics-specific Parquet
+      path if 2.5 didn't need Parquet.
 - [ ] Batch job: compute per-metric percentile/z-score within each peer group per period (DuckDB).
 - [ ] Write ranked results where the serving store can read them; issuer-centric "peer comparison"
       endpoint reads pre-computed rows.
@@ -287,7 +293,7 @@ Approach:
   "later."
 - N/A and N-M are first-class results (R7, R8). Never emit `0`, a raw divide error, or a misleading
   percentage in their place.
-- Per-company metrics stay on the serving path (cache-first); peer/cross-company work stays on the
+- Per-company metrics stay on the serving path (cache-aside); peer/cross-company work stays on the
   analytical layer. DuckDB never sits behind a live API request.
 - Do NOT add price/OHLC or any market data here — this workstream is fundamentals-only, **including
   trend** (trend = fundamentals over time, not price). Daily price signals are a separate, later effort.
@@ -295,16 +301,21 @@ Approach:
   restatement basis; gaps are gaps — never interpolated or zero-filled.
 - Multi-company trend aligns on a **calendar axis** (R10); never compare series across mismatched
   as-of dates without surfacing it.
-- Do NOT start Track 2 (free-text) or add new canonical models for Phase 2 (Parquet is a
-  serialization of existing records).
+- Do NOT start Track 2 (free-text) or add new canonical models for Phase 2 (the analytical
+  serialization is just existing records in another form, whatever the mechanism).
 - Prefer extending `mapping.py` (and the future sum-multiple-tags capability) over hard-coding
   company-specific fixes in metric functions.
 
 ## Verify, don't assume
 
-- Confirm dei facts are actually ingested before relying on R6's fallback.
+- Confirm dei facts are actually ingested before relying on R6's fallback — as of the last check the
+  ingest path defaults to `us-gaap` (see DATA_MODEL.md's shares-outstanding note), so today
+  book-value-per-share leans on the us-gaap `CommonStockSharesOutstanding` alone, and the dei fallback
+  is effectively dead until ingest is widened.
 - Re-run `coverage_report()` on real filings for any concept a metric leans on; the `⚠️` rows above
   are expectations until backed by fixture data.
-- Pin and confirm DuckDB concurrency semantics for the Phase 2 batch path (same note as Milestone 2.5).
+- Pin and confirm DuckDB concurrency semantics for the Phase 2 batch path (same note as ROADMAP 2.5)
+  — and inherit 2.5's analytical-mechanism decision (Parquet vs DuckDB-over-SQLite) rather than
+  making a separate one for metrics.
 - Decide the **default series restatement basis** (as-originally-reported vs as-restated) as a product
   choice **before** building Phase 1b — it changes what every trend line means (R9).
