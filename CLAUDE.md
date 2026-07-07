@@ -234,6 +234,10 @@ docker compose run --rm api python -m secfin.ingest.institutional_backfill --per
 
 docker compose run --rm api python -m secfin.storage.backup            # snapshot -> ./data/backups
 docker compose run --rm api python -m secfin.storage.restore --latest  # hydrate a fresh volume
+
+# tests in Docker (opt-in profiles; bind-mount the repo, not the prod image)
+docker compose --profile test run --rm test                             # pytest
+docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e  # headless-Chromium render check
 ```
 
 ## Guardrails for the agent
