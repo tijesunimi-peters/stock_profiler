@@ -124,6 +124,7 @@
           return;
         }
         $("controls").hidden = false;
+        applyTabFromUrl();
         populatePeriodSelect();
         render();
       },
@@ -131,10 +132,22 @@
         // Metric periods failed but statements may still work — degrade to Statements only.
         state.fundPeriods = [];
         $("controls").hidden = false;
+        applyTabFromUrl();
         populatePeriodSelect();
         render();
       }
     );
+  }
+
+  // Deep-link support: /company/{symbol}?tab=insider selects a tab on load (shareable URLs,
+  // and lets the e2e check target a tab directly).
+  function applyTabFromUrl() {
+    var t = new URLSearchParams(location.search).get("tab");
+    if (["fundamentals", "statements", "insider"].indexOf(t) !== -1) state.tab = t;
+    var btn = document.querySelector('#tabs button[data-tab="' + state.tab + '"]');
+    if (btn) setOn("#tabs button", btn);
+    $("stmt-types").hidden = state.tab !== "statements";
+    $("period-control").hidden = state.tab === "insider";
   }
 
   // ---------- period control ----------
@@ -189,7 +202,9 @@
     state.tab = btn.getAttribute("data-tab");
     setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
-    populatePeriodSelect(); // the axis differs per tab (metric periods vs FY years)
+    // Insider trades are bounded by a filing limit, not a period -- hide the period picker.
+    $("period-control").hidden = state.tab === "insider";
+    if (state.tab !== "insider") populatePeriodSelect(); // axis differs per tab
     render();
   }
   function onStmtClick(e) {
@@ -206,7 +221,68 @@
   // ---------- render ----------
 
   function render() {
-    if (state.tab === "fundamentals") { renderFundamentals(); } else { renderStatements(); }
+    if (state.tab === "fundamentals") renderFundamentals();
+    else if (state.tab === "statements") renderStatements();
+    else renderInsider();
+  }
+
+  var INSIDER_LIMIT = 25;
+
+  function renderInsider() {
+    $("legend").innerHTML = "";
+    $("disclosure").innerHTML = P.disclosure(["not_advice"]);
+    $("view").innerHTML = P.states.loading({ title: "Loading insider filings" });
+    P.api("/companies/" + encodeURIComponent(symbol) + "/insider-trades?limit=" + INSIDER_LIMIT).then(
+      function (rows) {
+        if (!rows || !rows.length) {
+          $("view").innerHTML = P.states.empty({
+            title: "No insider filings",
+            copy: "No Forms 3/4/5 on record for this issuer in the fetched window.",
+          });
+          return;
+        }
+        $("view").innerHTML = insiderTable(rows);
+      },
+      function (err) {
+        if (err.status === 404) {
+          $("view").innerHTML = P.states.notFound({
+            copy: "No insider filings for " + symbol.toUpperCase() + ".",
+            recovery: [{ label: "Data Explorer ↗", href: "/explorer" }],
+          });
+        } else {
+          $("view").innerHTML = P.states.error({ copy: "Couldn't load insider filings (" + (err.status || "network") + ")." });
+        }
+      }
+    );
+  }
+
+  function insiderTable(rows) {
+    var ACTION = { A: "Acquired", D: "Disposed" };
+    var body = rows.map(function (t) {
+      var action = t.is_holding ? "Holding" : (ACTION[t.acquired_disposed] || "—");
+      var shares = t.shares != null ? P.fmt.shares(t.shares) : "—";
+      var price = t.price_per_share != null ? P.fmt.perShare(t.price_per_share) : "—";
+      var after = t.shares_owned_after != null ? P.fmt.shares(t.shares_owned_after) : "—";
+      return (
+        "<tr>" +
+        '<td class="stmt-tag">' + P.esc(t.transaction_date || t.filed || "—") + "</td>" +
+        '<td class="stmt-label">' + P.esc(t.owner_name || "—") + "</td>" +
+        '<td class="stmt-tag">' + P.esc(t.owner_relationship || "—") + "</td>" +
+        "<td>" + P.esc(action) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(shares) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(price) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    return (
+      '<table class="stmt-table"><thead><tr>' +
+      "<th>Filed</th><th>Owner</th><th>Relationship</th><th>Action</th>" +
+      '<th class="amt">Shares</th><th class="amt">Price</th><th class="amt">Shares after</th>' +
+      "</tr></thead><tbody>" + body + "</tbody></table>" +
+      '<p class="stmt-caption">Forms 3/4/5 as filed with the SEC · most recent ' + INSIDER_LIMIT +
+      " filings · as-reported, not derived. Acquired/Disposed is the reported code, not a buy/sell judgment.</p>"
+    );
   }
 
   function renderFundamentals() {

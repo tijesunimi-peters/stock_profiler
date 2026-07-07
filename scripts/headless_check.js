@@ -11,7 +11,10 @@ const puppeteer = require("puppeteer");
 const BASE = (process.env.BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 const OUT = process.env.OUT_DIR || "/out";
 const PAGES = process.env.PAGES
-  ? process.env.PAGES.split(",").map((p) => p.split("="))
+  ? process.env.PAGES.split(",").map((p) => {
+      const i = p.indexOf("="); // split on the FIRST '=' so query strings survive
+      return [p.slice(0, i), p.slice(i + 1)];
+    })
   : [
       ["company", "/company/AAPL"],
       ["coverage", "/coverage"],

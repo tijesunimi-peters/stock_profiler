@@ -21,6 +21,10 @@
   --shadow-soft: 0 18px 40px -26px rgba(40, 30, 15, 0.35);
 }
 
+/* The `hidden` attribute must win over our flex/grid `display` rules (a flex/grid display
+ * otherwise overrides the UA `[hidden] { display: none }`). */
+[hidden] { display: none !important; }
+
 /* numbers are always tabular */
 .mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 

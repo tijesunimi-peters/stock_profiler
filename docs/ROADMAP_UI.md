@@ -112,18 +112,35 @@ N/A/APPROX (average balance needs the year-ago quarter). The Statements tab stay
 
 ## Phase 2 — Ownership & flows (backend ready except 13D/G)
 
-- [ ] **Insider trades** *(ready)* — Forms 3/4/5 timeline; surface joint-filer / cluster rows.
-      Consumes `GET /v1/companies/{symbol}/insider-trades?limit=`.
-- [ ] **Institutional ownership — issuer view** *(ready)* — "who holds this stock" + DERIVED
-      buy/sell. Consumes `GET /v1/companies/{symbol}/institutional-holders` and
-      `.../institutional-activity`. Must render the always-present caveats (derived-not-reported,
-      long-only, ~45-day lag, empty-list ambiguity) — non-negotiable per CLAUDE.md.
-- [ ] **Manager (13F filer) profile** *(ready)* — one manager's holdings + derived activity +
-      co-filer roster. Consumes `GET /v1/managers/{manager_cik}/holdings` and `.../activity`.
+- [x] **Insider trades** — an **Insider tab** on the company hub (`/company/{symbol}?tab=insider`,
+      tabs are now deep-linkable). Consumes `GET /v1/companies/{symbol}/insider-trades?limit=25`;
+      renders a transactions table (filed, owner, relationship, acquired/disposed, shares, price,
+      shares-after) with an as-reported (not-derived) note and the "Acquired/Disposed is the
+      reported code, not a buy/sell judgment" honesty line. `scripts/seed_fixture.py` seeds demo
+      insider rows so the tab renders offline in the e2e profile. Verified headless (zero console
+      errors). *(Fixed a latent bug along the way: `[hidden]` was being overridden by our flex
+      `display` rules, so tab-switching didn't hide the statement/period controls — now
+      `[hidden]{display:none!important}` in app.css.)*
+- [ ] **Institutional ownership — issuer view** *(ready, but needs a periods axis first)* — "who
+      holds this stock" + DERIVED buy/sell. Consumes `GET /v1/companies/{symbol}/institutional-holders`
+      and `.../institutional-activity` (both take an explicit quarter-end `period=`). **Blocker for
+      a real period selector:** there's no endpoint listing which quarters have 13F data for an
+      issuer — needs a new axis endpoint (mirror `metric-periods`, e.g.
+      `GET /companies/{symbol}/institutional-periods`) before this can ship without hardcoding a
+      quarter. Must render the always-present `caveats` from the response (derived-not-reported,
+      long-only, ~45-day lag, empty-list ambiguity).
+- [ ] **Manager (13F filer) profile** *(ready, same periods-axis gap)* — a sibling page
+      `/manager/{cik}`: one manager's holdings + derived activity + co-filer roster. Consumes
+      `GET /v1/managers/{manager_cik}/holdings` and `.../activity`. Same missing-periods-axis issue
+      (no endpoint lists a manager's available quarters).
 - [ ] **Beneficial ownership (13D/13G)** *(blocked)* — 5%+ ownership, activist vs passive.
       Parsing is done (`fetch_beneficial_ownership`) but **has no endpoint** — build the page
       when the `GET /v1/companies/{symbol}/beneficial-ownership` route lands (open M2 item in
       `docs/ROADMAP.md`). Carry the structured-XML ~mid-2025 coverage floor.
+
+**Next Phase 2 step:** add the 13F **periods-axis endpoint(s)** (issuer + manager), then build the
+Institutional ownership tab and the Manager profile page against them — mirrors how `metric-periods`
+unblocked the Fundamentals period selector.
 
 ## Phase 3 — Comparison & trends
 
