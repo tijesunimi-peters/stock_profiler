@@ -54,10 +54,13 @@ and is a deliberate later decision.
   canonical schema. **This is the moat — most of our real work lives here.**
 - **store** (`src/secfin/storage/`): two distinct stores, not one replacing the other:
   - *Operational* — SQLite now (WAL mode, concurrent point reads for the API), with a planned
-    path to Postgres. Stays behind the `RawFactRepository` interface. This is what `serve`
-    reads from (once routes are wired to it — see ROADMAP), and what `ingest/` writes to.
-  - *Analytical* — DuckDB querying Parquet on disk, for batch aggregation only (13F
-    cross-manager inversion, cross-company screening). Never on the live request path.
+    path to Postgres. Sits behind repository interfaces (`RawFactRepository` plus the `Cusip`,
+    `Insider`, and `Holdings` repositories). This is what `serve` reads from — routes read it
+    **cache-aside** (`_facts_for_cik`, `_insider_transactions_for_cik`, `_manager_snapshot`),
+    falling back to SEC only on a miss — and what `ingest/` writes to.
+  - *Analytical* — DuckDB for batch aggregation only (13F cross-manager inversion, cross-company
+    screening), **never on the live request path**. The exact mechanism (DuckDB-over-Parquet vs
+    DuckDB reading the SQLite file directly) is under evaluation — see ROADMAP 2.5.
     See `docs/ARCHITECTURE.md`.
 - **serve** (`src/secfin/api/`): FastAPI endpoints returning canonical JSON.
 
@@ -72,7 +75,11 @@ Base host for structured data: `https://data.sec.gov`
 - **Single concept across periods:** `/api/xbrl/companyconcept/CIK##########/us-gaap/{Concept}.json`
 - **Frames (one concept across ALL companies for one period):**
   `/api/xbrl/frames/us-gaap/{Concept}/{Unit}/{Period}.json`
-  — this is the intended path to cross-company screening later. Note it now; don't build on it yet.
+  — powers cross-company screening (`GET /v1/screen`, Milestone 4; `sec/frames.py`,
+  `ingest/frames_backfill.py`). Confirmed live: frame periods are CALENDAR-quarter
+  aligned (not fiscal-period aligned), `data[]` rows carry no `fy`/`fp`/`filed`/`form`,
+  and a bare annual instant (`CY2023I`) 404s -- see `docs/DATA_MODEL.md`'s "Cross-company
+  screening" section.
 - **Ticker → CIK map:** `https://www.sec.gov/files/company_tickers.json`
 - **Insider trades (Forms 3/4/5):** discovered via `/submissions/...`, then fetch the ownership
   XML document from the filing's EDGAR directory. Parsed in `src/secfin/sec/insider.py`.
@@ -82,7 +89,9 @@ Base host for structured data: `https://data.sec.gov`
   `ingest/backfill.py`. Verified 2026-07-03; re-check before relying on it long-term.
 - **Bulk submissions (all filers' history, nightly rebuild):**
   `https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip` — downloaded by
-  the backfill for future insider/13F work; not parsed yet (see ROADMAP).
+  the backfill; not parsed yet, earmarked for the M2.5 whole-market 13F ingest. (Per-company
+  insider/13F already work via the per-company `/submissions/...` JSON through the API, not
+  this bulk zip.)
 - **Daily filing index (for the incremental job):**
   `https://www.sec.gov/Archives/edgar/daily-index/{year}/QTR{n}/form.{YYYYMMDD}.idx` — used
   by `ingest/incremental.py` to find CIKs that filed 10-K/10-Q on a given date.
@@ -95,12 +104,14 @@ Base host for structured data: `https://data.sec.gov`
 - `FastAPI` + `uvicorn` — API layer
 - `pytest` — tests
 - SQLite for local dev; keep DB access behind a small interface so Postgres is a drop-in later.
-- `DuckDB` (planned, Milestone 2.5) — **analytical only**, querying Parquet files on disk for
-  batch jobs (13F cross-manager inversion, cross-company screening). Not the API's transactional
-  backend; never on the live per-request read path. Serverless — no DB process to run or pay
-  for, which fits the cheap-subscription goal. Pin a version and verify its multi-process
-  read/write concurrency semantics against that version's docs before implementing — this has
-  changed across DuckDB releases, so "verify, don't assume."
+- `DuckDB` (planned, Milestone 2.5) — **analytical only**, for batch jobs (13F cross-manager
+  inversion, cross-company screening). Queries Parquet on disk **or** the SQLite file directly
+  via DuckDB's `sqlite` extension — the mechanism is under evaluation (see ROADMAP 2.5), so treat
+  Parquet as likely-but-not-decided. Not the API's transactional backend; never on the live
+  per-request read path. Serverless — no DB process to run or pay for, which fits the
+  cheap-subscription goal. Pin a version and verify its multi-process read/write concurrency
+  semantics against that version's docs before implementing — this has changed across DuckDB
+  releases, so "verify, don't assume."
 
 ## Repository layout
 
@@ -110,25 +121,38 @@ src/secfin/
   sec/
     client.py            # rate-limited SEC HTTP client (User-Agent + throttle)  [implemented]
     companyfacts.py      # fetch + shape companyfacts JSON                        [implemented]
-    insider.py           # fetch + parse Forms 3/4/5 ownership XML               [stub]
-    institutional.py     # fetch + parse 13F info table, 13D/G                   [stub]
+    ticker_cache.py      # in-memory ticker->CIK map (TickerCache)                [implemented]
+    insider.py           # fetch + parse Forms 3/4/5 ownership XML               [implemented]
+    institutional.py     # fetch + parse 13F info table + cover page, 13D/G      [implemented]
+    frames.py            # fetch + parse SEC frames API (cross-company screening) [implemented]
   normalize/
     schema.py            # canonical Pydantic models                            [implemented]
-    mapping.py           # canonical concept -> candidate US-GAAP tags (the moat) [starter]
+    mapping.py           # canonical concept -> candidate US-GAAP tags (the moat) [implemented, growing]
     statements.py        # build canonical statements from company facts         [implemented]
     flows.py             # derive 13F buy/sell by diffing snapshots              [implemented]
+    cusip.py             # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK) [implemented]
+    screening.py          # SCREENABLE_CONCEPTS + frames<->RawFact reconciliation [implemented]
   storage/
-    repository.py        # abstract RawFactRepository                          [implemented]
-    sqlite_repository.py # SQLite impl: WAL mode, idempotent upsert, checkpoint [implemented]
+    repository.py                 # abstract RawFactRepository                   [implemented]
+    sqlite_repository.py          # SQLite impl: WAL, idempotent upsert, checkpoint [implemented]
+    cusip_repository.py           # abstract CusipMapRepository                  [implemented]
+    sqlite_cusip_repository.py    # SQLite impl (resolved + unresolved CUSIPs)   [implemented]
+    insider_repository.py         # abstract InsiderTransactionRepository        [implemented]
+    sqlite_insider_repository.py  # SQLite impl (filing-granularity cache)       [implemented]
+    holdings_repository.py        # abstract HoldingsSnapshotRepository          [implemented]
+    sqlite_holdings_repository.py # SQLite impl (keyed manager_cik + period)     [implemented]
+    backup.py                     # sqlite3 online-backup snapshot               [implemented]
+    restore.py                    # hydrate a fresh volume from a backup         [implemented]
   ingest/
     downloader.py         # resumable download of SEC bulk zips                [implemented]
     backfill.py           # bulk backfill: downloader -> N parsers -> 1 writer [implemented]
-    incremental.py         # daily incremental via SEC daily index + SECClient  [implemented]
+    incremental.py        # daily incremental via SEC daily index + SECClient  [implemented]
+    frames_backfill.py    # bulk-ingest frames data for cross-company screening [implemented]
   api/
-    main.py              # FastAPI app + wiring
-    routes.py            # endpoints
+    main.py              # FastAPI app + wiring                                [implemented]
+    routes.py            # endpoints (statements, insider, manager 13F, ...)   [implemented]
 tests/
-docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP
+docs/                    # ARCHITECTURE, DATA_MODEL, ROADMAP, DEVELOPMENT
 ```
 
 ## Conventions (follow these — they prevent whole classes of bugs)
@@ -202,6 +226,9 @@ docker compose run --rm api python -m secfin.ingest.incremental
 
 docker compose run --rm api python -m secfin.storage.backup            # snapshot -> ./data/backups
 docker compose run --rm api python -m secfin.storage.restore --latest  # hydrate a fresh volume
+
+# tests / lint run via a separate compose file (no api service, so no SEC_USER_AGENT needed)
+docker compose -f docker-compose.test.yml run --rm test
 ```
 
 ## Guardrails for the agent
@@ -214,7 +241,8 @@ docker compose run --rm api python -m secfin.storage.restore --latest  # hydrate
 6. Never put DuckDB on the live request path — it's for batch/analytical jobs only. The API
    keeps reading from the operational store (SQLite → Postgres).
 7. Analytical queries (13F inversion, cross-company screening) run as separate batch jobs
-   against Parquet, not inline with a request handler.
+   against the analytical store (Parquet, or DuckDB-over-SQLite — mechanism TBD, see ROADMAP
+   2.5), not inline with a request handler.
 8. In the bulk backfill pipeline (`ingest/backfill.py`): parsers never open the database —
    exactly one process (the writer) owns the SQLite connection. If you add a new bulk data
    source, route it through the same single-writer queue rather than giving parsers their

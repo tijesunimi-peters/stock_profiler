@@ -73,6 +73,11 @@ _OPENAPI_TAGS = [
         "name": "Account",
         "description": "Signup and usage metering for your own API key.",
     },
+    {
+        "name": "Screening",
+        "description": "Cross-company screening by financial-concept thresholds, built "
+        "on the SEC frames API (Milestone 4).",
+    },
 ]
 
 

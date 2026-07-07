@@ -483,12 +483,66 @@ a time.
 
 ## Milestone 4 — queryability beyond single-company lookups
 
-- [ ] Filtered listing endpoints (by concept, period)
-- [ ] Cross-company screening — **built on the SEC `frames` API** (one concept across all
-      companies for one period) rather than home-grown indexing where possible. Second consumer of
-      the analytical layer. **This — whole-market scale — is where the Parquet landing most likely
-      earns its place** (2.5's single-quarter inversion may not need it; see 2.5's "evaluate"
-      item). Reuse the same batch query path; don't stand up a second one.
+- [x] **Cross-company screening — built on the SEC `frames` API.** `GET /v1/screen`
+      (`api/routes.py`) filters companies by canonical-concept thresholds
+      (`{concept}_min`/`{concept}_max` over `normalize/screening.py`'s
+      `SCREENABLE_CONCEPTS`: revenue, net_income, total_assets, total_liabilities,
+      stockholders_equity, cash_and_equivalents) for one fiscal period, AND semantics
+      only. Deliberately a bounded MVP, not the open-ended "screening query language"
+      CLAUDE.md flags as a separate, later decision.
+
+      **Frames data reuses the existing `RawFact`/`RawFactRepository` — no new
+      canonical model, no new table.** A frames data point is shape-identical to an
+      existing `RawFact` row; `ingest/frames_backfill.py` (new, single async process --
+      one frames HTTP call already returns every reporting company at once, so the
+      whole job is a handful of calls, not thousands of round-trips) writes
+      frames-sourced points straight into `raw_facts`, tagged with the exact SEC frame
+      string (`RawFact.frame`). A new `RawFactRepository.screen()` + `idx_raw_facts_frame
+      (gaap_tag, frame)` index filters on that exact string. **Real gap discovered and
+      fixed before writing any ingestion code:** verified live (2026-07-06) that frame
+      `data[]` rows carry no `fy`/`fp`/`filed`/`form` fields at all (unlike what the
+      companyconcept API returns), and that frames are CALENDAR-quarter aligned, not
+      fiscal-period aligned — a company with a non-calendar fiscal year would mismatch
+      against our own `fiscal_year`/`fiscal_period` key. Keying `screen()` on the exact
+      frame string instead of `(fiscal_year, fiscal_period)` sidesteps that mismatch
+      entirely. Also verified live: a bare annual instant period (`CY2023I`) 404s --
+      instant (balance-sheet) concepts always need an explicit quarter suffix, so `FY`
+      maps to that calendar year's Q4-end (`instant_frame_period`).
+
+      **Analytical engine: benchmarked, not assumed — and the answer flipped vs. this
+      doc's own prediction.** This item's note above (now removed) predicted frames
+      screening as "where the Parquet landing most likely earns its place." A committed,
+      reusable benchmark (`scripts/benchmark_screening.py` — unlike the M2.5 13F-inversion
+      benchmark, which was never committed) found the opposite: at realistic frames scale
+      (~8,000 companies × 6 concepts, ~41K synthetic rows) a representative 3-concept AND
+      screen ran ~3.3x FASTER on plain indexed SQLite (11.27ms median) than DuckDB-over-SQLite
+      (37.46ms median) — frames scale is two orders of magnitude below the 561K-row 13F
+      inversion that justified DuckDB there. `screen()` stays plain SQLite; no new `duckdb`
+      runtime dependency on the screening path. See `docs/ARCHITECTURE.md` §3b for the full
+      write-up.
+
+      A new `TickerCache.resolve_name` (`sec/ticker_cache.py`) reuses the already-fetched
+      `company_tickers.json` payload's `title` field to attach a company name to each
+      result's bare CIK, at zero extra network cost. `_SCREENING_CAVEATS`
+      (`api/routes.py`) is always present: the calendar-vs-fiscal alignment caveat above,
+      a new coverage gap specific to frames (a company using a custom extension tag for
+      a concept is invisible to frames screening, unlike `/statements` which does catch
+      it), and the existing ~2009–2012 XBRL coverage floor.
+
+      Verified end-to-end against the real running API (Docker, 2026-07-06):
+      `frames_backfill --fiscal-year 2023 --fiscal-period FY --concepts
+      revenue,net_income,total_assets` fetched real frames data (one candidate tag
+      404'd -- `SalesRevenueNet` has no CY2023 frame -- logged and skipped, not fatal;
+      the rest succeeded, e.g. `Assets`/`CY2023Q4I` -> 6,428 real companies);
+      `revenue_min=300000000000&net_income_min=50000000000` correctly returned real
+      Apple (`revenue: 383285000000, net_income: 96995000000`) and Alphabet
+      (`revenue: 307394000000, net_income: 73795000000`) with correct entity names; a
+      request with no filters 400'd; a request with no API key 401'd; an impossible
+      filter returned an empty `results` list with `caveats` still present; a
+      `total_assets` range filter (exercising the instant/`Q4I` frame path) correctly
+      matched Exxon Mobil, Lincoln National, and Apple.
+- [ ] Filtered listing endpoints (by concept, period) -- narrower than screening above
+      (list, not filter-and-match); not yet built.
 
 ## Deferred (NOT Track 1 — decide later, deliberately)
 

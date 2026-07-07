@@ -95,3 +95,58 @@ def test_checkpoint_and_facts_flush_is_idempotent(tmp_path):
     assert len(repo.get_raw_facts(320193)) == 1
     assert repo.get_ingested_ciks("bulk_companyfacts") == {320193}
     repo.close()
+
+
+def _frame_fact(cik: int, gaap_tag: str, value: float, frame: str) -> RawFact:
+    return RawFact(
+        cik=cik,
+        taxonomy="us-gaap",
+        gaap_tag=gaap_tag,
+        label="Revenue",
+        unit="USD",
+        value=value,
+        period_start="2023-01-01",
+        period_end="2023-12-31",
+        accession=f"acc-{cik}",
+        frame=frame,
+    )
+
+
+def test_screen_filters_by_gaap_tag_and_exact_frame(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    repo.upsert_raw_facts(
+        [
+            _frame_fact(1, "Revenues", 100.0, "CY2023"),
+            _frame_fact(2, "Revenues", 200.0, "CY2022"),  # different frame -- excluded
+            _frame_fact(3, "UnrelatedTag", 300.0, "CY2023"),  # different tag -- excluded
+        ]
+    )
+
+    rows = repo.screen(["Revenues"], "CY2023")
+
+    assert rows == [(1, "Revenues", 100.0)]
+    repo.close()
+
+
+def test_screen_matches_any_of_several_candidate_tags(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    repo.upsert_raw_facts(
+        [
+            _frame_fact(1, "Revenues", 100.0, "CY2023"),
+            _frame_fact(2, "SalesRevenueNet", 200.0, "CY2023"),
+        ]
+    )
+
+    rows = repo.screen(["Revenues", "SalesRevenueNet"], "CY2023")
+
+    assert {(cik, tag, val) for cik, tag, val in rows} == {
+        (1, "Revenues", 100.0),
+        (2, "SalesRevenueNet", 200.0),
+    }
+    repo.close()
+
+
+def test_screen_with_no_tags_returns_empty(tmp_path):
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    assert repo.screen([], "CY2023") == []
+    repo.close()

@@ -509,3 +509,53 @@ an inverted holder-by-security index for the 13F cross-manager view) is a query 
 a new canonical concept. A Parquet serialization stays deferred to Milestone 4, for if/when
 the workload becomes whole-market, multi-quarter screening rather than one quarter's
 inversion.
+
+## Cross-company screening (Milestone 4)
+
+`GET /v1/screen` filters companies by canonical-concept thresholds for one period, built
+on the SEC `frames` API (one GAAP tag across ALL filers for one period, one HTTP call —
+`sec/frames.py`). Deliberately a bounded MVP (typed `{concept}_min`/`{concept}_max` query
+params, AND semantics only) rather than an open-ended query language — see CLAUDE.md's
+scope note.
+
+**Not a new canonical model, same as the M2.5 analytical layer above.** A frames data
+point is shape-identical to an existing `RawFact` row; `ingest/frames_backfill.py` writes
+frames-sourced points straight into the existing `raw_facts` table, tagged with the exact
+SEC frame string (`RawFact.frame`, e.g. `"CY2023Q4"`). `RawFactRepository.screen()`
+(`storage/sqlite_repository.py`) filters on that exact `frame` string via a dedicated
+`idx_raw_facts_frame (gaap_tag, frame)` index — **not** `fiscal_year`/`fiscal_period`,
+confirmed live (2026-07-06) that:
+
+- Frames are **calendar-quarter aligned** (`CY2023Q4` = Oct–Dec 2023 by the calendar), not
+  fiscal-period aligned — a company with a non-calendar fiscal year end reports its own
+  "FY2023" over a different date range than frame `CY2023`. Keying on the exact frame
+  string sidesteps reconciling the two rather than attempting it, and also means
+  frames-sourced rows are never silently conflated with ordinary per-company companyfacts
+  rows for a nominally-same period.
+- Frame `data[]` rows carry only `accn`, `cik`, `entityName`, `loc`, `start` (duration
+  only), `end`, `val` — **no `fy`/`fp`/`form`/`filed` fields**, unlike the companyconcept
+  API's shape. `facts_from_frame` (`normalize/screening.py`) therefore leaves
+  `fiscal_year`/`fiscal_period` unset on frames-sourced `RawFact`s.
+- A bare annual instant period (`CY2023I`) 404s — instant (balance-sheet) concepts always
+  need an explicit quarter suffix, so "FY" maps to that calendar year's `Q4`-end
+  (`instant_frame_period`).
+
+**`SCREENABLE_CONCEPTS`** (`normalize/screening.py`) is a small, deliberately curated
+starter subset of the full `mapping.CONCEPTS` table — `revenue`, `net_income`,
+`total_assets`, `total_liabilities`, `stockholders_equity`, `cash_and_equivalents` — grown
+the same way `mapping.py` itself grows, per CLAUDE.md guardrail 3.
+
+**A real, new coverage gap vs. `/statements`:** frames only covers standard `us-gaap`
+candidate tags — a company that tags a concept via a company-specific *extension* element
+is invisible to frames screening, even though `/statements` (which reads per-company
+`companyfacts`, not frames) does catch that same company's extension-tagged value. Surfaced
+in `_SCREENING_CAVEATS` (`api/routes.py`), always present on the response, alongside the
+existing ~2009–2012 XBRL coverage floor.
+
+**Analytical engine: benchmarked, not DuckDB.** `scripts/benchmark_screening.py` compared
+plain indexed SQLite against DuckDB-over-SQLite for a representative multi-concept AND
+screen at realistic frames scale (~8,000 companies × 6 concepts) and found plain SQLite
+~3.3x faster — the opposite of the M2.5 13F-inversion result, because frames scale is two
+orders of magnitude below the 561K-row 13F inversion that justified DuckDB there. See
+`ARCHITECTURE.md` §3b for the full numbers. `screen()` is plain SQLite; no new `duckdb`
+dependency on the screening path.

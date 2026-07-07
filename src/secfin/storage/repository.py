@@ -56,5 +56,16 @@ class RawFactRepository(ABC):
         """
 
     @abstractmethod
+    def screen(self, gaap_tags: Sequence[str], frame: str) -> list[tuple[int, str, float]]:
+        """Cross-company screening (Milestone 4): every (cik, gaap_tag, value) row for
+        any of `gaap_tags` in an exact SEC frame period (e.g. "CY2023Q4" -- see
+        sec/frames.py). Keyed on `frame`, not `fiscal_year`/`fiscal_period`, since frames
+        are calendar-aligned and a company's own fiscal period may not line up with the
+        calendar -- see normalize/screening.py. Reconciling multiple candidate tags per
+        canonical concept into one value per company is normalize/screening.py's job,
+        not this repository's -- this is a plain filtered read, no aggregation in SQL.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

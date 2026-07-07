@@ -20,6 +20,7 @@ from secfin.auth.models import ApiKeyRecord, UsageSummary
 from secfin.auth.usage import usage_summary
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
+from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.schema import (
     BeneficialOwnership,
     CusipResolutionStats,
@@ -29,6 +30,11 @@ from secfin.normalize.schema import (
     RawFact,
     Statement,
     StatementType,
+)
+from secfin.normalize.screening import (
+    SCREENABLE_CONCEPTS,
+    frame_period_for_concept,
+    resolve_concept_values,
 )
 from secfin.normalize.statements import available_periods, build_statement
 from secfin.sec.client import SECClient
@@ -82,6 +88,19 @@ _BENEFICIAL_OWNERSHIP_CAVEATS = [
     "legacy HTML/text filings are excluded by design, not scraped.",
     "An empty result does not confirm no 5%+ beneficial owner exists -- it may mean this "
     "issuer's relevant filings predate the structured-XML transition.",
+]
+
+# Cross-company screening (Milestone 4, normalize/screening.py) caveats -- always
+# present, same convention as the institutional caveats above.
+_SCREENING_CAVEATS = [
+    "Screening uses SEC frame periods, which are CALENDAR-quarter aligned -- a company "
+    "with a non-calendar fiscal year is matched against the nearest calendar period "
+    "here, which will not exactly match its own fiscal-year label on /statements.",
+    "Only companies tagging a concept with one of its standard us-gaap candidate tags "
+    "are visible here -- a company-specific extension tag for that concept is invisible "
+    "to frames screening, unlike /statements which does catch extension tags per-company.",
+    "XBRL financial data is only available from ~2009, phased in through ~2012 -- a "
+    "period before a company's first XBRL filing shows no data for it, not a zero value.",
 ]
 
 
@@ -660,4 +679,161 @@ async def get_manager_activity(
         "to_period": current.report_period,
         "caveats": _13F_CAVEATS,
         "activity": deltas,
+    }
+
+
+# --- Cross-company screening (Milestone 4) -----------------------------------------
+#
+# Built on the SEC `frames` API (one GAAP tag across ALL filers for one period) rather
+# than a home-grown query language -- see CLAUDE.md's scope note on why this stays a
+# bounded set of typed filters, not an open-ended query DSL. `ingest/frames_backfill.py`
+# seeds `raw_facts` with frames-sourced rows (tagged with the exact SEC frame string,
+# `RawFact.frame`); this endpoint is a live read against that data via
+# `RawFactRepository.screen()` -- a plain indexed SQLite query, not DuckDB (see
+# docs/ARCHITECTURE.md 3b: frames scale is far below the 13F-inversion workload that
+# justified DuckDB there).
+
+# One (min, max) filter pair per screenable concept -- kept as an explicit, small map
+# rather than dynamically generated Query params, so FastAPI/OpenAPI can describe each
+# one individually. Extending SCREENABLE_CONCEPTS (normalize/screening.py) means adding
+# a pair here too.
+_SCREEN_FILTER_CONCEPTS = SCREENABLE_CONCEPTS
+
+ScreenFilters = dict[str, tuple[float | None, float | None]]
+
+
+def _run_screen(
+    repo: RawFactRepository, fiscal_year: int, fiscal_period: FiscalPeriod, filters: ScreenFilters
+) -> tuple[set[int], dict[str, dict[int, float]]]:
+    """DB-only screening core, no SECClient dependency -- testable without network
+    (same "extract the testable piece, keep the route thin" shape as `_facts_for_cik`/
+    `_manager_snapshot`). `filters` must already be non-empty. Returns the matching CIKs
+    (AND across every concept in `filters`) plus each concept's full per-CIK value map,
+    so the route can report a matching company's values for concepts beyond the one(s)
+    that happened to filter it.
+    """
+    per_concept_values: dict[str, dict[int, float]] = {}
+    matching: set[int] = set()
+    for i, (concept, (lo, hi)) in enumerate(filters.items()):
+        frame_period = frame_period_for_concept(concept, fiscal_year, fiscal_period)
+        rows = repo.screen(candidate_tags(concept), frame_period)
+        values = resolve_concept_values(rows, concept)
+        per_concept_values[concept] = values
+        concept_matches = {
+            cik
+            for cik, val in values.items()
+            if (lo is None or val >= lo) and (hi is None or val <= hi)
+        }
+        matching = concept_matches if i == 0 else (matching & concept_matches)
+    return matching, per_concept_values
+
+
+@router.get(
+    "/screen",
+    tags=["Screening"],
+    summary="Filter companies by financial-concept thresholds for one period",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "fiscal_year": 2023,
+                        "fiscal_period": "FY",
+                        "concepts_screened": ["revenue"],
+                        "caveats": _SCREENING_CAVEATS,
+                        "results": [
+                            {
+                                "cik": 320193,
+                                "entity_name": "Apple Inc.",
+                                "values": {"revenue": 383285000000},
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
+async def screen_companies(
+    fiscal_year: int = Query(..., description="Calendar year, e.g. 2023"),
+    fiscal_period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    revenue_min: float | None = Query(None, description="Minimum revenue (USD)"),
+    revenue_max: float | None = Query(None, description="Maximum revenue (USD)"),
+    net_income_min: float | None = Query(None, description="Minimum net income (USD)"),
+    net_income_max: float | None = Query(None, description="Maximum net income (USD)"),
+    total_assets_min: float | None = Query(None, description="Minimum total assets (USD)"),
+    total_assets_max: float | None = Query(None, description="Maximum total assets (USD)"),
+    total_liabilities_min: float | None = Query(
+        None, description="Minimum total liabilities (USD)"
+    ),
+    total_liabilities_max: float | None = Query(
+        None, description="Maximum total liabilities (USD)"
+    ),
+    stockholders_equity_min: float | None = Query(
+        None, description="Minimum stockholders' equity (USD)"
+    ),
+    stockholders_equity_max: float | None = Query(
+        None, description="Maximum stockholders' equity (USD)"
+    ),
+    cash_and_equivalents_min: float | None = Query(
+        None, description="Minimum cash and equivalents (USD)"
+    ),
+    cash_and_equivalents_max: float | None = Query(
+        None, description="Maximum cash and equivalents (USD)"
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """Cross-company screening for one fiscal period, e.g. "revenue > $10B".
+
+    Bounded, structured filters only (`{concept}_min`/`{concept}_max` over
+    `normalize.screening.SCREENABLE_CONCEPTS`) -- AND semantics across concepts, no
+    OR/nesting and no free-form query string, deliberately: this is a scoped MVP, not
+    the open-ended "screening query language" CLAUDE.md flags as a separate, later
+    decision. Requires at least one filter. `caveats` is always present -- see
+    `_SCREENING_CAVEATS` for the calendar-alignment and extension-tag coverage gaps
+    specific to frames-sourced data.
+    """
+    filters = {
+        "revenue": (revenue_min, revenue_max),
+        "net_income": (net_income_min, net_income_max),
+        "total_assets": (total_assets_min, total_assets_max),
+        "total_liabilities": (total_liabilities_min, total_liabilities_max),
+        "stockholders_equity": (stockholders_equity_min, stockholders_equity_max),
+        "cash_and_equivalents": (cash_and_equivalents_min, cash_and_equivalents_max),
+    }
+    active = {c: (lo, hi) for c, (lo, hi) in filters.items() if lo is not None or hi is not None}
+    if not active:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "At least one filter is required. Screenable concepts: "
+                f"{', '.join(_SCREEN_FILTER_CONCEPTS)}."
+            ),
+        )
+
+    matching, per_concept_values = _run_screen(repo, fiscal_year, fiscal_period, active)
+
+    results = []
+    async with SECClient() as client:
+        for cik in sorted(matching):
+            entity_name = await ticker_cache.resolve_name(client, cik)
+            results.append(
+                {
+                    "cik": cik,
+                    "entity_name": entity_name,
+                    "values": {
+                        c: per_concept_values[c][cik]
+                        for c in active
+                        if cik in per_concept_values[c]
+                    },
+                }
+            )
+
+    return {
+        "fiscal_year": fiscal_year,
+        "fiscal_period": fiscal_period,
+        "concepts_screened": list(active.keys()),
+        "caveats": _SCREENING_CAVEATS,
+        "results": results,
     }

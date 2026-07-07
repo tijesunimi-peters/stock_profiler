@@ -96,6 +96,17 @@ class SECClient:
         )
 
     @staticmethod
+    def frames_url(tag: str, period: str, unit: str = "USD", taxonomy: str = "us-gaap") -> str:
+        """One GAAP tag across ALL filers for one SEC "frame" period.
+
+        `period` is the SEC's own frame syntax, e.g. "CY2023" (annual duration),
+        "CY2023Q4" (quarterly duration), or "CY2023Q4I" (quarter-end instant) -- see
+        sec/frames.py's period builders. Confirmed live (2026-07-06): a bare annual
+        instant ("CY2023I") 404s -- instant frames always need a quarter suffix.
+        """
+        return f"{DATA_HOST}/api/xbrl/frames/{taxonomy}/{tag}/{unit}/{period}.json"
+
+    @staticmethod
     def company_tickers_url() -> str:
         return f"{WWW_HOST}/files/company_tickers.json"
 

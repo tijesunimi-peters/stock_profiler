@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS raw_facts (
 CREATE INDEX IF NOT EXISTS idx_raw_facts_period
     ON raw_facts (cik, fiscal_year, fiscal_period);
 
+-- Cross-company screening (Milestone 4): screen() filters by (gaap_tag, frame) across
+-- ALL companies, the transpose of idx_raw_facts_period's per-company access pattern.
+CREATE INDEX IF NOT EXISTS idx_raw_facts_frame
+    ON raw_facts (gaap_tag, frame);
+
 CREATE TABLE IF NOT EXISTS ingest_checkpoint (
     cik INTEGER NOT NULL,
     source TEXT NOT NULL,
@@ -154,6 +159,17 @@ class SQLiteRawFactRepository(RawFactRepository):
     def get_ingested_ciks(self, source: str) -> set[int]:
         cur = self._conn.execute("SELECT cik FROM ingest_checkpoint WHERE source = ?", (source,))
         return {row[0] for row in cur.fetchall()}
+
+    def screen(self, gaap_tags: Sequence[str], frame: str) -> list[tuple[int, str, float]]:
+        if not gaap_tags:
+            return []
+        placeholders = ",".join("?" for _ in gaap_tags)
+        sql = (
+            f"SELECT cik, gaap_tag, value FROM raw_facts "
+            f"WHERE gaap_tag IN ({placeholders}) AND frame = ? AND value IS NOT NULL"
+        )
+        cur = self._conn.execute(sql, (*gaap_tags, frame))
+        return [(row[0], row[1], row[2]) for row in cur.fetchall()]
 
     def close(self) -> None:
         self._conn.close()

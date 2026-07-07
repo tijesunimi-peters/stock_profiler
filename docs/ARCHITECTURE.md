@@ -251,6 +251,34 @@ for. DuckDB-over-SQLite stays reserved for genuinely whole-market aggregates (a 
 holders leaderboard, M4 screening) — the "stand up the analytical query path" roadmap item
 is still open for exactly that, separate from what shipped here.
 
+**Follow-up 2 (shipped, Milestone 4): cross-company screening did NOT need DuckDB
+either — re-benchmarked, not assumed, despite this section predicting frames screening
+as where Parquet/DuckDB would "most likely earn its keep."** `scripts/benchmark_screening.py`
+(committed and reusable, unlike the undocumented one-off run behind the 13F numbers
+above) generated synthetic `raw_facts`-shaped data at realistic SEC frames scale —
+8,000 companies × 6 concepts, ~85% coverage each (~41K rows total; contrast the 13F
+inversion's 561K rows for a *single* quarter) — and timed a representative 3-concept AND
+screen (`revenue > $100B AND net_income > $0 AND total_assets > $50B`) both ways:
+
+| Approach | Median latency (7 runs) |
+|---|---|
+| Plain SQLite, `idx_raw_facts_frame (gaap_tag, frame)` | 11.27ms |
+| DuckDB `ATTACH ... (TYPE sqlite)` over the same file | 37.46ms |
+
+Plain SQLite won by ~3.3× here — the opposite result from the 13F inversion above, and
+for the same underlying reason inverted: frames scale (tens of thousands of rows total
+across every screenable concept) is comfortably within a single indexed lookup's sweet
+spot, so DuckDB's vectorized-scan advantage never gets to pay for its per-query ATTACH
+overhead. **Decision: `RawFactRepository.screen()` (`storage/sqlite_repository.py`) is
+plain indexed SQLite, no DuckDB involved anywhere in the screening path** — confirming
+this section's own "evaluate, don't assume" methodology matters even when a prior
+section of the same doc predicted the other engine. `normalize/screening.py` and
+`ingest/frames_backfill.py` write frames-sourced points into the *existing* `raw_facts`
+table (tagged with the exact SEC frame string, `RawFact.frame`) rather than a new
+analytical store — frames data is not a new canonical model (see
+`docs/DATA_MODEL.md`'s Milestone 2.5 analytical-layer note, which anticipated this).
+Parquet stays fully deferred: nothing in Milestone 4 needed it either.
+
 ## 4. Serve — `src/secfin/api/`
 
 FastAPI. `main.py` wires the app; `routes.py` exposes:
