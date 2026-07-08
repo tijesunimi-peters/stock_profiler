@@ -31,7 +31,7 @@
 /* ---------- page shell + masthead (matches the Explorer hero) ---------- */
 
 .page {
-  max-width: 1040px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 12px 32px 72px;
 }
@@ -192,7 +192,10 @@
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  /* Responsive, but capped at 4 columns: each column is at least the larger of 240px or the
+     width that yields exactly 4 across (accounting for the 3 gaps), so wide pages top out at 4
+     and narrower ones fall back to 3/2/1 fluidly. */
+  grid-template-columns: repeat(auto-fill, minmax(max(240px, (100% - 3 * 16px) / 4), 1fr));
   gap: 16px;
 }
 
