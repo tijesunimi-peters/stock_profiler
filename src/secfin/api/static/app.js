@@ -318,6 +318,89 @@
     );
   }
 
+  // ---------- trajectory overlay (Phase 3: 2–3 companies' series on one calendar axis) ----------
+
+  // One terracotta accent only (STYLE_GUIDE §10) -- series are told apart by dash pattern +
+  // the HTML legend, never a second hue. solid / dashed / dotted.
+  var TRAJ_DASH = ["", "5,3", "1.5,3"];
+
+  function trajUsable(p) {
+    return p && p.value !== null && p.value !== undefined && p.status !== "na" && p.status !== "nm" && p.period_end;
+  }
+
+  // seriesList: [{label, points:[{period_end,value,status}]}]. opts: {unit, metric}. Overlays
+  // each company's line on ONE calendar axis (x = actual period_end date, so different
+  // fiscal-year-ends align -- R10), breaking each line at na/nm gaps (never interpolating). No
+  // in-SVG text (the chart is stretched via preserveAspectRatio=none, which would distort it) --
+  // series identity lives in the HTML legend. Labels/values shown descriptively; no winner.
+  function trajectoryChart(seriesList, opts) {
+    opts = opts || {};
+    var unit = opts.unit, metric = opts.metric;
+    var W = 640, H = 200, PADX = 4, PADT = 10, PADB = 10;
+    var series = (seriesList || []).map(function (s) {
+      var ordered = (s.points || [])
+        .filter(function (p) { return p && p.period_end; })
+        .slice()
+        .sort(function (a, b) { return Date.parse(a.period_end) - Date.parse(b.period_end); });
+      return { label: s.label, ordered: ordered };
+    });
+    var allT = [], allV = [];
+    series.forEach(function (s) {
+      s.ordered.forEach(function (p) { if (trajUsable(p)) { allT.push(Date.parse(p.period_end)); allV.push(p.value); } });
+    });
+    if (allV.length < 2) {
+      return '<div class="trend-empty">Not enough overlapping history to chart these companies.</div>';
+    }
+    var tMin = Math.min.apply(null, allT), tMax = Math.max.apply(null, allT);
+    var vMin = Math.min.apply(null, allV), vMax = Math.max.apply(null, allV);
+    var tSpan = tMax - tMin || 1, vSpan = vMax - vMin || 1;
+    var xat = function (t) { return PADX + ((t - tMin) / tSpan) * (W - 2 * PADX); };
+    var yat = function (v) { return PADT + (1 - (v - vMin) / vSpan) * (H - PADT - PADB); };
+
+    var lines = "", legend = "", hasGap = false;
+    series.forEach(function (s, si) {
+      var segs = [], cur = [], last = null;
+      s.ordered.forEach(function (p) {
+        if (!trajUsable(p)) { if (cur.length) { segs.push(cur); cur = []; } hasGap = true; return; }
+        cur.push(xat(Date.parse(p.period_end)).toFixed(1) + "," + yat(p.value).toFixed(1));
+        last = p;
+      });
+      if (cur.length) segs.push(cur);
+      var dash = TRAJ_DASH[si % TRAJ_DASH.length];
+      var da = dash ? ' stroke-dasharray="' + dash + '"' : "";
+      lines += segs
+        .filter(function (seg) { return seg.length >= 2; })
+        .map(function (seg) { return '<polyline points="' + seg.join(" ") + '"' + da + "/>"; })
+        .join("");
+      if (last) {
+        lines += '<circle cx="' + xat(Date.parse(last.period_end)).toFixed(1) + '" cy="' +
+          yat(last.value).toFixed(1) + '" r="2.5"/>';
+      }
+      var latest = last ? unitFmt(last.value, unit, metric) : "—";
+      legend +=
+        '<span class="traj-legend-item">' +
+        '<svg class="traj-swatch" viewBox="0 0 26 8" aria-hidden="true"><line x1="1" y1="4" x2="25" y2="4"' + da + "/></svg>" +
+        '<span class="traj-legend-label">' + esc(s.label) + "</span>" +
+        '<span class="traj-legend-val">' + esc(latest) + "</span></span>";
+    });
+    var yr = function (t) { return isFinite(t) ? new Date(t).getUTCFullYear() : ""; };
+    var caption = "As-restated · annual · aligned on calendar quarter-end" +
+      (hasGap ? " · gaps = N/A or N/M periods (not interpolated)" : "");
+    return (
+      '<div class="trend-chart">' +
+      '<div class="trend-plot">' +
+      '<div class="trend-yaxis"><span>' + esc(unitFmt(vMax, unit, metric)) + "</span><span>" +
+      esc(unitFmt(vMin, unit, metric)) + "</span></div>" +
+      '<svg class="traj-svg" viewBox="0 0 ' + W + " " + H +
+      '" preserveAspectRatio="none" aria-hidden="true">' + lines + "</svg>" +
+      "</div>" +
+      '<div class="trend-xaxis"><span>' + esc(yr(tMin)) + "</span><span>" + esc(yr(tMax)) + "</span></div>" +
+      '<div class="traj-legend">' + legend + "</div>" +
+      '<div class="trend-caption">' + caption + "</div>" +
+      "</div>"
+    );
+  }
+
   // ---------- metric card (§6) ----------
 
   // mv = MetricValue; opts.formula = plain-language formula string (optional).
@@ -507,6 +590,7 @@
     statusLegend: statusLegend,
     sparkline: sparkline,
     trendChart: trendChart,
+    trajectoryChart: trajectoryChart,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

@@ -88,6 +88,29 @@
   padding: 8px 16px;
 }
 
+/* Control groups in the right rail (year select / metric select share the row). */
+.ctrl-group { display: inline-flex; align-items: center; gap: 10px; }
+
+/* ---------- trajectories overlay (Phase 3) ---------- */
+/* Taller than the single-metric hub chart; reuses .trend-* plot/axis/caption from company.css.
+ * One accent only (STYLE_GUIDE §10) -- series are told apart by dash pattern + the legend. */
+.traj-svg { flex: 1; min-width: 0; width: 100%; height: 200px; display: block; }
+.traj-svg polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.traj-svg circle { fill: var(--accent); }
+
+.traj-legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; }
+.traj-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.traj-swatch { width: 26px; height: 8px; }
+.traj-swatch line { stroke: var(--accent); stroke-width: 1.5; }
+.traj-legend-label { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+.traj-legend-val { font-family: var(--font-mono); color: var(--ink-soft); }
+
 .cmp-add { max-width: 360px; }
 .cmp-add-label {
   font-family: var(--font-mono);

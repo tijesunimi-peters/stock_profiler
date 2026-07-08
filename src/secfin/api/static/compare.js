@@ -69,7 +69,14 @@
   })();
   var yearParam = parseInt(params.get("year"), 10);
 
-  var state = { companies: [], year: isNaN(yearParam) ? null : yearParam };
+  var state = {
+    companies: [],
+    years: [],
+    cols: null,
+    year: isNaN(yearParam) ? null : yearParam,
+    view: params.get("view") === "trajectories" ? "trajectories" : "matrix",
+    metric: params.get("metric") || null,
+  };
 
   function monthYear(iso) {
     if (!iso) return "";
@@ -78,10 +85,18 @@
   }
   function monthOf(iso) { return iso ? iso.split("-")[1] : ""; }
 
-  function navTo(syms, year) {
+  // Merge the given fields over current state and reload with the new query (deep-linkable).
+  function navTo(fields) {
+    fields = fields || {};
     var q = new URLSearchParams();
+    var syms = fields.symbols || symbols;
+    var year = "year" in fields ? fields.year : state.year;
+    var view = fields.view || state.view;
+    var metric = "metric" in fields ? fields.metric : state.metric;
     if (syms.length) q.set("symbols", syms.join(","));
     if (year) q.set("year", year);
+    if (view && view !== "matrix") q.set("view", view);
+    if (metric) q.set("metric", metric);
     location.search = q.toString();
   }
 
@@ -91,6 +106,7 @@
     $("footer").innerHTML = P.footer();
     setMasthead();
     mountAdd();
+    mountViewToggle();
 
     if (symbols.length < 2) {
       $("controls").hidden = false; // keep the add-company box available
@@ -107,8 +123,10 @@
   }
 
   function setMasthead() {
-    var meta = ["Point-in-time — as-of each filing, not real-time"];
-    if (state.year) meta.unshift("FY " + state.year);
+    var meta = state.view === "trajectories"
+      ? ["Trajectories — annual history, as-restated", "aligned on calendar quarter-end"]
+      : ["Point-in-time — as-of each filing, not real-time"];
+    if (state.view !== "trajectories" && state.year) meta.unshift("FY " + state.year);
     $("masthead").innerHTML = P.masthead({
       eyebrow: "Profin — SEC data, normalized",
       title: "Compare companies",
@@ -124,6 +142,19 @@
     });
   }
 
+  function mountViewToggle() {
+    var t = $("view-toggle");
+    t.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-view") === state.view);
+    });
+    t.addEventListener("click", function (e) {
+      var btn = e.target.closest("button[data-view]");
+      if (!btn) return;
+      var v = btn.getAttribute("data-view");
+      if (v !== state.view) navTo({ view: v });
+    });
+  }
+
   function flash(msg) {
     $("banner").innerHTML = '<div class="cmp-banner">' + P.esc(msg) + "</div>";
   }
@@ -131,12 +162,11 @@
   function addCompany(sym) {
     if (symbols.length >= MAX) { flash("Comparing at most " + MAX + " companies — remove one first."); return; }
     if (symbols.map(function (s) { return s.toUpperCase(); }).indexOf(sym.toUpperCase()) !== -1) return;
-    navTo(symbols.concat([sym]), state.year);
+    navTo({ symbols: symbols.concat([sym]) });
   }
 
   function removeCompany(raw) {
-    var next = symbols.filter(function (s) { return s.toUpperCase() !== raw.toUpperCase(); });
-    navTo(next, state.year);
+    navTo({ symbols: symbols.filter(function (s) { return s.toUpperCase() !== raw.toUpperCase(); }) });
   }
 
   // ---------- load ----------
@@ -165,11 +195,11 @@
         return;
       }
       var years = unionYears(resolved);
+      state.years = years;
       if (state.year == null || years.indexOf(state.year) === -1) state.year = defaultYear(resolved, years);
       setMasthead();
       populateYearSelect(years);
       $("controls").hidden = false;
-      $("period-control").hidden = !years.length;
       fetchAndRender();
     });
   }
@@ -193,11 +223,11 @@
     var sel = $("year-select");
     sel.innerHTML = years.map(function (y) { return '<option value="' + y + '">FY ' + y + "</option>"; }).join("");
     if (state.year) sel.value = state.year;
-    sel.onchange = function (e) { navTo(symbols, parseInt(e.target.value, 10)); };
+    sel.onchange = function (e) { navTo({ year: parseInt(e.target.value, 10) }); };
   }
 
   function fetchAndRender() {
-    $("legend").innerHTML = P.statusLegend();
+    $("legend").innerHTML = state.view === "trajectories" ? "" : P.statusLegend();
     $("disclosure").innerHTML = P.disclosure(["financials_floor", "not_advice"]);
     $("view").innerHTML = P.states.loading({ title: "Computing metrics for FY " + state.year });
     var year = state.year;
@@ -211,10 +241,18 @@
         },
         function (err) { return { company: c, byMetric: null, status: err.status || "network" }; }
       );
-    })).then(function (cols) { renderMatrix(cols, year); });
+    })).then(function (cols) { state.cols = cols; renderView(); });
   }
 
   // ---------- render ----------
+
+  function renderView() {
+    var traj = state.view === "trajectories";
+    $("period-control").hidden = traj || !state.years.length;
+    $("metric-control").hidden = !traj;
+    if (traj) renderTrajectories();
+    else renderMatrix(state.cols, state.year);
+  }
 
   function renderMatrix(cols, year) {
     // A column's period_end / as_of come from any metric in it (all share the FY anchor).
@@ -306,6 +344,63 @@
       ? '<span class="cmp-cell-reason">' + P.esc(mv.reason) + "</span>" : "";
     return '<td class="amt stmt-amt"><span class="cmp-cell-value">' + P.esc(f.text) +
       P.statusChip(mv.status) + "</span>" + reason + "</td>";
+  }
+
+  // ---------- trajectories mode ----------
+
+  function renderTrajectories() {
+    $("legend").innerHTML = "";
+    $("banner").innerHTML = "";
+    $("disclosure").innerHTML = P.disclosure(["financials_floor", "not_advice"]);
+
+    // Metric options from the already-fetched matrix data: union of resolved keys in CATEGORIES
+    // order, labels straight off the MetricValues (no separate label map to drift).
+    var labels = {};
+    (state.cols || []).forEach(function (col) {
+      if (col.byMetric) Object.keys(col.byMetric).forEach(function (k) { labels[k] = col.byMetric[k].label; });
+    });
+    var metricKeys = [];
+    CATEGORIES.forEach(function (cat) {
+      cat[1].forEach(function (k) { if (labels[k] && metricKeys.indexOf(k) === -1) metricKeys.push(k); });
+    });
+    if (!metricKeys.length) {
+      $("view").innerHTML = P.states.empty({ title: "No metrics to chart", copy: "No metric resolved across these companies to plot a trajectory." });
+      return;
+    }
+    if (!state.metric || metricKeys.indexOf(state.metric) === -1) {
+      state.metric = metricKeys.indexOf("net_margin") !== -1 ? "net_margin" : metricKeys[0];
+    }
+    populateMetricSelect(metricKeys, labels);
+
+    var metric = state.metric, label = labels[metric] || metric;
+    $("view").innerHTML = P.states.loading({ title: "Loading " + label + " trajectories", note: "" });
+    var resolved = state.companies.filter(function (c) { return !c.error; });
+    Promise.all(resolved.map(function (c) {
+      return P.api("/companies/" + encodeURIComponent(c.raw) + "/metrics/" + encodeURIComponent(metric) + "/history?frequency=annual").then(
+        function (hist) { return { label: c.raw.toUpperCase(), points: hist.points || [], unit: hist.unit }; },
+        function () { return null; }
+      );
+    })).then(function (raw) {
+      var seriesList = raw.filter(Boolean).filter(function (s) { return s.points.length; });
+      if (!seriesList.length) {
+        $("view").innerHTML = P.states.empty({ title: "No history", copy: "No annual history is on record for " + P.esc(label) + " across these companies." });
+        return;
+      }
+      var omitted = resolved.length - seriesList.length;
+      var note = '<p class="stmt-caption">Annual trajectories overlaid on a shared calendar axis — ' +
+        "each company's fiscal-year-ends fall where they land in calendar time, so lines stay " +
+        "comparable across different fiscal calendars (R10). Gaps break a line honestly (no " +
+        "interpolation). Descriptive only — no ranking." +
+        (omitted > 0 ? " " + omitted + " company(ies) omitted (no history)." : "") + "</p>";
+      $("view").innerHTML = P.trajectoryChart(seriesList, { unit: seriesList[0].unit, metric: metric }) + note;
+    });
+  }
+
+  function populateMetricSelect(keys, labels) {
+    var sel = $("metric-select");
+    sel.innerHTML = keys.map(function (k) { return '<option value="' + P.esc(k) + '">' + P.esc(labels[k] || k) + "</option>"; }).join("");
+    if (state.metric) sel.value = state.metric;
+    sel.onchange = function (e) { navTo({ metric: e.target.value }); };
   }
 
   function renderBanner(cols, year) {

@@ -44,14 +44,27 @@
 
     <div class="controls" id="controls" hidden>
       <div class="controls-left">
+        <div>
+          <div class="cmp-add-label">View</div>
+          <div class="segmented" id="view-toggle">
+            <button data-view="matrix" class="on">Matrix</button>
+            <button data-view="trajectories">Trajectories</button>
+          </div>
+        </div>
         <div class="cmp-add">
           <div class="cmp-add-label">Add a company</div>
           <div id="search"></div>
         </div>
       </div>
-      <div class="controls-right" id="period-control" hidden>
-        <span class="period-label" id="period-label">Fiscal year</span>
-        <select class="period-select" id="year-select"></select>
+      <div class="controls-right">
+        <span class="ctrl-group" id="period-control" hidden>
+          <span class="period-label">Fiscal year</span>
+          <select class="period-select" id="year-select"></select>
+        </span>
+        <span class="ctrl-group" id="metric-control" hidden>
+          <span class="period-label">Metric</span>
+          <select class="period-select" id="metric-select"></select>
+        </span>
       </div>
     </div>
 

@@ -177,23 +177,26 @@ profile, 13D/G) are shipped and headless-verified.
       `/company/{symbol}` page. **Descriptive only — no good/bad color, no winner** (§9.2). An
       "add a company" search + per-column remove keep the set editable (query-driven). Reachable
       via a new **Compare** nav link across the site. Verified headless (zero console errors).
-- [~] **Metric trend / history** — *company-hub part shipped; `/compare` trajectory overlay is
-      the remaining follow-on.* Each Fundamentals metric card now has an expandable **Trend**
-      panel (`Profin.trendChart`, `app.js`) that lazily loads
-      **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=annual`** on first open and
-      renders a self-scaling multi-year line (gap-breaking, never interpolated; min/max + year
-      axis labels; as-restated/frequency caption — R9) plus the Tier-2 **signals** (expansion,
-      cagr, acceleration, streak, distance-from-peak) as annotations, flags riding along via the
-      status chip. Deep-linkable via `?trend=<metric>` (auto-opens one panel). Annual frequency by
-      default (universal — EPS is N/M across quarters; the intra-year quarterly sparkline already
-      covers within-year texture; a quarterly toggle is a noted future nicety). Verified headless
-      (zero console errors). **Remaining:** the `/compare` "compare trajectories" overlay — 2–3
-      companies' series on one calendar axis (align on the `period_end` each point carries — R10),
-      reusing `Profin.trendChart` + the same endpoint.
+- [x] **Metric trend / history** — shipped in two parts:
+      - *Company hub* — each Fundamentals metric card has an expandable **Trend** panel
+        (`Profin.trendChart`, `app.js`) that lazily loads
+        **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=annual`** and renders a
+        self-scaling multi-year line (gap-breaking, never interpolated; min/max + year axis
+        labels; as-restated caption — R9) plus the Tier-2 **signals** (expansion, cagr,
+        acceleration, streak, distance-from-peak) as annotations. Deep-linkable via
+        `?trend=<metric>`.
+      - *`/compare` trajectories* — a **Trajectories** view toggle (`Profin.trajectoryChart`,
+        `app.js`) overlays the 2–3 selected companies' annual series for a chosen metric on **one
+        shared calendar axis** (x = each point's `period_end`, so different fiscal-year-ends align
+        — R10); series are told apart by **dash pattern + a legend** (one accent only, no second
+        hue — §10); gaps break each line honestly; a metric picker switches metrics. Deep-linkable
+        via `?view=trajectories&metric=<key>`. **Descriptive only — no winner** (§9.2).
+      Both verified headless (zero console errors).
 
-**Next Phase 3 step:** the **`/compare` "compare trajectories" overlay** — the only remaining
-Phase 3 sub-item. Reuse `Profin.trendChart` and `/metrics/{metric}/history`, overlay 2–3
-companies' series on one calendar axis (R10 alignment, R9 basis label, gaps break honestly).
+**Phase 3 is complete.** Company Comparison (matrix) and Metric trend/history (company-hub trend
++ `/compare` trajectories) are all shipped and headless-verified. Remaining UI work is **Phase 4
+— Discovery & scale**: Screening (M4 backend ready — the "blocked" tag below is stale), Peer
+rankings (Metrics Phase 2), and the public docs portal (M3).
 
 ## Phase 4 — Discovery & scale (blocked on backend)
 
@@ -221,7 +224,7 @@ companies' series on one calendar axis (R10 alignment, R9 basis label, gaps brea
 | Manager (13F) profile | 2 | built | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 | Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
 | Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
-| Metric trend/history | 3 | built (hub); overlay pending | `/metrics/{metric}/history` |
+| Metric trend/history | 3 | built | `/metrics/{metric}/history` |
 | Screening | 4 | blocked | *(M4)* |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
 | Public docs portal | 4 | n/a | *(M3)* |
