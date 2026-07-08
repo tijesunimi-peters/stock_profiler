@@ -133,10 +133,28 @@ N/A/APPROX (average balance needs the year-ago quarter). The Statements tab stay
       `/manager/{cik}`: one manager's holdings + derived activity + co-filer roster. Consumes
       `GET /v1/managers/{manager_cik}/holdings` and `.../activity`. Same missing-periods-axis issue
       (no endpoint lists a manager's available quarters).
-- [ ] **Beneficial ownership (13D/13G)** *(blocked)* — 5%+ ownership, activist vs passive.
-      Parsing is done (`fetch_beneficial_ownership`) but **has no endpoint** — build the page
-      when the `GET /v1/companies/{symbol}/beneficial-ownership` route lands (open M2 item in
-      `docs/ROADMAP.md`). Carry the structured-XML ~mid-2025 coverage floor.
+- [x] **Beneficial ownership (13D/13G)** — a **13D/G tab** on the hub, gated (`limit`-based, no
+      period). Consumes `GET /v1/companies/{symbol}/beneficial-ownership?limit=25`; renders a table
+      (filed, owner, 13D/13G form, % of class, shares, event date) + the structured-XML ~mid-2025
+      coverage floor. The `beneficial-ownership` endpoint landed in the M3/M4 merge (was blocked).
+
+**M3 auth landed (pulled):** routes split into `public_router` (statements/periods/metrics/
+metric-periods/insider-trades — the free hub surface) vs a gated `router` (institutional/manager/
+beneficial/screen/concepts) behind `X-API-Key`; `POST /v1/signup` issues keys; `/guide` documents
+them. UI now has an **API-key flow** (`Profin.getKey/setKey/clearKey`, `Profin.api` sends
+`X-API-Key`, `Profin.mountNeedsKey` prompt on 401). **Regression fixed:** `cusip-resolution-stats`
+moved to `public_router` so the shipped `/coverage` page works keyless again.
+
+**Real UX finding (open decision):** the hub fires ~3 public calls on load and the prod anon
+limit defaults to **2/sec** (`secfin_anon_rate_limit_per_sec`) — so a keyless user opening the hub
+can hit a 429. Left the prod default (deliberate anti-scraping) alone and raised it only for the
+e2e harness; needs a real fix — raise the default, make the hub tolerate 429 (retry/backoff), or
+reduce its call count.
+
+**Still needs a 13F periods-axis endpoint before building:**
+- [ ] **Institutional ownership — issuer view** *(ready backend, gated)* — needs
+      `institutional-periods` axis + the API-key flow (now built) applied to the tab.
+- [ ] **Manager (13F filer) profile** *(ready backend, gated)* — `/manager/{cik}`, same axis gap.
 
 **Next Phase 2 step:** add the 13F **periods-axis endpoint(s)** (issuer + manager), then build the
 Institutional ownership tab and the Manager profile page against them — mirrors how `metric-periods`

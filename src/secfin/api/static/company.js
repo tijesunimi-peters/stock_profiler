@@ -143,11 +143,11 @@
   // and lets the e2e check target a tab directly).
   function applyTabFromUrl() {
     var t = new URLSearchParams(location.search).get("tab");
-    if (["fundamentals", "statements", "insider"].indexOf(t) !== -1) state.tab = t;
+    if (["fundamentals", "statements", "insider", "beneficial"].indexOf(t) !== -1) state.tab = t;
     var btn = document.querySelector('#tabs button[data-tab="' + state.tab + '"]');
     if (btn) setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
-    $("period-control").hidden = state.tab === "insider";
+    $("period-control").hidden = NON_PERIOD_TABS.indexOf(state.tab) !== -1;
   }
 
   // ---------- period control ----------
@@ -202,9 +202,9 @@
     state.tab = btn.getAttribute("data-tab");
     setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
-    // Insider trades are bounded by a filing limit, not a period -- hide the period picker.
-    $("period-control").hidden = state.tab === "insider";
-    if (state.tab !== "insider") populatePeriodSelect(); // axis differs per tab
+    // Insider / 13D-G are bounded by a filing limit, not a period -- hide the period picker.
+    $("period-control").hidden = NON_PERIOD_TABS.indexOf(state.tab) !== -1;
+    if (NON_PERIOD_TABS.indexOf(state.tab) === -1) populatePeriodSelect(); // axis differs per tab
     render();
   }
   function onStmtClick(e) {
@@ -220,10 +220,72 @@
 
   // ---------- render ----------
 
+  var NON_PERIOD_TABS = ["insider", "beneficial"]; // tabs bounded by a filing limit, not a period
+
   function render() {
     if (state.tab === "fundamentals") renderFundamentals();
     else if (state.tab === "statements") renderStatements();
-    else renderInsider();
+    else if (state.tab === "insider") renderInsider();
+    else renderBeneficial();
+  }
+
+  var BENEFICIAL_LIMIT = 25;
+
+  function renderBeneficial() {
+    $("legend").innerHTML = "";
+    $("disclosure").innerHTML = P.disclosure(["ownership_13dg_floor", "not_advice"]);
+    // Gated endpoint: no key -> prompt for one before spending a request.
+    if (!P.getKey()) {
+      P.mountNeedsKey($("view"), renderBeneficial);
+      return;
+    }
+    $("view").innerHTML = P.states.loading({ title: "Loading 13D/G filings" });
+    P.api("/companies/" + encodeURIComponent(symbol) + "/beneficial-ownership?limit=" + BENEFICIAL_LIMIT).then(
+      function (res) {
+        var rows = res.beneficial_ownership || [];
+        if (!rows.length) {
+          $("view").innerHTML = P.states.empty({
+            title: "No 13D/G on record",
+            copy: "No structured-XML Schedule 13D/13G (5%+) filings for this issuer in coverage " +
+              "(parsed from ~mid-2025 on) — read as outside the window, not 'nobody crossed 5%'.",
+          });
+          return;
+        }
+        $("view").innerHTML = beneficialTable(rows);
+      },
+      function (err) {
+        if (err.status === 401) {
+          P.mountNeedsKey($("view"), renderBeneficial);
+        } else {
+          $("view").innerHTML = P.states.error({ copy: "Couldn't load 13D/G filings (" + (err.status || "network") + ")." });
+        }
+      }
+    );
+  }
+
+  function beneficialTable(rows) {
+    var body = rows.map(function (o) {
+      var pct = o.percent_of_class != null ? o.percent_of_class.toFixed(1) + "%" : "—";
+      var shares = o.shares_beneficially_owned != null ? P.fmt.shares(o.shares_beneficially_owned) : "—";
+      return (
+        "<tr>" +
+        '<td class="stmt-tag">' + P.esc(o.filed || o.event_date || "—") + "</td>" +
+        '<td class="stmt-label">' + P.esc(o.owner_name || "—") + "</td>" +
+        '<td class="stmt-tag">' + P.esc(o.form_type || "—") + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(pct) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(shares) + "</td>" +
+        '<td class="stmt-tag">' + P.esc(o.event_date || "—") + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    return (
+      '<table class="stmt-table"><thead><tr>' +
+      "<th>Filed</th><th>Beneficial owner</th><th>Form</th>" +
+      '<th class="amt">% of class</th><th class="amt">Shares</th><th>Event date</th>' +
+      "</tr></thead><tbody>" + body + "</tbody></table>" +
+      '<p class="stmt-caption">Schedule 13D/13G (5%+ ownership) as filed · structured-XML filings ' +
+      "only (~mid-2025 on) · 13D = activist, 13G = passive. As-reported, not derived.</p>"
+    );
   }
 
   var INSIDER_LIMIT = 25;

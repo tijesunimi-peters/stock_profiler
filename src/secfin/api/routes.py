@@ -513,7 +513,9 @@ async def get_usage(
     return usage_summary(record, stored, days, today)
 
 
-@router.get(
+# Public: a transparency/coverage metric (not per-company paid data), and the shipped
+# /coverage page reads it keyless -- keep it on the anonymous public_router.
+@public_router.get(
     "/cusip-resolution-stats",
     response_model=CusipResolutionStats,
     tags=["Institutional Ownership"],

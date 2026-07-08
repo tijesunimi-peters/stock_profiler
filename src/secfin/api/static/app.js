@@ -13,11 +13,27 @@
   "use strict";
 
   var API_BASE = "/v1";
+  var KEY_STORAGE = "profin_api_key";
+
+  // ---------- API key (gated endpoints; public ones work without one) ----------
+
+  function getKey() {
+    try { return localStorage.getItem(KEY_STORAGE) || ""; } catch (e) { return ""; }
+  }
+  function setKey(k) {
+    try { localStorage.setItem(KEY_STORAGE, (k || "").trim()); } catch (e) { /* ignore */ }
+  }
+  function clearKey() {
+    try { localStorage.removeItem(KEY_STORAGE); } catch (e) { /* ignore */ }
+  }
 
   // ---------- API ----------
 
   function api(path) {
-    return fetch(API_BASE + path).then(function (res) {
+    var headers = {};
+    var key = getKey();
+    if (key) headers["X-API-Key"] = key; // sent only when set; public endpoints ignore it
+    return fetch(API_BASE + path, { headers: headers }).then(function (res) {
       if (!res.ok) {
         var err = new Error("HTTP " + res.status);
         err.status = res.status;
@@ -358,9 +374,37 @@
     return { input: input, form: form };
   }
 
+  // ---------- API-key gate (for gated endpoints) ----------
+
+  // Renders a "needs an API key" panel into `el` (paste-key input + save + get-a-key link),
+  // and calls `onSaved` after a key is stored so the caller can re-render the gated view.
+  function mountNeedsKey(el, onSaved) {
+    el.innerHTML =
+      '<div class="state">' +
+      '<div class="state-title">API key required</div>' +
+      '<div class="state-copy">This dataset is gated. Paste your API key to view it, or get a ' +
+      "free one — statements, metrics and insider trades stay free without a key.</div>" +
+      '<div class="searchbar" style="margin-top:14px">' +
+      '<input type="password" name="apikey" placeholder="X-API-Key" autocomplete="off" spellcheck="false">' +
+      '<button type="button" class="btn-inverse" data-save>Save key</button></div>' +
+      '<div class="recovery-chips"><a class="btn-inverse" href="/guide">Get a free key ↗</a></div>' +
+      "</div>";
+    var input = el.querySelector('input[name="apikey"]');
+    el.querySelector("[data-save]").addEventListener("click", function () {
+      var v = input.value.trim();
+      if (!v) return;
+      setKey(v);
+      if (onSaved) onSaved();
+    });
+  }
+
   window.Profin = {
     api: api,
     resolveSymbol: resolveSymbol,
+    getKey: getKey,
+    setKey: setKey,
+    clearKey: clearKey,
+    mountNeedsKey: mountNeedsKey,
     esc: esc,
     fmt: fmt,
     STATUS: STATUS,
