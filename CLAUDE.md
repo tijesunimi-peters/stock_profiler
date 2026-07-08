@@ -155,8 +155,17 @@ src/secfin/
     sqlite_beneficial_ownership_repository.py
     api_key_repository.py               # abstract API key store (M3 auth/tiers/quotas)
     sqlite_api_key_repository.py
+    company_profile_repository.py       # abstract cik->SIC profile store (Metrics Phase 2)
+    sqlite_company_profile_repository.py
+    metric_value_repository.py          # abstract materialized-metric store (Metrics Phase 2)
+    sqlite_metric_value_repository.py
+    metric_rank_repository.py           # abstract precomputed peer-rank store (Metrics Phase 2)
+    sqlite_metric_rank_repository.py
     backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
     restore.py                 # hydrate a fresh volume from a backup
+  analytical/                  # analytical-layer BATCH jobs (DuckDB over the SQLite file) --
+                               #   never on the live request path (see guardrail 6)
+    peer_ranks.py              # Metrics Phase 2: per-SIC-group percentile/z-score -> metric_ranks
   ingest/
     downloader.py              # resumable download of SEC bulk zips
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
@@ -164,11 +173,13 @@ src/secfin/
     frames_backfill.py          # bulk-ingest frames data for cross-company screening (M4)
     institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
     insider_backfill.py        # bulk-seed the insider-trades cache (M3 ownership cache-warming)
+    sic_backfill.py            # backfill cik->SIC into company_profiles (Metrics Phase 2)
+    metrics_backfill.py        # materialize per-company metrics into metric_values (Phase 2)
   api/
     main.py                    # FastAPI app + wiring + upstream-SEC-error handlers
-    routes.py                  # endpoints: statements, periods, metrics, insider, 13D/G,
-                               #   13F manager + issuer-centric, cusip-resolution-stats,
-                               #   screening (M4), usage/tiers/API-key admin (M3)
+    routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
+                               #   insider, 13D/G, 13F manager + issuer-centric,
+                               #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
     static/                    # server-rendered UI: index, company hub, data explorer,
                                #   coverage/guide pages (see docs/ROADMAP_UI.md)
 scripts/                       # committed, reusable one-off scripts (benchmarks, load tests)
@@ -251,6 +262,12 @@ python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD
 
 # analytical extra (DuckDB, batch/analytical jobs only — never the live API)
 pip install -e ".[analytical]"
+
+# peer-ranking pipeline (Metrics Phase 2): SIC profiles -> materialize metrics -> rank.
+# The first two touch SEC / are pure; the third needs the analytical extra above.
+python -m secfin.ingest.sic_backfill          # cik -> SIC into company_profiles
+python -m secfin.ingest.metrics_backfill      # materialize metrics into metric_values (no network)
+python -m secfin.analytical.peer_ranks        # DuckDB: percentile/z-score -> metric_ranks
 ```
 
 Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must

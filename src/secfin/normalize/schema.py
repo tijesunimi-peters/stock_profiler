@@ -319,6 +319,37 @@ class CompanyMetrics(BaseModel):
     metrics: list[MetricValue] = Field(default_factory=list)
 
 
+# --- Peer comparison & ranking (Phase 2, analytical/peer_ranks.py) ------------------
+#
+# Peer-relative position of one company's metrics within its SIC industry group, for one
+# period. PRECOMPUTED by the analytical batch and read as a point lookup on the serving
+# path (never computed live). Percentile is *position*, not a good/bad verdict (STYLE_GUIDE
+# §9.2) -- for some metrics higher is "worse" (e.g. debt_to_equity); the UI stays descriptive.
+
+
+class PeerRank(BaseModel):
+    """One metric's peer-relative rank for a company (within its SIC group, one period)."""
+
+    metric: str
+    label: str
+    unit: str
+    peer_group: str  # the SIC prefix ranked within, e.g. "35"
+    peer_count: int  # companies in the group with a comparable (non-N/A) value
+    percentile: float  # 0..100 position in the peer distribution (descriptive, not a verdict)
+    z_score: float  # (value - peer mean) / peer stddev
+
+
+class CompanyPeerRanks(BaseModel):
+    """A company's peer ranks for one period (empty `peers` when no group met the min size)."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    caveats: list[str] = Field(default_factory=list)
+    peers: list[PeerRank] = Field(default_factory=list)
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

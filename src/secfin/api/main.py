@@ -31,6 +31,7 @@ from secfin.storage.sqlite_beneficial_ownership_repository import (
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
+from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -117,6 +118,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # is in-process rather than SQLite-backed.
     app.state.api_key_repo = SQLiteApiKeyRepository(settings.secfin_db_path)
     app.state.rate_limiter = TokenBucketLimiter()
+    # Precomputed peer ranks (Metrics Phase 2). The serving path only READS this table
+    # (a point lookup per issuer); the analytical/peer_ranks.py batch is the sole writer,
+    # so the live API never touches DuckDB. See api.routes.get_metric_rank_repo.
+    app.state.metric_rank_repo = SQLiteMetricRankRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -126,6 +131,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.holdings_repo.close()
         app.state.beneficial_ownership_repo.close()
         app.state.api_key_repo.close()
+        app.state.metric_rank_repo.close()
 
 
 app = FastAPI(

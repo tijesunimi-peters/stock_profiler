@@ -608,6 +608,28 @@ analytical layer). The response is a `MetricHistory`: an oldest→newest list of
   Windows default to 8 points quarterly / 5 annual. Tier-3 (regression/statistical trend) is
   deferred (see `ROADMAP_METRICS.md`).
 
+### Peer comparison & ranking (Phase 2)
+
+How one company's metrics stack up against its **industry peers**, served at
+`GET /v1/companies/{symbol}/peers?year=&period=`. This is the project's first
+**analytical-layer** feature (see `ARCHITECTURE.md` 3b) and is **precomputed**, never live:
+
+- **Peer axis = SIC code.** Companies are grouped by the first **2 digits** of their SIC code
+  (`config.secfin_peer_sic_digits`). SIC is ingested from `submissions.json`'s top-level `sic`
+  into `company_profiles` (`ingest/sic_backfill.py`). SIC is coarse and dated — a starting axis,
+  not ground truth; surfaced as a caveat, and left open to a better taxonomy later.
+- **Ranks.** Per (SIC group, period, metric): a **percentile** (0-100 position within the peer
+  distribution) and **z-score** ((value − group mean) / group stddev). Percentile is *position*,
+  **not a good/bad verdict** — for some metrics (e.g. leverage) a higher value is not "better".
+- **Honesty.** N/A/N/M companies are **excluded** from a metric's distribution (R7) — never
+  counted as a low value. A group needs at least **5** companies with a comparable value
+  (`config.secfin_peer_min_size`) before any rank is emitted; below that the metric simply has no
+  rank ("insufficient peers"), never a fabricated one.
+- **Pipeline.** `ingest/metrics_backfill.py` materializes Phase-1 `compute_metrics` output into a
+  flat `metric_values` table; `analytical/peer_ranks.py` (DuckDB over the `ATTACH`ed SQLite file)
+  computes the ranks and writes `metric_ranks` through the ordinary SQLite repo. The endpoint
+  reads `metric_ranks` as a point lookup — no DuckDB on the request path.
+
 ## Analytical layer (Milestone 2.5) — not a new model, no serialization step (for now)
 
 The DuckDB analytical engine (see `ARCHITECTURE.md`, stage 3b) reads the existing

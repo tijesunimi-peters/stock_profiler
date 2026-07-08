@@ -80,6 +80,15 @@ class RawFactRepository(ABC):
         """
 
     @abstractmethod
+    def all_ciks(self) -> set[int]:
+        """Every distinct CIK with at least one row in `raw_facts`, regardless of ingest
+        source or checkpoint. Unlike `get_ingested_ciks` (checkpoint-keyed), this reflects
+        the actual stored data -- needed by the metrics materialization batch
+        (`ingest/metrics_backfill.py`), which must cover every company with facts, including
+        fixture/seed rows that were upserted without a checkpoint.
+        """
+
+    @abstractmethod
     def screen(self, gaap_tags: Sequence[str], frame: str) -> list[tuple[int, str, float]]:
         """Cross-company screening (Milestone 4): every (cik, gaap_tag, value) row for
         any of `gaap_tags` in an exact SEC frame period (e.g. "CY2023Q4" -- see

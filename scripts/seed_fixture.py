@@ -23,10 +23,12 @@ from secfin.normalize.schema import (
     OtherManager13F,
 )
 from secfin.sec.companyfacts import flatten_all_taxonomies
+from secfin.storage.company_profile_repository import CompanyProfile
 from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
 from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
 )
+from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfileRepository
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
@@ -215,6 +217,27 @@ def _seed_holdings(db_path: str) -> None:
         repo.close()
 
 
+# SIC codes for the three fixture companies (from their real submissions.json). Each is in a
+# distinct 2-digit group, so none reaches the peer-rank min size -- the /peers endpoint returns
+# an empty (insufficient-peers) result for them, which is the honest, correct outcome. Use
+# scripts/seed_analytical_fixture.py for a populated peer group.
+_SIC = [
+    (320193, "3571", "Electronic Computers", "Apple Inc."),
+    (19617, "6021", "National Commercial Banks", "JPMORGAN CHASE & CO"),
+    (104169, "5331", "Retail-Variety Stores", "Walmart Inc."),
+]
+
+
+def _seed_sic(db_path: str) -> None:
+    repo = SQLiteCompanyProfileRepository(db_path)
+    try:
+        for cik, sic, desc, name in _SIC:
+            repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
+        print(f"seeded SIC profiles: {len(_SIC)} companies")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -258,6 +281,7 @@ def main() -> None:
     _seed_insider(db_path)
     _seed_beneficial(db_path)
     _seed_holdings(db_path)
+    _seed_sic(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

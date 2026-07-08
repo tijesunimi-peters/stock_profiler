@@ -174,6 +174,10 @@ class SQLiteRawFactRepository(RawFactRepository):
         cur = self._conn.execute("SELECT cik FROM ingest_checkpoint WHERE source = ?", (source,))
         return {row[0] for row in cur.fetchall()}
 
+    def all_ciks(self) -> set[int]:
+        cur = self._conn.execute("SELECT DISTINCT cik FROM raw_facts")
+        return {row[0] for row in cur.fetchall()}
+
     def screen(self, gaap_tags: Sequence[str], frame: str) -> list[tuple[int, str, float]]:
         if not gaap_tags:
             return []

@@ -288,6 +288,18 @@ analytical store — frames data is not a new canonical model (see
 `docs/DATA_MODEL.md`'s Milestone 2.5 analytical-layer note, which anticipated this).
 Parquet stays fully deferred: nothing in Milestone 4 needed it either.
 
+**Follow-up 3 (shipped, Metrics Phase 2): the FIRST production analytical-layer job.**
+`analytical/peer_ranks.py` computes per-metric percentile/z-score within each 2-digit-SIC
+peer group per period — a genuine cross-company, whole-population aggregate (window
+functions partitioned by group over every company's materialized metric), which is exactly
+the vectorized-scan workload DuckDB wins at, so this one *does* use `ATTACH ... (TYPE
+sqlite)` over the live file (no Parquet). It stays true to guardrail 6: it's a **batch**
+job, reads via DuckDB but **writes results back through the ordinary SQLite repo**
+(`metric_ranks`), and the serving endpoint (`GET /v1/companies/{symbol}/peers`) only does a
+point read of those precomputed rows — no DuckDB anywhere on the request path. The
+inputs are materialized first (`ingest/metrics_backfill.py` → `metric_values`) rather than
+recomputed in SQL, since the metric logic is Python (`normalize/metrics.py`).
+
 ## 4. Serve — `src/secfin/api/`
 
 FastAPI. `main.py` wires the app; `routes.py` exposes:

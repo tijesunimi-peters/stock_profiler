@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     # deploying anywhere reachable.
     secfin_admin_secret: str = ""
 
+    # Peer comparison & ranking (Metrics Phase 2, analytical/peer_ranks.py). Companies are
+    # grouped by the first `sic_digits` of their SIC code; a group needs at least
+    # `peer_min_size` companies with a comparable (non-N/A) value before a percentile/z-score
+    # is emitted for that metric (below it, the metric shows "insufficient peers"). 2-digit /
+    # min 5 chosen deliberately -- see docs/ROADMAP_METRICS.md Phase 2.
+    secfin_peer_sic_digits: int = 2
+    secfin_peer_min_size: int = 5
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).

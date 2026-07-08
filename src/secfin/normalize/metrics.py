@@ -746,6 +746,26 @@ _METRICS_BY_KEY = dict(_METRICS)
 METRIC_KEYS = tuple(key for key, _ in _METRICS)
 
 
+def _metric_meta() -> dict[str, tuple[str, str]]:
+    """key -> (label, unit), harvested from the metric functions themselves by running each
+    against a throwaway empty context (every result carries its label + unit, even the na
+    path). Avoids a second label/unit map that could drift from the functions."""
+    # A defaultdict of empty _ConceptData: every concept the fns look up resolves to "no
+    # data" (so each returns na), but its label/unit are still set on the result.
+    empty_index: dict[str, _ConceptData] = defaultdict(_ConceptData)
+    ctx = _Ctx(empty_index, [], _Anchor(0, "FY", "1970-01-01", None, None))
+    meta: dict[str, tuple[str, str]] = {}
+    for key, fn in _METRICS:
+        mv = fn(ctx)
+        meta[key] = (mv.label, mv.unit)
+    return meta
+
+
+_METRIC_META = _metric_meta()
+METRIC_LABELS = {k: label for k, (label, _unit) in _METRIC_META.items()}
+METRIC_UNITS = {k: unit for k, (_label, unit) in _METRIC_META.items()}
+
+
 def compute_metrics(
     facts: list[RawFact], cik: int, fiscal_year: int, fiscal_period: FiscalPeriod
 ) -> CompanyMetrics:

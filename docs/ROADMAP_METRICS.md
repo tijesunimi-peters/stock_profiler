@@ -295,14 +295,23 @@ Approach:
 
 ### Phase 2 tasks
 
-- [ ] Confirm SIC grouping + min-peer-size decisions above.
-- [ ] Serialize per-company metric outputs into the analytical store (a serialization of Phase 1
-      results — no new canonical model), reusing whatever mechanism 2.5 stands up (a Parquet landing,
-      or DuckDB reading SQLite directly — see ROADMAP 2.5). Don't build a metrics-specific Parquet
-      path if 2.5 didn't need Parquet.
-- [ ] Batch job: compute per-metric percentile/z-score within each peer group per period (DuckDB).
-- [ ] Write ranked results where the serving store can read them; issuer-centric "peer comparison"
-      endpoint reads pre-computed rows.
+- [x] Confirm SIC grouping + min-peer-size decisions above. **Decided: 2-digit SIC grouping,
+      minimum peer-group size 5** (`config.py`: `secfin_peer_sic_digits`, `secfin_peer_min_size`).
+      SIC comes from `submissions.json`'s top-level `sic` — it was not previously ingested; a new
+      `ingest/sic_backfill.py` populates `company_profiles` (cik → sic).
+- [x] Serialize per-company metric outputs into the analytical store — `ingest/metrics_backfill.py`
+      materializes Phase-1 `compute_metrics` output into a flat `metric_values` table (no new
+      canonical model). No Parquet: consistent with 2.5's decision, DuckDB reads the SQLite file
+      directly via `ATTACH`.
+- [x] Batch job: `analytical/peer_ranks.py` (the project's first analytical-layer job) computes
+      per-metric `percent_rank`→percentile and z-score within each 2-digit-SIC group per period in
+      DuckDB (over `ATTACH`ed SQLite), excluding N/A rows (R7) and groups below the min size.
+- [x] Write ranked results where the serving store can read them — the batch writes `metric_ranks`
+      through the ordinary SQLite repo (write path stays operational, per CLAUDE.md); the
+      issuer-centric **`GET /v1/companies/{symbol}/peers`** endpoint reads those precomputed rows
+      (no live DuckDB).
+- [ ] **Peer-rankings UI** (deferred follow-on) — surface percentiles on the company hub /
+      comparison against the `/peers` endpoint.
 - [ ] Feed peer-ranked metrics into Milestone 4 screening (shared query path, not a new one).
 
 ---

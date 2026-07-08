@@ -18,11 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from secfin.api.auth import get_api_key_repo, require_api_key
 from secfin.auth.models import ApiKeyRecord, UsageSummary
 from secfin.auth.usage import usage_summary
+from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.metrics import (
     METRIC_KEYS,
+    METRIC_LABELS,
+    METRIC_UNITS,
     compute_fy_metrics_with_trend,
     compute_metric_history,
     compute_metrics,
@@ -31,12 +34,14 @@ from secfin.normalize.metrics import (
 from secfin.normalize.schema import (
     BeneficialOwnership,
     CompanyMetrics,
+    CompanyPeerRanks,
     CusipResolutionStats,
     FiscalPeriod,
     HoldingsSnapshot,
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
+    PeerRank,
     RawFact,
     Statement,
     StatementType,
@@ -57,6 +62,7 @@ from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRe
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
+from secfin.storage.metric_rank_repository import MetricRankRepository
 from secfin.storage.repository import RawFactRepository
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
@@ -143,6 +149,10 @@ def get_beneficial_ownership_repo(request: Request) -> BeneficialOwnershipReposi
 
 def get_holdings_repo(request: Request) -> HoldingsSnapshotRepository:
     return request.app.state.holdings_repo
+
+
+def get_metric_rank_repo(request: Request) -> MetricRankRepository:
+    return request.app.state.metric_rank_repo
 
 
 def get_cusip_repo(request: Request) -> CusipMapRepository:
@@ -420,6 +430,66 @@ async def get_metric_history(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
     return compute_metric_history(facts, cik, metric, frequency)
+
+
+# Surfaced on every peer-ranking response. Percentile is POSITION, not a verdict -- for some
+# metrics a higher value is "worse" -- and SIC grouping is coarse; ranks exclude N/A companies.
+_PEER_CAVEATS = [
+    "Peers are grouped by SIC industry code, which is coarse and dated -- treat a group as a "
+    "starting axis, not ground truth.",
+    "Ranks exclude companies for which the metric is N/A (R7) -- an N/A company is not counted "
+    "as a low value.",
+    "Percentile is a company's POSITION within its peer group, not a judgment -- for some "
+    "metrics (e.g. leverage) a higher value is not 'better'.",
+    "Ranks are precomputed per period by a batch job; a company or metric with no rank had too "
+    "few comparable peers (below the minimum group size) or no data for that period.",
+]
+
+
+@public_router.get(
+    "/companies/{symbol}/peers",
+    response_model=CompanyPeerRanks,
+    tags=["Financials"],
+    summary="Peer-relative metric ranks (percentile / z-score within the SIC group)",
+)
+async def get_peer_ranks(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    rank_repo: MetricRankRepository = Depends(get_metric_rank_repo),
+) -> CompanyPeerRanks:
+    """How this company's metrics rank against its SIC-industry peers for one period.
+
+    A **precomputed** point lookup (the analytical/peer_ranks.py batch is the sole producer;
+    the live path never runs the DuckDB ranking -- see CLAUDE.md). Each value carries its
+    `peer_group`, `peer_count`, `percentile` (0-100 position, NOT a good/bad verdict), and
+    `z_score`. Empty `peers` is a valid, honest result: no peer group met the minimum size for
+    any metric, or nothing has been ranked for this company/period yet (`caveats` spells this out).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    rows = rank_repo.get_for_cik(cik, year, period)
+    peers = [
+        PeerRank(
+            metric=r.metric,
+            label=METRIC_LABELS.get(r.metric, r.metric),
+            unit=METRIC_UNITS.get(r.metric, ""),
+            peer_group=r.peer_group,
+            peer_count=r.peer_count,
+            percentile=r.percentile,
+            z_score=r.z_score,
+        )
+        for r in rows
+    ]
+    return CompanyPeerRanks(
+        cik=cik,
+        fiscal_year=year,
+        fiscal_period=period,
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_PEER_CAVEATS,
+        peers=peers,
+    )
 
 
 @public_router.get(
