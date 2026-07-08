@@ -585,6 +585,29 @@ coverage is `na`. ⁴ `na` in the fixture only because `dei` is stripped there; 
 production (see R6 above). Banks are `na` on the current/noncurrent-split and inventory metrics
 by structure — same limitation as their statements.
 
+### Metric history & trend signals (Phase 1b)
+
+The same engine run across a company's whole quarterly (or annual) history, served at
+`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=quarterly|annual` (public,
+cache-aside — single-company history stays on the serving path; it is **not** the cross-company
+analytical layer). The response is a `MetricHistory`: an oldest→newest list of
+`MetricSeriesPoint`s (each = `compute_metrics` at that anchor) plus a list of `TrendSignal`s.
+
+- **R9 (series correctness).** Every point is computed independently against the latest-filed
+  facts, so the whole series shares **one labeled basis: `as-restated`** (never mixed). na/nm
+  periods are **gap points** (`value` null with a status/reason) — never zero-filled or
+  interpolated, and the signal functions skip across them rather than bridging them.
+- **R10 (calendar alignment).** Each point carries its calendar `period_end`, so a future
+  multi-company "compare trajectories" overlay can align on a common calendar axis. The overlay
+  itself is a comparison-UI concern; this per-company endpoint just supplies the aligned points.
+- **Tier-2 signals** (each a `TrendSignal` with its own status/reason; insufficient history →
+  `nm`/`na`, never a fabricated number): `expansion` (change over the trailing window),
+  `cagr` (compound annual growth over the dated span; `nm` on a non-positive endpoint),
+  `acceleration` (second difference of the latest level), `streak` (consecutive same-direction
+  periods in the trailing gap-free run), `distance_from_peak` (% below the trailing peak).
+  Windows default to 8 points quarterly / 5 annual. Tier-3 (regression/statistical trend) is
+  deferred (see `ROADMAP_METRICS.md`).
+
 ## Analytical layer (Milestone 2.5) — not a new model, no serialization step (for now)
 
 The DuckDB analytical engine (see `ARCHITECTURE.md`, stage 3b) reads the existing

@@ -240,17 +240,25 @@ axis across companies) and **R9** (each series internally point-in-time correct,
 
 ### Phase 1b tasks
 
-- [ ] Confirm Phase 1 metric functions return the full series by default (point value = latest element).
-- [ ] Tier-2 trend-signal functions (expansion/compression, CAGR, acceleration, streaks,
-      distance-from-peak), each returning status + reason (insufficient history → `nm`).
-- [ ] Implement **R9** (one labeled restatement basis per series; gaps not interpolated) and **R10**
-      (calendar-axis alignment for multi-company trend).
-- [ ] Endpoint: per-company metric history (e.g. `GET /v1/companies/{symbol}/metrics/{metric}/history`),
-      cache-aside on the serving path (single-company trend is NOT cross-company).
-- [ ] Tests (no network): every point in a series is point-in-time correct (restatement + filing-lag
-      across the whole line); single-basis consistency; streak/CAGR correctness; gap handling (no
-      interpolation); calendar alignment across two companies with different fiscal years.
-- [ ] Docs: extend the `docs/DATA_MODEL.md` metrics section with trend signals + R9/R10.
+- [x] Confirm Phase 1 metric functions return the full series by default (point value = latest element).
+      `compute_metric_history` (normalize/metrics.py) runs the same per-anchor engine across every
+      resolvable period; the last point equals the single-value `compute_metrics` result (tested).
+- [x] Tier-2 trend-signal functions (expansion/compression, CAGR, acceleration, streaks,
+      distance-from-peak), each returning a `TrendSignal` with status + reason (insufficient history
+      → `nm`/`na`); gaps skipped, never interpolated.
+- [x] Implement **R9** (one labeled restatement basis per series — **as-restated**, latest-filed
+      throughout; gaps emitted as `value=None` points, not interpolated) and **R10** (each point
+      carries its calendar `period_end`; the cross-company *overlay* is the comparison-UI step, not
+      this per-company endpoint).
+- [x] Endpoint: per-company metric history
+      `GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=quarterly|annual` (public,
+      cache-aside on the serving path — single-company trend is NOT cross-company). Unknown metric
+      → 404; a company with no computable history → 200 with empty points/signals.
+- [x] Tests (`tests/test_metric_history.py`, no network): oldest→newest series; latest point ==
+      single-value `compute_metrics` (single-basis consistency); streak/CAGR/distance/acceleration/
+      expansion correctness; gap handling (no interpolation across na/nm); R7 na points for a bank;
+      route shape + unknown-metric 404.
+- [x] Docs: extended the `docs/DATA_MODEL.md` metrics section with trend signals + R9/R10.
 
 **Path note:** single-company trend stays on the **serving path** (it's one company's history). Only
 *cross-company trend at scale* (many companies) touches the analytical layer — and that overlaps

@@ -177,14 +177,18 @@ profile, 13D/G) are shipped and headless-verified.
       `/company/{symbol}` page. **Descriptive only — no good/bad color, no winner** (§9.2). An
       "add a company" search + per-column remove keep the set editable (query-driven). Reachable
       via a new **Compare** nav link across the site. Verified headless (zero console errors).
-- [ ] **Metric trend / history** *(blocked)* — deeper per-metric trend than the card sparkline
-      (streaks, CAGR, distance-from-peak). Blocked on Metrics **Phase 1b**
-      (`GET /v1/companies/{symbol}/metrics/{metric}/history`, `docs/ROADMAP_METRICS.md`).
-      "Compare trajectories" mode folds into Company Comparison once history exists.
+- [ ] **Metric trend / history** *(ready — backend shipped)* — deeper per-metric trend than the
+      card sparkline (streaks, CAGR, distance-from-peak). The Metrics **Phase 1b** backend is now
+      built: **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=quarterly|annual`**
+      returns the full series (gap-honest, one as-restated basis, R9/R10) plus the Tier-2
+      `signals` (expansion, cagr, acceleration, streak, distance-from-peak). Build the UI against
+      it: an expandable per-metric trend chart on the company hub with the signals as small
+      annotations; the "compare trajectories" mode then folds into the comparison page (align on
+      the calendar `period_end` each point carries — R10).
 
-**Next Phase 3 step:** the remaining item (Metric trend/history) is blocked on the Metrics
-**Phase 1b** history endpoint (`docs/ROADMAP_METRICS.md`) — build the metrics backend first,
-then the deeper-trend UI folds into the shipped comparison page.
+**Next Phase 3 step:** build the **Metric trend/history UI** against the now-shipped
+`/metrics/{metric}/history` endpoint (fuller trend chart + Tier-2 signal annotations on the
+company hub; trajectory overlay on `/compare`).
 
 ## Phase 4 — Discovery & scale (blocked on backend)
 
@@ -212,7 +216,7 @@ then the deeper-trend UI folds into the shipped comparison page.
 | Manager (13F) profile | 2 | built | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 | Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
 | Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
-| Metric trend/history | 3 | blocked | *(Metrics Phase 1b)* |
+| Metric trend/history | 3 | ready | `/metrics/{metric}/history` |
 | Screening | 4 | blocked | *(M4)* |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
 | Public docs portal | 4 | n/a | *(M3)* |

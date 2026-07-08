@@ -317,3 +317,61 @@ class CompanyMetrics(BaseModel):
     fiscal_year: int
     fiscal_period: FiscalPeriod
     metrics: list[MetricValue] = Field(default_factory=list)
+
+
+# --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
+#
+# One metric run across a company's whole history (Tier 1: the series) plus derived
+# trend signals over it (Tier 2). Governed by R9/R10 (docs/ROADMAP_METRICS.md): the whole
+# series shares ONE labeled restatement basis (as-restated -- latest-filed throughout),
+# every point independently satisfies R1, and na/nm periods are GAPS (value None), never
+# interpolated. Each point carries its calendar period_end so a future multi-company
+# overlay can align on it (R10).
+
+MetricFrequency = Literal["quarterly", "annual"]
+
+
+class MetricSeriesPoint(BaseModel):
+    """One period's value of a single metric in its history series.
+
+    `value` is None whenever `status` is na/nm -- a gap, honestly broken, never a fabricated
+    number or an interpolation across it (R9).
+    """
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str | None = None
+    value: float | None = None
+    status: MetricStatus = "ok"
+    reason: str | None = None
+    as_of: str | None = None  # filing date this point is current as of (R1 provenance)
+
+
+class TrendSignal(BaseModel):
+    """A derived Tier-2 signal over a metric's series (CAGR, streak, etc.).
+
+    A computed result like MetricValue -- carries its own status/reason; insufficient
+    history to cover the window is `nm`/`na`, never a fabricated number.
+    """
+
+    key: str  # stable key, e.g. "cagr", "expansion", "streak", "distance_from_peak"
+    label: str
+    value: float | None
+    unit: str  # "ratio" | "USD" | "USD/shares" | "shares" | "days" | "count"
+    status: MetricStatus = "ok"
+    reason: str | None = None
+    window: int | None = None  # number of series points the signal considered
+
+
+class MetricHistory(BaseModel):
+    """One metric's full history for one company (Tier 1 series + Tier 2 signals)."""
+
+    cik: int
+    metric: str
+    label: str
+    unit: str
+    basis: MetricBasis
+    restatement_basis: RestatementBasis = "as-restated"
+    frequency: MetricFrequency = "quarterly"
+    points: list[MetricSeriesPoint] = Field(default_factory=list)
+    signals: list[TrendSignal] = Field(default_factory=list)

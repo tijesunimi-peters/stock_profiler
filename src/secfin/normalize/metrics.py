@@ -34,9 +34,13 @@ from secfin.normalize.schema import (
     CompanyMetrics,
     FiscalPeriod,
     MetricBasis,
+    MetricFrequency,
+    MetricHistory,
     MetricPoint,
+    MetricSeriesPoint,
     MetricValue,
     RawFact,
+    TrendSignal,
 )
 
 # Duration-length bands (days) for classifying flow facts.
@@ -704,35 +708,42 @@ def _debt_split_reason(ctx: _Ctx) -> str | None:
     return None
 
 
-# Registry — ordered for display (profitability → per-share), one entry per metric.
+# Registry — ordered for display (profitability → per-share), one (key, fn) per metric.
+# The key is duplicated from what each fn passes to `ctx` on purpose: it lets us build a
+# key->fn map (`_METRICS_BY_KEY`) and validate a requested metric without running it, and it
+# keeps the display order in one place. Keep the two in sync when adding a metric.
 _METRICS = [
-    _gross_margin,
-    _operating_margin,
-    _net_margin,
-    _roa,
-    _roe,
-    _roic,
-    _revenue_growth,
-    _earnings_growth,
-    _ocf_growth,
-    _growth_acceleration,
-    _current_ratio,
-    _quick_ratio,
-    _debt_to_equity,
-    _net_debt,
-    _interest_coverage,
-    _fcf,
-    _fcf_margin,
-    _accruals,
-    _asset_turnover,
-    _inventory_turnover,
-    _dso,
-    _eps_basic,
-    _eps_diluted,
-    _book_value_per_share,
-    _fcf_per_share,
-    _share_count,
+    ("gross_margin", _gross_margin),
+    ("operating_margin", _operating_margin),
+    ("net_margin", _net_margin),
+    ("roa", _roa),
+    ("roe", _roe),
+    ("roic", _roic),
+    ("revenue_growth_yoy", _revenue_growth),
+    ("earnings_growth_yoy", _earnings_growth),
+    ("ocf_growth_yoy", _ocf_growth),
+    ("growth_acceleration", _growth_acceleration),
+    ("current_ratio", _current_ratio),
+    ("quick_ratio", _quick_ratio),
+    ("debt_to_equity", _debt_to_equity),
+    ("net_debt", _net_debt),
+    ("interest_coverage", _interest_coverage),
+    ("fcf", _fcf),
+    ("fcf_margin", _fcf_margin),
+    ("accruals", _accruals),
+    ("asset_turnover", _asset_turnover),
+    ("inventory_turnover", _inventory_turnover),
+    ("dso", _dso),
+    ("eps_basic", _eps_basic),
+    ("eps_diluted", _eps_diluted),
+    ("book_value_per_share", _book_value_per_share),
+    ("fcf_per_share", _fcf_per_share),
+    ("share_count", _share_count),
 ]
+
+# key -> metric fn, and the ordered key list for endpoint validation / discovery.
+_METRICS_BY_KEY = dict(_METRICS)
+METRIC_KEYS = tuple(key for key, _ in _METRICS)
 
 
 def compute_metrics(
@@ -754,7 +765,7 @@ def compute_metrics(
         cik=cik,
         fiscal_year=fiscal_year,
         fiscal_period=fiscal_period,
-        metrics=[fn(ctx) for fn in _METRICS],
+        metrics=[fn(ctx) for _, fn in _METRICS],
     )
 
 
@@ -816,3 +827,222 @@ def metric_periods(facts: list[RawFact]) -> list[dict]:
                 out.append({"year": year, "period": "Q" + str(i), "period_end": end})
     out.sort(key=lambda p: p["period_end"], reverse=True)
     return out
+
+
+# --------------------------------------------------------------------------------------
+# Metric history & Tier-2 trend signals (Phase 1b)
+# --------------------------------------------------------------------------------------
+
+_QUARTERLY_WINDOW = 8  # trailing points a windowed signal considers by default (quarterly)
+_ANNUAL_WINDOW = 5  # trailing points for annual-frequency history
+_USABLE = ("ok", "approximate")  # a gap (na/nm) contributes no value to a signal
+
+
+def _usable_values(points: list[MetricSeriesPoint], window: int | None) -> list[float]:
+    """The non-gap values in the trailing `window` points (None window = whole series)."""
+    tail = points[-window:] if window else points
+    return [p.value for p in tail if p.value is not None and p.status in _USABLE]
+
+
+def _usable_pairs(
+    points: list[MetricSeriesPoint], window: int | None
+) -> list[tuple[str, float]]:
+    """(period_end, value) for non-gap, dated points in the trailing window."""
+    tail = points[-window:] if window else points
+    return [
+        (p.period_end, p.value)
+        for p in tail
+        if p.value is not None and p.status in _USABLE and p.period_end
+    ]
+
+
+def _sig_expansion(points: list[MetricSeriesPoint], unit: str, window: int) -> TrendSignal:
+    vals = _usable_values(points, window)
+    if len(vals) < 2:
+        return TrendSignal(
+            key="expansion", label="Change over window", value=None, unit=unit,
+            status="nm", reason="need at least two periods in the window", window=len(vals),
+        )
+    delta = vals[-1] - vals[0]
+    direction = "expanding" if delta > 0 else "compressing" if delta < 0 else "flat"
+    return TrendSignal(
+        key="expansion", label="Change over window", value=delta, unit=unit, status="ok",
+        reason=f"{direction} over the last {len(vals)} periods", window=len(vals),
+    )
+
+
+def _sig_cagr(points: list[MetricSeriesPoint], window: int) -> TrendSignal:
+    pairs = _usable_pairs(points, window)
+    if len(pairs) < 2:
+        return TrendSignal(
+            key="cagr", label="CAGR", value=None, unit="ratio", status="na",
+            reason="need at least two dated periods", window=len(pairs),
+        )
+    (first_end, first), (last_end, last) = pairs[0], pairs[-1]
+    years = (date.fromisoformat(last_end) - date.fromisoformat(first_end)).days / 365.25
+    if years <= 0:
+        return TrendSignal(
+            key="cagr", label="CAGR", value=None, unit="ratio", status="na",
+            reason="window spans no time", window=len(pairs),
+        )
+    if first <= 0 or last <= 0:
+        # A non-positive endpoint (or a sign flip) makes a compound growth rate meaningless (R8).
+        return TrendSignal(
+            key="cagr", label="CAGR", value=None, unit="ratio", status="nm",
+            reason="CAGR needs positive start and end values", window=len(pairs),
+        )
+    return TrendSignal(
+        key="cagr", label="CAGR", value=(last / first) ** (1.0 / years) - 1.0, unit="ratio",
+        status="ok", reason=f"compound annual growth over ~{years:.1f} years", window=len(pairs),
+    )
+
+
+def _sig_acceleration(points: list[MetricSeriesPoint], unit: str, window: int) -> TrendSignal:
+    vals = _usable_values(points, window)
+    if len(vals) < 3:
+        return TrendSignal(
+            key="acceleration", label="Acceleration", value=None, unit=unit, status="nm",
+            reason="need at least three periods", window=len(vals),
+        )
+    accel = (vals[-1] - vals[-2]) - (vals[-2] - vals[-3])
+    direction = "accelerating" if accel > 0 else "decelerating" if accel < 0 else "steady"
+    return TrendSignal(
+        key="acceleration", label="Acceleration", value=accel, unit=unit, status="ok",
+        reason=f"latest change is {direction}", window=len(vals),
+    )
+
+
+def _sig_streak(points: list[MetricSeriesPoint]) -> TrendSignal:
+    # A streak lives in the trailing CONTIGUOUS run of non-gap points -- a gap breaks it (R9),
+    # so this walks back from the end and stops at the first gap rather than windowing.
+    run: list[float] = []
+    for p in reversed(points):
+        if p.value is not None and p.status in _USABLE:
+            run.append(p.value)
+        else:
+            break
+    run.reverse()
+    if len(run) < 2:
+        return TrendSignal(
+            key="streak", label="Streak", value=None, unit="count", status="nm",
+            reason="need at least two consecutive periods", window=len(run),
+        )
+    up = run[-1] > run[-2]
+    down = run[-1] < run[-2]
+    if not up and not down:
+        return TrendSignal(
+            key="streak", label="Streak", value=0.0, unit="count", status="ok",
+            reason="latest period is unchanged", window=len(run),
+        )
+    steps = 0
+    for i in range(len(run) - 1, 0, -1):
+        if (up and run[i] > run[i - 1]) or (down and run[i] < run[i - 1]):
+            steps += 1
+        else:
+            break
+    direction = "rising" if up else "falling"
+    return TrendSignal(
+        key="streak", label="Streak", value=float(steps), unit="count", status="ok",
+        reason=f"{steps} consecutive {direction} periods", window=len(run),
+    )
+
+
+def _sig_distance_from_peak(points: list[MetricSeriesPoint], window: int) -> TrendSignal:
+    vals = _usable_values(points, window)
+    if not vals:
+        return TrendSignal(
+            key="distance_from_peak", label="Distance from peak", value=None, unit="ratio",
+            status="na", reason="no values in the window", window=0,
+        )
+    peak, last = max(vals), vals[-1]
+    if abs(peak) < _NEAR_ZERO:
+        return TrendSignal(
+            key="distance_from_peak", label="Distance from peak", value=None, unit="ratio",
+            status="na", reason="trailing peak is zero/near-zero", window=len(vals),
+        )
+    dist = (last - peak) / abs(peak)  # <= 0; 0 means currently at the trailing peak
+    reason = (
+        "at the trailing peak"
+        if dist >= 0
+        else f"{-dist * 100:.1f}% below the {len(vals)}-period peak"
+    )
+    return TrendSignal(
+        key="distance_from_peak", label="Distance from peak", value=dist, unit="ratio",
+        status="ok", reason=reason, window=len(vals),
+    )
+
+
+def _trend_signals(points: list[MetricSeriesPoint], unit: str, window: int) -> list[TrendSignal]:
+    """The Tier-2 signal set over a metric's series (see docs/ROADMAP_METRICS.md Phase 1b).
+
+    Each signal skips gap points (na/nm) and never interpolates; insufficient history to cover
+    its window is na/nm, not a fabricated number.
+    """
+    return [
+        _sig_expansion(points, unit, window),
+        _sig_cagr(points, window),
+        _sig_acceleration(points, unit, window),
+        _sig_streak(points),
+        _sig_distance_from_peak(points, window),
+    ]
+
+
+def compute_metric_history(
+    facts: list[RawFact], cik: int, metric_key: str, frequency: MetricFrequency = "quarterly"
+) -> MetricHistory:
+    """One metric run across the company's whole history, oldest->newest, plus Tier-2 signals.
+
+    Reuses the same anchor/context machinery as `compute_metrics`: every point is computed
+    independently against the full (latest-filed) fact set, so the whole series shares one
+    consistent AS-RESTATED basis (R9) and each point satisfies R1. na/nm periods are emitted as
+    gap points (value None) and are skipped -- never interpolated -- by the signal functions
+    (R9). `metric_key` must be one of METRIC_KEYS; a KeyError is raised otherwise (the route
+    maps that to a client error).
+    """
+    fn = _METRICS_BY_KEY[metric_key]  # KeyError -> unknown metric
+    index = _index_concepts(facts)
+
+    want_fy = frequency == "annual"
+    periods = [p for p in metric_periods(facts) if (p["period"] == "FY") == want_fy]
+    periods.sort(key=lambda p: p["period_end"])  # oldest -> newest makes a readable series
+
+    points: list[MetricSeriesPoint] = []
+    rep: MetricValue | None = None
+    for p in periods:
+        anchor = _resolve_anchor(index, p["year"], p["period"])
+        if anchor is None:
+            continue
+        mv = fn(_Ctx(index, facts, anchor))
+        rep = rep or mv
+        points.append(
+            MetricSeriesPoint(
+                fiscal_year=p["year"],
+                fiscal_period=p["period"],
+                period_end=p["period_end"],
+                value=mv.value,
+                status=mv.status,
+                reason=mv.reason,
+                as_of=mv.as_of,
+            )
+        )
+
+    # label/unit/basis come from a representative computed value; only the (rare) no-history
+    # case has none, where we fall back to the key + neutral defaults.
+    label = rep.label if rep else metric_key
+    unit = rep.unit if rep else "ratio"
+    basis: MetricBasis = rep.basis if rep else "TTM"
+
+    window = _ANNUAL_WINDOW if want_fy else _QUARTERLY_WINDOW
+    signals = _trend_signals(points, unit, window) if points else []
+
+    return MetricHistory(
+        cik=cik,
+        metric=metric_key,
+        label=label,
+        unit=unit,
+        basis=basis,
+        restatement_basis="as-restated",
+        frequency=frequency,
+        points=points,
+        signals=signals,
+    )

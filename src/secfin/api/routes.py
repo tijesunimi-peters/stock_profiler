@@ -22,7 +22,9 @@ from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolv
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.metrics import (
+    METRIC_KEYS,
     compute_fy_metrics_with_trend,
+    compute_metric_history,
     compute_metrics,
     metric_periods,
 )
@@ -33,6 +35,8 @@ from secfin.normalize.schema import (
     FiscalPeriod,
     HoldingsSnapshot,
     InsiderTransaction,
+    MetricFrequency,
+    MetricHistory,
     RawFact,
     Statement,
     StatementType,
@@ -379,6 +383,43 @@ async def get_metric_periods(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
     return {"cik": cik, "periods": metric_periods(facts)}
+
+
+@public_router.get(
+    "/companies/{symbol}/metrics/{metric}/history",
+    response_model=MetricHistory,
+    tags=["Financials"],
+    summary="Get one metric's full history (series + trend signals) for a company",
+)
+async def get_metric_history(
+    symbol: str,
+    metric: str,
+    frequency: MetricFrequency = Query(
+        "quarterly", description="Series frequency: quarterly (finest) or annual (FY only)"
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> MetricHistory:
+    """One fundamental metric run across the company's whole history, oldest-first, plus
+    derived Tier-2 trend signals (CAGR, expansion, acceleration, streak, distance-from-peak).
+
+    Public and served cache-aside from the operational store, same as `/metrics` (single-company
+    history is NOT the cross-company analytical path). Every point is computed independently
+    against the latest-filed facts, so the series shares one labeled AS-RESTATED basis (R9) and
+    each point is point-in-time correct (R1); na/nm periods are gap points (`value` null), never
+    interpolated. Each point carries its calendar `period_end` so a future multi-company overlay
+    can align on it (R10). An unknown `metric` is a 404; a known company with no computable
+    history returns 200 with empty `points`/`signals` (distinct from an unknown ticker's 404).
+    """
+    if metric not in METRIC_KEYS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown metric '{metric}'. Valid metrics: {', '.join(METRIC_KEYS)}.",
+        )
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    return compute_metric_history(facts, cik, metric, frequency)
 
 
 @public_router.get(
