@@ -699,6 +699,37 @@ async def get_institutional_activity(
 
 
 @router.get(
+    "/companies/{symbol}/institutional-periods",
+    tags=["Institutional Ownership"],
+    summary="List 13F quarter-ends with holdings data for a company (issuer axis)",
+)
+async def get_institutional_periods(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """The quarter-ends for which some manager has reported holding this issuer, newest
+    first -- the authoritative axis for the issuer-view period selector (mirrors
+    `metric-periods` for Fundamentals). Feed one of these back as `period=` to
+    `/institutional-holders` or `/institutional-activity`.
+
+    An empty `periods` list is a valid result, not an error: it carries the same
+    ambiguity as an empty holder list (`_ISSUER_CENTRIC_CAVEATS`) -- "no manager reported
+    this issuer" vs. "no quarter ingested yet for any manager holding it".
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "periods": holdings_repo.issuer_periods(cusips),
+        "caveats": _ISSUER_CENTRIC_CAVEATS,
+    }
+
+
+@router.get(
     "/managers/{manager_cik}/holdings",
     response_model=HoldingsSnapshot,
     tags=["Institutional Ownership"],
@@ -798,6 +829,30 @@ async def get_manager_activity(
         "to_period": current.report_period,
         "caveats": _13F_CAVEATS,
         "activity": deltas,
+    }
+
+
+@router.get(
+    "/managers/{manager_cik}/periods",
+    tags=["Institutional Ownership"],
+    summary="List 13F quarter-ends with holdings data for a manager (manager axis)",
+)
+async def get_manager_periods(
+    manager_cik: int,
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """The quarter-ends for which this manager has a cached 13F snapshot, newest first --
+    the authoritative axis for the manager-profile period selector. Feed one of these back
+    as `period=` to `/managers/{manager_cik}/holdings` or `.../activity`.
+
+    Served straight from the operational store (no SEC call): an empty list means nothing
+    has been ingested for this manager yet, NOT that the manager never filed. See
+    `_13F_CAVEATS` for the standing snapshot caveats.
+    """
+    return {
+        "manager_cik": manager_cik,
+        "periods": holdings_repo.manager_periods(manager_cik),
+        "caveats": _13F_CAVEATS,
     }
 
 

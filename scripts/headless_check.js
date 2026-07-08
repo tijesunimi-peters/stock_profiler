@@ -17,6 +17,8 @@ const PAGES = process.env.PAGES
     })
   : [
       ["company", "/company/AAPL"],
+      ["institutional", "/company/AAPL?tab=institutional"],
+      ["manager", "/manager/1067983"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];

@@ -227,6 +227,25 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             return None
         return row[0] or None
 
+    def manager_periods(self, manager_cik: int) -> list[str]:
+        cur = self._conn.execute(
+            "SELECT report_period FROM holdings_snapshots WHERE manager_cik = ? "
+            "ORDER BY report_period DESC",
+            (manager_cik,),
+        )
+        return [row[0] for row in cur.fetchall()]
+
+    def issuer_periods(self, cusips: list[str]) -> list[str]:
+        if not cusips:
+            return []
+        placeholders = ",".join("?" for _ in cusips)
+        cur = self._conn.execute(
+            f"SELECT DISTINCT report_period FROM holdings WHERE cusip IN ({placeholders}) "
+            f"ORDER BY report_period DESC",
+            tuple(cusips),
+        )
+        return [row[0] for row in cur.fetchall()]
+
     def holders_of(self, cusips: list[str], report_period: str) -> list[IssuerHolder]:
         if not cusips:
             return []

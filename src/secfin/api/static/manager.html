@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Profin — Company</title>
+  <title>Profin — Manager</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,22 +41,9 @@
     <div class="co-search" id="search"></div>
 
     <div class="controls" id="controls" hidden>
-      <div class="controls-left">
-        <div class="segmented" id="tabs">
-          <button data-tab="fundamentals" class="on">Fundamentals</button>
-          <button data-tab="statements">Statements</button>
-          <button data-tab="insider">Insider</button>
-          <button data-tab="institutional">Institutional</button>
-          <button data-tab="beneficial">13D/G</button>
-        </div>
-        <div class="segmented" id="stmt-types" hidden>
-          <button data-stmt="income" class="on">Income</button>
-          <button data-stmt="balance">Balance</button>
-          <button data-stmt="cashflow">Cash Flow</button>
-        </div>
-      </div>
+      <div class="controls-left"></div>
       <div class="controls-right" id="period-control">
-        <span class="period-label" id="period-label">Period</span>
+        <span class="period-label" id="period-label">Quarter (13F)</span>
         <select class="period-select" id="period-select"></select>
       </div>
     </div>
@@ -69,6 +56,6 @@
 
   <script src="/static/script.js"></script>
   <script src="/static/app.js"></script>
-  <script src="/static/company.js"></script>
+  <script src="/static/manager.js"></script>
 </body>
 </html>

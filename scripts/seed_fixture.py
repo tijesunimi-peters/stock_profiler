@@ -16,8 +16,11 @@ from secfin.auth.keys import hash_api_key
 from secfin.normalize.schema import (
     BeneficialOwnership,
     BeneficialOwnershipFilingMeta,
+    HoldingsSnapshot,
     InsiderFilingMeta,
     InsiderTransaction,
+    InstitutionalHolding,
+    OtherManager13F,
 )
 from secfin.sec.companyfacts import flatten_all_taxonomies
 from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
@@ -25,6 +28,7 @@ from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
 )
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
+from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
@@ -143,6 +147,74 @@ def _seed_beneficial(db_path: str) -> None:
         repo.close()
 
 
+# Synthetic 13F holdings for the demo Institutional tab + Manager profile page. Three
+# managers holding AAPL (037833100, resolved in the fixture below) and Ally (02005N100,
+# deliberately left unresolved) across two consecutive quarters, so: the issuer/manager
+# period axes are non-empty, holders render, and the quarter-over-quarter diff yields real
+# New/Added/Reduced activity. Only these two CUSIPs are used, so resolve_snapshot_cusips
+# hits the seeded cusip cache instead of fetching company_tickers.json live -- keeping the
+# manager page (and its default newest-quarter activity diff) offline in the e2e profile,
+# same as the insider/13D-G tabs. Plausible but NOT real positions.
+_HOLDINGS_QUARTERS = ["2025-12-31", "2026-03-31"]  # newest last; the views default to newest
+# (manager_cik, name, {quarter: AAPL shares}); the second (Ally) line is a fixed smaller position.
+_HOLDINGS_MANAGERS = [
+    (1067983, "BERKSHIRE HATHAWAY INC", {"2025-12-31": 300_000_000, "2026-03-31": 280_000_000}),
+    (102909, "VANGUARD GROUP INC", {"2025-12-31": 1_250_000_000, "2026-03-31": 1_310_000_000}),
+    (93751, "STATE STREET CORP", {"2025-12-31": 590_000_000, "2026-03-31": 640_000_000}),
+]
+_AAPL_PRICE = 190.0  # rough $/share to derive a plausible position value
+
+
+def _seed_holdings(db_path: str) -> None:
+    repo = SQLiteHoldingsSnapshotRepository(db_path)
+    seeded = 0
+    try:
+        for i, (mcik, name, aapl_by_q) in enumerate(_HOLDINGS_MANAGERS):
+            ally_shares = float(5_000_000 + i * 1_000_000)
+            for qi, quarter in enumerate(_HOLDINGS_QUARTERS):
+                aapl_shares = float(aapl_by_q[quarter])
+                holdings = [
+                    InstitutionalHolding(
+                        cusip="037833100",
+                        issuer_name="APPLE INC",
+                        shares=aapl_shares,
+                        value=aapl_shares * _AAPL_PRICE,
+                    ),
+                    InstitutionalHolding(
+                        cusip="02005N100",
+                        issuer_name="ALLY FINL INC",
+                        shares=ally_shares,
+                        value=ally_shares * 35.0,
+                    ),
+                ]
+                # Give one manager a co-filer roster so the manager page's roster renders.
+                other = (
+                    [
+                        OtherManager13F(
+                            sequence_number=1, name="NATIONAL INDEMNITY CO", file_number="28-1234"
+                        )
+                    ]
+                    if mcik == 1067983
+                    else []
+                )
+                repo.upsert_snapshot(
+                    HoldingsSnapshot(
+                        manager_cik=mcik,
+                        manager_name=name,
+                        report_period=quarter,
+                        filed=quarter,
+                        accession=f"{mcik:010d}-26-00000{qi}",
+                        is_amendment=False,
+                        holdings=holdings,
+                        other_managers=other,
+                    )
+                )
+                seeded += 1
+        print(f"seeded 13F holdings: {seeded} snapshots across {len(_HOLDINGS_MANAGERS)} managers")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -185,6 +257,7 @@ def main() -> None:
 
     _seed_insider(db_path)
     _seed_beneficial(db_path)
+    _seed_holdings(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

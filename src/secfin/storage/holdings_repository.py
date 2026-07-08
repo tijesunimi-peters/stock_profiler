@@ -68,6 +68,30 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def manager_periods(self, manager_cik: int) -> list[str]:
+        """Every quarter-end this manager has a cached 13F snapshot for, newest first.
+
+        The manager-centric periods axis for a UI selector (mirrors the issuer-centric
+        `issuer_periods` below and the metrics engine's `metric_periods`): the set of
+        `period=` values `get_snapshot` / `/managers/{cik}/holdings` can actually answer.
+        An empty list means nothing has been ingested for this manager yet -- not that
+        the manager never filed.
+        """
+
+    @abstractmethod
+    def issuer_periods(self, cusips: list[str]) -> list[str]:
+        """Every quarter-end for which some manager reported holding any of `cusips`,
+        across ALL managers, newest first -- the issuer-centric periods axis, the
+        companion to `holders_of`'s point-in-time read.
+
+        A live indexed query over the `(cusip, report_period)` index, same as
+        `holders_of`. Empty `cusips` returns `[]`. An empty result carries the same
+        ambiguity as `holders_of`: "no manager reported this issuer" vs. "this quarter
+        hasn't been ingested for any manager yet" -- callers must surface that, not treat
+        it as a confirmed zero.
+        """
+
+    @abstractmethod
     def holders_of(self, cusips: list[str], report_period: str) -> list[IssuerHolder]:
         """Every manager holding any of `cusips` as of `report_period`, across ALL
         managers -- the issuer-centric inverse of `get_snapshot`'s manager-centric read.

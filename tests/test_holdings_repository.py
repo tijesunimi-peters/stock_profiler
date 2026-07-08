@@ -265,3 +265,43 @@ def test_re_upserting_replaces_joint_filer_roster_wholesale():
     fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
     assert [m.name for m in fetched.other_managers] == ["New Co"]
     repo.close()
+
+
+def test_manager_periods_returns_quarters_newest_first():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2025-12-31"))
+    repo.upsert_snapshot(_snapshot("2026-03-31"))
+    repo.upsert_snapshot(_snapshot("2025-06-30"))
+
+    assert repo.manager_periods(MANAGER_CIK) == ["2026-03-31", "2025-12-31", "2025-06-30"]
+    repo.close()
+
+
+def test_manager_periods_is_empty_for_an_unseen_manager():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31"))
+
+    assert repo.manager_periods(999999) == []  # nothing ingested for this manager
+    repo.close()
+
+
+def test_issuer_periods_is_distinct_across_managers_newest_first():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    other_cik = 1364742  # BlackRock, also holding APPLE the same quarter
+    repo.upsert_snapshot(_snapshot("2025-12-31"))  # BRK holds 037833100
+    repo.upsert_snapshot(_snapshot("2026-03-31"))  # BRK holds 037833100
+    repo.upsert_snapshot(
+        _snapshot("2026-03-31", manager_cik=other_cik, manager_name="BLACKROCK")
+    )  # BlackRock also holds 037833100 in 2026-03-31 -- must not duplicate the period
+
+    assert repo.issuer_periods(["037833100"]) == ["2026-03-31", "2025-12-31"]
+    repo.close()
+
+
+def test_issuer_periods_is_empty_for_an_unheld_cusip_or_no_cusips():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31"))
+
+    assert repo.issuer_periods(["00000000X"]) == []  # cusip nobody holds
+    assert repo.issuer_periods([]) == []  # nothing to look up
+    repo.close()

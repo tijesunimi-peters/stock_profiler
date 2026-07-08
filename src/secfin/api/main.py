@@ -217,6 +217,12 @@ async def company_hub(symbol: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "company.html")
 
 
+@app.get("/manager/{cik}", include_in_schema=False)
+async def manager_profile(cik: str) -> FileResponse:
+    # The 13F manager profile shell; manager.js reads {cik} from the path and calls the v1 API.
+    return FileResponse(STATIC_DIR / "manager.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

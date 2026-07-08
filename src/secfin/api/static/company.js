@@ -58,16 +58,25 @@
     cik: null,
     fyYears: [], // statement-layer FY years (for the Statements tab)
     fundPeriods: [], // {year, period, period_end} the metric engine can compute (Fundamentals)
+    instPeriods: null, // 13F quarter-ends with holdings data (Institutional); null = not loaded yet
     tab: "fundamentals",
     statement: "income",
     fundValue: null, // "year|period" selected on Fundamentals
     stmtValue: null, // "year|FY" selected on Statements
+    instValue: null, // quarter-end string selected on Institutional
   };
 
   function monthYear(iso) {
     if (!iso) return "";
     var p = iso.split("-");
     return MONTHS[parseInt(p[1], 10) - 1] + " " + p[0];
+  }
+
+  // A 13F quarter-end ("2026-03-31") -> "Mar 31, 2026" for the period selector / captions.
+  function quarterLabel(iso) {
+    if (!iso) return "";
+    var p = iso.split("-");
+    return MONTHS[parseInt(p[1], 10) - 1] + " " + parseInt(p[2], 10) + ", " + p[0];
   }
 
   // ---------- init ----------
@@ -125,7 +134,7 @@
         }
         $("controls").hidden = false;
         applyTabFromUrl();
-        populatePeriodSelect();
+        updatePeriodControl();
         render();
       },
       function () {
@@ -133,7 +142,7 @@
         state.fundPeriods = [];
         $("controls").hidden = false;
         applyTabFromUrl();
-        populatePeriodSelect();
+        updatePeriodControl();
         render();
       }
     );
@@ -143,11 +152,22 @@
   // and lets the e2e check target a tab directly).
   function applyTabFromUrl() {
     var t = new URLSearchParams(location.search).get("tab");
-    if (["fundamentals", "statements", "insider", "beneficial"].indexOf(t) !== -1) state.tab = t;
+    if (["fundamentals", "statements", "insider", "institutional", "beneficial"].indexOf(t) !== -1) state.tab = t;
     var btn = document.querySelector('#tabs button[data-tab="' + state.tab + '"]');
     if (btn) setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
-    $("period-control").hidden = NON_PERIOD_TABS.indexOf(state.tab) !== -1;
+  }
+
+  // Show/populate the shared period picker for the active tab. Insider/13D-G have no period.
+  // Institutional IS a period tab, but on an async axis (institutional-periods) that
+  // renderInstitutional loads and reveals once ready — so keep the control hidden here.
+  function updatePeriodControl() {
+    if (NON_PERIOD_TABS.indexOf(state.tab) !== -1 || state.tab === "institutional") {
+      $("period-control").hidden = true;
+      return;
+    }
+    $("period-control").hidden = false;
+    populatePeriodSelect();
   }
 
   // ---------- period control ----------
@@ -163,6 +183,13 @@
         })
         .join("");
       if (state.fundValue) sel.value = state.fundValue;
+    } else if (state.tab === "institutional") {
+      // Axis is the 13F quarter-ends holdings exist for; value IS the quarter-end string.
+      $("period-label").textContent = "Quarter (13F)";
+      sel.innerHTML = (state.instPeriods || [])
+        .map(function (q) { return '<option value="' + P.esc(q) + '">' + P.esc(quarterLabel(q)) + "</option>"; })
+        .join("");
+      if (state.instValue) sel.value = state.instValue;
     } else {
       $("period-label").textContent = "Fiscal year";
       sel.innerHTML = state.fyYears.map(function (y) { return '<option value="' + y + '|FY">FY ' + y + "</option>"; }).join("");
@@ -172,6 +199,7 @@
 
   function onPeriodChange(e) {
     if (state.tab === "fundamentals") state.fundValue = e.target.value;
+    else if (state.tab === "institutional") state.instValue = e.target.value;
     else state.stmtValue = e.target.value;
     render();
   }
@@ -202,9 +230,7 @@
     state.tab = btn.getAttribute("data-tab");
     setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
-    // Insider / 13D-G are bounded by a filing limit, not a period -- hide the period picker.
-    $("period-control").hidden = NON_PERIOD_TABS.indexOf(state.tab) !== -1;
-    if (NON_PERIOD_TABS.indexOf(state.tab) === -1) populatePeriodSelect(); // axis differs per tab
+    updatePeriodControl(); // shows/populates the picker for the tab's own axis (or hides it)
     render();
   }
   function onStmtClick(e) {
@@ -226,6 +252,7 @@
     if (state.tab === "fundamentals") renderFundamentals();
     else if (state.tab === "statements") renderStatements();
     else if (state.tab === "insider") renderInsider();
+    else if (state.tab === "institutional") renderInstitutional();
     else renderBeneficial();
   }
 
@@ -281,6 +308,166 @@
       '<p class="stmt-caption">Schedule 13D/13G (5%+ ownership) as filed · structured-XML filings ' +
       "only (~mid-2025 on) · 13D = activist, 13G = passive. As-reported, not derived.</p>"
     );
+  }
+
+  // ---------- Institutional (13F) ownership — issuer view ----------
+
+  var ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited", unchanged: "Unchanged" };
+
+  // Fetch the 13F quarter-end axis once, memoized on state. Distinct from Fundamentals
+  // (prefetched on load): this loads on demand so users who never open the tab don't pay
+  // for it. Returns a promise that resolves once state.instPeriods is populated.
+  var instAxisPromise = null;
+  function ensureInstPeriods() {
+    if (state.instPeriods !== null) return Promise.resolve();
+    if (instAxisPromise) return instAxisPromise;
+    instAxisPromise = P.api("/companies/" + encodeURIComponent(symbol) + "/institutional-periods").then(
+      function (res) {
+        state.instPeriods = res.periods || [];
+        if (state.instPeriods.length && !state.instValue) state.instValue = state.instPeriods[0];
+      },
+      function (err) { instAxisPromise = null; throw err; } // let a retry re-fetch
+    );
+    return instAxisPromise;
+  }
+
+  function renderInstitutional() {
+    $("legend").innerHTML = "";
+    $("disclosure").innerHTML = P.disclosure(["institutional_13f", "not_advice"]);
+    $("period-control").hidden = true; // revealed once the async axis loads
+    $("view").innerHTML = P.states.loading({ title: "Loading 13F quarters" });
+    ensureInstPeriods().then(
+      function () {
+        if (!state.instPeriods.length) {
+          $("view").innerHTML = P.states.empty({
+            title: "No 13F holdings ingested",
+            copy: "No manager's 13F holdings have been ingested for this issuer yet. Read as " +
+              "outside coverage, not zero institutional ownership — 13F is a ~45-day-lagged " +
+              "quarter-end snapshot, and a quarter is only visible here once ingested.",
+          });
+          return;
+        }
+        populatePeriodSelect();
+        $("period-control").hidden = false;
+        renderInstitutionalData();
+      },
+      function (err) {
+        if (err.status === 401) {
+          P.mountNeedsKey($("view"), renderInstitutional);
+        } else if (err.status === 404) {
+          // _cusips_for_issuer 404s when no CUSIP has resolved to this issuer yet.
+          $("view").innerHTML = P.states.empty({
+            title: "No resolved CUSIP",
+            copy: "This issuer's CUSIP hasn't been resolved from any 13F filing yet, so its " +
+              "institutional holders can't be looked up. See the Coverage page for resolution rates.",
+          });
+        } else {
+          $("view").innerHTML = P.states.error({ copy: "Couldn't load 13F quarters (" + (err.status || "network") + ")." });
+        }
+      }
+    );
+  }
+
+  function renderInstitutionalData() {
+    var period = state.instValue;
+    $("view").innerHTML = P.states.loading({ title: "Loading holders for " + quarterLabel(period) });
+    var base = "/companies/" + encodeURIComponent(symbol);
+    Promise.all([
+      P.api(base + "/institutional-holders?period=" + encodeURIComponent(period)),
+      P.api(base + "/institutional-activity?period=" + encodeURIComponent(period)),
+    ]).then(
+      function (res) {
+        $("view").innerHTML = institutionalView(
+          period,
+          res[0].holders || [],
+          res[1].activity || [],
+          res[1].from_period,
+          res[0].caveats || []
+        );
+      },
+      function (err) {
+        if (err.status === 401) P.mountNeedsKey($("view"), renderInstitutional);
+        else $("view").innerHTML = P.states.error({ copy: "Couldn't load 13F holdings (" + (err.status || "network") + ")." });
+      }
+    );
+  }
+
+  function institutionalView(period, holders, activity, fromPeriod, caveats) {
+    return holdersSection(period, holders) + activitySection(period, fromPeriod, activity) + caveatsBlock(caveats);
+  }
+
+  function managerLink(cik, name) {
+    return '<a href="/manager/' + encodeURIComponent(cik) + '">' + P.esc(name || "CIK " + cik) + "</a>";
+  }
+
+  function holdersSection(period, holders) {
+    if (!holders.length) {
+      return "<h3 class=\"metric-group-title\">Holders as of " + P.esc(quarterLabel(period)) + "</h3>" +
+        P.states.empty({ title: "No holders for this quarter", copy: "No manager reported holding this issuer for the selected quarter." });
+    }
+    var body = holders.map(function (h) {
+      return (
+        "<tr>" +
+        '<td class="stmt-label">' + managerLink(h.manager_cik, h.manager_name) + "</td>" +
+        '<td class="stmt-tag">' + P.esc(h.cusip || "—") + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(h.shares != null ? P.fmt.shares(h.shares) : "—") + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(h.value != null ? P.fmt.usd(h.value) : "—") + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    return (
+      '<h3 class="metric-group-title">Holders as of ' + P.esc(quarterLabel(period)) + "</h3>" +
+      '<table class="stmt-table"><thead><tr><th>Manager</th><th>CUSIP</th>' +
+      '<th class="amt">Shares</th><th class="amt">Value</th></tr></thead><tbody>' + body + "</tbody></table>" +
+      '<p class="stmt-caption">Reported 13F positions across all ingested managers · quarter-end ' +
+      "snapshot, not real-time · long positions in 13(f) securities only.</p>"
+    );
+  }
+
+  function activitySection(period, fromPeriod, activity) {
+    var head = '<h3 class="metric-group-title" style="margin-top:26px">Derived activity vs. prior quarter</h3>';
+    if (!activity.length) {
+      return head + P.states.empty({
+        title: "No prior-quarter comparison",
+        copy: "No prior 13F quarter is ingested to diff against — the earliest ingested quarter " +
+          "has nothing to compare to. This is a DERIVED view, never reported trades.",
+      });
+    }
+    var body = activity.map(function (a) {
+      var before = a.shares_before != null ? P.fmt.shares(a.shares_before) : "—";
+      var after = a.shares_after != null ? P.fmt.shares(a.shares_after) : "—";
+      var chg = a.shares_change != null ? signedShares(a.shares_change) : "—";
+      return (
+        "<tr>" +
+        '<td class="stmt-label">' + managerLink(a.manager_cik, a.manager_name) + "</td>" +
+        "<td>" + P.esc(ACTION_LABEL[a.action] || a.action || "—") + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(before) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
+        '<td class="amt stmt-amt">' + P.esc(chg) + "</td>" +
+        "</tr>"
+      );
+    }).join("");
+    return (
+      head +
+      '<table class="stmt-table"><thead><tr><th>Manager</th><th>Action</th>' +
+      '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
+      "</tr></thead><tbody>" + body + "</tbody></table>" +
+      '<p class="stmt-caption">DERIVED by diffing ' + P.esc(quarterLabel(fromPeriod)) + " → " +
+      P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
+      "opened/closed appear as New/Exited.</p>"
+    );
+  }
+
+  // Signed share delta with the U+2212 minus glyph (§2), e.g. "+2.0M" / "−1.5M".
+  function signedShares(v) {
+    if (v === 0) return "0";
+    return (v > 0 ? "+" : "−") + P.fmt.shares(Math.abs(v));
+  }
+
+  function caveatsBlock(caveats) {
+    if (!caveats || !caveats.length) return "";
+    var items = caveats.map(function (c) { return "<li>" + P.esc(c) + "</li>"; }).join("");
+    return '<details class="disclosure" style="margin-top:18px"><summary>13F caveats (always apply)</summary><ul>' + items + "</ul></details>";
   }
 
   var INSIDER_LIMIT = 25;

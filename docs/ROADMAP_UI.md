@@ -121,18 +121,23 @@ N/A/APPROX (average balance needs the year-ago quarter). The Statements tab stay
       errors). *(Fixed a latent bug along the way: `[hidden]` was being overridden by our flex
       `display` rules, so tab-switching didn't hide the statement/period controls — now
       `[hidden]{display:none!important}` in app.css.)*
-- [ ] **Institutional ownership — issuer view** *(ready, but needs a periods axis first)* — "who
-      holds this stock" + DERIVED buy/sell. Consumes `GET /v1/companies/{symbol}/institutional-holders`
-      and `.../institutional-activity` (both take an explicit quarter-end `period=`). **Blocker for
-      a real period selector:** there's no endpoint listing which quarters have 13F data for an
-      issuer — needs a new axis endpoint (mirror `metric-periods`, e.g.
-      `GET /companies/{symbol}/institutional-periods`) before this can ship without hardcoding a
-      quarter. Must render the always-present `caveats` from the response (derived-not-reported,
-      long-only, ~45-day lag, empty-list ambiguity).
-- [ ] **Manager (13F filer) profile** *(ready, same periods-axis gap)* — a sibling page
-      `/manager/{cik}`: one manager's holdings + derived activity + co-filer roster. Consumes
-      `GET /v1/managers/{manager_cik}/holdings` and `.../activity`. Same missing-periods-axis issue
-      (no endpoint lists a manager's available quarters).
+- [x] **Institutional ownership — issuer view** — an **Institutional tab** on the company hub
+      (`/company/{symbol}?tab=institutional`): "who holds this stock" + DERIVED buy/sell. The
+      quarter selector is driven by the new **`GET /v1/companies/{symbol}/institutional-periods`**
+      axis endpoint (mirrors `metric-periods`; lazy-loaded on first tab open, own axis alongside
+      Fundamentals/Statements). Renders a Holders table (manager → `/manager/{cik}`, shares,
+      value) and a DERIVED activity table (action, shares before/after, signed change) from
+      `.../institutional-holders` + `.../institutional-activity` (both `period=`). The
+      always-present `caveats` (derived-not-reported, long-only, ~45-day lag, empty-list
+      ambiguity) render in a collapsible block. Verified headless (zero console errors).
+- [x] **Manager (13F filer) profile** — a sibling page `/manager/{cik}`
+      (`static/manager.{html,js}`): one manager's holdings snapshot + derived activity +
+      co-filer roster, with a quarter selector driven by the new
+      **`GET /v1/managers/{manager_cik}/periods`** axis. Consumes `.../holdings` and
+      `.../activity`; resolved issuer CIKs link back to `/company/{cik}`. Masthead resolves the
+      manager name from the holdings response. `scripts/seed_fixture.py` seeds 3 managers ×
+      2 quarters of AAPL/Ally holdings so both this page and the Institutional tab render offline
+      in the e2e profile. Verified headless (zero console errors).
 - [x] **Beneficial ownership (13D/13G)** — a **13D/G tab** on the hub, gated (`limit`-based, no
       period). Consumes `GET /v1/companies/{symbol}/beneficial-ownership?limit=25`; renders a table
       (filed, owner, 13D/13G form, % of class, shares, event date) + the structured-XML ~mid-2025
@@ -152,13 +157,14 @@ The `Profin` key helpers (`getKey/setKey/mountNeedsKey`) remain as a dormant fal
 while pages are ungated).
 
 - [x] **Beneficial ownership (13D/13G)** — shipped (see above).
-- [ ] **Institutional ownership — issuer view** — needs a 13F **`institutional-periods`** axis
-      endpoint (mirror `metric-periods`) before its period selector; renders keyless via the bypass.
-- [ ] **Manager (13F filer) profile** *(`/manager/{cik}`)* — same missing periods-axis endpoint.
+- [x] **Institutional ownership — issuer view** — shipped: the Institutional tab, backed by the
+      new `institutional-periods` axis endpoint; renders keyless via the same-origin bypass.
+- [x] **Manager (13F filer) profile** *(`/manager/{cik}`)* — shipped, backed by the new
+      `managers/{cik}/periods` axis endpoint.
 
-**Next Phase 2 step:** add the 13F **periods-axis endpoint(s)** (issuer + manager), then build the
-Institutional ownership tab and the Manager profile page against them — mirrors how `metric-periods`
-unblocked the Fundamentals period selector.
+**Phase 2 is complete.** All Ownership & flows pages (Insider, Institutional issuer view, Manager
+profile, 13D/G) are shipped and headless-verified. **Next: Phase 3 — Comparison & trends** (Company
+Comparison is backend-ready/designed; Metric trend/history is blocked on Metrics Phase 1b).
 
 ## Phase 3 — Comparison & trends
 
@@ -191,10 +197,10 @@ unblocked the Fundamentals period selector.
 | Company Fundamentals | 1 | ready | `/metrics` |
 | Statements viewer | 1 | ready | `/statements`, `/periods` |
 | Data coverage/quality | 1 | ready | `/cusip-resolution-stats` |
-| Insider trades | 2 | ready | `/insider-trades` |
-| Institutional ownership (issuer) | 2 | ready | `/institutional-holders`, `/institutional-activity` |
-| Manager (13F) profile | 2 | ready | `/managers/{cik}/holdings`, `/activity` |
-| Beneficial ownership (13D/G) | 2 | blocked | *(endpoint pending — M2)* |
+| Insider trades | 2 | built | `/insider-trades` |
+| Institutional ownership (issuer) | 2 | built | `/institutional-periods`, `/institutional-holders`, `/institutional-activity` |
+| Manager (13F) profile | 2 | built | `/managers/{cik}/periods`, `/holdings`, `/activity` |
+| Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
 | Company Comparison | 3 | ready | `/metrics` ×N |
 | Metric trend/history | 3 | blocked | *(Metrics Phase 1b)* |
 | Screening | 4 | blocked | *(M4)* |
