@@ -55,9 +55,10 @@ from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 
-# `public_router` holds the two read-only endpoints the public Data Explorer
-# (`/explorer`, static/explorer.js) calls directly from browser JS with no API key --
-# `GET .../statements/{statement}` and `GET .../periods` below. Everything else lives on
+# `public_router` holds the read-only endpoints the public Data Explorer / Company Hub
+# (`/explorer`, `/company/{symbol}`, static/explorer.js + company.js) call directly from
+# browser JS with no API key -- `GET .../statements/{statement}`, `GET .../periods`,
+# `GET .../metrics`, and `GET .../metric-periods` below. Everything else lives on
 # `router`, which api/main.py includes with `Depends(require_api_key)`. Keep this split
 # deliberate: a new endpoint defaults to gated (`router`) unless it's specifically meant
 # to be part of the public demo surface. See api/auth.py.
@@ -315,7 +316,7 @@ async def get_periods(
     }
 
 
-@router.get(
+@public_router.get(
     "/companies/{symbol}/metrics",
     response_model=CompanyMetrics,
     tags=["Financials"],
@@ -354,7 +355,7 @@ async def get_metrics(
     return result
 
 
-@router.get(
+@public_router.get(
     "/companies/{symbol}/metric-periods",
     tags=["Financials"],
     summary="List fiscal periods the metrics engine can compute for a company",
