@@ -231,6 +231,93 @@
     );
   }
 
+  // ---------- trend chart (Phase 1b: fuller multi-period history + Tier-2 signals) ----------
+
+  // Format a value by its unit family (shared by the y-axis and the signal rows). metricKey
+  // lets a "ratio" render as a percentage vs a multiple, same rule as fmtMetric/PERCENT_METRICS.
+  function unitFmt(v, unit, metricKey) {
+    if (v === null || v === undefined) return "—";
+    if (unit === "ratio") return metricKey && PERCENT_METRICS[metricKey] ? pct(v) : (metricKey ? mult(v) : pct(v));
+    if (unit === "USD") return usd(v);
+    if (unit === "USD/shares") return perShare(v);
+    if (unit === "shares") return shares(v);
+    if (unit === "days") return days(v);
+    if (unit === "count") return String(Math.round(v));
+    return String(v);
+  }
+
+  function trendSignalRow(s) {
+    var valTxt = s.status === "na" ? "N/A" : s.status === "nm" ? "N/M" : unitFmt(s.value, s.unit);
+    var chip = s.status === "ok" ? "" : statusChip(s.status);
+    return (
+      '<div class="trend-signal">' +
+      '<span class="trend-signal-label">' + esc(s.label) + "</span>" +
+      '<span class="trend-signal-value">' + esc(valTxt) + "</span>" + chip +
+      '<span class="trend-signal-reason">' + esc(s.reason || "") + "</span>" +
+      "</div>"
+    );
+  }
+
+  // history = MetricHistory {points:[{period_end,value,status}], signals:[TrendSignal], unit,
+  // metric, restatement_basis, frequency}. Draws a self-scaling line over the numeric points,
+  // breaking at na/nm gaps (never interpolating), with min/max y labels, first/last period-year
+  // x labels, an as-restated/frequency caption + gap note, and the Tier-2 signal annotations.
+  function trendChart(history) {
+    var pts = history.points || [];
+    var W = 320, H = 90, PADX = 4, PADT = 8, PADB = 8;
+    var vals = pts.map(function (p) {
+      return p && p.value !== null && p.value !== undefined && p.status !== "na" && p.status !== "nm"
+        ? p.value
+        : null;
+    });
+    var present = vals.filter(function (v) { return v !== null; });
+    var hasGap = vals.some(function (v) { return v === null; });
+    var body;
+    if (present.length < 2) {
+      body = '<div class="trend-empty">Not enough history to chart (need at least two comparable periods).</div>';
+    } else {
+      var min = Math.min.apply(null, present), max = Math.max.apply(null, present);
+      var span = max - min || 1;
+      var n = vals.length;
+      var xat = function (i) { return PADX + (n <= 1 ? 0 : (i * (W - 2 * PADX)) / (n - 1)); };
+      var yat = function (v) { return PADT + (1 - (v - min) / span) * (H - PADT - PADB); };
+      var segs = [], cur = [], lastI = -1;
+      vals.forEach(function (v, i) {
+        if (v === null) { if (cur.length) segs.push(cur); cur = []; return; }
+        cur.push(xat(i).toFixed(1) + "," + yat(v).toFixed(1));
+        lastI = i;
+      });
+      if (cur.length) segs.push(cur);
+      var polys = segs
+        .filter(function (s) { return s.length >= 2; })
+        .map(function (s) { return '<polyline points="' + s.join(" ") + '"/>'; })
+        .join("");
+      var dot = lastI >= 0
+        ? '<circle cx="' + xat(lastI).toFixed(1) + '" cy="' + yat(vals[lastI]).toFixed(1) + '" r="2.5"/>'
+        : "";
+      var yr = function (p) { return p && p.period_end ? p.period_end.slice(0, 4) : ""; };
+      body =
+        '<div class="trend-plot">' +
+        '<div class="trend-yaxis"><span>' + esc(unitFmt(max, history.unit, history.metric)) +
+        "</span><span>" + esc(unitFmt(min, history.unit, history.metric)) + "</span></div>" +
+        '<svg class="trend-svg" viewBox="0 0 ' + W + " " + H +
+        '" preserveAspectRatio="none" aria-hidden="true">' + polys + dot + "</svg>" +
+        "</div>" +
+        '<div class="trend-xaxis"><span>' + esc(yr(pts[0])) + "</span><span>" +
+        esc(yr(pts[pts.length - 1])) + "</span></div>";
+    }
+    var restated = history.restatement_basis === "as-restated" ? "As-restated" : esc(history.restatement_basis);
+    var caption = restated + " · " + esc(history.frequency || "") +
+      (hasGap ? " · gaps = N/A or N/M periods (not interpolated)" : "");
+    var signals = (history.signals || []).map(trendSignalRow).join("");
+    return (
+      '<div class="trend-chart">' + body +
+      '<div class="trend-caption">' + caption + "</div>" +
+      (signals ? '<div class="trend-signals">' + signals + "</div>" : "") +
+      "</div>"
+    );
+  }
+
   // ---------- metric card (§6) ----------
 
   // mv = MetricValue; opts.formula = plain-language formula string (optional).
@@ -259,6 +346,12 @@
         spark = '<div class="spark-wrap">' + svg + '<span class="spark-label">' + esc(lbl) + "</span></div>";
       }
     }
+    // Optional expandable multi-period trend (Phase 1b). The body is filled lazily by the page
+    // (company.js) on first open from /metrics/{metric}/history -- keeps the card cheap by default.
+    var trendPanel = opts.trend
+      ? '<details class="trend-panel" data-metric="' + esc(mv.metric) +
+        '"><summary>Trend</summary><div class="trend-body"></div></details>'
+      : "";
     return (
       '<article class="metric-card' + (isNa ? " na" : "") + '">' +
       '<div class="metric-head"><span class="metric-name">' + esc(mv.label) + "</span>" + statusChip(mv.status) + "</div>" +
@@ -267,6 +360,7 @@
       spark +
       note +
       prov +
+      trendPanel +
       "</article>"
     );
   }
@@ -412,6 +506,7 @@
     statusChip: statusChip,
     statusLegend: statusLegend,
     sparkline: sparkline,
+    trendChart: trendChart,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

@@ -101,3 +101,77 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   font-size: 10px;
   color: var(--mono-muted);
 }
+
+/* ---------- expandable metric trend (Phase 1b) ---------- */
+
+.trend-panel { margin-top: 8px; }
+.trend-panel summary {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+.trend-panel summary::-webkit-details-marker { display: none; }
+.trend-panel summary::before { content: "+ "; }
+.trend-panel[open] summary::before { content: "\2212 "; }
+
+.trend-body { margin-top: 8px; }
+.trend-chart {
+  padding: 12px 14px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.trend-plot { display: flex; gap: 8px; }
+.trend-yaxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 44px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--mono-muted);
+}
+/* min-width:0 lets the SVG shrink inside the flex row (an inline SVG's intrinsic width would
+ * otherwise force it to overflow narrow cards); width:100% + viewBox scales it to fit. */
+.trend-svg { flex: 1; min-width: 0; width: 100%; height: 90px; display: block; }
+.trend-svg polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trend-svg circle { fill: var(--accent); }
+.trend-xaxis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding-left: 52px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--mono-muted);
+}
+.trend-empty { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); padding: 6px 0; }
+.trend-caption {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+}
+.trend-signals { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.trend-signal { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.trend-signal-label {
+  min-width: 92px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+}
+.trend-signal-value { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+.trend-signal-reason { color: var(--ink-soft); font-size: 11px; }

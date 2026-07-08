@@ -17,6 +17,7 @@ const PAGES = process.env.PAGES
     })
   : [
       ["company", "/company/AAPL"],
+      ["trend", "/company/AAPL?trend=net_margin"],
       ["institutional", "/company/AAPL?tab=institutional"],
       ["manager", "/manager/1067983"],
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],

@@ -177,18 +177,23 @@ profile, 13D/G) are shipped and headless-verified.
       `/company/{symbol}` page. **Descriptive only — no good/bad color, no winner** (§9.2). An
       "add a company" search + per-column remove keep the set editable (query-driven). Reachable
       via a new **Compare** nav link across the site. Verified headless (zero console errors).
-- [ ] **Metric trend / history** *(ready — backend shipped)* — deeper per-metric trend than the
-      card sparkline (streaks, CAGR, distance-from-peak). The Metrics **Phase 1b** backend is now
-      built: **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=quarterly|annual`**
-      returns the full series (gap-honest, one as-restated basis, R9/R10) plus the Tier-2
-      `signals` (expansion, cagr, acceleration, streak, distance-from-peak). Build the UI against
-      it: an expandable per-metric trend chart on the company hub with the signals as small
-      annotations; the "compare trajectories" mode then folds into the comparison page (align on
-      the calendar `period_end` each point carries — R10).
+- [~] **Metric trend / history** — *company-hub part shipped; `/compare` trajectory overlay is
+      the remaining follow-on.* Each Fundamentals metric card now has an expandable **Trend**
+      panel (`Profin.trendChart`, `app.js`) that lazily loads
+      **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=annual`** on first open and
+      renders a self-scaling multi-year line (gap-breaking, never interpolated; min/max + year
+      axis labels; as-restated/frequency caption — R9) plus the Tier-2 **signals** (expansion,
+      cagr, acceleration, streak, distance-from-peak) as annotations, flags riding along via the
+      status chip. Deep-linkable via `?trend=<metric>` (auto-opens one panel). Annual frequency by
+      default (universal — EPS is N/M across quarters; the intra-year quarterly sparkline already
+      covers within-year texture; a quarterly toggle is a noted future nicety). Verified headless
+      (zero console errors). **Remaining:** the `/compare` "compare trajectories" overlay — 2–3
+      companies' series on one calendar axis (align on the `period_end` each point carries — R10),
+      reusing `Profin.trendChart` + the same endpoint.
 
-**Next Phase 3 step:** build the **Metric trend/history UI** against the now-shipped
-`/metrics/{metric}/history` endpoint (fuller trend chart + Tier-2 signal annotations on the
-company hub; trajectory overlay on `/compare`).
+**Next Phase 3 step:** the **`/compare` "compare trajectories" overlay** — the only remaining
+Phase 3 sub-item. Reuse `Profin.trendChart` and `/metrics/{metric}/history`, overlay 2–3
+companies' series on one calendar axis (R10 alignment, R9 basis label, gaps break honestly).
 
 ## Phase 4 — Discovery & scale (blocked on backend)
 
@@ -216,7 +221,7 @@ company hub; trajectory overlay on `/compare`).
 | Manager (13F) profile | 2 | built | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 | Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
 | Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
-| Metric trend/history | 3 | ready | `/metrics/{metric}/history` |
+| Metric trend/history | 3 | built (hub); overlay pending | `/metrics/{metric}/history` |
 | Screening | 4 | blocked | *(M4)* |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
 | Public docs portal | 4 | n/a | *(M3)* |

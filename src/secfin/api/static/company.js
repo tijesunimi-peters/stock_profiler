@@ -547,15 +547,52 @@
         var html = CATEGORIES.map(function (cat) {
           var cards = cat[1]
             .filter(function (k) { return by[k]; })
-            .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k] }); })
+            .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k], trend: true }); })
             .join("");
           if (!cards) return "";
           return '<section class="metric-group"><h3 class="metric-group-title">' + P.esc(cat[0]) +
             '</h3><div class="card-grid">' + cards + "</div></section>";
         }).join("");
         $("view").innerHTML = banner + (html || P.states.empty({}));
+        wireTrendPanels();
       },
       function (err) { $("view").innerHTML = metricsError(err); }
+    );
+  }
+
+  // Expandable multi-year trend per metric card (Phase 1b). Lazy: the fuller chart +
+  // Tier-2 signals load from /metrics/{metric}/history only when a card's Trend panel is
+  // first opened. `?trend=<metric>` auto-opens one panel (shareable / e2e-targetable).
+  var pendingTrend = new URLSearchParams(location.search).get("trend");
+
+  function wireTrendPanels() {
+    document.querySelectorAll("#view .trend-panel[data-metric]").forEach(function (panel) {
+      panel.addEventListener("toggle", function () {
+        if (!panel.open || panel.getAttribute("data-loaded")) return;
+        panel.setAttribute("data-loaded", "1");
+        loadTrend(panel);
+      });
+    });
+    if (pendingTrend) {
+      var p = document.querySelector('#view .trend-panel[data-metric="' + pendingTrend + '"]');
+      pendingTrend = null; // one-shot: don't re-open when the period changes
+      if (p && !p.open) p.open = true; // fires 'toggle' -> loads
+    }
+  }
+
+  function loadTrend(panel) {
+    var metric = panel.getAttribute("data-metric");
+    var body = panel.querySelector(".trend-body");
+    body.innerHTML = P.states.loading({ title: "Loading trend", note: "" });
+    P.api("/companies/" + encodeURIComponent(symbol) + "/metrics/" + encodeURIComponent(metric) + "/history?frequency=annual").then(
+      function (hist) {
+        if (!hist.points || !hist.points.length) {
+          body.innerHTML = P.states.empty({ title: "No history", copy: "No annual history is on record for this metric yet." });
+          return;
+        }
+        body.innerHTML = P.trendChart(hist);
+      },
+      function (err) { body.innerHTML = P.states.error({ copy: "Couldn't load trend (" + (err.status || "network") + ")." }); }
     );
   }
 
