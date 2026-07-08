@@ -401,6 +401,23 @@
     );
   }
 
+  // ---------- position bar (§10: peer percentile — position, never a good/bad verdict) ----------
+
+  function ordinal(n) {
+    n = Math.round(n);
+    var s = ["th", "st", "nd", "rd"], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
+  // A horizontal 0-100 track with a marker at `percentile`. One accent on a neutral track --
+  // NO green/red: the bar shows WHERE a value sits among peers, not whether it's good.
+  function positionBar(percentile) {
+    if (percentile === null || percentile === undefined) return "";
+    var p = Math.max(0, Math.min(100, percentile));
+    return '<span class="pos-bar" role="img" aria-label="' + esc(ordinal(percentile)) +
+      ' percentile among peers"><span class="pos-marker" style="left:' + p.toFixed(1) + '%"></span></span>';
+  }
+
   // ---------- metric card (§6) ----------
 
   // mv = MetricValue; opts.formula = plain-language formula string (optional).
@@ -429,6 +446,15 @@
         spark = '<div class="spark-wrap">' + svg + '<span class="spark-label">' + esc(lbl) + "</span></div>";
       }
     }
+    // Optional peer position bar (Metrics Phase 2). opts.peer is a PeerRank; shown only where a
+    // rank exists. Percentile is POSITION within the SIC peer group, not a verdict.
+    var peer = "";
+    if (opts.peer && opts.peer.percentile !== null && opts.peer.percentile !== undefined) {
+      var pr = opts.peer;
+      peer = '<div class="peer-rank">' + positionBar(pr.percentile) +
+        '<span class="peer-label">' + esc(ordinal(pr.percentile)) + " pctile · " +
+        esc(pr.peer_count) + " peers · SIC " + esc(pr.peer_group) + "</span></div>";
+    }
     // Optional expandable multi-period trend (Phase 1b). The body is filled lazily by the page
     // (company.js) on first open from /metrics/{metric}/history -- keeps the card cheap by default.
     var trendPanel = opts.trend
@@ -440,6 +466,7 @@
       '<div class="metric-head"><span class="metric-name">' + esc(mv.label) + "</span>" + statusChip(mv.status) + "</div>" +
       '<div class="' + valueCls + '">' + esc(f.text) + "</div>" +
       '<div class="metric-basis">' + esc(mv.basis) + "</div>" +
+      peer +
       spark +
       note +
       prov +
@@ -591,6 +618,7 @@
     sparkline: sparkline,
     trendChart: trendChart,
     trajectoryChart: trajectoryChart,
+    positionBar: positionBar,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

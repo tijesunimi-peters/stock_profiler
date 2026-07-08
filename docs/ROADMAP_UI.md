@@ -225,7 +225,7 @@ docs portal (M3).
 | Landing | built | ready | ticker→CIK |
 | Data Explorer | built | ready | `/statements`, `/periods` |
 | Company hub | 1 | ready | (routing) |
-| Company Fundamentals | 1 | ready | `/metrics` |
+| Company Fundamentals | 1 | built | `/metrics`, `/metrics/{m}/history`, `/peers` |
 | Statements viewer | 1 | ready | `/statements`, `/periods` |
 | Data coverage/quality | 1 | ready | `/cusip-resolution-stats` |
 | Insider trades | 2 | built | `/insider-trades` |

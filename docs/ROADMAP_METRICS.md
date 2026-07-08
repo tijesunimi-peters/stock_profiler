@@ -310,8 +310,11 @@ Approach:
       through the ordinary SQLite repo (write path stays operational, per CLAUDE.md); the
       issuer-centric **`GET /v1/companies/{symbol}/peers`** endpoint reads those precomputed rows
       (no live DuckDB).
-- [ ] **Peer-rankings UI** (deferred follow-on) — surface percentiles on the company hub /
-      comparison against the `/peers` endpoint.
+- [x] **Peer-rankings UI** — each company-hub Fundamentals metric card shows a **peer position
+      bar** (`Profin.positionBar`) with "Nth pctile · k peers · SIC {group}" from `/peers`, fetched
+      alongside `/metrics` (best-effort — a peers miss never breaks the grid). Percentile is
+      position, not a verdict (one accent, no good/bad color — §9.2/§10); shown only where a rank
+      exists. Verified headless.
 - [ ] Feed peer-ranked metrics into Milestone 4 screening (shared query path, not a new one).
 
 ---

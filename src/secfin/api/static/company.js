@@ -540,24 +540,39 @@
       ? ""
       : '<p class="stmt-caption" style="margin:0 0 14px">Quarterly view — flow metrics are ' +
         'trailing-twelve-month (TTM) through ' + P.esc(sel.period) + "; EPS shows N/M (not summable across quarters).</p>";
-    P.api("/companies/" + encodeURIComponent(symbol) + "/metrics?year=" + sel.year + "&period=" + sel.period).then(
+    var base = "/companies/" + encodeURIComponent(symbol);
+    var metricsP = P.api(base + "/metrics?year=" + sel.year + "&period=" + sel.period);
+    // Peer ranks are supplementary — a failure/empty must not break the metric grid.
+    var peersP = P.api(base + "/peers?year=" + sel.year + "&period=" + sel.period)
+      .catch(function () { return { peers: [] }; });
+    Promise.all([metricsP, peersP]).then(
       function (res) {
         var by = {};
-        (res.metrics || []).forEach(function (m) { by[m.metric] = m; });
+        (res[0].metrics || []).forEach(function (m) { by[m.metric] = m; });
+        var peerBy = {};
+        (res[1].peers || []).forEach(function (p) { peerBy[p.metric] = p; });
         var html = CATEGORIES.map(function (cat) {
           var cards = cat[1]
             .filter(function (k) { return by[k]; })
-            .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k], trend: true }); })
+            .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k], trend: true, peer: peerBy[k] }); })
             .join("");
           if (!cards) return "";
           return '<section class="metric-group"><h3 class="metric-group-title">' + P.esc(cat[0]) +
             '</h3><div class="card-grid">' + cards + "</div></section>";
         }).join("");
-        $("view").innerHTML = banner + (html || P.states.empty({}));
+        $("view").innerHTML = banner + peerNote(res[1]) + (html || P.states.empty({}));
         wireTrendPanels();
       },
       function (err) { $("view").innerHTML = metricsError(err); }
     );
+  }
+
+  // A one-line honesty note shown above the grid when any peer bar is present.
+  function peerNote(peers) {
+    if (!peers || !peers.peers || !peers.peers.length) return "";
+    return '<p class="stmt-caption" style="margin:0 0 14px">Peer bars show each metric\'s percentile ' +
+      "within its " + P.esc(peers.peer_basis || "SIC") + " peer group — position among peers, not a " +
+      "good/bad verdict (for some metrics a higher value is not “better”). Ranks exclude N/A peers.</p>";
   }
 
   // Expandable multi-year trend per metric card (Phase 1b). Lazy: the fuller chart +

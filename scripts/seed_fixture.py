@@ -24,6 +24,7 @@ from secfin.normalize.schema import (
 )
 from secfin.sec.companyfacts import flatten_all_taxonomies
 from secfin.storage.company_profile_repository import CompanyProfile
+from secfin.storage.metric_rank_repository import MetricRankRow
 from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
 from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
@@ -32,6 +33,7 @@ from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfil
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
+from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 # A fixed demo API key so gated endpoints can be exercised offline / in the e2e profile.
@@ -238,6 +240,42 @@ def _seed_sic(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed peer ranks for the demo Peer bars on the company hub. Written DIRECTLY (not via
+# the DuckDB analytical batch) so the offline/e2e profile -- base install, no `analytical` extra
+# -- can render peer position bars for AAPL. The real pipeline (ingest/metrics_backfill +
+# analytical/peer_ranks over scripts/seed_analytical_fixture.py) is exercised by tests instead.
+# Plausible but synthetic percentiles; SIC "35" is AAPL's real 2-digit group. Seeded for FY 2025
+# (the hub's default period) and FY 2024.
+_PEER_METRICS = [
+    ("gross_margin", 78.0, 0.9),
+    ("operating_margin", 82.0, 1.1),
+    ("net_margin", 85.0, 1.3),
+    ("roa", 91.0, 1.6),
+    ("roe", 88.0, 1.4),
+    ("fcf_margin", 80.0, 1.0),
+    ("asset_turnover", 64.0, 0.4),
+    ("eps_diluted", 72.0, 0.7),
+]
+
+
+def _seed_peer_ranks(db_path: str) -> None:
+    repo = SQLiteMetricRankRepository(db_path)
+    rows = []
+    for year in (2025, 2024):
+        for metric, pctile, z in _PEER_METRICS:
+            rows.append(
+                MetricRankRow(
+                    cik=320193, fiscal_year=year, fiscal_period="FY", metric=metric,
+                    peer_group="35", peer_count=8, percentile=pctile, z_score=z,
+                )
+            )
+    try:
+        repo.bulk_upsert(rows)
+        print(f"seeded peer ranks: {len(rows)} AAPL rows (SIC 35)")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -282,6 +320,7 @@ def main() -> None:
     _seed_beneficial(db_path)
     _seed_holdings(db_path)
     _seed_sic(db_path)
+    _seed_peer_ranks(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 
