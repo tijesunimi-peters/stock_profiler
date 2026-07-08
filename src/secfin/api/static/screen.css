@@ -1,0 +1,82 @@
+/* Cross-company screening (/screen) — layered on style.css + app.css + company.css + compare.css.
+ * Structural only; warm tokens, no new hues (STYLE_GUIDE §10). Results reuse .stmt-table.
+ */
+
+.scr-year { width: 92px; }
+
+/* ---------- filter / rank builder ---------- */
+
+.scr-builder {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 16px 18px;
+  margin-bottom: 6px;
+}
+.scr-builder-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--mono-muted);
+  margin: 0 0 12px;
+}
+
+.scr-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.scr-row select,
+.scr-row input {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 11px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-page);
+  color: var(--ink);
+}
+.scr-row select:focus,
+.scr-row input:focus { outline: none; border-color: var(--accent); }
+.scr-row .scr-concept { min-width: 190px; }
+.scr-row .scr-num { width: 150px; }
+.scr-row .scr-sep { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+
+.scr-remove {
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
+.scr-actions { display: flex; align-items: center; gap: 12px; margin-top: 6px; flex-wrap: wrap; }
+.scr-add {
+  border: 1px dashed var(--border-strong);
+  background: none;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: 8px;
+}
+.scr-add:hover { border-color: var(--accent); color: var(--accent); }
+.scr-run {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg-page);
+  cursor: pointer;
+}
+.scr-run:disabled { opacity: 0.45; cursor: not-allowed; }
+.scr-hint { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+
+.scr-rank-num { font-family: var(--font-mono); font-size: 12px; color: var(--mono-muted); width: 44px; }

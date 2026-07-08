@@ -194,14 +194,23 @@ profile, 13D/G) are shipped and headless-verified.
       Both verified headless (zero console errors).
 
 **Phase 3 is complete.** Company Comparison (matrix) and Metric trend/history (company-hub trend
-+ `/compare` trajectories) are all shipped and headless-verified. Remaining UI work is **Phase 4
-— Discovery & scale**: Screening (M4 backend ready — the "blocked" tag below is stale), Peer
-rankings (Metrics Phase 2), and the public docs portal (M3).
++ `/compare` trajectories) are all shipped and headless-verified. **Phase 4** is underway:
+Screening (`/screen`) is shipped; remaining are Peer rankings (Metrics Phase 2) and the public
+docs portal (M3).
 
-## Phase 4 — Discovery & scale (blocked on backend)
+## Phase 4 — Discovery & scale
 
-- [ ] **Screening / cross-company query builder** *(blocked — M4)* — filter companies by
-      concept/metric/period. Needs the frames-API screening backend + analytical query path.
+- [x] **Screening / cross-company query builder** — a **`/screen`** page
+      (`static/screen.{html,js,css}`) over the shipped M4 backend (the earlier "blocked" tag was
+      stale). Two modes via a toggle: **Filter** (`GET /v1/screen` — a min/max query builder,
+      AND across concepts, USD shorthand like `100B` accepted) and **Rank**
+      (`GET /v1/concepts/{concept}` — one concept, sort + Top-N). Shared period (year + FY/Q).
+      Results table links each company to `/company/{cik}`; the always-present frames `caveats`
+      render in a disclosure, with a caption noting values are **calendar-quarter frame values**
+      (a non-calendar fiscal year is matched to the nearest calendar period, so they can differ
+      from `/statements`). **Descriptive only — no good/bad coloring** (§9.2). Deep-linkable
+      (`?view=rank&concept=…` / `?year=&revenue_min=…`); reachable via a new **Screen** nav link.
+      Verified headless (zero console errors).
 - [ ] **Peer comparison & rankings** *(blocked — Metrics Phase 2)* — percentile/z-score within
       SIC peer groups. Ranks exclude N/A/N/M; components shown transparently (no black-box score).
 - [ ] **Public docs / developer portal** *(M3)* — distinct from Swagger: examples, auth/quota
@@ -225,7 +234,7 @@ rankings (Metrics Phase 2), and the public docs portal (M3).
 | Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
 | Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
 | Metric trend/history | 3 | built | `/metrics/{metric}/history` |
-| Screening | 4 | blocked | *(M4)* |
+| Screening | 4 | built | `/screen`, `/concepts/{concept}` |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
 | Public docs portal | 4 | n/a | *(M3)* |
 

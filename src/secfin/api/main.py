@@ -229,6 +229,12 @@ async def company_comparison() -> FileResponse:
     return FileResponse(STATIC_DIR / "compare.html")
 
 
+@app.get("/screen", include_in_schema=False)
+async def screening() -> FileResponse:
+    # The cross-company screening shell; screen.js reads the query and calls /v1/screen + /concepts.
+    return FileResponse(STATIC_DIR / "screen.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

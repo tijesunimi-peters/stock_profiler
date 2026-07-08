@@ -22,6 +22,7 @@ const PAGES = process.env.PAGES
       ["manager", "/manager/1067983"],
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
+      ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];
