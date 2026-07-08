@@ -47,6 +47,24 @@ def test_public_endpoint_works_without_a_key(tmp_path, monkeypatch):
     assert resp.json() == {"cik": 320193, "periods": []}
 
 
+def test_first_party_browser_request_bypasses_the_gate(tmp_path, monkeypatch):
+    # Our own web pages fetch same-origin -- ungated for now, no key needed.
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get(
+            "/v1/companies/AAPL/beneficial-ownership",
+            headers={"Sec-Fetch-Site": "same-origin"},
+        )
+    assert resp.status_code != 401
+
+
+def test_usage_still_requires_a_key_even_from_a_browser(tmp_path, monkeypatch):
+    # Account endpoints have no identity without a key -- the first-party bypass must not
+    # let /usage through keyless.
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/v1/usage", headers={"Sec-Fetch-Site": "same-origin"})
+    assert resp.status_code == 401
+
+
 def test_signup_then_use_key_on_a_gated_endpoint(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
         signup_resp = client.post("/v1/signup", json={"email": "a@example.com"})

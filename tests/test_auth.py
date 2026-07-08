@@ -5,6 +5,9 @@ tests/test_manager_routes.py uses for other route helpers.
 
 from __future__ import annotations
 
+# require_api_key now takes a request (to detect first-party browser calls). These unit tests
+# exercise the programmatic path, so use a request with no browser headers -> not first-party.
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +18,8 @@ from secfin.auth.keys import hash_api_key
 from secfin.auth.models import ApiKeyRecord
 from secfin.auth.rate_limiter import TokenBucketLimiter
 from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
+
+_PROGRAMMATIC_REQUEST = SimpleNamespace(headers={})
 
 
 def _make_repo_with_key(rate_limit_per_sec: int = 5, daily_quota: int = 1000) -> tuple:
@@ -33,7 +38,9 @@ def _make_repo_with_key(rate_limit_per_sec: int = 5, daily_quota: int = 1000) ->
 async def test_require_api_key_rejects_missing_header():
     repo = SQLiteApiKeyRepository(":memory:")
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=None, repo=repo, limiter=TokenBucketLimiter())
+        await require_api_key(
+            _PROGRAMMATIC_REQUEST, x_api_key=None, repo=repo, limiter=TokenBucketLimiter()
+        )
     assert exc_info.value.status_code == 401
     repo.close()
 
@@ -41,7 +48,9 @@ async def test_require_api_key_rejects_missing_header():
 async def test_require_api_key_rejects_unknown_key():
     repo = SQLiteApiKeyRepository(":memory:")
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key="sfk_bogus", repo=repo, limiter=TokenBucketLimiter())
+        await require_api_key(
+            _PROGRAMMATIC_REQUEST, x_api_key="sfk_bogus", repo=repo, limiter=TokenBucketLimiter()
+        )
     assert exc_info.value.status_code == 401
     repo.close()
 
@@ -52,7 +61,9 @@ async def test_require_api_key_rejects_revoked_key(monkeypatch):
     monkeypatch.setattr(repo, "get_by_hash", lambda h: revoked)
 
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=plaintext, repo=repo, limiter=TokenBucketLimiter())
+        await require_api_key(
+            _PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=TokenBucketLimiter()
+        )
     assert exc_info.value.status_code == 401
     repo.close()
 
@@ -60,7 +71,9 @@ async def test_require_api_key_rejects_revoked_key(monkeypatch):
 async def test_require_api_key_accepts_a_valid_key_and_returns_the_record():
     repo, plaintext, record = _make_repo_with_key()
 
-    result = await require_api_key(x_api_key=plaintext, repo=repo, limiter=TokenBucketLimiter())
+    result = await require_api_key(
+        _PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=TokenBucketLimiter()
+    )
 
     assert result.id == record.id
     assert result.email == "a@example.com"
@@ -71,9 +84,11 @@ async def test_require_api_key_enforces_the_per_key_rate_limit():
     repo, plaintext, _ = _make_repo_with_key(rate_limit_per_sec=1)
     limiter = TokenBucketLimiter()
 
-    await require_api_key(x_api_key=plaintext, repo=repo, limiter=limiter)
+    await require_api_key(_PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=limiter)
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=plaintext, repo=repo, limiter=limiter)
+        await require_api_key(
+            _PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=limiter
+        )
     assert exc_info.value.status_code == 429
     repo.close()
 
@@ -82,10 +97,12 @@ async def test_require_api_key_enforces_the_daily_quota():
     repo, plaintext, _ = _make_repo_with_key(rate_limit_per_sec=1000, daily_quota=2)
     limiter = TokenBucketLimiter()
 
-    await require_api_key(x_api_key=plaintext, repo=repo, limiter=limiter)
-    await require_api_key(x_api_key=plaintext, repo=repo, limiter=limiter)
+    await require_api_key(_PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=limiter)
+    await require_api_key(_PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=limiter)
     with pytest.raises(HTTPException) as exc_info:
-        await require_api_key(x_api_key=plaintext, repo=repo, limiter=limiter)
+        await require_api_key(
+            _PROGRAMMATIC_REQUEST, x_api_key=plaintext, repo=repo, limiter=limiter
+        )
     assert exc_info.value.status_code == 429
     assert "quota" in exc_info.value.detail.lower()
     repo.close()

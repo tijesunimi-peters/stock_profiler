@@ -495,7 +495,7 @@ async def get_usage(
     days: int = Query(
         7, ge=1, le=90, description="Trailing days to include (default 7, max 90)"
     ),
-    record: ApiKeyRecord = Depends(require_api_key),
+    record: ApiKeyRecord | None = Depends(require_api_key),
     api_key_repo: ApiKeyRepository = Depends(get_api_key_repo),
 ) -> UsageSummary:
     """Usage metering for the calling key -- the billing-relevant half of
@@ -507,6 +507,10 @@ async def get_usage(
     Gaps in the trailing window are filled with explicit zero-count days
     (`auth/usage.py`), not omitted, so this reads as a complete billing series.
     """
+    # /usage is an account endpoint -- it needs a real key even from a browser (the
+    # first-party bypass returns None). There's no usage without a key identity.
+    if record is None:
+        raise HTTPException(status_code=401, detail="Account usage requires an API key.")
     today = dt.datetime.now(dt.UTC).date()
     since_day = (today - dt.timedelta(days=days - 1)).isoformat()
     stored = api_key_repo.usage_by_day(record.id, since_day)

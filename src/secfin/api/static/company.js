@@ -234,11 +234,6 @@
   function renderBeneficial() {
     $("legend").innerHTML = "";
     $("disclosure").innerHTML = P.disclosure(["ownership_13dg_floor", "not_advice"]);
-    // Gated endpoint: no key -> prompt for one before spending a request.
-    if (!P.getKey()) {
-      P.mountNeedsKey($("view"), renderBeneficial);
-      return;
-    }
     $("view").innerHTML = P.states.loading({ title: "Loading 13D/G filings" });
     P.api("/companies/" + encodeURIComponent(symbol) + "/beneficial-ownership?limit=" + BENEFICIAL_LIMIT).then(
       function (res) {

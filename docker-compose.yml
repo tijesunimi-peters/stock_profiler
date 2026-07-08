@@ -45,9 +45,6 @@ services:
     environment:
       SEC_USER_AGENT: "${SEC_USER_AGENT:-profin-e2e e2e@example.com}"
       SECFIN_DB_PATH: "/app/data/e2e.db"
-      # The e2e harness loads pages fast from one IP; the prod anti-scraping anon limit
-      # (default 2/sec) isn't relevant here and would cause spurious 429s. Raise it for the test.
-      SECFIN_ANON_RATE_LIMIT_PER_SEC: "1000"
     volumes:
       - .:/app
     command: >

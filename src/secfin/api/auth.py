@@ -30,16 +30,46 @@ def get_rate_limiter(request: Request) -> TokenBucketLimiter:
     return request.app.state.rate_limiter
 
 
+def _is_first_party_browser(request: Request) -> bool:
+    """True when a request looks like it came from our own web pages (a same-origin fetch),
+    as opposed to the programmatic API product.
+
+    Web pages are ungated "for now" (see api/main.py) -- the API key is required only for
+    non-browser callers. The signal is request headers set by browsers on same-origin fetches
+    (`Sec-Fetch-Site`, or an `Origin`/`Referer` pointing at our own host). This is a UX gate,
+    NOT a security boundary: headers are spoofable, so a determined API user could send these
+    to skip the key. Acceptable while the API isn't truly monetized; revisit before it is.
+    """
+    sfs = request.headers.get("sec-fetch-site")
+    if sfs in ("same-origin", "same-site"):
+        return True
+    host = request.headers.get("host", "")
+    if host:
+        for header in ("origin", "referer"):
+            value = request.headers.get(header)
+            if value and ("://" + host) in value:
+                return True
+    return False
+
+
 async def require_api_key(
+    request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     repo: ApiKeyRepository = Depends(get_api_key_repo),
     limiter: TokenBucketLimiter = Depends(get_rate_limiter),
-) -> ApiKeyRecord:
-    """401 on a missing/unknown/revoked key; 429 on a burst-rate or daily-quota breach.
+) -> ApiKeyRecord | None:
+    """Gate for the programmatic API. Returns the key's record, or None for a first-party
+    browser request (web pages are ungated for now -- see `_is_first_party_browser`).
 
-    Order matters: identity (401) is checked before any limit (429) -- an unknown key
-    should never learn its own rate limit via a 429's wording.
+    401 on a missing/unknown/revoked key; 429 on a burst-rate or daily-quota breach. Order
+    matters: identity (401) is checked before any limit (429) -- an unknown key should never
+    learn its own rate limit via a 429's wording.
+
+    Endpoints that actually consume the record (e.g. /usage) must handle the None case: a
+    browser hitting an account endpoint still needs a real key.
     """
+    if _is_first_party_browser(request):
+        return None
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing X-API-Key header.")
     record = repo.get_by_hash(hash_api_key(x_api_key))
@@ -62,7 +92,13 @@ async def limit_anonymous_traffic(
 ) -> None:
     """Per-IP burst limit for the keyless public endpoints (statements, periods) --
     protects the Data Explorer's demo surface from scraping without requiring a key.
+
+    First-party browser traffic (our own web pages) is exempt: a page can legitimately fire
+    several calls on load, and it isn't the scraping target. Same spoofable-header caveat as
+    `_is_first_party_browser`.
     """
+    if _is_first_party_browser(request):
+        return
     client_ip = request.client.host if request.client else "unknown"
     if not limiter.allow(f"ip:{client_ip}", settings.secfin_anon_rate_limit_per_sec):
         raise HTTPException(status_code=429, detail="Too many requests -- slow down.")

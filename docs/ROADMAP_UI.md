@@ -138,23 +138,23 @@ N/A/APPROX (average balance needs the year-ago quarter). The Statements tab stay
       (filed, owner, 13D/13G form, % of class, shares, event date) + the structured-XML ~mid-2025
       coverage floor. The `beneficial-ownership` endpoint landed in the M3/M4 merge (was blocked).
 
-**M3 auth landed (pulled):** routes split into `public_router` (statements/periods/metrics/
-metric-periods/insider-trades — the free hub surface) vs a gated `router` (institutional/manager/
-beneficial/screen/concepts) behind `X-API-Key`; `POST /v1/signup` issues keys; `/guide` documents
-them. UI now has an **API-key flow** (`Profin.getKey/setKey/clearKey`, `Profin.api` sends
-`X-API-Key`, `Profin.mountNeedsKey` prompt on 401). **Regression fixed:** `cusip-resolution-stats`
-moved to `public_router` so the shipped `/coverage` page works keyless again.
+**M3 auth landed (pulled), then gating scoped to non-browser callers.** The merge split routes
+into `public_router` vs a gated `router` (`X-API-Key`). Per product decision, **web pages are
+ungated for now — only requests NOT served by a browser require a key.** Implemented as a
+first-party bypass in `api/auth.py`: `require_api_key` and `limit_anonymous_traffic` skip requests
+that look same-origin (`Sec-Fetch-Site`/`Origin`/`Referer`), so the hub's gated tabs (13D/G, and
+future institutional/manager) render keyless from the browser, while curl/SDK callers still get
+401. **Caveat (documented):** header-based, so spoofable — a UX gate, not a hard boundary; revisit
+before the API is truly monetized. `/usage` is exempt from the bypass (an account endpoint has no
+identity without a key). The bypass also resolves the 2/sec anon-limit 429 for browser page loads.
+**Regression fixed:** `cusip-resolution-stats` → `public_router` so `/coverage` works keyless.
+The `Profin` key helpers (`getKey/setKey/mountNeedsKey`) remain as a dormant fallback (unused
+while pages are ungated).
 
-**Real UX finding (open decision):** the hub fires ~3 public calls on load and the prod anon
-limit defaults to **2/sec** (`secfin_anon_rate_limit_per_sec`) — so a keyless user opening the hub
-can hit a 429. Left the prod default (deliberate anti-scraping) alone and raised it only for the
-e2e harness; needs a real fix — raise the default, make the hub tolerate 429 (retry/backoff), or
-reduce its call count.
-
-**Still needs a 13F periods-axis endpoint before building:**
-- [ ] **Institutional ownership — issuer view** *(ready backend, gated)* — needs
-      `institutional-periods` axis + the API-key flow (now built) applied to the tab.
-- [ ] **Manager (13F filer) profile** *(ready backend, gated)* — `/manager/{cik}`, same axis gap.
+- [x] **Beneficial ownership (13D/13G)** — shipped (see above).
+- [ ] **Institutional ownership — issuer view** — needs a 13F **`institutional-periods`** axis
+      endpoint (mirror `metric-periods`) before its period selector; renders keyless via the bypass.
+- [ ] **Manager (13F filer) profile** *(`/manager/{cik}`)* — same missing periods-axis endpoint.
 
 **Next Phase 2 step:** add the 13F **periods-axis endpoint(s)** (issuer + manager), then build the
 Institutional ownership tab and the Manager profile page against them — mirrors how `metric-periods`
