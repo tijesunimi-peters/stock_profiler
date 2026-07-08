@@ -19,7 +19,7 @@ def _client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setattr(settings, "secfin_db_path", str(tmp_path / "test.db"))
     monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch_raw_facts)
     monkeypatch.setattr(
-        routes_module, "fetch_insider_transactions_with_filings", _fake_fetch_insider
+        routes_module, "fetch_beneficial_ownership_with_filings", _fake_fetch_beneficial_ownership
     )
     from secfin.api.main import app
 
@@ -30,13 +30,13 @@ async def _fake_fetch_raw_facts(client, cik):
     return []
 
 
-async def _fake_fetch_insider(client, cik, limit):
+async def _fake_fetch_beneficial_ownership(client, cik, limit):
     return [], []
 
 
 def test_gated_endpoint_requires_an_api_key(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
-        resp = client.get("/v1/companies/AAPL/insider-trades")
+        resp = client.get("/v1/companies/AAPL/beneficial-ownership")
     assert resp.status_code == 401
 
 
@@ -54,7 +54,7 @@ def test_signup_then_use_key_on_a_gated_endpoint(tmp_path, monkeypatch):
         api_key = signup_resp.json()["api_key"]
 
         resp = client.get(
-            "/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
         )
         # No longer 401 -- the key is valid. (May still hit real logic downstream; the
         # point here is only that auth itself let the request through.)
@@ -107,7 +107,7 @@ def test_admin_tier_change_end_to_end(tmp_path, monkeypatch):
 
         # The upgraded key's higher rate limit is now live on a gated endpoint.
         gated = client.get(
-            "/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
         )
         assert gated.status_code != 401
 
@@ -122,7 +122,7 @@ def test_usage_endpoint_requires_a_key_and_reflects_recorded_requests(tmp_path, 
 
         # Signup itself doesn't count against usage -- it's on signup_router, not the
         # require_api_key-gated router. One gated call should show exactly 1 request today.
-        client.get("/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key})
+        client.get("/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key})
 
         usage_resp = client.get("/v1/usage", headers={"X-API-Key": api_key})
         assert usage_resp.status_code == 200

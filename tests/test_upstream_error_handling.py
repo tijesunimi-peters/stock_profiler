@@ -64,13 +64,13 @@ def test_upstream_error_handling_applies_across_gated_endpoints_too(tmp_path, mo
     async def _boom(client, cik, limit):
         raise _http_status_error(500)
 
-    monkeypatch.setattr(routes_module, "fetch_insider_transactions_with_filings", _boom)
+    monkeypatch.setattr(routes_module, "fetch_beneficial_ownership_with_filings", _boom)
     from secfin.api.main import app
 
     with TestClient(app, raise_server_exceptions=False) as client:
         signup = client.post("/v1/signup", json={"email": "upstream-err@example.com"})
         api_key = signup.json()["api_key"]
         resp = client.get(
-            "/v1/companies/320193/insider-trades", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
         )
     assert resp.status_code == 502

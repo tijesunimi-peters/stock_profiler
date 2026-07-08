@@ -55,13 +55,17 @@ from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 
-# `public_router` holds the read-only endpoints the public Data Explorer / Company Hub
-# (`/explorer`, `/company/{symbol}`, static/explorer.js + company.js) call directly from
-# browser JS with no API key -- `GET .../statements/{statement}`, `GET .../periods`,
-# `GET .../metrics`, and `GET .../metric-periods` below. Everything else lives on
-# `router`, which api/main.py includes with `Depends(require_api_key)`. Keep this split
-# deliberate: a new endpoint defaults to gated (`router`) unless it's specifically meant
-# to be part of the public demo surface. See api/auth.py.
+# Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
+# own served pages (`/explorer`, `/company/{symbol}`, static/explorer.js + company.js)
+# call directly from browser JS belongs on `public_router` -- `GET .../statements/{statement}`,
+# `GET .../periods`, `GET .../metrics`, `GET .../metric-periods`, and
+# `GET .../insider-trades` below (IP rate-limited via `limit_anonymous_traffic` instead).
+# Everything else lives on `router`, which api/main.py includes with
+# `Depends(require_api_key)`. When adding a new endpoint: if one of our own static pages
+# will call it client-side, it goes on `public_router`, full stop -- gating an endpoint
+# our own UI depends on just breaks that UI (see the insider-trades tab / metric-periods
+# 401s this exact mistake caused). `router` is for endpoints only an external, paying API
+# consumer hits directly. See api/auth.py.
 public_router = APIRouter()
 router = APIRouter()
 
@@ -377,7 +381,7 @@ async def get_metric_periods(
     return {"cik": cik, "periods": metric_periods(facts)}
 
 
-@router.get(
+@public_router.get(
     "/companies/{symbol}/insider-trades",
     response_model=list[InsiderTransaction],
     tags=["Insider Trades"],
