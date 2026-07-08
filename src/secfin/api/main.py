@@ -223,6 +223,12 @@ async def manager_profile(cik: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "manager.html")
 
 
+@app.get("/compare", include_in_schema=False)
+async def company_comparison() -> FileResponse:
+    # The multi-company comparison shell; compare.js reads ?symbols=&year= and calls the v1 API.
+    return FileResponse(STATIC_DIR / "compare.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

@@ -20,8 +20,8 @@ the API already returns, including the status/basis/reason each value carries.
 - Build order follows two rules: **shared furniture before pages** (Phase 0), then
   **backend-ready + already-designed before net-new** (highest leverage first).
 - "Reference implementations" per `STYLE_GUIDE.md` §11: `explorer.html` is built and served;
-  *Company Fundamentals* and *Company Comparison* exist as design components (mockups) but are
-  not yet in the app.
+  *Company Fundamentals* (the `/company/{symbol}` hub) and *Company Comparison* (`/compare`)
+  are now both built and served.
 
 ## Current state (built & served)
 
@@ -163,18 +163,28 @@ while pages are ungated).
       `managers/{cik}/periods` axis endpoint.
 
 **Phase 2 is complete.** All Ownership & flows pages (Insider, Institutional issuer view, Manager
-profile, 13D/G) are shipped and headless-verified. **Next: Phase 3 — Comparison & trends** (Company
-Comparison is backend-ready/designed; Metric trend/history is blocked on Metrics Phase 1b).
+profile, 13D/G) are shipped and headless-verified.
 
 ## Phase 3 — Comparison & trends
 
-- [ ] **Company Comparison** *(ready — designed)* — 2–3 company metric matrix, per-cell status,
-      fiscal-calendar alignment surfaced. Consumes `/metrics` per company. Honors R10-style
-      calendar alignment and the "descriptive, no winner" rule.
+- [x] **Company Comparison** — a **`/compare`** page (`static/compare.{html,js,css}`,
+      deep-linkable via `?symbols=AAPL,MSFT,JPM&year=2024`): a 2–3 company metric matrix over
+      `GET /companies/{symbol}/metrics` (FY-year axis from `/metric-periods`). Rows are the same
+      category/formula groups as the Fundamentals tab; each **column header surfaces that
+      company's own `period_end` + `as_of`**, and an **alignment banner** fires when fiscal
+      calendars differ (R10 / §9.4). Each cell carries its status chip + inline reason for
+      APPROX/N/A/N/M; per-row formula + basis; full provenance lives on each company's linked
+      `/company/{symbol}` page. **Descriptive only — no good/bad color, no winner** (§9.2). An
+      "add a company" search + per-column remove keep the set editable (query-driven). Reachable
+      via a new **Compare** nav link across the site. Verified headless (zero console errors).
 - [ ] **Metric trend / history** *(blocked)* — deeper per-metric trend than the card sparkline
       (streaks, CAGR, distance-from-peak). Blocked on Metrics **Phase 1b**
       (`GET /v1/companies/{symbol}/metrics/{metric}/history`, `docs/ROADMAP_METRICS.md`).
       "Compare trajectories" mode folds into Company Comparison once history exists.
+
+**Next Phase 3 step:** the remaining item (Metric trend/history) is blocked on the Metrics
+**Phase 1b** history endpoint (`docs/ROADMAP_METRICS.md`) — build the metrics backend first,
+then the deeper-trend UI folds into the shipped comparison page.
 
 ## Phase 4 — Discovery & scale (blocked on backend)
 
@@ -201,7 +211,7 @@ Comparison is backend-ready/designed; Metric trend/history is blocked on Metrics
 | Institutional ownership (issuer) | 2 | built | `/institutional-periods`, `/institutional-holders`, `/institutional-activity` |
 | Manager (13F) profile | 2 | built | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 | Beneficial ownership (13D/G) | 2 | built | `/beneficial-ownership` |
-| Company Comparison | 3 | ready | `/metrics` ×N |
+| Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
 | Metric trend/history | 3 | blocked | *(Metrics Phase 1b)* |
 | Screening | 4 | blocked | *(M4)* |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |

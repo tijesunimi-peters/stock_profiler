@@ -19,6 +19,7 @@ const PAGES = process.env.PAGES
       ["company", "/company/AAPL"],
       ["institutional", "/company/AAPL?tab=institutional"],
       ["manager", "/manager/1067983"],
+      ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];

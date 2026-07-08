@@ -1,0 +1,99 @@
+/* Company comparison layout (/compare) — layered on style.css + app.css + company.css.
+ * Structural only; all colors come from the shared warm tokens. Reuses .stmt-table for the
+ * matrix; the rules here cover the multi-company column headers, per-cell status stacking,
+ * and horizontal scroll on narrow screens. No new hues, no good/bad coloring (STYLE_GUIDE §10).
+ */
+
+/* Horizontal scroll for the (2–3 column) matrix on narrow viewports, without breaking the
+ * card's rounded border. */
+.matrix-scroll { overflow-x: auto; }
+
+/* Metric (row) label cell: name + formula + basis, left-aligned, kept narrow-ish. */
+.cmp-metric { min-width: 190px; }
+.cmp-metric-name { color: var(--ink); font-weight: 500; }
+.cmp-formula {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  margin-top: 2px;
+}
+.cmp-basis {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink-soft);
+  border: 1px solid var(--border-tint-rule);
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin-top: 5px;
+}
+
+/* Company column header: ticker (link) + CIK + the period_end/as_of that surfaces
+ * fiscal-calendar misalignment (§9.4 / R10). */
+.cmp-col { min-width: 150px; }
+.cmp-col-ticker { font-family: var(--font-mono); font-size: 13px; font-weight: 600; }
+.cmp-col-ticker a { color: var(--ink); }
+.cmp-col-meta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--mono-muted);
+  margin-top: 3px;
+  font-weight: 400;
+}
+.cmp-col-remove {
+  margin-left: 8px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+/* A value cell: number + status chip on one line, optional flag reason beneath. */
+.cmp-cell-value { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.cmp-cell-reason {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ext-color, var(--mono-muted));
+  margin-top: 3px;
+  text-align: right;
+}
+
+/* Alignment banner (calendars differ) — uses the caveat/ext family, never a verdict color. */
+.cmp-banner {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint-rule);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 0 0 16px;
+}
+
+/* Category grouping row inside the single aligned matrix table. */
+.cmp-cat td {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  background: var(--bg-tint);
+  padding: 8px 16px;
+}
+
+.cmp-add { max-width: 360px; }
+.cmp-add-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+  margin-bottom: 6px;
+}
