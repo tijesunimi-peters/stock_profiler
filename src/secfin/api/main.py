@@ -200,6 +200,23 @@ async def docs_guide() -> FileResponse:
     return FileResponse(STATIC_DIR / "guide.html")
 
 
+@app.get("/components", include_in_schema=False)
+async def component_reference() -> FileResponse:
+    # Kitchen-sink reference for the shared data-page design system (static/app.css + app.js).
+    return FileResponse(STATIC_DIR / "components.html")
+
+
+@app.get("/coverage", include_in_schema=False)
+async def data_coverage() -> FileResponse:
+    return FileResponse(STATIC_DIR / "coverage.html")
+
+
+@app.get("/company/{symbol}", include_in_schema=False)
+async def company_hub(symbol: str) -> FileResponse:
+    # The company hub shell; company.js reads {symbol} from the path and calls the v1 API.
+    return FileResponse(STATIC_DIR / "company.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

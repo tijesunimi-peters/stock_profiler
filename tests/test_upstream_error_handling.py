@@ -1,5 +1,5 @@
 """Pre-launch checklist: "what does a mid-request SEC 403/throttle error do to the
-client-facing response?" No real SEC calls -- `fetch_raw_facts` is monkeypatched to
+client-facing response?" No real SEC calls -- `fetch_raw_facts_all` is monkeypatched to
 raise, simulating an upstream error during a genuine cache miss (same
 TestClient-with-monkeypatched-fetch shape as test_app_auth_wiring.py).
 `raise_server_exceptions=False` so TestClient behaves like a real client would -- an
@@ -28,7 +28,7 @@ def _client(tmp_path, monkeypatch, exc: Exception) -> TestClient:
     async def _boom(client, cik):
         raise exc
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _boom)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _boom)
     from secfin.api.main import app
 
     return TestClient(app, raise_server_exceptions=False)

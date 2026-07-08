@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profin — Data Coverage</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="/" class="logo" aria-label="Profin home">
+        <span class="logo-mark"><span class="logo-dot"></span></span>
+        <span class="logo-word">Profin</span>
+      </a>
+      <div class="nav-links">
+        <a href="/coverage" class="current">Coverage</a>
+        <a href="/docs">Docs</a>
+        <a href="/explorer">Data Explorer</a>
+        <a href="/docs" class="pill">API Reference</a>
+      </div>
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="nav-mobile" id="navMobile">
+      <a href="/coverage" class="current">Coverage</a>
+      <a href="/docs">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+  </nav>
+  <main class="page">
+    <div id="masthead"></div>
+
+    <div class="section-head"><span class="n">01</span><h2>CUSIP → issuer resolution</h2></div>
+    <div id="cusip"></div>
+
+    <div class="section-head"><span class="n">02</span><h2>Coverage boundaries</h2></div>
+    <p class="lede" style="margin-top:0">
+      These are availability limits: inside a boundary we have the data; outside it we don't carry it —
+      which is <em>not</em> the same as "it didn't happen." An empty result never means "nothing was filed."
+    </p>
+    <div id="floors"></div>
+  </main>
+  <div id="footer"></div>
+
+  <script src="/static/script.js"></script>
+  <script src="/static/app.js"></script>
+  <script>
+    (function () {
+      var P = window.Profin;
+      var $ = function (id) { return document.getElementById(id); };
+
+      $("footer").innerHTML = P.footer();
+      $("masthead").innerHTML = P.masthead({
+        eyebrow: "Profin — SEC data, normalized",
+        title: "Data coverage & quality",
+        meta: ["Live coverage metrics", "not a per-company view"],
+        lede: "What we carry, and how completely — surfaced as first-class metrics rather than hidden in footnotes.",
+      });
+
+      // Coverage floors as a first-class list (copy pulled to match docs/DATA_MODEL.md).
+      $("floors").innerHTML =
+        '<ul style="padding-left:18px">' +
+        ["financials_floor", "ownership_13dg_floor", "institutional_13f"].map(function (k) {
+          return '<li style="font-size:13.5px;line-height:1.55;color:var(--ink-muted);margin-bottom:10px">' + P.esc(P.DISCLOSURES[k]) + "</li>";
+        }).join("") +
+        "</ul>";
+
+      // CUSIP resolution rate.
+      $("cusip").innerHTML = P.states.loading({ title: "Loading coverage" });
+      P.api("/cusip-resolution-stats").then(
+        function (s) {
+          var rateText = s.resolution_rate === null || s.resolution_rate === undefined
+            ? "—"
+            : (s.resolution_rate * 100).toFixed(1) + "%";
+          var drained = s.resolution_rate === null || s.resolution_rate === undefined;
+          var note = drained
+            ? "Nothing attempted yet — an empty map hasn't failed; no 13F CUSIPs have been seen."
+            : "Exact-normalized-name match only (no fuzzy matching), so unresolved CUSIPs are declined honestly rather than guessed. This rate only drifts upward as SEC's company list grows.";
+          $("cusip").innerHTML =
+            '<div class="card-grid">' +
+            '<article class="metric-card' + (drained ? " na" : "") + '">' +
+            '<div class="metric-head"><span class="metric-name">Resolution rate</span>' +
+            P.statusChip(drained ? "nm" : "ok") + "</div>" +
+            '<div class="metric-value' + (drained ? " drained" : "") + '">' + P.esc(rateText) + "</div>" +
+            '<div class="metric-basis">resolved ÷ total</div>' +
+            '<div class="metric-note" style="border-color:var(--border-strong)">' + P.esc(note) + "</div>" +
+            "</article>" +
+            statCard("Resolved", P.fmt.shares(s.resolved)) +
+            statCard("Unresolved", P.fmt.shares(s.unresolved)) +
+            statCard("Total seen", P.fmt.shares(s.total)) +
+            "</div>";
+        },
+        function (err) { $("cusip").innerHTML = P.states.error({ copy: "Couldn't load coverage stats (" + (err.status || "network") + ")." }); }
+      );
+
+      function statCard(name, value) {
+        return (
+          '<article class="metric-card"><div class="metric-head"><span class="metric-name">' + P.esc(name) + "</span></div>" +
+          '<div class="metric-value">' + P.esc(value) + '</div><div class="metric-basis">count</div></article>'
+        );
+      }
+    })();
+  </script>
+</body>
+</html>

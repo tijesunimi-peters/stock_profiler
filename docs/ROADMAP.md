@@ -442,21 +442,11 @@ a time.
 
 ### Dev/ops hygiene (from `DEVELOPMENT.md` "Open questions / mismatches") -- all resolved
 
-- [x] **Decided the test-in-Docker story**: the project's own image stays a slim runtime
-      artifact (no `[dev]` extra, no `tests/`) -- that's a deliberate choice, not a gap.
-      New `docker-compose.test.yml` (repo root) is the first-class path instead: a
-      one-service file (no `api` service, no `SEC_USER_AGENT` reference at all) that
-      bind-mounts the repo into plain `python:3.11-slim` and installs `[dev]` deps fresh
-      each run -- formalizes the bind-mount pattern DEVELOPMENT.md already described as
-      "the working pattern used during development" into an actual committed,
-      one-command entry point: `docker compose -f docker-compose.test.yml run --rm
-      test` (default command `pytest -q`; override for `ruff check .` or a test
-      subset). Deliberately a *separate* compose file, not a second service merged into
-      `docker-compose.yml` -- compose interpolates a whole file up front regardless of
-      which service you target, so merging it would still require `.env`/
-      `SEC_USER_AGENT` to run tests, which is exactly what this is meant to avoid.
-      Verified: `docker compose -f docker-compose.test.yml run --rm test` (192 passed)
-      and the `ruff check .` override both ran successfully with zero `.env` present.
+- [x] Decide the test-in-Docker story — **done**: opt-in `test` and `e2e` compose profiles
+      bind-mount the repo into the base/Puppeteer images (prod image stays slim). `docker compose
+      --profile test run --rm test` runs pytest; `docker compose --profile e2e up
+      --exit-code-from e2e` runs a headless-Chromium render check of the data pages
+      (`scripts/headless_check.js` + `scripts/seed_fixture.py`). See `docs/DEVELOPMENT.md`.
 - [x] **Added the backfill tuning vars to `.env.example`** (`SECFIN_BULK_DATA_DIR`,
       `SECFIN_BACKFILL_WORKERS`, `SECFIN_BACKFILL_BATCH_SIZE`,
       `SECFIN_BACKFILL_QUEUE_MAXSIZE`), and went further than the item literally asked --
@@ -476,10 +466,9 @@ a time.
       hard `${SEC_USER_AGENT:?...}` requirement (e.g. a soft fallback) would undercut
       CLAUDE.md's non-negotiable SEC User-Agent rule by letting `docker compose up`
       silently start the API in a blocked state, so this stays a hard failure by design.
-      `DEVELOPMENT.md` §1 now says so explicitly, spells out that compose interpolates
+      `DEVELOPMENT.md` §1 now says so explicitly and spells out that compose interpolates
       the *whole file* up front (so `build`/`config`/`down`/`ps` fail too, not just
-      `up`/`run`), and points at `docker-compose.test.yml` as the one workflow
-      (tests/lint) that was made to need neither `.env` nor `SEC_USER_AGENT` at all.
+      `up`/`run`).
 
 ## Milestone 4 — queryability beyond single-company lookups
 

@@ -52,7 +52,7 @@ async def test_cache_hit_skips_sec_fetch(monkeypatch):
     async def _boom(client, cik):
         raise AssertionError("should not hit SEC on a cache hit")
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _boom)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _boom)
 
     result = await routes_module._facts_for_cik(repo, client=None, cik=320193)
     assert len(result) == 1
@@ -66,7 +66,7 @@ async def test_cache_miss_fetches_and_populates_repo(monkeypatch):
     async def _fake_fetch(client, cik):
         return fetched
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _fake_fetch)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch)
 
     result = await routes_module._facts_for_cik(repo, client=None, cik=320193)
     assert result == fetched
@@ -79,7 +79,7 @@ async def test_cache_miss_with_no_facts_does_not_upsert(monkeypatch):
     async def _fake_fetch(client, cik):
         return []
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _fake_fetch)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch)
 
     result = await routes_module._facts_for_cik(repo, client=None, cik=999999)
     assert result == []
@@ -92,7 +92,7 @@ async def test_statement_facts_hit_skips_sec_fetch(monkeypatch):
     async def _boom(client, cik):
         raise AssertionError("should not hit SEC on a cache hit")
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _boom)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _boom)
 
     result = await routes_module._statement_facts_for_cik(
         repo, client=None, cik=320193, fiscal_year=2024, fiscal_period="FY"
@@ -114,7 +114,7 @@ async def test_statement_facts_out_of_range_period_on_known_company_skips_sec_fe
     async def _boom(client, cik):
         raise AssertionError("should not refetch the whole company for an empty period")
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _boom)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _boom)
 
     result = await routes_module._statement_facts_for_cik(
         repo, client=None, cik=320193, fiscal_year=1999, fiscal_period="FY"
@@ -136,7 +136,7 @@ async def test_statement_facts_miss_on_never_ingested_company_fetches_and_filter
     async def _fake_fetch(client, cik):
         return fetched
 
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _fake_fetch)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch)
 
     result = await routes_module._statement_facts_for_cik(
         repo, client=None, cik=320193, fiscal_year=2024, fiscal_period="FY"

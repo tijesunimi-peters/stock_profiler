@@ -254,3 +254,66 @@ class IssuerHolder(BaseModel):
     shares: float | None = None
     value: float | None = None
     other_managers: list[int] = Field(default_factory=list)
+
+
+# --- Fundamental metrics (normalize/metrics.py) ------------------------------------
+#
+# Derived ratios/signals computed over the RawFact/Statement history. Like HoldingDelta,
+# these are COMPUTED results, not source-faithful facts -- so every value carries its own
+# honesty metadata: a status (ok/approximate/na/nm), the basis it was computed on, and a
+# reason when it's anything but a clean number. See docs/ROADMAP_METRICS.md (rules R1-R10).
+
+MetricStatus = Literal["ok", "approximate", "na", "nm"]
+# TTM = trailing twelve months (flows); as-of = point-in-time (stocks). See R2.
+MetricBasis = Literal["TTM", "as-of"]
+# Which restatement version each period's inputs came from. as-restated = latest-filed
+# wins (matches build_statement); as-originally-reported = as known when first filed. See R9.
+RestatementBasis = Literal["as-restated", "as-originally-reported"]
+
+
+class MetricPoint(BaseModel):
+    """One point in a metric's intra-fiscal-year quarterly trend (see MetricValue.trend)."""
+
+    period: FiscalPeriod  # Q1..Q4
+    period_end: str | None = None
+    value: float | None = None  # None when this quarter's status is na/nm
+    status: MetricStatus = "ok"
+
+
+class MetricValue(BaseModel):
+    """One fundamental metric for one company + fiscal period (a computed result).
+
+    `value` is None whenever `status` is `na` or `nm` -- never a fabricated 0 or a
+    misleading number (see docs/STYLE_GUIDE.md §7 and ROADMAP_METRICS R7/R8). `approximate`
+    still carries a usable `value`, flagged (e.g. R5 debt-split undercount).
+    """
+
+    metric: str  # stable key, e.g. "gross_margin"
+    label: str  # human label, e.g. "Gross Margin"
+    value: float | None
+    unit: str  # unit family: "ratio" | "USD" | "USD/shares" | "shares" | "days"
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str | None = None
+
+    basis: MetricBasis
+    restatement_basis: RestatementBasis = "as-restated"
+    as_of: str | None = None  # filing date the value is current as of (provenance / R1)
+
+    status: MetricStatus = "ok"
+    reason: str | None = None  # reason code / human reason for approximate/na/nm
+
+    # For an FY response only: this metric across the fiscal year's quarters (Q1..Q4), for a
+    # sparkline. Empty for quarterly requests. Flow metrics are TTM at each quarter-end, so the
+    # last point equals the annual value; stock metrics are the quarter-end level.
+    trend: list[MetricPoint] = Field(default_factory=list)
+
+
+class CompanyMetrics(BaseModel):
+    """The full point-in-time metric set for one company + fiscal period."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    metrics: list[MetricValue] = Field(default_factory=list)

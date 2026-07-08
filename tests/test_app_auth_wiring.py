@@ -2,7 +2,7 @@
 (public_router, signup_router, router+require_api_key) -- the one thing the
 function-level unit tests in test_auth.py / test_auth_routes.py can't verify, since they
 call handlers directly rather than going through FastAPI's dependency injection and
-routing. No real SEC network calls: `fetch_raw_facts` is monkeypatched, and the
+routing. No real SEC network calls: `fetch_raw_facts_all` is monkeypatched, and the
 gated-endpoint checks never reach the endpoint body at all (require_api_key rejects
 first), so nothing here needs a real ticker/CIK lookup.
 """
@@ -17,7 +17,7 @@ from secfin.config import settings
 
 def _client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setattr(settings, "secfin_db_path", str(tmp_path / "test.db"))
-    monkeypatch.setattr(routes_module, "fetch_raw_facts", _fake_fetch_raw_facts)
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch_raw_facts)
     monkeypatch.setattr(
         routes_module, "fetch_insider_transactions_with_filings", _fake_fetch_insider
     )

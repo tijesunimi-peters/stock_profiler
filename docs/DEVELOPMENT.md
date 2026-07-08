@@ -7,7 +7,7 @@ sections.
 
 ## What's in the compose file
 
-`docker-compose.yml` defines one service, `api`:
+`docker-compose.yml`'s always-on service is `api`:
 
 ```yaml
 services:
@@ -29,8 +29,9 @@ services:
       - ./data/backups:/app/backups
 ```
 
-(The repo also has a separate `docker-compose.test.yml`, a one-service file for
-tests/lint that is never merged with this one; see "Running tests / lint" below.)
+The same file also defines three opt-in, profile-gated services — `test`, `e2e-app`,
+`e2e` — none of which start with a plain `docker compose up`; see "Running tests / lint"
+below.
 
 `Dockerfile` builds a `python:3.11-slim` image, `WORKDIR /app`, and runs
 `pip install --no-cache-dir .` (production deps only, **not** the `[dev]` extra) against
@@ -60,9 +61,9 @@ setting one for real is the intended forcing function. Compose interpolates the
 for, so this hard-fails `build`, `config`, `down`, `ps`, etc. too — not just `up`/`run` —
 even though those don't make any SEC request themselves. Knowing that going in avoids
 being confused by, say, `docker compose down` failing on a repo you haven't touched yet.
-(`docker-compose.test.yml`, used in "Running tests / lint" below, is a separate compose
-file with no `api` service in it at all, specifically so running tests never needs
-`.env`/`SEC_USER_AGENT` to exist.)
+This also applies to the `test`/`e2e` profiles in "Running tests / lint" below — they're
+services in this same file, so they need `SEC_USER_AGENT` resolvable too, even though
+neither actually makes an SEC request.
 
 Set it up once:
 
@@ -247,42 +248,60 @@ stopped first. `mode=ro` refuses to create the file if it doesn't exist yet (rat
 silently starting a new empty DB), which is a useful sanity check that you're pointed at
 real data.
 
-## Running tests / lint
+## Running tests / lint (Docker)
 
-**Decided:** the project's own image (`Dockerfile`/`docker-compose.yml`'s `api` service)
-is a slim runtime artifact and deliberately stays that way — it installs production-only
-deps and never copies `tests/` (excluded via `.dockerignore`), so `docker compose run
---rm api pytest` will always fail. That's not a gap to fix; the first-class way to run
-tests/lint via Docker is the separate `docker-compose.test.yml`, which bind-mounts the
-repo into a plain `python:3.11-slim` base image and installs `[dev]` deps fresh each
-run (deliberately not baked into a committed image — this is a dev-only path, and
-"reinstall every run" keeps it from silently drifting out of sync with `pyproject.toml`):
+The prod `api` image deliberately ships without `tests/` or the `[dev]` extra, so
+`docker compose run --rm api pytest` won't work. Instead, two **opt-in compose profiles**
+bind-mount the repo into the public `python:3.11-slim` (and the Puppeteer) image — they are
+NOT started by `docker compose up`. Both need `SEC_USER_AGENT` resolvable (see §Open
+questions), the same as every other compose command.
 
-```bash
-docker compose -f docker-compose.test.yml run --rm test
-```
-
-That's `pytest -q` by default. Override the command for lint or a subset of tests
-(compose still installs `[dev]` fresh, since the image itself has no deps baked in):
+### Unit tests
 
 ```bash
-docker compose -f docker-compose.test.yml run --rm test \
-  bash -c "pip install -q -e '.[dev]' && ruff check ."
-
-docker compose -f docker-compose.test.yml run --rm test \
-  bash -c "pip install -q -e '.[dev]' && pytest -q tests/test_auth.py"
+docker compose --profile test run --rm test
 ```
 
-This file has no `api` service and no `SEC_USER_AGENT` reference at all, so none of
-these commands need `.env` to exist — unlike every command against the main
-`docker-compose.yml` (see §1's callout).
+Bind-mounts the repo, `pip install -e ".[dev]"`, runs `pytest -q`. Same result as a local
+venv, no host Python needed.
+
+### Headless-browser e2e (real Chromium)
+
+```bash
+docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
+```
+
+Two containers: `e2e-app` seeds the AAPL/JPM/WMT fixtures into a throwaway DB
+(`scripts/seed_fixture.py`, no network) and serves the app with a `/health` healthcheck;
+once healthy, `e2e` runs `scripts/headless_check.js` in the official Puppeteer image against
+it — loading `/company/AAPL`, `/coverage`, `/components` in Chromium, **failing on any
+console/page/request error**, and writing a full-height screenshot per page to
+`./data/e2e-shots/` (gitignored). The `--exit-code-from e2e` makes the whole command exit
+with the check's pass/fail code (CI-friendly). Tear down with
+`docker compose --profile e2e down`.
+
+To point the check at a different app or page set, override `BASE_URL` / `PAGES` on the `e2e`
+service (see `scripts/headless_check.js`).
 
 ## Open questions / mismatches
 
-- **Every `docker compose` subcommand against the main `docker-compose.yml` — including
-  `build`, `config`, `down` — fails without `SEC_USER_AGENT` resolvable**, since compose
-  interpolates the whole file up front. Documented rather than smoothed away (see §1) —
-  weakening this would undercut CLAUDE.md's non-negotiable SEC User-Agent requirement,
-  since a soft fallback would let `docker compose up` silently start the API in a state
-  the SEC blocks. `docker-compose.test.yml` sidesteps this entirely for the one workflow
-  (tests/lint) that never needs it.
+- ~~**No tested path to run tests/lint via the project's own Docker image.**~~ **Resolved:**
+  the prod image stays a slim runtime artifact (no `tests/`/`[dev]`); testing runs through the
+  `test` and `e2e` compose profiles above, which bind-mount the repo into the base/Puppeteer
+  images. Both verified: `test` → full pytest suite green; `e2e` → headless Chromium renders the
+  data pages with zero console errors.
+- ~~**`.env.example` doesn't list the backfill tuning variables**~~ **Resolved:**
+  `.env.example` now lists `SECFIN_BULK_DATA_DIR`, `SECFIN_BACKFILL_WORKERS`,
+  `SECFIN_BACKFILL_BATCH_SIZE`, `SECFIN_BACKFILL_QUEUE_MAXSIZE`, and the three tuning
+  *integers* (not the path) are wired into `docker-compose.yml`'s `api` service
+  `environment:` block (`${VAR:-default}`, matching `config.py`'s own defaults), so
+  setting them in `.env` reaches a Docker-run backfill instead of silently doing
+  nothing. `SECFIN_BULK_DATA_DIR` itself is deliberately not forwarded the same way —
+  it's a path under the same `secfin-data` volume as `SECFIN_DB_PATH`, so like that one
+  it stays fixed in-container rather than tuned per run.
+- **Every `docker compose` subcommand — including `build`, `config`, `down` — fails
+  without `SEC_USER_AGENT` resolvable**, since compose interpolates the whole file
+  up front. This is deliberate, not a gap to smooth over (see §1) — a soft fallback
+  would undercut CLAUDE.md's non-negotiable SEC User-Agent requirement by letting
+  `docker compose up` silently start the API in a state the SEC blocks. Worth knowing
+  going in rather than discovering it via the error.

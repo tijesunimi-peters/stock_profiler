@@ -65,6 +65,14 @@ docker compose run --rm api python -m secfin.ingest.backfill
 docker compose run --rm api python -m secfin.ingest.incremental
 ```
 
+Tests also run in Docker via opt-in profiles (they bind-mount the repo rather than using the
+prod image, which omits `tests/`):
+
+```bash
+docker compose --profile test run --rm test                             # pytest
+docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e  # headless-Chromium page check
+```
+
 **Rebuild (`docker compose build`) after pulling or making source changes** — the image
 bakes in `src/` at build time rather than mounting it live, so a stale image silently
 runs old code. See `docs/DEVELOPMENT.md` for the full Docker workflow: tuning flags,

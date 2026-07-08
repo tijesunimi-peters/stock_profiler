@@ -9,6 +9,7 @@ services:
       SECFIN_BACKUP_DIR: "/app/backups"
       SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
       SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"
+      SECFIN_ANON_RATE_LIMIT_PER_SEC: "${SECFIN_ANON_RATE_LIMIT_PER_SEC:-2.0}"
       # Bulk backfill tuning (ingest/backfill.py) -- SECFIN_BULK_DATA_DIR is deliberately
       # NOT surfaced here, unlike these three: it's a path under the same secfin-data
       # volume as SECFIN_DB_PATH above, so it's fixed like that one rather than
@@ -22,6 +23,62 @@ services:
       # backups written here (storage/backup.py) land as real files under ./data/backups
       # on the host, so they survive `docker compose down -v` wiping secfin-data.
       - ./data/backups:/app/backups
+
+  # --- testing (opt-in via profiles; NOT started by `docker compose up`) ---
+  # These bind-mount the repo into the public python image instead of using the prod `api`
+  # image, which deliberately ships without tests/ or the [dev] extra. See docs/DEVELOPMENT.md.
+
+  # Unit tests:  docker compose --profile test run --rm test
+  test:
+    profiles: ["test"]
+    image: python:3.11-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: bash -c "pip install -q -e '.[dev]' && pytest -q"
+
+  # e2e app under test: seeds the fixtures into a throwaway DB, then serves (no network needed).
+  e2e-app:
+    profiles: ["e2e"]
+    image: python:3.11-slim
+    working_dir: /app
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:-profin-e2e e2e@example.com}"
+      SECFIN_DB_PATH: "/app/data/e2e.db"
+    volumes:
+      - .:/app
+    command: >
+      bash -c "pip install -q -e . &&
+      python scripts/seed_fixture.py &&
+      uvicorn secfin.api.main:app --host 0.0.0.0 --port 8000 --log-level warning"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # Headless-browser render check (real Chromium). Run with:
+  #   docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
+  # Screenshots land in ./data/e2e-shots (gitignored); exit code is the pass/fail signal.
+  e2e:
+    profiles: ["e2e"]
+    image: ghcr.io/puppeteer/puppeteer:latest
+    user: root  # so screenshots are writable to the bind-mounted output dir
+    depends_on:
+      e2e-app:
+        condition: service_healthy
+    environment:
+      BASE_URL: "http://e2e-app:8000"
+      OUT_DIR: "/out"
+      # We run as root (to write the bind-mounted output dir), so point Puppeteer at the
+      # browser the image installed under pptruser's home rather than root's.
+      PUPPETEER_CACHE_DIR: "/home/pptruser/.cache/puppeteer"
+    working_dir: /home/pptruser
+    volumes:
+      - ./scripts/headless_check.js:/home/pptruser/headless_check.js:ro
+      - ./data/e2e-shots:/out
+    command: node headless_check.js
 
 volumes:
   secfin-data:

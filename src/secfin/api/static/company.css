@@ -1,0 +1,103 @@
+/* Company hub layout (/company/{symbol}) — layered on style.css + app.css. Structural only;
+ * all colors come from the shared warm tokens (the page is a child of /explorer).
+ */
+
+/* ---------- company header ---------- */
+
+.co-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.co-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mono-muted);
+}
+.co-search { margin: 16px 0 0; max-width: 360px; }
+
+/* ---------- controls row (tabs + period) ---------- */
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 24px 0 20px;
+}
+.controls-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.controls-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.period-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+}
+
+select.period-select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 11px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-page);
+  color: var(--ink);
+  cursor: pointer;
+}
+select.period-select:focus { outline: none; border-color: var(--accent); }
+
+/* ---------- metric category groups ---------- */
+
+.metric-group { margin-bottom: 26px; }
+.metric-group-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+
+/* ---------- statement table ---------- */
+
+.stmt-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.stmt-table th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+  padding: 11px 16px;
+  background: var(--bg-tint);
+  border-bottom: 2px solid var(--ink);
+}
+.stmt-table th.amt, .stmt-table td.amt { text-align: right; }
+.stmt-table td {
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border-tint-rule);
+  font-size: 14px;
+}
+.stmt-table tr:last-child td { border-bottom: none; }
+.stmt-label { color: var(--ink); }
+.stmt-amt { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink); }
+.stmt-tag { font-family: var(--font-mono); font-size: 10px; color: var(--ink-soft); }
+
+.stmt-caption {
+  margin: 10px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
