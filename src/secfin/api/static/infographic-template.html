@@ -1,0 +1,701 @@
+<!doctype html>
+<!--
+  Infographic template — starting point for future company/peer infographics.
+
+  Built as an example for AAPL vs. its SIC-35 industry peers (FY2023). Not wired into
+  the site's nav and not a live page: the data below is a one-time, hand-copied
+  snapshot from GET /v1/companies/{symbol}/metrics and /peers, not fetched at load
+  time. To reuse this for a different company/period, pull fresh values from those
+  endpoints and swap them into the data objects in the <script> block below (search
+  for "peerData", "compareData", "gmData", "rgData", "trendSeries").
+
+  Charts use Observable Plot (loaded from jsDelivr's ESM CDN — see the import at the
+  bottom). Colors/fonts reuse this project's own brand tokens (see :root below),
+  not a generic palette. See docs/STYLE_GUIDE.md for the source of truth on those
+  tokens if they drift.
+
+  Known real limitation baked into this example (see the "data-note" section near
+  the bottom): only 3 metrics (net_margin, roa, asset_turnover) have real
+  peer-percentile coverage across the ingested universe, because 99.8% of companies
+  were only ingested via the cross-company screening backfill (6 concepts), not a
+  full companyfacts history. Building a new peer-percentile tile for a metric outside
+  those 3 will need that backfill gap closed first, not just a template edit.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profin — AAPL vs. Peers (example)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-page: #f6f3ee;
+    --bg-card: #fdfbf7;
+    --bg-tint: #efe9de;
+    --bg-badge: #f0e4d6;
+    --ink: #1c1a16;
+    --ink-body: #544f46;
+    --ink-muted: #5c574d;
+    --ink-soft: #6b6459;
+    --mono-muted: #8b8579;
+    --border: #e7e0d3;
+    --border-strong: #d8d1c4;
+    --accent: #c0703a;
+    --accent-hover: #a85f30;
+    --accent-ink: #8a5a2f;
+    --accent-wash: #f3e4d5;
+    --accent-wash-border: #e6cbae;
+    --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 40px 24px 64px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .eyebrow .tag {
+    font-size: 10px;
+    padding: 2px 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    letter-spacing: 0.06em;
+  }
+  h1 {
+    margin: 10px 0 4px;
+    font-size: 46px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.08;
+  }
+  .subtitle {
+    color: var(--ink-body);
+    font-size: 15.5px;
+    margin: 0 0 28px;
+    max-width: 62ch;
+  }
+  .subtitle code {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--bg-tint);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .hero-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .hero-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 4px 4px 12px 12px;
+    padding: 18px 20px 20px;
+  }
+  .hero-tile .label {
+    font-size: 12px;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+  }
+  .hero-tile .value {
+    font-size: 40px;
+    font-weight: 900;
+    margin-top: 8px;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .hero-tile .sub {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    margin-top: 4px;
+    font-family: var(--font-mono);
+  }
+
+  /* Headline callout — the one-sentence "so what" */
+  .headline-callout {
+    background: var(--accent);
+    color: #fdfbf7;
+    border-radius: 14px;
+    padding: 26px 30px;
+    margin-bottom: 36px;
+  }
+  .headline-callout .kicker {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: #f3e4d5;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .headline-callout .statement {
+    font-size: 25px;
+    font-weight: 800;
+    line-height: 1.32;
+    letter-spacing: -0.01em;
+    max-width: 60ch;
+  }
+  .headline-callout .statement b { font-weight: 900; text-decoration: underline; text-decoration-color: rgba(253,251,247,0.5); text-underline-offset: 4px; }
+
+  section { margin-bottom: 34px; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink);
+  }
+  .section-note {
+    font-size: 12px;
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+  }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+
+  /* Observable Plot chart containers */
+  #compare-chart { width: 100%; overflow-x: auto; }
+  #compare-chart svg { max-width: 100%; height: auto; }
+
+  /* Per-metric tiles: big number + compact position bar + trend sparkline */
+  .metric-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .metric-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .metric-tile .m-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .metric-tile .m-value {
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--accent-ink);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin: 8px 0 1px;
+  }
+  .metric-tile .m-value .suffix {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    margin-left: 3px;
+  }
+  .metric-tile .m-meta {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--ink-soft);
+    margin-bottom: 12px;
+  }
+  .metric-tile .bar-mini { overflow: visible; }
+  .metric-tile .bar-mini svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .metric-tile .trend-row {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+  }
+  .metric-tile .trend-row-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    margin-bottom: 2px;
+  }
+  .metric-tile .trend-row-label span {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 400;
+    color: var(--mono-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .metric-tile .trend-row svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart-caption {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+    margin: 12px 2px 0;
+  }
+
+  .legend-line {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 12px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .legend-line .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+  .caveats {
+    background: var(--bg-tint);
+    border: 1px dashed var(--border-strong);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    line-height: 1.55;
+  }
+  .caveats ul { margin: 6px 0 0; padding-left: 18px; }
+  .caveats li { margin-bottom: 4px; }
+
+  .data-note {
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent-ink);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    line-height: 1.6;
+    margin-top: 16px;
+  }
+  .data-note strong { color: var(--ink); }
+  .data-note p { margin: 8px 0 0; }
+  .data-note code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    background: var(--bg-tint);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-strong);
+    font-size: 11.5px;
+    color: var(--mono-muted);
+    font-family: var(--font-mono);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">Profin — SEC data, normalized <span class="tag">EXAMPLE INFOGRAPHIC</span></div>
+  <h1>AAPL vs. Industry Peers</h1>
+  <p class="subtitle">
+    Fiscal Year 2023, as-filed. Peer group is <code>SIC 35</code> (2-digit —
+    "Industrial &amp; Commercial Machinery &amp; Computer Equipment"), Apple's own SIC is
+    <code>3571</code> ("Electronic Computers"). All figures below are real, computed from
+    ingested SEC filings — nothing here is simulated.
+  </p>
+
+  <div class="hero-row">
+    <div class="hero-tile">
+      <div class="label">Revenue</div>
+      <div class="value">$365.8B</div>
+      <div class="sub">FY2023</div>
+    </div>
+    <div class="hero-tile">
+      <div class="label">Net Income</div>
+      <div class="value">$94.7B</div>
+      <div class="sub">FY2023</div>
+    </div>
+    <div class="hero-tile">
+      <div class="label">Net Margin</div>
+      <div class="value">25.3%</div>
+      <div class="sub">96th pctile vs. peers</div>
+    </div>
+  </div>
+
+  <div class="headline-callout">
+    <div class="kicker">The headline</div>
+    <div class="statement">Apple's 25.3% net margin ranks in the <b>top 4%</b> of its SIC-35 industry peers — outperforming 170 companies, from farm-machinery makers to fellow computer hardware firms.</div>
+  </div>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Where Apple stands in its industry</div>
+      <div class="section-note">SIC 35 · precomputed percentile / z-score</div>
+    </div>
+    <div class="metric-tile-grid">
+      <div class="metric-tile">
+        <div class="m-label">Return on Assets</div>
+        <div class="m-value">99.3<span class="suffix">%ile</span></div>
+        <div class="m-meta">z = +0.16 · 140 peers</div>
+        <div class="bar-mini" id="bar-roa"></div>
+        <div class="trend-row">
+          <div class="trend-row-label">5-year trend <span>FY21&rarr;FY25</span></div>
+          <div id="spark-roa"></div>
+        </div>
+      </div>
+      <div class="metric-tile">
+        <div class="m-label">Net Margin</div>
+        <div class="m-value">96.4<span class="suffix">%ile</span></div>
+        <div class="m-meta">z = +0.22 · 170 peers</div>
+        <div class="bar-mini" id="bar-net-margin"></div>
+        <div class="trend-row">
+          <div class="trend-row-label">5-year trend <span>FY21&rarr;FY25</span></div>
+          <div id="spark-net-margin"></div>
+        </div>
+      </div>
+      <div class="metric-tile">
+        <div class="m-label">Asset Turnover</div>
+        <div class="m-value">81.1<span class="suffix">%ile</span></div>
+        <div class="m-meta">z = +0.79 · 133 peers</div>
+        <div class="bar-mini" id="bar-asset-turnover"></div>
+        <div class="trend-row">
+          <div class="trend-row-label">5-year trend <span>FY21&rarr;FY25</span></div>
+          <div id="spark-asset-turnover"></div>
+        </div>
+      </div>
+    </div>
+    <p class="chart-caption">
+      Bar = percentile within SIC-35 peer group, FY2023-only. Sparkline = FY2021&ndash;FY2025 TTM (5 fiscal years), as-restated — a different time base than the percentile above it.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Net margin — named peer comparison</div>
+      <div class="section-note">FY2023 · same SIC-35 group</div>
+    </div>
+    <div class="card">
+      <div id="compare-chart"></div>
+      <div class="legend-line">
+        <span><span class="swatch" style="background:var(--accent)"></span>Apple (this company)</span>
+        <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Named peer</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Gross margin — large-cap tech comparison</div>
+      <div class="section-note">FY2023 · not limited to SIC-35</div>
+    </div>
+    <div class="card">
+      <div id="compare-chart-gm"></div>
+      <div class="legend-line">
+        <span><span class="swatch" style="background:var(--accent)"></span>Apple (this company)</span>
+        <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Comparison company</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Revenue growth (YoY) — large-cap tech comparison</div>
+      <div class="section-note">FY2023 · not limited to SIC-35</div>
+    </div>
+    <div class="card">
+      <div id="compare-chart-rg"></div>
+      <div class="legend-line">
+        <span><span class="swatch" style="background:var(--accent)"></span>Apple (this company)</span>
+        <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Comparison company</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="caveats">
+    <strong>Read this before drawing conclusions:</strong>
+    <ul>
+      <li>SIC industry codes are coarse and dated — a starting axis, not ground truth. "SIC 35" spans farm machinery, HVAC, and computer hardware alike.</li>
+      <li>Percentile is a company's <em>position</em> within its peer group, not a good/bad verdict — for some metrics a higher value is not "better."</li>
+      <li>Ranks exclude peers for which a metric is N/A — an N/A company is never counted as a low value.</li>
+      <li>Named-peer bars use only companies with a resolvable value for this exact metric/period — not every company reports on a comparable fiscal calendar.</li>
+      <li>"FY2023" means each company's own fiscal year, not the calendar year — the named-peer companies' fiscal year-ends span Jun 2023 to Dec 2023 (see each bar's FYE date), so these are close-in-time, not perfectly aligned snapshots.</li>
+      <li>Trend sparklines (5 fiscal years, 2021–2025) and the FY2023 peer percentile are on different time bases — the percentile applies only to FY2023, not to the years shown in the trend line.</li>
+      <li>The gross-margin and revenue-growth comparisons use a <em>different</em> peer set than the net-margin one above (large-cap tech, not strictly SIC-35) — most SIC-35 peers in this dataset were only ingested via the cross-company screening backfill (6 concepts: revenue, net income, total assets/liabilities, equity, cash), which isn't enough data to compute gross margin or YoY growth for them. See the note below on why only 3 metrics currently have peer-percentile coverage.</li>
+    </ul>
+  </div>
+
+  <div class="data-note">
+    <strong>Why only 3 metrics have peer-percentile coverage (net margin, ROA, asset turnover):</strong>
+    <p>
+      Of the 6,735 companies in this dataset, <b>6,721 (99.8%)</b> were ingested only through the
+      cross-company screening backfill (Milestone 4), which pulls exactly six SEC "frames" concepts
+      per company — revenue, net income, total assets, total liabilities, stockholders' equity, and
+      cash — not a full filing history. Only <b>14 companies</b> (Apple, Microsoft, Amazon, NVIDIA,
+      Alphabet, Meta, Tesla, JPMorgan, Bank of America, Walmart, Costco, Target, PayPal, ASML) have a
+      complete companyfacts ingest. Net margin, ROA, and asset turnover are the only three metrics
+      computable purely from those six frames concepts — every other metric (growth rates, leverage,
+      cash flow, per-share) needs a tag outside that set (e.g. cost of revenue, debt, share count),
+      so it's N/A for the other 99.8% and never reaches the minimum peer-group size. This is a
+      real, verified data-coverage gap, not a bug in the ranking math — fixing it means running the
+      full companyfacts backfill across the peer universe, not adjusting <code>peer_ranks.py</code>.
+    </p>
+  </div>
+
+  <footer>
+    <span>Generated as a one-off example — not a permanent product page.</span>
+    <span>Source: SEC EDGAR, via Profin's own /v1/companies/{symbol}/metrics + /peers</span>
+  </footer>
+
+</div>
+<script type="module">
+import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+esm";
+(function () {
+  var FONT = "'Hanken Grotesk', system-ui, sans-serif";
+  var MONO = "'IBM Plex Mono', monospace";
+  var ACCENT = "#c0703a";
+  var ACCENT_WASH = "#f3e4d5";
+  var TRACK = "#efe9de";
+  var TRACK_BORDER = "#d8d1c4";
+  var INK = "#1c1a16";
+  var INK_SOFT = "#6b6459";
+  var ACCENT_INK = "#8a5a2f";
+  var PEER_COLOR = "#6b6459";
+
+  // ---- Where Apple stands in its industry (peer percentile position) ----
+  // The big percentile number + z/peer meta now render as HTML (see the metric-tile
+  // markup) for stronger typographic weight; each chart below is just the compact
+  // position bar for that one metric.
+  var peerData = [
+    { id: "roa", metric: "Return on Assets", percentile: 99.3, z: "+0.16", peers: 140, full: 100 },
+    { id: "net-margin", metric: "Net Margin", percentile: 96.4, z: "+0.22", peers: 170, full: 100 },
+    { id: "asset-turnover", metric: "Asset Turnover", percentile: 81.1, z: "+0.79", peers: 133, full: 100 },
+  ];
+
+  function positionBar(row) {
+    var d = [row];
+    return Plot.plot({
+      width: 260,
+      height: 30,
+      margin: 0,
+      axis: null,
+      style: { background: "transparent", overflow: "visible" },
+      x: { domain: [0, 100] },
+      marks: [
+        Plot.barX(d, { x: "full", fill: TRACK, stroke: TRACK_BORDER, rx: 4, insetTop: 4, insetBottom: 4 }),
+        Plot.barX(d, {
+          x: "percentile", fill: ACCENT_WASH, stroke: ACCENT, strokeWidth: 1, rx: 4,
+          insetTop: 4, insetBottom: 4,
+          channels: { metric: "metric", percentile: "percentile", "z-score": "z", "peers in group": "peers" },
+          tip: {
+            format: {
+              x: false, metric: true,
+              percentile: function (v) { return v.toFixed(1) + "th"; },
+            },
+          },
+        }),
+        Plot.dot(d, { x: "percentile", r: 6, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2 }),
+      ],
+    });
+  }
+  peerData.forEach(function (row) {
+    document.getElementById("bar-" + row.id).appendChild(positionBar(row));
+  });
+
+  // ---- 5-fiscal-year trend sparklines (FY2021-FY2025 TTM) ----
+  var trendSeries = {
+    roa: [
+      { year: 2021, value: 0.2806 }, { year: 2022, value: 0.2836 }, { year: 2023, value: 0.2750 },
+      { year: 2024, value: 0.2613 }, { year: 2025, value: 0.3093 },
+    ],
+    net_margin: [
+      { year: 2021, value: 0.2588 }, { year: 2022, value: 0.2531 }, { year: 2023, value: 0.2531 },
+      { year: 2024, value: 0.2397 }, { year: 2025, value: 0.2692 },
+    ],
+    asset_turnover: [
+      { year: 2021, value: 1.0841 }, { year: 2022, value: 1.1206 }, { year: 2023, value: 1.0868 },
+      { year: 2024, value: 1.0899 }, { year: 2025, value: 1.1493 },
+    ],
+  };
+
+  function sparkline(data, fmtValue) {
+    return Plot.plot({
+      width: 220,
+      height: 56,
+      marginTop: 10,
+      marginBottom: 10,
+      marginLeft: 6,
+      marginRight: 6,
+      axis: null,
+      style: { fontFamily: FONT, background: "transparent", overflow: "visible" },
+      marks: [
+        Plot.lineY(data, { x: "year", y: "value", stroke: ACCENT, strokeWidth: 1.5, curve: "catmull-rom" }),
+        Plot.dot(data, {
+          x: "year", y: "value", filter: function (d) { return d.year === 2025; },
+          r: 4, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2,
+        }),
+        Plot.tip(
+          data,
+          Plot.pointerX({
+            x: "year", y: "value",
+            format: { x: function (d) { return "FY" + d; }, y: fmtValue },
+            fontFamily: MONO, fontSize: 11,
+          })
+        ),
+      ],
+    });
+  }
+  var fmtPct = function (v) { return (v * 100).toFixed(1) + "%"; };
+  var fmtMult = function (v) { return v.toFixed(2) + "×"; };
+  document.getElementById("spark-roa").appendChild(sparkline(trendSeries.roa, fmtPct));
+  document.getElementById("spark-net-margin").appendChild(sparkline(trendSeries.net_margin, fmtPct));
+  document.getElementById("spark-asset-turnover").appendChild(sparkline(trendSeries.asset_turnover, fmtMult));
+
+  // ---- Net margin, named peer comparison (same SIC-35 group) ----
+  var compareData = [
+    { label: "Apple — AAPL, FYE 09-30", margin: 25.3, self: true },
+    { label: "Cisco — CSCO, FYE 07-29", margin: 22.1, self: false },
+    { label: "IBM — FYE 12-31", margin: 12.1, self: false },
+    { label: "HP Inc — HPQ, FYE 10-31", margin: 6.1, self: false },
+    { label: "Xerox — XRX, FYE 12-31", margin: 0.01, self: false },
+  ];
+
+  var compareChart = Plot.plot({
+    width: 800,
+    height: 250,
+    marginLeft: 190,
+    marginRight: 60,
+    marginTop: 10,
+    style: { fontFamily: FONT, background: "transparent" },
+    x: { label: "Net Margin (%) →", grid: true, domain: [0, 27] },
+    y: { domain: compareData.map(function (d) { return d.label; }), label: null },
+    marks: [
+      // Full-width highlight band behind Apple's row, so it visually anchors the chart.
+      Plot.barX(compareData.filter(function (d) { return d.self; }), {
+        y: "label", x: 27, fill: ACCENT_WASH, fillOpacity: 0.6,
+      }),
+      Plot.barX(compareData, {
+        y: "label", x: "margin",
+        fill: function (d) { return d.self ? ACCENT : PEER_COLOR; },
+        fillOpacity: function (d) { return d.self ? 1 : 0.6; },
+        rx: 4, insetTop: 6, insetBottom: 6,
+        channels: { "net margin": "margin" },
+        tip: {
+          format: {
+            y: true, x: false, fillOpacity: false,
+            "net margin": function (d) { return d.toFixed(2) + "%"; },
+          },
+        },
+      }),
+      Plot.text(compareData, {
+        y: "label", x: "margin",
+        text: function (d) { return d.margin + "%"; },
+        dx: 10, textAnchor: "start", fontFamily: MONO, fontWeight: 800, fontSize: 15, fill: INK,
+      }),
+    ],
+  });
+  document.getElementById("compare-chart").appendChild(compareChart);
+
+  // ---- Reusable named-comparison chart (used by the gross-margin and revenue-growth
+  // panels below) -- supports negative values (revenue growth), unlike the net-margin
+  // chart above which is always positive.
+  function namedCompareChart(data, opts) {
+    var domain = opts.domain;
+    var fmt = opts.fmt;
+    var positive = data.filter(function (d) { return d.value >= 0; });
+    var negative = data.filter(function (d) { return d.value < 0; });
+    return Plot.plot({
+      width: 800,
+      height: data.length * 46 + 20,
+      marginLeft: 190,
+      marginRight: 60,
+      marginTop: 10,
+      style: { fontFamily: FONT, background: "transparent" },
+      x: { label: opts.xLabel, grid: true, domain: domain },
+      y: { domain: data.map(function (d) { return d.label; }), label: null },
+      marks: [
+        Plot.barX(data.filter(function (d) { return d.self; }), {
+          y: "label", x1: domain[0], x2: domain[1], fill: ACCENT_WASH, fillOpacity: 0.6,
+        }),
+        domain[0] < 0 ? Plot.ruleX([0], { stroke: TRACK_BORDER }) : null,
+        Plot.barX(data, {
+          y: "label", x: "value",
+          fill: function (d) { return d.self ? ACCENT : PEER_COLOR; },
+          fillOpacity: function (d) { return d.self ? 1 : 0.6; },
+          rx: 4, insetTop: 6, insetBottom: 6,
+          channels: { value: "value" },
+          tip: { format: { y: true, x: false, value: fmt } },
+        }),
+        Plot.text(positive, {
+          y: "label", x: "value", text: function (d) { return fmt(d.value); },
+          dx: 10, textAnchor: "start", fontFamily: MONO, fontWeight: 800, fontSize: 15, fill: INK,
+        }),
+        Plot.text(negative, {
+          y: "label", x: "value", text: function (d) { return fmt(d.value); },
+          dx: -10, textAnchor: "end", fontFamily: MONO, fontWeight: 800, fontSize: 15, fill: INK,
+        }),
+      ].filter(Boolean),
+    });
+  }
+
+  var fmtMarginPct = function (v) { return v.toFixed(1) + "%"; };
+
+  // ---- Gross margin, large-cap tech comparison (FY2023) ----
+  var gmData = [
+    { label: "Apple — AAPL, FYE 09-30", value: 44.1, self: true },
+    { label: "Microsoft — MSFT, FYE 06-30", value: 68.9, self: false },
+    { label: "Amazon — AMZN, FYE 12-31", value: 47.0, self: false },
+    { label: "ASML — FYE 12-31", value: 51.3, self: false },
+    { label: "Tesla — TSLA, FYE 12-31", value: 18.2, self: false },
+  ].sort(function (a, b) { return b.value - a.value; });
+  document.getElementById("compare-chart-gm").appendChild(
+    namedCompareChart(gmData, { domain: [0, 75], xLabel: "Gross Margin (%) →", fmt: fmtMarginPct })
+  );
+
+  // ---- Revenue growth YoY, large-cap tech comparison (FY2023) ----
+  // Apple's -2.8% is genuinely negative -- bars diverge from a zero baseline, not all
+  // growing rightward from 0 like the margin charts above.
+  var rgData = [
+    { label: "Apple — AAPL, FYE 09-30", value: -2.8, self: true },
+    { label: "Microsoft — MSFT, FYE 06-30", value: 6.9, self: false },
+    { label: "Amazon — AMZN, FYE 12-31", value: 11.8, self: false },
+    { label: "ASML — FYE 12-31", value: 30.2, self: false },
+    { label: "Tesla — TSLA, FYE 12-31", value: 18.8, self: false },
+  ].sort(function (a, b) { return b.value - a.value; });
+  document.getElementById("compare-chart-rg").appendChild(
+    namedCompareChart(rgData, { domain: [-8, 34], xLabel: "Revenue Growth YoY (%) →", fmt: fmtMarginPct })
+  );
+})();
+</script>
+</body>
+</html>
