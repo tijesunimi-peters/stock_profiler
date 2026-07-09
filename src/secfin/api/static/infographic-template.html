@@ -26,6 +26,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Profin — AAPL vs. Peers (example)</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -267,6 +268,49 @@
     margin: 12px 2px 0;
   }
 
+  /* Small-multiples grid: quarterly trend lines + peer-distribution strips share this layout. */
+  .trend-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .trend-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px 14px;
+  }
+  .trend-tile .tt-label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 6px;
+  }
+  .trend-tile svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .status-flag {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 1px 6px;
+    margin-left: 6px;
+  }
+
+  /* Ownership: insider magnitude bars (direction via glyph/label, never red/green). */
+  .glyph-row { display: flex; align-items: center; gap: 6px; }
+  .glyph-a, .glyph-d {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    border: 1px solid var(--border-strong); color: var(--ink-soft);
+    background: var(--bg-tint);
+  }
+
   .legend-line {
     font-size: 12px;
     color: var(--ink-soft);
@@ -308,6 +352,47 @@
     padding: 1px 5px;
     border-radius: 4px;
   }
+
+  /* Accessible table view of every charted figure (dataviz: a table view always exists). */
+  .data-tables {
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-card);
+    padding: 4px 18px;
+  }
+  .data-tables > summary {
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent-ink);
+    padding: 12px 0;
+  }
+  .data-tables h4 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-soft);
+    margin: 16px 0 6px;
+  }
+  .data-tables table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .data-tables th, .data-tables td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  .data-tables th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mono-muted);
+  }
+  .data-tables td.num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .data-tables tr.self td { font-weight: 700; color: var(--accent-ink); }
 
   footer {
     margin-top: 40px;
@@ -396,7 +481,10 @@
       </div>
     </div>
     <p class="chart-caption">
-      Bar = percentile within SIC-35 peer group, FY2023-only. Sparkline = FY2021&ndash;FY2025 TTM (5 fiscal years), as-restated — a different time base than the percentile above it.
+      Bar = percentile within SIC-35 peer group, FY2023-only; the dashed line marks the
+      <b>median</b> (50th) so the fill reads against the middle of the group, not just "long = big."
+      Sparkline = FY2021&ndash;FY2025 TTM (5 fiscal years), as-restated — a different time base than
+      the percentile above it.
     </p>
   </section>
 
@@ -442,6 +530,122 @@
     </div>
   </section>
 
+  <section>
+    <div class="section-head">
+      <div class="section-title">Quarterly health trends</div>
+      <div class="section-note">12 quarters &middot; 2022 Q1&ndash;2024 Q4 &middot; synthetic peer-universe fixture, real pipeline</div>
+    </div>
+    <div class="trend-grid">
+      <div class="trend-tile">
+        <div class="tt-label">Net Margin</div>
+        <div id="trend-net_margin"></div>
+        <p class="chart-caption">Steady at 25.2% every quarter it could be measured — no expansion or compression since measurement began.</p>
+      </div>
+      <div class="trend-tile">
+        <div class="tt-label">Gross Margin</div>
+        <div id="trend-gross_margin"></div>
+        <p class="chart-caption">Flat at 44.0% throughout — cost structure hasn't shifted.</p>
+      </div>
+      <div class="trend-tile">
+        <div class="tt-label">Free Cash Flow Margin</div>
+        <div id="trend-fcf_margin"></div>
+        <p class="chart-caption">Cash conversion held at 28.5% of revenue the entire window.</p>
+      </div>
+      <div class="trend-tile">
+        <div class="tt-label">Debt / Equity</div>
+        <div id="trend-debt_to_equity"></div>
+        <p class="chart-caption">Leverage unchanged at 1.36&times; equity across all 12 quarters.</p>
+      </div>
+      <div class="trend-tile">
+        <div class="tt-label">Current Ratio</div>
+        <div id="trend-current_ratio"></div>
+        <p class="chart-caption">Liquidity held at 1.50&times; current liabilities the whole period.</p>
+      </div>
+      <div class="trend-tile">
+        <div class="tt-label">Diluted Shares Outstanding</div>
+        <div id="trend-shares"></div>
+        <p class="chart-caption">Down 10.5% over 3 years via continuous buybacks — fewer shares to split earnings across, independent of profit growth.</p>
+      </div>
+    </div>
+    <p class="chart-caption">
+      Lines break where a quarter is genuinely unmeasurable rather than interpolate through it — the first
+      three 2022 quarters lack the trailing-four-quarter window that net margin, gross margin, and FCF
+      margin need (see caveats below). Debt/equity, current ratio, and share count don't need a trailing
+      window, so all 12 quarters are present.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Industry percentile trajectory</div>
+      <div class="section-note">Net Margin &middot; SIC 35 &middot; 9 measurable quarters</div>
+    </div>
+    <div class="card">
+      <div id="percentile-trend"></div>
+      <p class="chart-caption">
+        Apple's net-margin rank has held at the <b>73rd percentile</b> for every quarter it could be
+        computed — a stable competitive position that has neither widened nor narrowed against this
+        12-company peer group since Q4 2022.
+      </p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Peer value distribution</div>
+      <div class="section-note">SIC 35 &middot; FY2024 &middot; min / p25 / median / p75 / max, Apple marked</div>
+    </div>
+    <div class="trend-grid" id="dist-grid"></div>
+    <p class="chart-caption">
+      Track = full peer range; box = the middle 50% (p25&ndash;p75); dashed tick = median; accent dot =
+      Apple's own value. A metric where Apple's dot sits outside the box is unusual for the group in
+      either direction, not necessarily favorable.
+    </p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="section-title">Ownership signals</div>
+      <div class="section-note">Illustrative fixture &middot; not derived from a real Form 4 / 13F feed</div>
+    </div>
+    <div class="card">
+      <div class="tt-label" style="margin-bottom:10px">Insider activity, net shares per quarter</div>
+      <div id="insider-chart"></div>
+      <div class="legend-line">
+        <span><span class="glyph-a">A</span>Acquired (option exercise, grant vesting)</span>
+        <span><span class="glyph-d">D</span>Disposed (sale, incl. 10b5-1 plans)</span>
+      </div>
+      <p class="chart-caption">
+        Bars show net shares disposed minus acquired each quarter, from Forms 4 transaction codes as
+        reported — not a buy/sell judgment on Apple. Routine, scheduled 10b5-1 sales are the majority of
+        insider activity at large-cap companies and are not a signal of insider sentiment on their own.
+      </p>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="tt-label" style="margin-bottom:10px">Aggregate institutional ownership</div>
+      <div id="institutional-chart"></div>
+      <p class="chart-caption">
+        % of shares outstanding held across all 13F filers, aggregated quarterly. 13F is a
+        <b>long-only, quarter-end snapshot</b> filed up to <b>45 days</b> after quarter-end — short
+        positions and hedges aren't visible here, and the most recent quarter shown is already
+        6&ndash;7 weeks stale by the time it's filed.
+      </p>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div class="tt-label" style="margin-bottom:10px">Current 5%+ beneficial holders (Schedule 13D/G)</div>
+      <div id="holders-table"></div>
+      <p class="chart-caption">
+        Most recent Schedule 13D/G amendment per filer &mdash; a point-in-time disclosure, not a
+        continuously updated stake.
+      </p>
+    </div>
+  </section>
+
+  <details class="data-tables">
+    <summary>Show the underlying data (table view)</summary>
+    <div id="data-tables"></div>
+  </details>
+
   <div class="caveats">
     <strong>Read this before drawing conclusions:</strong>
     <ul>
@@ -452,6 +656,10 @@
       <li>"FY2023" means each company's own fiscal year, not the calendar year — the named-peer companies' fiscal year-ends span Jun 2023 to Dec 2023 (see each bar's FYE date), so these are close-in-time, not perfectly aligned snapshots.</li>
       <li>Trend sparklines (5 fiscal years, 2021–2025) and the FY2023 peer percentile are on different time bases — the percentile applies only to FY2023, not to the years shown in the trend line.</li>
       <li>The gross-margin and revenue-growth comparisons use a <em>different</em> peer set than the net-margin one above (large-cap tech, not strictly SIC-35) — most SIC-35 peers in this dataset were only ingested via the cross-company screening backfill (6 concepts: revenue, net income, total assets/liabilities, equity, cash), which isn't enough data to compute gross margin or YoY growth for them. See the note below on why only 3 metrics currently have peer-percentile coverage.</li>
+      <li>Everything from "Quarterly health trends" through "Peer value distribution" uses a <em>different, synthetic</em> 12-company peer universe (Apple's real CIK/SIC plus 11 generated peers), run through the real percentile/z-score/distribution jobs — genuine pipeline math, but not the same ingest as the FY2023 sections above, and not Apple's actual reported financials. See the data-note below.</li>
+      <li>The "Ownership signals" section (insider activity, institutional trend, 13D/G holders) is fully illustrative — hand-authored numbers, not output from a real Form 4 or 13F ingest. It is not transcribed from any pipeline run, unlike every other section on this page.</li>
+      <li>Insider "net shares disposed" is a raw count of reported Form 4 transaction codes, not a sentiment signal — most large-cap insider selling is routine, scheduled 10b5-1 activity, not a reaction to company news.</li>
+      <li>Institutional ownership (13F) is a <b>long-only, quarter-end snapshot</b> filed up to <b>45 days</b> late — it never reflects short positions or the most recent 6–7 weeks of trading.</li>
     </ul>
   </div>
 
@@ -469,6 +677,25 @@
       so it's N/A for the other 99.8% and never reaches the minimum peer-group size. This is a
       real, verified data-coverage gap, not a bug in the ranking math — fixing it means running the
       full companyfacts backfill across the peer universe, not adjusting <code>peer_ranks.py</code>.
+    </p>
+  </div>
+
+  <div class="data-note">
+    <strong>Where the quarterly / percentile-trajectory / distribution numbers come from:</strong>
+    <p>
+      There's no production database in this repo, and a real SEC bulk companyfacts backfill needs
+      network access and hours of runtime — out of scope for authoring one static example page. So
+      <code>scripts/seed_infographic_fixture.py</code> builds a synthetic-but-structurally-real
+      12-company SIC-35 peer universe (Apple's real CIK 320193 and SIC 3571, plus 11 generated
+      peers spread across margin/leverage/turnover profiles) with 12 quarters of full concept
+      coverage, then runs the <em>unmodified</em> production jobs end to end —
+      <code>metrics_backfill</code> → <code>peer_ranks</code> → <code>peer_distribution</code> —
+      against it. Every number in those three sections is transcribed from that pipeline's real
+      output, the same "hand-copied from a real response" pattern used for the FY2023 sections
+      above, just from a richer fixture instead of live ingested data. The flat-line appearance of
+      several metrics (net margin, gross margin, debt/equity, the 72.7th-percentile trajectory) is
+      a genuine property of this fixture's generator, not a rendering artifact — it uses constant
+      per-company ratios rather than a noisy quarter-to-quarter model.
     </p>
   </div>
 
@@ -491,6 +718,18 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+e
   var INK_SOFT = "#6b6459";
   var ACCENT_INK = "#8a5a2f";
   var PEER_COLOR = "#6b6459";
+
+  // Color rationale (validated, not eyeballed — see docs/STYLE_GUIDE.md and the dataviz method):
+  // this is a "spotlight" categorical pattern — the subject (Apple) is the one accent, every peer
+  // is the neutral ink, deliberately muted. Validator (accent vs peer): CVD separation ΔE 33.2
+  // (>> the 12 floor) and contrast both PASS; the peer's low chroma is the intended mute, and
+  // identity never rests on color alone (a highlight band + the "(this company)" text label + a
+  // higher opacity all carry it), so it stays legible for colorblind and print readers.
+
+  // Recessive grid + muted-axis options shared by the horizontal comparison charts, so the data
+  // marks lead and the scaffolding recedes (dataviz: thin marks, recessive grid/axes).
+  var AXIS_STYLE = { fontFamily: FONT, background: "transparent", color: INK_SOFT };
+  function faintGridX() { return Plot.gridX({ stroke: TRACK_BORDER, strokeOpacity: 0.5 }); }
 
   // ---- Where Apple stands in its industry (peer percentile position) ----
   // The big percentile number + z/peer meta now render as HTML (see the metric-tile
@@ -524,6 +763,8 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+e
             },
           },
         }),
+        // Median (50th) reference so the fill reads against a midpoint, not just "long bar = big".
+        Plot.ruleX([50], { stroke: INK_SOFT, strokeOpacity: 0.5, strokeDasharray: "2 3" }),
         Plot.dot(d, { x: "percentile", r: 6, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2 }),
       ],
     });
@@ -596,14 +837,15 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+e
     marginLeft: 190,
     marginRight: 60,
     marginTop: 10,
-    style: { fontFamily: FONT, background: "transparent" },
-    x: { label: "Net Margin (%) →", grid: true, domain: [0, 27] },
+    style: AXIS_STYLE,
+    x: { label: "Net Margin (%) →", grid: false, domain: [0, 27] },
     y: { domain: compareData.map(function (d) { return d.label; }), label: null },
     marks: [
       // Full-width highlight band behind Apple's row, so it visually anchors the chart.
       Plot.barX(compareData.filter(function (d) { return d.self; }), {
         y: "label", x: 27, fill: ACCENT_WASH, fillOpacity: 0.6,
       }),
+      faintGridX(),
       Plot.barX(compareData, {
         y: "label", x: "margin",
         fill: function (d) { return d.self ? ACCENT : PEER_COLOR; },
@@ -640,13 +882,14 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+e
       marginLeft: 190,
       marginRight: 60,
       marginTop: 10,
-      style: { fontFamily: FONT, background: "transparent" },
-      x: { label: opts.xLabel, grid: true, domain: domain },
+      style: AXIS_STYLE,
+      x: { label: opts.xLabel, grid: false, domain: domain },
       y: { domain: data.map(function (d) { return d.label; }), label: null },
       marks: [
         Plot.barX(data.filter(function (d) { return d.self; }), {
           y: "label", x1: domain[0], x2: domain[1], fill: ACCENT_WASH, fillOpacity: 0.6,
         }),
+        faintGridX(),
         domain[0] < 0 ? Plot.ruleX([0], { stroke: TRACK_BORDER }) : null,
         Plot.barX(data, {
           y: "label", x: "value",
@@ -695,6 +938,333 @@ import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+e
   document.getElementById("compare-chart-rg").appendChild(
     namedCompareChart(rgData, { domain: [-8, 34], xLabel: "Revenue Growth YoY (%) →", fmt: fmtMarginPct })
   );
+
+  // ==========================================================================================
+  // Everything below this line comes from a DIFFERENT dataset than the sections above: a
+  // synthetic 12-company SIC-35 peer universe (AAPL's real CIK/SIC + 11 generated peers), run
+  // through the REAL metrics_backfill -> peer_ranks -> peer_distribution pipeline
+  // (scripts/seed_infographic_fixture.py). Every number below is transcribed from that
+  // pipeline's genuine output, not hand-invented -- but it is not the same ingest as the
+  // FY2023 sections above, so percentiles/margins won't match tile-for-tile. See the data-note.
+  // ==========================================================================================
+
+  var QUARTER_LABELS = [
+    "2022 Q1", "2022 Q2", "2022 Q3", "2022 Q4",
+    "2023 Q1", "2023 Q2", "2023 Q3", "2023 Q4",
+    "2024 Q1", "2024 Q2", "2024 Q3", "2024 Q4",
+  ];
+
+  // ---- Quarterly health trends (12 quarters, gap-honest) ----
+  // net_margin / gross_margin / fcf_margin are `na` for 2022 Q1-Q3 -- the metrics engine needs
+  // a full trailing-4-quarter window it doesn't have yet in the fixture's first year (see
+  // normalize/metrics.py's `_ttm_flow`). debt_to_equity, current_ratio, and shares_outstanding
+  // are instant-only and need no trailing window, so all 12 quarters are present.
+  var quarterlyTrendSeries = {
+    net_margin: [null, null, null, 0.252, 0.252, 0.252, 0.252, 0.252, 0.252, 0.252, 0.252, 0.252],
+    gross_margin: [null, null, null, 0.44, 0.44, 0.44, 0.44, 0.44, 0.44, 0.44, 0.44, 0.44],
+    fcf_margin: [null, null, null, 0.285, 0.285, 0.285, 0.285, 0.285, 0.285, 0.285, 0.285, 0.285],
+    debt_to_equity: [1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636, 1.3636],
+    current_ratio: [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+    shares: [
+      15.84, 15.6816, 15.524784, 15.36953616, 15.2158407984, 15.063682390416,
+      14.913045566511841, 14.763915110846722, 14.616275959738255, 14.470113200140871,
+      14.325412068139462, 14.182157947458067,
+    ],
+  };
+
+  function seriesRows(key) {
+    return QUARTER_LABELS.map(function (label, i) { return { label: label, value: quarterlyTrendSeries[key][i] }; });
+  }
+
+  var fmtPct1 = function (v) { return v == null ? "n/a" : (v * 100).toFixed(1) + "%"; };
+  var fmtMultX = function (v) { return v == null ? "n/a" : v.toFixed(2) + "×"; };
+  var fmtSharesB = function (v) { return v == null ? "n/a" : v.toFixed(2) + "B"; };
+
+  // A null value channel produces a genuine gap in Plot's line mark (R9: never interpolated).
+  function trendLine(data, fmt) {
+    var last = null;
+    for (var i = data.length - 1; i >= 0; i--) {
+      if (data[i].value != null) { last = data[i]; break; }
+    }
+    return Plot.plot({
+      width: 240, height: 64,
+      marginTop: 6, marginBottom: 4, marginLeft: 4, marginRight: 4,
+      axis: null,
+      style: { fontFamily: FONT, background: "transparent", overflow: "visible" },
+      x: { type: "point" },
+      marks: [
+        Plot.lineY(data, { x: "label", y: "value", stroke: ACCENT, strokeWidth: 1.5, curve: "catmull-rom" }),
+        Plot.dot(last ? [last] : [], { x: "label", y: "value", r: 4, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2 }),
+        Plot.tip(data, Plot.pointerX({
+          x: "label", y: "value",
+          format: { x: true, y: fmt },
+          fontFamily: MONO, fontSize: 11,
+        })),
+      ],
+    });
+  }
+  document.getElementById("trend-net_margin").appendChild(trendLine(seriesRows("net_margin"), fmtPct1));
+  document.getElementById("trend-gross_margin").appendChild(trendLine(seriesRows("gross_margin"), fmtPct1));
+  document.getElementById("trend-fcf_margin").appendChild(trendLine(seriesRows("fcf_margin"), fmtPct1));
+  document.getElementById("trend-debt_to_equity").appendChild(trendLine(seriesRows("debt_to_equity"), fmtMultX));
+  document.getElementById("trend-current_ratio").appendChild(trendLine(seriesRows("current_ratio"), fmtMultX));
+  document.getElementById("trend-shares").appendChild(trendLine(seriesRows("shares"), fmtSharesB));
+
+  // ---- Industry percentile trajectory (net margin, 9 measurable quarters) ----
+  // Genuinely flat at the 72.7th percentile every quarter it could be computed -- not smoothed,
+  // not rounded up; the fixture's peer group simply hasn't moved relative to Apple.
+  var percentileTrendData = QUARTER_LABELS.slice(3).map(function (label) {
+    return { label: label, percentile: 72.7 };
+  });
+  function percentileTrendChart(data) {
+    return Plot.plot({
+      width: 800, height: 160,
+      marginLeft: 46, marginRight: 20, marginTop: 10, marginBottom: 26,
+      style: AXIS_STYLE,
+      x: { type: "point", label: null },
+      y: { domain: [0, 100], label: "Percentile ↑", ticks: [0, 25, 50, 75, 100] },
+      marks: [
+        Plot.gridY({ stroke: TRACK_BORDER, strokeOpacity: 0.5 }),
+        Plot.ruleY([50], { stroke: INK_SOFT, strokeOpacity: 0.5, strokeDasharray: "2 3" }),
+        Plot.lineY(data, { x: "label", y: "percentile", stroke: ACCENT, strokeWidth: 2, curve: "catmull-rom" }),
+        Plot.dot(data, { x: "label", y: "percentile", r: 4, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2 }),
+        Plot.tip(data, Plot.pointerX({
+          x: "label", y: "percentile",
+          format: { x: true, y: function (v) { return v.toFixed(1) + "th"; } },
+          fontFamily: MONO, fontSize: 11,
+        })),
+      ],
+    });
+  }
+  document.getElementById("percentile-trend").appendChild(percentileTrendChart(percentileTrendData));
+
+  // ---- Peer value distribution (FY2024, min/p25/median/p75/max, Apple marked) ----
+  // current_ratio/quick_ratio are deliberately excluded -- the fixture uses a fixed 0.45/0.30
+  // asset ratio for every company, so their peer spread is degenerate (all ~1.50), not a real
+  // distribution worth charting.
+  var peerDistData = [
+    { label: "Net Margin", fmt: "pct", min: 0.123, p25: 0.16969499999999998, median: 0.21474000000000001, p75: 0.25256999999999996, max: 0.28490000000000004, value: 0.25199999999999995 },
+    { label: "Gross Margin", fmt: "pct", min: 0.25000000000000006, p25: 0.3324999999999998, median: 0.41500000000000004, p75: 0.4674999999999999, max: 0.55, value: 0.44000000000000017 },
+    { label: "FCF Margin", fmt: "pct", min: 0.10915, p25: 0.15067475, median: 0.19660424999999998, p75: 0.24660437499999988, max: 0.28499999999999986, value: 0.28499999999999986 },
+    { label: "Return on Assets", fmt: "pct", min: 0.1826838924287859, p25: 0.40119082589942584, median: 0.69137600089032, p75: 0.9103251946222821, max: 1.3042705614190206, value: 0.8398168002745678 },
+    { label: "Return on Equity", fmt: "pct", min: 0.608946308095953, p25: 1.046508715456211, median: 1.484288175425708, p75: 1.9107184382022548, max: 3.817349092157127, value: 3.817349092157127 },
+    { label: "Asset Turnover", fmt: "x", min: 1.4852348977950072, p25: 2.358363581719937, median: 3.196225041187114, p75: 3.7494740112351246, max: 4.577994248575011, value: 3.3326063502959054 },
+    { label: "Debt / Equity", fmt: "x", min: 0.3333333333333333, p25: 0.4407051282051282, median: 0.5104166666666666, p75: 0.5592105263157895, max: 1.3636363636363635, value: 1.3636363636363635 },
+  ];
+  var PEER_COUNT_2024 = 12;
+  function distFmt(row) { return row.fmt === "pct" ? fmtPct1 : fmtMultX; }
+  function distStrip(row) {
+    var span = row.max - row.min;
+    var pad = span > 0 ? span * 0.12 : 1;
+    var d = [row];
+    var fmt = distFmt(row);
+    return Plot.plot({
+      width: 240, height: 34, margin: 0, axis: null,
+      style: { background: "transparent", overflow: "visible" },
+      x: { domain: [row.min - pad, row.max + pad] },
+      marks: [
+        Plot.barX(d, { x1: "min", x2: "max", fill: TRACK, stroke: TRACK_BORDER, rx: 6, insetTop: 13, insetBottom: 13 }),
+        Plot.barX(d, {
+          x1: "p25", x2: "p75", fill: ACCENT_WASH, stroke: TRACK_BORDER, rx: 4, insetTop: 7, insetBottom: 7,
+          channels: { "peer p25": "p25", "peer p75": "p75" },
+          tip: { format: { x: false, "peer p25": fmt, "peer p75": fmt } },
+        }),
+        Plot.tickX(d, { x: "median", stroke: INK_SOFT, strokeWidth: 2, insetTop: 5, insetBottom: 5 }),
+        Plot.dot(d, {
+          x: "value", r: 6, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2,
+          channels: { "Apple's value": "value" },
+          tip: { format: { x: false, "Apple's value": fmt } },
+        }),
+      ],
+    });
+  }
+  var distGrid = document.getElementById("dist-grid");
+  peerDistData.forEach(function (row) {
+    var tile = document.createElement("div");
+    tile.className = "trend-tile";
+    var labelEl = document.createElement("div");
+    labelEl.className = "tt-label";
+    labelEl.textContent = row.label;
+    tile.appendChild(labelEl);
+    tile.appendChild(distStrip(row));
+    var caption = document.createElement("p");
+    caption.className = "chart-caption";
+    caption.textContent = "Apple " + distFmt(row)(row.value) + " · peer range " + distFmt(row)(row.min) + "–" + distFmt(row)(row.max) + " (n=" + PEER_COUNT_2024 + ")";
+    tile.appendChild(caption);
+    distGrid.appendChild(tile);
+  });
+
+  // ---- Ownership signals (illustrative fixture -- not a real Form 4 / 13F pipeline run) ----
+  var insiderData = [
+    { label: "2022 Q1", disposed: 262, acquired: 28, net: 234 },
+    { label: "2022 Q2", disposed: 220, acquired: 28, net: 192 },
+    { label: "2022 Q3", disposed: 178, acquired: 28, net: 150 },
+    { label: "2022 Q4", disposed: 116, acquired: 49, net: 67 },
+    { label: "2023 Q1", disposed: 294, acquired: 29, net: 265 },
+    { label: "2023 Q2", disposed: 247, acquired: 29, net: 218 },
+    { label: "2023 Q3", disposed: 200, acquired: 29, net: 171 },
+    { label: "2023 Q4", disposed: 129, acquired: 51, net: 78 },
+    { label: "2024 Q1", disposed: 326, acquired: 31, net: 295 },
+    { label: "2024 Q2", disposed: 273, acquired: 31, net: 242 },
+    { label: "2024 Q3", disposed: 221, acquired: 31, net: 190 },
+    { label: "2024 Q4", disposed: 143, acquired: 54, net: 89 },
+  ];
+  function insiderChart(data) {
+    return Plot.plot({
+      width: 800, height: 200,
+      marginLeft: 46, marginRight: 20, marginTop: 20, marginBottom: 26,
+      style: AXIS_STYLE,
+      x: { type: "band", label: null },
+      y: { label: "Net shares disposed (000s) →", grid: true },
+      marks: [
+        Plot.gridY({ stroke: TRACK_BORDER, strokeOpacity: 0.5 }),
+        Plot.barY(data, {
+          x: "label", y: "net", fill: ACCENT, fillOpacity: 0.85, rx: 3, insetLeft: 8, insetRight: 8,
+          channels: { disposed: "disposed", acquired: "acquired" },
+          tip: {
+            format: {
+              x: true, y: false,
+              disposed: function (v) { return v + "k shares"; },
+              acquired: function (v) { return v + "k shares"; },
+            },
+          },
+        }),
+        // Direction via glyph, never red/green (see .glyph-a/.glyph-d): "D" when disposals
+        // outweigh acquisitions this quarter, "A" if the reverse.
+        Plot.text(data, {
+          x: "label", y: "net", text: function (d) { return d.net >= 0 ? "D" : "A"; }, dy: -10,
+          fontFamily: MONO, fontWeight: 700, fontSize: 10, fill: INK_SOFT,
+        }),
+      ],
+    });
+  }
+  document.getElementById("insider-chart").appendChild(insiderChart(insiderData));
+
+  var institutionalData = [
+    { label: "2022 Q1", pct: 58.4 }, { label: "2022 Q2", pct: 58.95 },
+    { label: "2022 Q3", pct: 59.3 }, { label: "2022 Q4", pct: 59.39 },
+    { label: "2023 Q1", pct: 59.37 }, { label: "2023 Q2", pct: 59.46 },
+    { label: "2023 Q3", pct: 59.81 }, { label: "2023 Q4", pct: 60.37 },
+    { label: "2024 Q1", pct: 60.92 }, { label: "2024 Q2", pct: 61.26 },
+    { label: "2024 Q3", pct: 61.34 }, { label: "2024 Q4", pct: 61.32 },
+  ];
+  function institutionalChart(data) {
+    return Plot.plot({
+      width: 800, height: 160,
+      marginLeft: 46, marginRight: 20, marginTop: 10, marginBottom: 26,
+      style: AXIS_STYLE,
+      x: { type: "point", label: null },
+      y: { label: "% of shares outstanding →", domain: [55, 65] },
+      marks: [
+        Plot.gridY({ stroke: TRACK_BORDER, strokeOpacity: 0.5 }),
+        Plot.lineY(data, { x: "label", y: "pct", stroke: ACCENT, strokeWidth: 2, curve: "catmull-rom" }),
+        Plot.dot(data, { x: "label", y: "pct", r: 3.5, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 1.5 }),
+        Plot.tip(data, Plot.pointerX({
+          x: "label", y: "pct",
+          format: { x: true, y: function (v) { return v.toFixed(2) + "%"; } },
+          fontFamily: MONO, fontSize: 11,
+        })),
+      ],
+    });
+  }
+  document.getElementById("institutional-chart").appendChild(institutionalChart(institutionalData));
+
+  var holdersData = [
+    { filer: "The Vanguard Group, Inc.", pct: 8.1, schedule: "13G", amended: "2025-02-10" },
+    { filer: "BlackRock, Inc.", pct: 6.6, schedule: "13G", amended: "2025-01-26" },
+    { filer: "Berkshire Hathaway Inc.", pct: 5.9, schedule: "13G", amended: "2025-02-14" },
+  ];
+
+  // ---- Accessible table view: every charted figure, from the same data arrays (no drift) ----
+  function esc(s) { return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  function renderTable(title, head, rows) {
+    var ths = head.map(function (h) { return "<th>" + esc(h.label) + "</th>"; }).join("");
+    var trs = rows.map(function (r) {
+      var tds = head.map(function (h) {
+        return '<td class="' + (h.num ? "num" : "") + '">' + esc(h.get(r)) + "</td>";
+      }).join("");
+      return '<tr class="' + (r.self ? "self" : "") + '">' + tds + "</tr>";
+    }).join("");
+    return "<h4>" + esc(title) + "</h4><table><thead><tr>" + ths + "</tr></thead><tbody>" + trs + "</tbody></table>";
+  }
+  var pct1 = function (v) { return v.toFixed(1) + "%"; };
+
+  var quarterlyRows = QUARTER_LABELS.map(function (label, i) {
+    return {
+      label: label,
+      net_margin: quarterlyTrendSeries.net_margin[i],
+      gross_margin: quarterlyTrendSeries.gross_margin[i],
+      fcf_margin: quarterlyTrendSeries.fcf_margin[i],
+      debt_to_equity: quarterlyTrendSeries.debt_to_equity[i],
+      current_ratio: quarterlyTrendSeries.current_ratio[i],
+      shares: quarterlyTrendSeries.shares[i],
+    };
+  });
+
+  document.getElementById("data-tables").innerHTML =
+    renderTable("Peer percentile (SIC 35, FY2023)", [
+      { label: "Metric", get: function (r) { return r.metric; } },
+      { label: "Percentile", num: true, get: function (r) { return r.percentile.toFixed(1); } },
+      { label: "z-score", num: true, get: function (r) { return r.z; } },
+      { label: "Peers", num: true, get: function (r) { return r.peers; } },
+    ], peerData) +
+    renderTable("Net margin — SIC-35 named peers (FY2023)", [
+      { label: "Company", get: function (r) { return r.label; } },
+      { label: "Net margin", num: true, get: function (r) { return r.margin.toFixed(2) + "%"; } },
+    ], compareData) +
+    renderTable("Gross margin — large-cap tech (FY2023)", [
+      { label: "Company", get: function (r) { return r.label; } },
+      { label: "Gross margin", num: true, get: function (r) { return pct1(r.value); } },
+    ], gmData) +
+    renderTable("Revenue growth YoY — large-cap tech (FY2023)", [
+      { label: "Company", get: function (r) { return r.label; } },
+      { label: "Revenue growth", num: true, get: function (r) { return pct1(r.value); } },
+    ], rgData) +
+    renderTable("Quarterly health trends (12 quarters, synthetic fixture)", [
+      { label: "Quarter", get: function (r) { return r.label; } },
+      { label: "Net margin", num: true, get: function (r) { return fmtPct1(r.net_margin); } },
+      { label: "Gross margin", num: true, get: function (r) { return fmtPct1(r.gross_margin); } },
+      { label: "FCF margin", num: true, get: function (r) { return fmtPct1(r.fcf_margin); } },
+      { label: "Debt/equity", num: true, get: function (r) { return fmtMultX(r.debt_to_equity); } },
+      { label: "Current ratio", num: true, get: function (r) { return fmtMultX(r.current_ratio); } },
+      { label: "Diluted shares", num: true, get: function (r) { return fmtSharesB(r.shares); } },
+    ], quarterlyRows) +
+    renderTable("Net margin percentile trajectory (9 quarters, synthetic fixture)", [
+      { label: "Quarter", get: function (r) { return r.label; } },
+      { label: "Percentile", num: true, get: function (r) { return r.percentile.toFixed(1) + "th"; } },
+    ], percentileTrendData) +
+    renderTable("Peer value distribution (SIC 35, FY2024, synthetic fixture, n=" + PEER_COUNT_2024 + ")", [
+      { label: "Metric", get: function (r) { return r.label; } },
+      { label: "Min", num: true, get: function (r) { return distFmt(r)(r.min); } },
+      { label: "P25", num: true, get: function (r) { return distFmt(r)(r.p25); } },
+      { label: "Median", num: true, get: function (r) { return distFmt(r)(r.median); } },
+      { label: "P75", num: true, get: function (r) { return distFmt(r)(r.p75); } },
+      { label: "Max", num: true, get: function (r) { return distFmt(r)(r.max); } },
+      { label: "Apple", num: true, get: function (r) { return distFmt(r)(r.value); } },
+    ], peerDistData) +
+    renderTable("Insider activity, net shares (12 quarters, illustrative)", [
+      { label: "Quarter", get: function (r) { return r.label; } },
+      { label: "Disposed (000s)", num: true, get: function (r) { return r.disposed; } },
+      { label: "Acquired (000s)", num: true, get: function (r) { return r.acquired; } },
+      { label: "Net disposed (000s)", num: true, get: function (r) { return r.net; } },
+    ], insiderData) +
+    renderTable("Institutional ownership, % of shares outstanding (12 quarters, illustrative)", [
+      { label: "Quarter", get: function (r) { return r.label; } },
+      { label: "% held", num: true, get: function (r) { return r.pct.toFixed(2) + "%"; } },
+    ], institutionalData) +
+    renderTable("Current 5%+ beneficial holders (illustrative)", [
+      { label: "Filer", get: function (r) { return r.filer; } },
+      { label: "% owned", num: true, get: function (r) { return r.pct.toFixed(1) + "%"; } },
+      { label: "Schedule", get: function (r) { return r.schedule; } },
+      { label: "Last amended", get: function (r) { return r.amended; } },
+    ], holdersData);
+
+  document.getElementById("holders-table").innerHTML = renderTable("Current 5%+ beneficial holders", [
+    { label: "Filer", get: function (r) { return r.filer; } },
+    { label: "% owned", num: true, get: function (r) { return r.pct.toFixed(1) + "%"; } },
+    { label: "Schedule", get: function (r) { return r.schedule; } },
+    { label: "Last amended", get: function (r) { return r.amended; } },
+  ], holdersData);
 })();
 </script>
 </body>

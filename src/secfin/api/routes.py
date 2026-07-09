@@ -34,6 +34,7 @@ from secfin.normalize.metrics import (
 from secfin.normalize.schema import (
     BeneficialOwnership,
     CompanyMetrics,
+    CompanyPeerDistribution,
     CompanyPeerRanks,
     CusipResolutionStats,
     FiscalPeriod,
@@ -41,6 +42,7 @@ from secfin.normalize.schema import (
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
+    PeerDistribution,
     PeerRank,
     RawFact,
     Statement,
@@ -59,10 +61,13 @@ from secfin.sec.institutional import fetch_13f_snapshot, fetch_beneficial_owners
 from secfin.sec.ticker_cache import TickerCache
 from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
+from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
+from secfin.storage.metric_distribution_repository import MetricDistributionRepository
 from secfin.storage.metric_rank_repository import MetricRankRepository
+from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
@@ -155,6 +160,18 @@ def get_metric_rank_repo(request: Request) -> MetricRankRepository:
     return request.app.state.metric_rank_repo
 
 
+def get_metric_distribution_repo(request: Request) -> MetricDistributionRepository:
+    return request.app.state.metric_distribution_repo
+
+
+def get_metric_value_repo(request: Request) -> MetricValueRepository:
+    return request.app.state.metric_value_repo
+
+
+def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
+    return request.app.state.company_profile_repo
+
+
 def get_cusip_repo(request: Request) -> CusipMapRepository:
     return request.app.state.cusip_repo
 
@@ -214,9 +231,7 @@ async def _statement_facts_for_cik(
     facts = await fetch_raw_facts_all(client, cik)
     if facts:
         repo.upsert_raw_facts(facts)
-    return [
-        f for f in facts if f.fiscal_year == fiscal_year and f.fiscal_period == fiscal_period
-    ]
+    return [f for f in facts if f.fiscal_year == fiscal_year and f.fiscal_period == fiscal_period]
 
 
 async def _insider_transactions_for_cik(
@@ -493,6 +508,75 @@ async def get_peer_ranks(
 
 
 @public_router.get(
+    "/companies/{symbol}/peers/{metric}/distribution",
+    response_model=CompanyPeerDistribution,
+    tags=["Financials"],
+    summary="Peer value distribution for one metric (min/p25/median/p75/max)",
+)
+async def get_peer_distribution(
+    symbol: str,
+    metric: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+    dist_repo: MetricDistributionRepository = Depends(get_metric_distribution_repo),
+    value_repo: MetricValueRepository = Depends(get_metric_value_repo),
+) -> CompanyPeerDistribution:
+    """The peer group's actual value spread for one metric/period, with this company's own
+    value alongside it -- for plotting a distribution (strip/box), not just a lone percentile.
+
+    A **precomputed** group lookup (the analytical/peer_distribution.py batch is the sole
+    producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md). `distribution`
+    is `None` when this company's SIC group never met the minimum peer-group size for this
+    metric/period -- a valid, honest result, same convention as `/peers`.
+    """
+    if metric not in METRIC_KEYS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown metric '{metric}'. Valid metrics: {', '.join(METRIC_KEYS)}.",
+        )
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    distribution = None
+    profile = profile_repo.get(cik)
+    sic_digits = settings.secfin_peer_sic_digits
+    if profile is not None and profile.sic is not None and len(profile.sic) >= sic_digits:
+        peer_group = profile.sic[:sic_digits]
+        row = dist_repo.get(peer_group, year, period, metric)
+        if row is not None:
+            company_value = next(
+                (
+                    v.value
+                    for v in value_repo.get_for_cik(cik)
+                    if v.fiscal_year == year and v.fiscal_period == period and v.metric == metric
+                ),
+                None,
+            )
+            distribution = PeerDistribution(
+                metric=metric,
+                label=METRIC_LABELS.get(metric, metric),
+                unit=METRIC_UNITS.get(metric, ""),
+                peer_group=row.peer_group,
+                peer_count=row.peer_count,
+                min=row.min,
+                p25=row.p25,
+                median=row.median,
+                p75=row.p75,
+                max=row.max,
+                company_value=company_value,
+            )
+    return CompanyPeerDistribution(
+        cik=cik,
+        fiscal_year=year,
+        fiscal_period=period,
+        peer_basis=f"SIC {sic_digits}-digit",
+        caveats=_PEER_CAVEATS,
+        distribution=distribution,
+    )
+
+
+@public_router.get(
     "/companies/{symbol}/insider-trades",
     response_model=list[InsiderTransaction],
     tags=["Insider Trades"],
@@ -603,9 +687,7 @@ async def get_beneficial_ownership(
     summary="Get your API key's tier, limits, and recent daily usage",
 )
 async def get_usage(
-    days: int = Query(
-        7, ge=1, le=90, description="Trailing days to include (default 7, max 90)"
-    ),
+    days: int = Query(7, ge=1, le=90, description="Trailing days to include (default 7, max 90)"),
     record: ApiKeyRecord | None = Depends(require_api_key),
     api_key_repo: ApiKeyRepository = Depends(get_api_key_repo),
 ) -> UsageSummary:

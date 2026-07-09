@@ -350,6 +350,41 @@ class CompanyPeerRanks(BaseModel):
     peers: list[PeerRank] = Field(default_factory=list)
 
 
+class PeerDistribution(BaseModel):
+    """The peer group's value spread for one metric/period, plus this company's own value.
+
+    PRECOMPUTED by `analytical/peer_distribution.py` (same batch family as peer ranks) --
+    a five-number summary (min/p25/median/p75/max), never a live DuckDB read.
+    """
+
+    metric: str
+    label: str
+    unit: str
+    peer_group: str  # the SIC prefix the distribution was computed within, e.g. "35"
+    peer_count: int  # companies in the group with a comparable (non-N/A) value
+    min: float
+    p25: float
+    median: float
+    p75: float
+    max: float
+    company_value: float | None = None  # this company's own value; None if N/A for this period
+
+
+class CompanyPeerDistribution(BaseModel):
+    """One metric's peer distribution for one company + period.
+
+    `distribution` is None when this company's SIC group never met the minimum peer-group
+    size for this metric/period -- a valid, honest result, not an error.
+    """
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    caveats: list[str] = Field(default_factory=list)
+    distribution: PeerDistribution | None = None
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

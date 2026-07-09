@@ -28,10 +28,15 @@ from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
 from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
 )
+from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfileRepository
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
+from secfin.storage.sqlite_metric_distribution_repository import (
+    SQLiteMetricDistributionRepository,
+)
 from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankRepository
+from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -122,6 +127,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # (a point lookup per issuer); the analytical/peer_ranks.py batch is the sole writer,
     # so the live API never touches DuckDB. See api.routes.get_metric_rank_repo.
     app.state.metric_rank_repo = SQLiteMetricRankRepository(settings.secfin_db_path)
+    # Precomputed peer distributions (min/p25/median/p75/max) -- sibling of metric_rank_repo
+    # above, same read-only-on-the-serving-path shape; analytical/peer_distribution.py is the
+    # sole writer. See api.routes.get_metric_distribution_repo.
+    app.state.metric_distribution_repo = SQLiteMetricDistributionRepository(settings.secfin_db_path)
+    # Materialized per-company metric values (Metrics Phase 2) -- read here only to surface a
+    # company's own value alongside its peer distribution; ingest/metrics_backfill.py is the
+    # sole writer. See api.routes.get_metric_value_repo.
+    app.state.metric_value_repo = SQLiteMetricValueRepository(settings.secfin_db_path)
+    # Company SIC profile (cik -> peer group) -- read here to resolve which peer group's
+    # distribution applies to a company; ingest/sic_backfill.py is the sole writer. See
+    # api.routes.get_company_profile_repo.
+    app.state.company_profile_repo = SQLiteCompanyProfileRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -132,6 +149,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.beneficial_ownership_repo.close()
         app.state.api_key_repo.close()
         app.state.metric_rank_repo.close()
+        app.state.metric_distribution_repo.close()
+        app.state.metric_value_repo.close()
+        app.state.company_profile_repo.close()
 
 
 app = FastAPI(
@@ -174,15 +194,11 @@ async def _handle_upstream_transport_error(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=503,
-        content={
-            "detail": "Upstream SEC request timed out or could not connect. Please retry."
-        },
+        content={"detail": "Upstream SEC request timed out or could not connect. Please retry."},
     )
 
 
-app.include_router(
-    public_router, prefix="/v1", dependencies=[Depends(limit_anonymous_traffic)]
-)
+app.include_router(public_router, prefix="/v1", dependencies=[Depends(limit_anonymous_traffic)])
 app.include_router(signup_router, prefix="/v1")
 app.include_router(router, prefix="/v1", dependencies=[Depends(require_api_key)])
 # Own gating (require_admin_secret, an admin shared secret) at the route level, not

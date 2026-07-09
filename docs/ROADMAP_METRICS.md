@@ -315,6 +315,15 @@ Approach:
       alongside `/metrics` (best-effort — a peers miss never breaks the grid). Percentile is
       position, not a verdict (one accent, no good/bad color — §9.2/§10); shown only where a rank
       exists. Verified headless.
+- [x] **Peer distribution** — sibling batch job `analytical/peer_ranks.py` -> `peer_distribution.py`
+      computes a five-number summary (min/p25/median/p75/max) per (peer group, period, metric),
+      same DuckDB/`ATTACH` mechanism, same N/A-exclusion and min-group-size rules. Written to a new
+      `metric_distributions` table (keyed by peer group, not by company -- the distribution is
+      shared by the whole group) via `SQLiteMetricDistributionRepository`. Served by
+      **`GET /v1/companies/{symbol}/peers/{metric}/distribution`** (public router), a point lookup
+      plus the company's own `metric_values` row -- no live DuckDB. `distribution: None` is a valid
+      response (insufficient peers), not an error. See `docs/DATA_MODEL.md`'s "Peer distribution"
+      section.
 - [ ] Feed peer-ranked metrics into Milestone 4 screening (shared query path, not a new one).
 
 ---

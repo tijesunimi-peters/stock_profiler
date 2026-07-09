@@ -630,6 +630,30 @@ How one company's metrics stack up against its **industry peers**, served at
   computes the ranks and writes `metric_ranks` through the ordinary SQLite repo. The endpoint
   reads `metric_ranks` as a point lookup — no DuckDB on the request path.
 
+### Peer distribution (Phase 2 follow-on)
+
+A percentile/z-score alone can't drive a distribution chart — a caller also needs the peer
+group's actual value spread. `GET /v1/companies/{symbol}/peers/{metric}/distribution?year=&period=`
+serves that, alongside the company's own value for the same metric/period:
+
+- **Shape.** A five-number summary per (peer group, period, metric) — `min`, `p25` (continuous
+  interpolation), `median`, `p75`, `max` — plus `peer_count` and the requesting company's own
+  `company_value` (`None` if it's N/A for that period). Unlike `metric_ranks` (one row per
+  company), `metric_distributions` is keyed by the **peer group** — the distribution is shared by
+  every company in that group/period/metric, so it's computed and stored once.
+  - **Same peer axis, same honesty rules, same min-group-size threshold as peer ranks above** — a
+    metric that's rankable is also distribution-plottable and vice versa; N/A companies are
+    excluded (R7), never counted as a zero.
+- **Pipeline.** `analytical/peer_distribution.py` is the sibling batch job to `peer_ranks.py`:
+  same DuckDB `ATTACH ... (TYPE sqlite)` mechanism, same `metric_values` + `company_profiles`
+  join, one aggregation query (`quantile_cont`/`median` GROUP BY) instead of a window function.
+  Writes `metric_distributions` through `SQLiteMetricDistributionRepository`, full clear +
+  reinsert each run (a group that drops below the min size must not leave a stale row behind).
+- **Endpoint.** Reads `metric_distributions` as a point lookup by peer group (resolved from the
+  company's own `company_profiles.sic`) plus `metric_values` for the company's own value — no
+  DuckDB on the request path, same as `/peers`. `distribution: None` is a valid response
+  (insufficient peers for that metric/period), not an error.
+
 ## Analytical layer (Milestone 2.5) — not a new model, no serialization step (for now)
 
 The DuckDB analytical engine (see `ARCHITECTURE.md`, stage 3b) reads the existing
