@@ -1,0 +1,24 @@
+# Reverse proxy + automatic TLS for a single small VPS deploy. See docs/DEPLOYMENT.md.
+#
+# Caddy is the low-ops default here: it obtains and renews a Let's Encrypt certificate
+# automatically the first time it starts, as long as DNS for the domain below already
+# points at this host's IP and ports 80/443 are reachable from the internet (Let's
+# Encrypt's HTTP-01 challenge needs port 80; Caddy handles the challenge and the
+# redirect to HTTPS itself -- nothing else to configure). This is a recommendation, not
+# a hard requirement -- swap in nginx+certbot if you already run one, the app doesn't
+# care what's in front of it.
+#
+# Replace api.example.com with your real domain before starting this stack -- see
+# docker-compose.prod.yml, which mounts this file into the caddy service.
+
+api.example.com {
+	reverse_proxy api:8000
+
+	# Basic access logging so "yesterday's traffic" (docs/DEPLOYMENT.md's log-review
+	# routine) has something to grep -- JSON lines to stdout, captured by
+	# `docker compose logs caddy` / `docker logs`, same as any other container.
+	log {
+		output stdout
+		format json
+	}
+}

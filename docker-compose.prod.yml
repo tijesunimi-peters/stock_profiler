@@ -1,0 +1,66 @@
+# Production compose stack for a single small VPS. See docs/DEPLOYMENT.md for the full
+# runbook this belongs to.
+#
+# Deliberately a STANDALONE file, not a `docker compose -f docker-compose.yml -f
+# docker-compose.prod.yml` overlay: Compose merges list-valued keys (ports, volumes) by
+# concatenation, not replacement, so layering a loopback-only ports entry on top of the
+# dev file's "0.0.0.0:8000:8000" would leave BOTH bindings active -- the public one
+# would still be reachable directly, unencrypted, bypassing Caddy entirely, which
+# defeats the whole point of adding a reverse proxy in the first place. A standalone
+# file avoids that footgun. Tradeoff: the `api` service's env-var list is duplicated
+# from docker-compose.yml rather than inherited -- keep the two in sync if that list
+# changes (docs/DEPLOYMENT.md's env checklist cross-references both).
+#
+# Run from the repo root, same as the dev file, so `.env` resolves the same way
+# (docs/DEVELOPMENT.md #1):
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml run --rm api python -m secfin.ingest.incremental
+#   docker compose -f docker-compose.prod.yml run --rm api python -m secfin.storage.backup
+#
+# Single uvicorn process, same as dev (Dockerfile's CMD is unchanged) -- see
+# docs/DEPLOYMENT.md's "Why one process" section for why `--workers` must not be added
+# without redesigning the in-memory per-key rate limiter and the process-wide SEC
+# throttle, both of which assume exactly one process.
+
+services:
+  api:
+    build: .
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+      SECFIN_BACKUP_DIR: "/app/backups"
+      SEC_MAX_RPS: "${SEC_MAX_RPS:-8}"
+      SECFIN_ADMIN_SECRET: "${SECFIN_ADMIN_SECRET:-}"
+      SECFIN_ANON_RATE_LIMIT_PER_SEC: "${SECFIN_ANON_RATE_LIMIT_PER_SEC:-2.0}"
+      SECFIN_BACKFILL_WORKERS: "${SECFIN_BACKFILL_WORKERS:-0}"
+      SECFIN_BACKFILL_BATCH_SIZE: "${SECFIN_BACKFILL_BATCH_SIZE:-5000}"
+      SECFIN_BACKFILL_QUEUE_MAXSIZE: "${SECFIN_BACKFILL_QUEUE_MAXSIZE:-50}"
+    volumes:
+      - secfin-data:/app/data
+      - ./data/backups:/app/backups
+    # Reachable ONLY on loopback -- Caddy (below) is the sole public entry point and
+    # terminates TLS. This is the one meaningful difference from docker-compose.yml's
+    # "0.0.0.0:8000:8000", which is fine on a laptop but would otherwise put a bare,
+    # unencrypted, unproxied :8000 directly on the public internet on a VPS.
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  secfin-data:
+  caddy-data:
+  caddy-config:

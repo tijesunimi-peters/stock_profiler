@@ -1,0 +1,14 @@
+[Unit]
+Description=Run secfin scheduled SQLite backup once a day
+
+[Timer]
+# 07:00 UTC -- one hour after the incremental timer, so a same-day ingest has time to
+# finish before the backup snapshots the DB (backup itself is safe to run concurrently
+# with a writer -- storage/backup.py uses sqlite3's online backup API, see
+# docs/DEVELOPMENT.md #7 -- this is about capturing the freshest data, not correctness).
+OnCalendar=*-*-* 07:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
