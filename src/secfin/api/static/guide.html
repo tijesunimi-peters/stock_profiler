@@ -49,6 +49,7 @@
   <h1>Everything you need to call the API.</h1>
   <p class="guide-hero-sub">This page covers the workflow: signing up, authenticating, rate limits, and reading a response. For the exhaustive, always-current shape of every field, use the <a href="/docs">API Reference</a> (auto-generated from the running API).</p>
   <nav class="guide-toc" aria-label="On this page">
+    <a href="#skeptical">Before you start</a>
     <a href="#quickstart">Quickstart</a>
     <a href="#auth">Auth &amp; rate limits</a>
     <a href="#errors">Error codes</a>
@@ -57,10 +58,44 @@
   </nav>
 </header>
 
+<section class="section guide-section" id="skeptical">
+  <span class="eyebrow">00</span>
+  <h2>Before you start: the five questions we'd ask too</h2>
+  <div class="guide-callout">
+    <ul>
+      <li><strong>Where does the data come from?</strong> SEC EDGAR's structured filings only — XBRL for financials, ownership XML for Forms 3/4/5, the 13F information table for institutional holdings. Nothing is scraped from HTML, and nothing is written by an LLM. See the <a href="/methodology">data source &amp; methodology page</a>.</li>
+      <li><strong>How fresh is it?</strong> A daily job ingests newly filed 10-K/10-Q/Form 4s; the underlying filings themselves lag reality by whatever the SEC's own filing deadlines allow (10-Qs ~40–45 days, 13F ~45 days after quarter-end). We don't make filings appear faster than SEC publishes them — see the methodology page for the per-dataset breakdown.</li>
+      <li><strong>What's NOT covered?</strong> No prices, quotes, or OHLCV — ever (fundamentals + ownership only). US SEC registrants only, no international filers. No MD&amp;A, risk factors, or any free-text narrative — structured numeric data only.</li>
+      <li><strong>How are 13F "buy/sell" numbers derived?</strong> They're not reported anywhere by the SEC. 13F is a quarter-end long-only holdings snapshot; we DIFF two consecutive quarters ourselves to compute new/added/reduced/exited positions. Every activity response carries a <code>caveats</code> field saying this. Full detail in <a href="#caveats">§05 below</a>.</li>
+      <li><strong>What does free actually include?</strong> Every field, every endpoint, full historical coverage — no feature is paywalled. Free is rate-limited (5 req/sec, 1,000 req/day), not feature-limited. See the tier table in <a href="#auth">§02 below</a>.</li>
+    </ul>
+  </div>
+</section>
+
 <section class="section guide-section" id="quickstart">
   <span class="eyebrow">01</span>
   <h2>Quickstart</h2>
   <p class="body-text">Three steps: get a key, call an endpoint, read the response. No credit card, no email verification -- <code>POST /v1/signup</code> issues a free-tier key instantly.</p>
+
+  <p class="guide-step-label">0. Try it right now -- no signup required</p>
+  <p class="body-text"><code>/statements</code> is one of the two public endpoints (see step 3 below), so this works before you've done anything else:</p>
+  <div class="code-panel">
+    <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">income-statement.sh</span></div>
+    <pre class="code-body">curl <span class="str">"https://api.example.com/v1/companies/AAPL/statements/income?year=2023&amp;period=FY"</span></pre>
+  </div>
+  <div class="code-panel">
+    <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">income-statement.py</span></div>
+    <pre class="code-body"><span class="key">import</span> requests
+
+resp = requests.get(
+    <span class="str">"https://api.example.com/v1/companies/AAPL/statements/income"</span>,
+    params={<span class="str">"year"</span>: <span class="num">2023</span>, <span class="str">"period"</span>: <span class="str">"FY"</span>},
+)
+statement = resp.json()
+<span class="key">for</span> line <span class="key">in</span> statement[<span class="str">"lines"</span>]:
+    print(line[<span class="str">"canonical_concept"</span>], line[<span class="str">"value"</span>], <span class="str">"from"</span>, line[<span class="str">"source_tag"</span>])</pre>
+  </div>
+  <p class="guide-note">Response includes Apple's real FY2023 revenue, gross profit, operating income, net income, and diluted EPS -- each line carrying the exact source <code>gaap_tag</code> it was mapped from, for audit. <code>interest_expense</code> is deliberately absent: Apple nets it into other income/expense rather than tagging it discretely, so we surface that as a documented gap instead of guessing a value.</p>
 
   <p class="guide-step-label">1. Sign up for a key</p>
   <div class="code-panel">
@@ -112,13 +147,13 @@
   <span class="eyebrow">03</span>
   <h2>Error codes</h2>
   <table class="guide-table">
-    <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+    <thead><tr><th>Status</th><th>Meaning</th><th>What to do next</th></tr></thead>
     <tbody>
-      <tr><td><code>400</code></td><td>Bad request parameter -- e.g. a quarter-end date that isn't a valid calendar quarter-end.</td></tr>
-      <tr><td><code>401</code></td><td>Missing, unknown, or revoked <code>X-API-Key</code>.</td></tr>
-      <tr><td><code>404</code></td><td>Unknown ticker/CIK, or no data found for the requested company/period/CUSIP.</td></tr>
-      <tr><td><code>429</code></td><td>Per-key burst rate or daily quota exceeded (or, on the two public endpoints, the per-IP burst limit).</td></tr>
-      <tr><td><code>503</code></td><td>Reserved for internal admin operations -- not returned by any customer-facing endpoint.</td></tr>
+      <tr><td><code>400</code></td><td>Bad request parameter -- e.g. a quarter-end date that isn't a valid calendar quarter-end.</td><td>Check the parameter against the endpoint's schema in the <a href="/docs">API Reference</a>; period params must be an actual calendar quarter-end date.</td></tr>
+      <tr><td><code>401</code></td><td>Missing, unknown, or revoked <code>X-API-Key</code>.</td><td>Confirm the <code>X-API-Key</code> header is present and spelled correctly. If you never signed up, <code>POST /v1/signup</code> (step 1 above) issues one instantly.</td></tr>
+      <tr><td><code>404</code></td><td>Unknown ticker/CIK, or no data found for the requested company/period/CUSIP.</td><td>Verify the ticker/CIK is a real SEC registrant and the period is inside our coverage floor (see <a href="#caveats">§05</a>) -- an empty/404 result never means "nothing was filed," it means outside our coverage window or a typo.</td></tr>
+      <tr><td><code>429</code></td><td>Per-key burst rate or daily quota exceeded (or, on the two public endpoints, the per-IP burst limit).</td><td>Back off and retry with backoff; call <code>GET /v1/usage</code> to see your current daily count against your quota. Sustained need for more room means a tier upgrade (see <a href="#auth">§02</a>), not a workaround.</td></tr>
+      <tr><td><code>502</code> / <code>503</code></td><td>Upstream SEC request timed out, couldn't connect, or returned an error (or, for <code>503</code> alone, an internal admin operation was misconfigured).</td><td>Retry -- these mean the failure was upstream (SEC) or transient, not a bug in your request. If it persists across retries, treat it as a real outage and check <a href="/health">/health</a>.</td></tr>
     </tbody>
   </table>
 </section>
@@ -203,19 +238,20 @@
       <div class="footer-heading">Data</div>
       <a href="/#covered">Coverage</a>
       <a href="/#covered">Schema</a>
-      <a href="/#covered">Sources</a>
+      <a href="/methodology">Sources &amp; methodology</a>
       <a href="/#pricing">Pricing</a>
     </div>
     <div class="footer-col">
       <div class="footer-heading">Company</div>
-      <a href="/">About</a>
-      <a href="/">Changelog</a>
-      <a href="/">Contact</a>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms">Terms of service</a>
+      <a href="/disclaimer">Disclaimer</a>
     </div>
   </div>
   <div class="footer-bottom">
     <span>© 2026 Profin</span>
     <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
   </div>
 </footer>
 
