@@ -110,10 +110,23 @@ and verification evidence next to each, matching the ROADMAP.md style.*
 - [ ] `LAUNCH_NOTES.md` ready to capture objections verbatim + the retro within a
       week (traffic, signups, activation = first 200)
 
-## Suggested order
+## Parallel execution
 
-Items 1 and 2 first (pricing posture can be decided in an afternoon; deployment
-unblocks everything that needs "as a stranger" verification). Item 3 can run in
-parallel (long-running backfills). Items 4–5 before any public link exists. Items
-6–7 in launch week itself. Nothing here is months of work; the long poles are the
-Stripe integration (if chosen) and the bulk backfills' wall-clock time.
+This checklist runs as four parallel tracks via the `/launch-parallel` mode
+(`.claude/skills/launch-parallel/`), one background subagent per track
+(`.claude/agents/launch-{code,data,writing,infra}.md`), each with its own file lane
+and a notes log under `tracks/`:
+
+- **code** — §1 plumbing + §6 revocation (worktree; blocked on a pricing decision
+  for the Stripe half)
+- **data** — §3 backfills + spot-checks (live Docker volume; hours of wall clock)
+- **writing** — §4 legal/trust pages, §5 copy, §7 assets (worktree)
+- **infra** — §2 as runbook + scheduled-job files + verification script (worktree;
+  prep-only until a host exists)
+
+Convergence (orchestrator, after tracks land): merge branches, verify claims, flip
+checkboxes here, then the deployed-host verifications (§2 external check, §5 timed
+stranger test, §6 spike re-check). Operator-only actions — price-point decision,
+Stripe account, domain, VPS, legal review — are the critical path once tracks
+complete. The long poles are Stripe integration (if chosen) and backfill wall-clock
+time.
