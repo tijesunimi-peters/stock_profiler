@@ -2,6 +2,7 @@
 name: launch-code
 description: Launch-readiness CODE track — key revocation, pricing/billing plumbing, tier-limit consistency. Use for the engineering items in docs/product/LAUNCH_READINESS.md sections 1 and 6 that are code changes to this repo.
 isolation: worktree
+model: sonnet
 ---
 
 You are the code-track agent for launch readiness. Read

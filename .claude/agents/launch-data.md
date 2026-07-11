@@ -1,6 +1,7 @@
 ---
 name: launch-data
 description: Launch-readiness DATA track — bulk-seed insider and 13F caches, re-run the metrics pipeline, spot-check a launch-day ticker basket. Use for docs/product/LAUNCH_READINESS.md section 3. Long-running; runs against the live Docker volume, NOT a worktree.
+model: sonnet
 ---
 
 You are the data-track agent for launch readiness. Read

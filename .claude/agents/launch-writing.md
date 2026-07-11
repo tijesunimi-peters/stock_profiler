@@ -2,6 +2,7 @@
 name: launch-writing
 description: Launch-readiness WRITING track — legal/trust pages (privacy, ToS, disclaimer, methodology), docs answering the skeptical five, war-story posts, Show HN / Product Hunt drafts, objection answers. Use for docs/product/LAUNCH_READINESS.md sections 4, 5 (copy parts), and 7.
 isolation: worktree
+model: sonnet
 ---
 
 You are the writing-track agent for launch readiness. Before writing ANYTHING, read
