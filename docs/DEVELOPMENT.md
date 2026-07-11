@@ -283,6 +283,16 @@ with the check's pass/fail code (CI-friendly). Tear down with
 To point the check at a different app or page set, override `BASE_URL` / `PAGES` on the `e2e`
 service (see `scripts/headless_check.js`).
 
+### Social-media slide deck (interactive HTML, no rendering step)
+
+`src/secfin/api/static/social-slides.html` is a self-contained, interactive 1080x1080 carousel —
+a 9-slide "company profile" for AAPL (cover, vitals, 5-year trend, peer percentile standing,
+three named-peer comparisons, a recap, and a closing CTA) — open it directly in a browser, or via
+the running app at `/static/social-slides.html`. Its data is inline (copied from
+`infographic-template.html`'s own verified FY2023 numbers and its FY2021-FY2025 `trendSeries`,
+not fetched), and it ships its own prev/next buttons, dot navigation, keyboard arrow-key support,
+and touch swipe — there's no Puppeteer/PNG rendering step; the HTML page itself is the deliverable.
+
 ## Open questions / mismatches
 
 - ~~**No tested path to run tests/lint via the project's own Docker image.**~~ **Resolved:**

@@ -1,0 +1,789 @@
+<!doctype html>
+<!--
+  Social-media slide deck — interactive square (1080x1080) carousel, "company profile" format.
+
+  Structure is a scannable company-profile one-pager, not a persuasive narrative: cover -> vitals
+  -> 5-year trajectory -> peer percentile standing -> three named-peer comparisons -> recap ->
+  CTA. Every NUMBER on every slide is copied verbatim from infographic-template.html's own real
+  data arrays (`peerData` / `compareData` / `gmData` / `rgData` / `trendSeries`), all of which sit
+  ABOVE that file's own "different dataset" separator (the comment above `QUARTER_LABELS`) — i.e.
+  hand-copied from a real GET /v1/companies/AAPL/{metrics,peers} response (FY2023, SIC-35 peer
+  group; the 5-year trend is FY2021-FY2025 TTM). Nothing here is fetched, recomputed, or invented.
+
+  Deliberately excluded: the synthetic 12-company fixture sections of the long-form template
+  (12-quarter trend, percentile trajectory, value distribution, insider/institutional ownership).
+  Those are only honest in that page because they sit beside an explicit "this is a fixture"
+  caveat box — a social slide has no room for that caveat and gets screenshotted out of context,
+  so presenting synthetic numbers as Apple's real financials here would be misleading.
+
+  This is a standalone, self-contained HTML page — open it directly in a browser (or serve it
+  via the app's existing /static mount at /static/social-slides.html). It is the deliverable
+  itself: click/swipe/arrow-key through the 9 slides like a LinkedIn document-post carousel. Not
+  wired into the site's nav.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profin — AAPL company profile (carousel)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-page: #f6f3ee;
+    --bg-card: #fdfbf7;
+    --bg-tint: #efe9de;
+    --ink: #1c1a16;
+    --ink-body: #544f46;
+    --ink-soft: #6b6459;
+    --mono-muted: #8b8579;
+    --border: #e7e0d3;
+    --border-strong: #d8d1c4;
+    --accent: #c0703a;
+    --accent-ink: #8a5a2f;
+    --accent-wash: #f3e4d5;
+    --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    background: #2a2620;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+    min-height: 100vh;
+    padding: 24px 0;
+  }
+
+  /* ---- Carousel scaffolding ---- */
+  .carousel-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    width: 100%;
+  }
+  .carousel-viewport {
+    position: relative;
+    width: min(1080px, 92vw);
+    aspect-ratio: 1 / 1;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.4);
+  }
+  .carousel-frame {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1080px;
+    height: 1080px;
+    transform-origin: top left;
+  }
+  .carousel-track {
+    display: flex;
+    width: max-content;
+    height: 1080px;
+    transition: transform 420ms cubic-bezier(0.22, 0.68, 0.28, 1);
+  }
+
+  .slide {
+    width: 1080px;
+    height: 1080px;
+    flex: none;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-page);
+    color: var(--ink);
+  }
+  .slide-pad { padding: 72px 76px; height: 100%; display: flex; flex-direction: column; }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  /* Only used on slide 8 (accent-orange bg) -- solid ink, not the light accent-wash tint
+     used elsewhere: measured contrast (validate_palette.js's `contrast()`) showed
+     accent-wash-on-accent lands at 3.0:1, short of the 4.5:1 normal-text floor, and even
+     full-opacity white only reaches 3.6:1 on this mid-tone orange. Ink clears 4.65:1+. */
+  .eyebrow.on-accent { color: #1c1a16; }
+
+  .slide-title {
+    font-size: 64px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.06;
+    margin: 18px 0 0;
+  }
+  .slide-sub {
+    font-size: 24px;
+    color: var(--ink-body);
+    margin: 18px 0 0;
+    max-width: 44ch;
+  }
+
+  /* Vertically centers a data block in the space between the title and the caption, so
+     slides whose content doesn't fill the frame don't read as top-heavy. */
+  .slide-body { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+
+  .brand-mark {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--ink-soft);
+  }
+  .brand-mark .sq { width: 20px; height: 20px; border-radius: 6px; background: var(--ink); position: relative; flex: none; }
+  .brand-mark .sq::after { content: ""; position: absolute; inset: 6px; border-radius: 2px; background: var(--accent); }
+  .brand-mark.on-accent { color: var(--accent-wash); }
+  .brand-mark.on-accent .sq { background: #fdfbf7; }
+  .brand-mark.on-accent .sq::after { background: var(--accent); }
+
+  /* ---- Slide 1: cover ---- */
+  #slide-cover .slide-pad { justify-content: space-between; }
+  #slide-cover .cover-mid { margin-top: 60px; }
+
+  /* ---- Slide 2: vitals ---- */
+  .hero-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .hero-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--accent);
+    border-radius: 4px 4px 20px 20px;
+    padding: 34px 28px;
+  }
+  .hero-tile .label { font-size: 18px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); font-weight: 700; }
+  .hero-tile .value { font-size: 60px; font-weight: 900; letter-spacing: -0.02em; margin-top: 12px; color: var(--ink); }
+  .hero-tile .sub { font-size: 17px; color: var(--ink-soft); margin-top: 8px; font-family: var(--font-mono); }
+
+  /* ---- Slide 3: 5-year trajectory ---- */
+  .trend-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .trend-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 26px 26px 22px;
+  }
+  .trend-tile .tt-label { font-size: 19px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.03em; }
+  .trend-tile .tt-value { font-size: 42px; font-weight: 900; color: var(--accent-ink); letter-spacing: -0.01em; margin: 10px 0 4px; }
+  .trend-tile .tt-range { font-size: 16px; font-family: var(--font-mono); color: var(--ink-soft); margin-bottom: 14px; }
+  .trend-tile svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  /* ---- Slide 4: peer percentile positions ---- */
+  .pctile-row { margin-top: 44px; }
+  .pctile-row:first-child { margin-top: 0; }
+  .pctile-row .pr-head { display: flex; align-items: baseline; justify-content: space-between; }
+  .pctile-row .pr-label { font-size: 29px; font-weight: 700; }
+  .pctile-row .pr-value { font-size: 38px; font-weight: 900; color: var(--accent-ink); }
+  .pctile-row .pr-value .suffix { font-size: 19px; font-weight: 700; color: var(--ink-soft); margin-left: 3px; }
+  .pctile-row .pr-meta { font-family: var(--font-mono); font-size: 17px; color: var(--ink-soft); margin-top: 3px; }
+  .pctile-row .pr-bar { margin-top: 12px; }
+  .pctile-row .pr-bar svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  /* ---- Slides 5-7: named comparison charts ---- */
+  .compare-wrap svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .legend-line {
+    font-size: 18px;
+    color: var(--ink-soft);
+    display: flex;
+    gap: 22px;
+    margin-top: 8px;
+  }
+  .legend-line .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+  .slide-caption {
+    font-size: 17px;
+    font-family: var(--font-mono);
+    color: var(--ink-soft);
+    margin-top: auto;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-strong);
+  }
+
+  /* ---- Slide 8: profile recap ---- */
+  /* Ink-on-accent, not white/accent-wash-on-accent: measured (validate_palette.js's
+     `contrast()`) against this mid-tone orange, the light treatment used on the dark CTA
+     slide fails WCAG here (labels 2.6:1, sub-text 2.4:1, caption 2.7:1 -- all need 4.5:1).
+     Solid ink clears 4.65:1+ on both the raw accent and the tinted tile background;
+     hierarchy comes from size/weight instead of opacity. */
+  #slide-recap { background: var(--accent); color: #1c1a16; }
+  .recap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+  .recap-tile {
+    background: rgba(253,251,247,0.1);
+    border: 1px solid rgba(253,251,247,0.28);
+    border-radius: 14px;
+    padding: 24px 20px;
+  }
+  .recap-tile .rl-label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: #1c1a16; font-weight: 700; }
+  .recap-tile .rl-value { font-size: 36px; font-weight: 900; letter-spacing: -0.01em; margin-top: 8px; color: #1c1a16; }
+  .recap-tile .rl-sub { font-size: 13px; color: #1c1a16; margin-top: 4px; font-family: var(--font-mono); }
+  #slide-recap .slide-caption { color: #1c1a16; border-top: 1px solid rgba(28,26,22,0.28); }
+
+  /* ---- Slide 9: CTA ---- */
+  #slide-cta { background: var(--ink); color: #fdfbf7; }
+  #slide-cta .slide-pad { justify-content: space-between; }
+  #slide-cta .cta-title { font-size: 62px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.1; margin-top: 40px; }
+  #slide-cta .cta-sub { font-size: 24px; color: #c8c2b6; margin-top: 18px; max-width: 34ch; }
+  #slide-cta .cta-foot { font-family: var(--font-mono); font-size: 15px; color: #8b8579; line-height: 1.6; }
+  #slide-cta .cta-foot .site { color: var(--accent-wash); }
+
+  /* ---- Nav controls ---- */
+  .nav-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(28,26,22,0.55);
+    color: #fdfbf7;
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: background 150ms, opacity 150ms;
+  }
+  .nav-btn:hover { background: rgba(28,26,22,0.8); }
+  .nav-btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+  .nav-btn.prev { left: 18px; }
+  .nav-btn.next { right: 18px; }
+
+  .slide-counter {
+    position: absolute;
+    top: 18px;
+    right: 22px;
+    z-index: 2;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: rgba(253,251,247,0.85);
+    background: rgba(28,26,22,0.45);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+
+  .dots {
+    display: flex;
+    gap: 10px;
+  }
+  .dots button {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(253,251,247,0.3);
+    cursor: pointer;
+    padding: 0;
+  }
+  .dots button.active { background: #fdfbf7; width: 22px; border-radius: 5px; }
+
+  .hint {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: rgba(253,251,247,0.4);
+  }
+</style>
+</head>
+<body>
+
+<div class="carousel-shell">
+  <div class="carousel-viewport" id="viewport">
+    <div class="carousel-frame" id="frame">
+      <div class="carousel-track" id="track">
+
+        <!-- 1: Cover -->
+        <section class="slide" id="slide-cover" data-slide="cover">
+          <div class="slide-pad">
+            <div class="eyebrow">Real SEC data, normalized</div>
+            <div class="cover-mid">
+              <div class="slide-title">Apple Inc.<br>Company Profile</div>
+              <p class="slide-sub">AAPL &middot; FY2023 &middot; SEC EDGAR, normalized. SIC 3571 vs. its SIC-35 peers.</p>
+            </div>
+            <div class="brand-mark"><span class="sq"></span> Profin</div>
+          </div>
+        </section>
+
+        <!-- 2: Vitals -->
+        <section class="slide" id="slide-vitals" data-slide="vitals">
+          <div class="slide-pad">
+            <div class="eyebrow">The vitals</div>
+            <div class="slide-title" style="font-size:48px;">FY2023 snapshot</div>
+            <div class="slide-body">
+              <div class="hero-row">
+                <div class="hero-tile">
+                  <div class="label">Revenue</div>
+                  <div class="value">$365.8B</div>
+                  <div class="sub">FY2023</div>
+                </div>
+                <div class="hero-tile">
+                  <div class="label">Net Income</div>
+                  <div class="value">$94.7B</div>
+                  <div class="sub">FY2023</div>
+                </div>
+                <div class="hero-tile">
+                  <div class="label">Net Margin</div>
+                  <div class="value">25.3%</div>
+                  <div class="sub">96th pctile vs. peers</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3: 5-year trajectory -->
+        <section class="slide" id="slide-trend" data-slide="trend">
+          <div class="slide-pad">
+            <div class="eyebrow">5-year trajectory</div>
+            <div class="slide-title" style="font-size:48px;">Margins &amp; efficiency, FY21&ndash;FY25</div>
+            <p class="slide-sub" style="margin-top:10px;">TTM as of each fiscal year-end, as-restated</p>
+            <div class="slide-body">
+              <div class="trend-row" id="trend-tiles"></div>
+            </div>
+            <p class="slide-caption">Dot marks the most recent fiscal year (FY2025 TTM). Hover a line for exact values.</p>
+          </div>
+        </section>
+
+        <!-- 4: Peer percentile positions -->
+        <section class="slide" id="slide-percentiles" data-slide="percentiles">
+          <div class="slide-pad">
+            <div class="eyebrow">Where it stands</div>
+            <div class="slide-title" style="font-size:48px;">Percentile vs. SIC-35 peers</div>
+            <p class="slide-sub" style="margin-top:10px;">SIC 35 &middot; precomputed percentile, FY2023</p>
+            <div class="slide-body">
+              <div id="pctile-rows"></div>
+            </div>
+            <p class="slide-caption">Bar = percentile within SIC-35 peers; dashed line marks the median (50th).</p>
+          </div>
+        </section>
+
+        <!-- 5: Net margin, named peers -->
+        <section class="slide" id="slide-compare-margin" data-slide="compare-net-margin">
+          <div class="slide-pad">
+            <div class="eyebrow">Named peers</div>
+            <div class="slide-title" style="font-size:48px;">Net margin</div>
+            <div class="slide-body"><div class="compare-wrap" id="compare-chart"></div></div>
+            <div class="legend-line">
+              <span><span class="swatch" style="background:var(--accent)"></span>Apple</span>
+              <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Named peer</span>
+            </div>
+            <p class="slide-caption">SIC 35 &middot; FY2023, as-filed.</p>
+          </div>
+        </section>
+
+        <!-- 6: Gross margin, large-cap tech -->
+        <section class="slide" id="slide-compare-gm" data-slide="compare-gross-margin">
+          <div class="slide-pad">
+            <div class="eyebrow">Large-cap tech</div>
+            <div class="slide-title" style="font-size:48px;">Gross margin</div>
+            <div class="slide-body"><div class="compare-wrap" id="compare-chart-gm"></div></div>
+            <div class="legend-line">
+              <span><span class="swatch" style="background:var(--accent)"></span>Apple</span>
+              <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Comparison company</span>
+            </div>
+            <p class="slide-caption">FY2023 &middot; not limited to SIC-35.</p>
+          </div>
+        </section>
+
+        <!-- 7: Revenue growth YoY, large-cap tech -->
+        <section class="slide" id="slide-compare-rg" data-slide="compare-revenue-growth">
+          <div class="slide-pad">
+            <div class="eyebrow">Large-cap tech</div>
+            <div class="slide-title" style="font-size:48px;">Revenue growth YoY</div>
+            <div class="slide-body"><div class="compare-wrap" id="compare-chart-rg"></div></div>
+            <div class="legend-line">
+              <span><span class="swatch" style="background:var(--accent)"></span>Apple</span>
+              <span><span class="swatch" style="background:var(--ink-soft);opacity:.55"></span>Comparison company</span>
+            </div>
+            <p class="slide-caption">FY2023 &middot; not limited to SIC-35.</p>
+          </div>
+        </section>
+
+        <!-- 8: Profile recap -->
+        <section class="slide" id="slide-recap" data-slide="recap">
+          <div class="slide-pad">
+            <div class="eyebrow on-accent">Profile at a glance</div>
+            <div class="slide-title" style="font-size:48px;">The full picture</div>
+            <div class="slide-body">
+              <div class="recap-grid">
+                <div class="recap-tile"><div class="rl-label">Revenue</div><div class="rl-value">$365.8B</div><div class="rl-sub">FY2023</div></div>
+                <div class="recap-tile"><div class="rl-label">Net Income</div><div class="rl-value">$94.7B</div><div class="rl-sub">FY2023</div></div>
+                <div class="recap-tile"><div class="rl-label">Net Margin</div><div class="rl-value">25.3%</div><div class="rl-sub">FY2023</div></div>
+                <div class="recap-tile"><div class="rl-label">Gross Margin</div><div class="rl-value">44.1%</div><div class="rl-sub">FY2023</div></div>
+                <div class="recap-tile"><div class="rl-label">Revenue Growth</div><div class="rl-value">-2.8%</div><div class="rl-sub">YoY, FY2023</div></div>
+                <div class="recap-tile"><div class="rl-label">Net Margin</div><div class="rl-value">96.4<span style="font-size:18px;">th</span></div><div class="rl-sub">pctile &middot; SIC 35</div></div>
+                <div class="recap-tile"><div class="rl-label">Return on Assets</div><div class="rl-value">99.3<span style="font-size:18px;">rd</span></div><div class="rl-sub">pctile &middot; SIC 35</div></div>
+                <div class="recap-tile"><div class="rl-label">Asset Turnover</div><div class="rl-value">81.1<span style="font-size:18px;">st</span></div><div class="rl-sub">pctile &middot; SIC 35</div></div>
+              </div>
+            </div>
+            <p class="slide-caption">Every figure above, in one place.</p>
+          </div>
+        </section>
+
+        <!-- 9: Closing / CTA -->
+        <section class="slide" id="slide-cta" data-slide="cta">
+          <div class="slide-pad">
+            <div class="brand-mark on-accent"><span class="sq"></span> Profin</div>
+            <div>
+              <div class="cta-title">The full picture,<br>not just the highlight.</div>
+              <p class="cta-sub">Profin normalizes SEC filings like this for any ticker — explore free.</p>
+            </div>
+            <div class="cta-foot">
+              Source: SEC EDGAR, via Profin's own /v1/companies/&#123;symbol&#125;/metrics + /peers.<br>
+              SIC codes are coarse; percentile is a position, not a verdict. Not investment advice.<br>
+              <!-- SITE_URL: fill in the deployed domain before publishing this slide. -->
+              <span class="site">{{SITE_URL}}</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <span class="slide-counter" id="counter">1 / 9</span>
+      <button class="nav-btn prev" id="prevBtn" aria-label="Previous slide">&#8249;</button>
+      <button class="nav-btn next" id="nextBtn" aria-label="Next slide">&#8250;</button>
+    </div>
+  </div>
+  <div class="dots" id="dots"></div>
+  <div class="hint">&#8592; &#8594; arrow keys, swipe, or click the dots</div>
+</div>
+
+<script type="module">
+import * as Plot from "https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6.17/+esm";
+(function () {
+  var FONT = "'Hanken Grotesk', system-ui, sans-serif";
+  var MONO = "'IBM Plex Mono', monospace";
+  var ACCENT = "#c0703a";
+  var ACCENT_WASH = "#f3e4d5";
+  var TRACK = "#efe9de";
+  var TRACK_BORDER = "#d8d1c4";
+  var INK = "#1c1a16";
+  var INK_SOFT = "#6b6459";
+  var PEER_COLOR = "#6b6459";
+
+  // Same validated "spotlight" pair as infographic-template.html: Apple = accent, every peer =
+  // muted ink (CVD ΔE 33.2, contrast pass — see that file's own color-rationale comment). Reused
+  // unchanged here since it's the same encoding at a larger mark scale, not a new palette.
+  var AXIS_STYLE = { fontFamily: FONT, background: "transparent", color: INK_SOFT, fontSize: 17 };
+  function faintGridX() { return Plot.gridX({ stroke: TRACK_BORDER, strokeOpacity: 0.5 }); }
+
+  // ---- Slide 3: 5-year trajectory (FY2021-FY2025 TTM, real -- same block infographic-
+  // template.html's own header comment documents as hand-copied from a real companyfacts/
+  // metrics response, sitting above that file's synthetic-fixture separator) ----
+  var fmtPctTrend = function (v) { return (v * 100).toFixed(1) + "%"; };
+  var fmtMultTrend = function (v) { return v.toFixed(2) + "×"; };
+
+  var trendSeries = {
+    net_margin: [
+      { year: 2021, value: 0.2588 }, { year: 2022, value: 0.2531 }, { year: 2023, value: 0.2531 },
+      { year: 2024, value: 0.2397 }, { year: 2025, value: 0.2692 },
+    ],
+    roa: [
+      { year: 2021, value: 0.2806 }, { year: 2022, value: 0.2836 }, { year: 2023, value: 0.2750 },
+      { year: 2024, value: 0.2613 }, { year: 2025, value: 0.3093 },
+    ],
+    asset_turnover: [
+      { year: 2021, value: 1.0841 }, { year: 2022, value: 1.1206 }, { year: 2023, value: 1.0868 },
+      { year: 2024, value: 1.0899 }, { year: 2025, value: 1.1493 },
+    ],
+  };
+
+  var TREND_TILES = [
+    { key: "net_margin", label: "Net Margin", fmt: fmtPctTrend },
+    { key: "roa", label: "Return on Assets", fmt: fmtPctTrend },
+    { key: "asset_turnover", label: "Asset Turnover", fmt: fmtMultTrend },
+  ];
+
+  function trendChart(data, fmt) {
+    return Plot.plot({
+      width: 280,
+      height: 170,
+      marginTop: 10,
+      marginBottom: 24,
+      marginLeft: 8,
+      marginRight: 8,
+      axis: null,
+      style: { background: "transparent", overflow: "visible" },
+      marks: [
+        Plot.lineY(data, { x: "year", y: "value", stroke: ACCENT, strokeWidth: 3, curve: "catmull-rom" }),
+        Plot.dot(data, {
+          x: "year", y: "value", filter: function (d) { return d.year === 2025; },
+          r: 7, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 2.5,
+        }),
+        Plot.tip(data, Plot.pointerX({
+          x: "year", y: "value",
+          format: { x: function (d) { return "FY" + d; }, y: fmt },
+          fontFamily: MONO, fontSize: 13,
+        })),
+      ],
+    });
+  }
+
+  var trendRowEl = document.getElementById("trend-tiles");
+  TREND_TILES.forEach(function (t) {
+    var data = trendSeries[t.key];
+    var first = data[0];
+    var last = data[data.length - 1];
+    var tile = document.createElement("div");
+    tile.className = "trend-tile";
+    var label = document.createElement("div");
+    label.className = "tt-label";
+    label.textContent = t.label;
+    tile.appendChild(label);
+    var value = document.createElement("div");
+    value.className = "tt-value";
+    value.textContent = t.fmt(last.value);
+    tile.appendChild(value);
+    var range = document.createElement("div");
+    range.className = "tt-range";
+    range.textContent = "FY" + first.year + " " + t.fmt(first.value) + " → FY" + last.year + " " + t.fmt(last.value);
+    tile.appendChild(range);
+    tile.appendChild(trendChart(data, t.fmt));
+    trendRowEl.appendChild(tile);
+  });
+
+  // ---- Slide 4: peer percentile positions (bigger marks for small/mobile viewing) ----
+  var peerData = [
+    { id: "roa", metric: "Return on Assets", percentile: 99.3, z: "+0.16", peers: 140, full: 100 },
+    { id: "net-margin", metric: "Net Margin", percentile: 96.4, z: "+0.22", peers: 170, full: 100 },
+    { id: "asset-turnover", metric: "Asset Turnover", percentile: 81.1, z: "+0.79", peers: 133, full: 100 },
+  ];
+
+  function positionBar(row) {
+    var d = [row];
+    return Plot.plot({
+      width: 928,
+      height: 56,
+      margin: 0,
+      axis: null,
+      style: { background: "transparent", overflow: "visible" },
+      x: { domain: [0, 100] },
+      marks: [
+        Plot.barX(d, { x: "full", fill: TRACK, stroke: TRACK_BORDER, rx: 8, insetTop: 8, insetBottom: 8 }),
+        Plot.barX(d, { x: "percentile", fill: ACCENT_WASH, stroke: ACCENT, strokeWidth: 1.5, rx: 8, insetTop: 8, insetBottom: 8 }),
+        Plot.ruleX([50], { stroke: INK_SOFT, strokeOpacity: 0.5, strokeDasharray: "3 4" }),
+        Plot.dot(d, { x: "percentile", r: 11, fill: ACCENT, stroke: "#fdfbf7", strokeWidth: 3 }),
+        Plot.tip(d, Plot.pointerX({
+          x: "percentile",
+          title: function (r) { return r.metric + "\n" + r.percentile.toFixed(1) + "th percentile (z=" + r.z + ", " + r.peers + " peers)"; },
+          fontFamily: MONO, fontSize: 13,
+        })),
+      ],
+    });
+  }
+
+  var rowsEl = document.getElementById("pctile-rows");
+  peerData.forEach(function (row) {
+    var wrap = document.createElement("div");
+    wrap.className = "pctile-row";
+    var head = document.createElement("div");
+    head.className = "pr-head";
+    head.innerHTML =
+      '<span class="pr-label">' + row.metric + '</span>' +
+      '<span class="pr-value">' + row.percentile.toFixed(1) + '<span class="suffix">%ile</span></span>';
+    wrap.appendChild(head);
+    var meta = document.createElement("div");
+    meta.className = "pr-meta";
+    meta.textContent = "z = " + row.z + " · " + row.peers + " peers";
+    wrap.appendChild(meta);
+    var bar = document.createElement("div");
+    bar.className = "pr-bar";
+    bar.appendChild(positionBar(row));
+    wrap.appendChild(bar);
+    rowsEl.appendChild(wrap);
+  });
+
+  // ---- Slide 5: net margin, named peer comparison (same SIC-35 group) ----
+  var compareData = [
+    { label: "Apple — AAPL", margin: 25.3, self: true },
+    { label: "Cisco — CSCO", margin: 22.1, self: false },
+    { label: "IBM", margin: 12.1, self: false },
+    { label: "HP Inc — HPQ", margin: 6.1, self: false },
+    { label: "Xerox — XRX", margin: 0.01, self: false },
+  ];
+
+  var compareChart = Plot.plot({
+    width: 928,
+    height: compareData.length * 84,
+    marginLeft: 210,
+    marginRight: 90,
+    marginTop: 10,
+    marginBottom: 10,
+    style: AXIS_STYLE,
+    x: { axis: null, domain: [0, 27] },
+    y: { domain: compareData.map(function (d) { return d.label; }), label: null },
+    marks: [
+      Plot.barX(compareData.filter(function (d) { return d.self; }), {
+        y: "label", x: 27, fill: ACCENT_WASH, fillOpacity: 0.6,
+      }),
+      faintGridX(),
+      Plot.barX(compareData, {
+        y: "label", x: "margin",
+        fill: function (d) { return d.self ? ACCENT : PEER_COLOR; },
+        fillOpacity: function (d) { return d.self ? 1 : 0.6; },
+        rx: 6, insetTop: 13, insetBottom: 13,
+      }),
+      Plot.text(compareData, {
+        y: "label", x: "margin",
+        text: function (d) { return d.margin + "%"; },
+        dx: 14, textAnchor: "start", fontFamily: MONO, fontWeight: 800, fontSize: 23, fill: INK,
+      }),
+      Plot.tip(compareData, Plot.pointerY({
+        y: "label", x: "margin",
+        title: function (d) { return d.label + "\n" + d.margin + "% net margin"; },
+        fontFamily: MONO, fontSize: 13,
+      })),
+    ],
+  });
+  document.getElementById("compare-chart").appendChild(compareChart);
+
+  // ---- Reusable named-comparison chart (gross margin / revenue growth slides) ----
+  function namedCompareChart(data, opts) {
+    var domain = opts.domain;
+    var fmt = opts.fmt;
+    var positive = data.filter(function (d) { return d.value >= 0; });
+    var negative = data.filter(function (d) { return d.value < 0; });
+    return Plot.plot({
+      width: 928,
+      height: data.length * 84,
+      marginLeft: 210,
+      marginRight: 90,
+      marginTop: 10,
+      marginBottom: 10,
+      style: AXIS_STYLE,
+      x: { axis: null, domain: domain },
+      y: { domain: data.map(function (d) { return d.label; }), label: null },
+      marks: [
+        Plot.barX(data.filter(function (d) { return d.self; }), {
+          y: "label", x1: domain[0], x2: domain[1], fill: ACCENT_WASH, fillOpacity: 0.6,
+        }),
+        faintGridX(),
+        domain[0] < 0 ? Plot.ruleX([0], { stroke: TRACK_BORDER }) : null,
+        Plot.barX(data, {
+          y: "label", x: "value",
+          fill: function (d) { return d.self ? ACCENT : PEER_COLOR; },
+          fillOpacity: function (d) { return d.self ? 1 : 0.6; },
+          rx: 6, insetTop: 13, insetBottom: 13,
+        }),
+        Plot.text(positive, {
+          y: "label", x: "value", text: function (d) { return fmt(d.value); },
+          dx: 14, textAnchor: "start", fontFamily: MONO, fontWeight: 800, fontSize: 23, fill: INK,
+        }),
+        Plot.text(negative, {
+          y: "label", x: "value", text: function (d) { return fmt(d.value); },
+          dx: -14, textAnchor: "end", fontFamily: MONO, fontWeight: 800, fontSize: 23, fill: INK,
+        }),
+        Plot.tip(data, Plot.pointerY({
+          y: "label", x: "value",
+          title: function (d) { return d.label + "\n" + fmt(d.value); },
+          fontFamily: MONO, fontSize: 13,
+        })),
+      ].filter(Boolean),
+    });
+  }
+
+  var fmtMarginPct = function (v) { return v.toFixed(1) + "%"; };
+
+  // ---- Slide 6: gross margin, large-cap tech comparison (FY2023) ----
+  var gmData = [
+    { label: "Apple — AAPL", value: 44.1, self: true },
+    { label: "Microsoft — MSFT", value: 68.9, self: false },
+    { label: "Amazon — AMZN", value: 47.0, self: false },
+    { label: "ASML", value: 51.3, self: false },
+    { label: "Tesla — TSLA", value: 18.2, self: false },
+  ].sort(function (a, b) { return b.value - a.value; });
+  document.getElementById("compare-chart-gm").appendChild(
+    namedCompareChart(gmData, { domain: [0, 75], fmt: fmtMarginPct })
+  );
+
+  // ---- Slide 7: revenue growth YoY, large-cap tech comparison (FY2023) ----
+  var rgData = [
+    { label: "Apple — AAPL", value: -2.8, self: true },
+    { label: "Microsoft — MSFT", value: 6.9, self: false },
+    { label: "Amazon — AMZN", value: 11.8, self: false },
+    { label: "ASML", value: 30.2, self: false },
+    { label: "Tesla — TSLA", value: 18.8, self: false },
+  ].sort(function (a, b) { return b.value - a.value; });
+  document.getElementById("compare-chart-rg").appendChild(
+    namedCompareChart(rgData, { domain: [-13, 34], fmt: fmtMarginPct })
+  );
+})();
+</script>
+
+<script>
+(function () {
+  var viewport = document.getElementById("viewport");
+  var frame = document.getElementById("frame");
+  var track = document.getElementById("track");
+  var slides = Array.prototype.slice.call(track.querySelectorAll(".slide"));
+  var prevBtn = document.getElementById("prevBtn");
+  var nextBtn = document.getElementById("nextBtn");
+  var dotsEl = document.getElementById("dots");
+  var counterEl = document.getElementById("counter");
+  var N = slides.length;
+  var idx = 0;
+
+  slides.forEach(function (_, i) {
+    var dot = document.createElement("button");
+    dot.setAttribute("aria-label", "Go to slide " + (i + 1));
+    dot.addEventListener("click", function () { goTo(i); });
+    dotsEl.appendChild(dot);
+  });
+  var dots = Array.prototype.slice.call(dotsEl.children);
+
+  function render() {
+    track.style.transform = "translateX(-" + idx * 1080 + "px)";
+    dots.forEach(function (d, i) { d.classList.toggle("active", i === idx); });
+    prevBtn.disabled = idx === 0;
+    nextBtn.disabled = idx === N - 1;
+    counterEl.textContent = (idx + 1) + " / " + N;
+  }
+
+  function goTo(i) {
+    idx = Math.max(0, Math.min(N - 1, i));
+    render();
+  }
+
+  prevBtn.addEventListener("click", function () { goTo(idx - 1); });
+  nextBtn.addEventListener("click", function () { goTo(idx + 1); });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "ArrowLeft") goTo(idx - 1);
+    if (e.key === "ArrowRight") goTo(idx + 1);
+  });
+
+  var touchStartX = null;
+  viewport.addEventListener("touchstart", function (e) {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  viewport.addEventListener("touchend", function (e) {
+    if (touchStartX === null) return;
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) goTo(dx < 0 ? idx + 1 : idx - 1);
+    touchStartX = null;
+  }, { passive: true });
+
+  function rescale() {
+    var scale = viewport.clientWidth / 1080;
+    frame.style.transform = "scale(" + scale + ")";
+  }
+  window.addEventListener("resize", rescale);
+  rescale();
+  render();
+})();
+</script>
+</body>
+</html>
