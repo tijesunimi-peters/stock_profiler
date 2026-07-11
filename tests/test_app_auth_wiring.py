@@ -130,6 +130,67 @@ def test_admin_tier_change_end_to_end(tmp_path, monkeypatch):
         assert gated.status_code != 401
 
 
+def test_admin_revoke_is_503_when_admin_secret_unconfigured(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "secfin_admin_secret", "")
+    with _client(tmp_path, monkeypatch) as client:
+        client.post("/v1/signup", json={"email": "a@example.com"})
+        resp = client.post(
+            "/v1/admin/keys/a@example.com/revoke",
+            headers={"X-Admin-Secret": "anything"},
+        )
+    assert resp.status_code == 503
+
+
+def test_admin_revoke_end_to_end_key_fails_auth_immediately(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "secfin_admin_secret", "test-admin-secret")
+    with _client(tmp_path, monkeypatch) as client:
+        signup_resp = client.post("/v1/signup", json={"email": "a@example.com"})
+        api_key = signup_resp.json()["api_key"]
+
+        # The key works before revocation.
+        pre = client.get(
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+        )
+        assert pre.status_code != 401
+
+        # Wrong secret is rejected; the key stays active.
+        wrong = client.post(
+            "/v1/admin/keys/a@example.com/revoke",
+            headers={"X-Admin-Secret": "not-the-secret"},
+        )
+        assert wrong.status_code == 401
+        still_active = client.get(
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+        )
+        assert still_active.status_code != 401
+
+        # Correct secret revokes the key.
+        resp = client.post(
+            "/v1/admin/keys/a@example.com/revoke",
+            headers={"X-Admin-Secret": "test-admin-secret"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"email": "a@example.com", "active": False}
+
+        # The very next request with the same key -- no restart, no cache to expire --
+        # fails auth with a clear 401 body.
+        post = client.get(
+            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+        )
+        assert post.status_code == 401
+        assert "revoked" in post.json()["detail"].lower()
+
+
+def test_admin_revoke_404s_for_unregistered_email(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "secfin_admin_secret", "test-admin-secret")
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.post(
+            "/v1/admin/keys/nope@example.com/revoke",
+            headers={"X-Admin-Secret": "test-admin-secret"},
+        )
+    assert resp.status_code == 404
+
+
 def test_usage_endpoint_requires_a_key_and_reflects_recorded_requests(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
         signup_resp = client.post("/v1/signup", json={"email": "a@example.com"})

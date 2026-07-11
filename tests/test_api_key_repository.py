@@ -89,6 +89,64 @@ def test_update_tier_returns_none_for_unknown_email():
     repo.close()
 
 
+def test_revoke_key_deactivates_the_key():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    revoked = repo.revoke_key(email="a@example.com")
+
+    assert revoked is not None
+    assert revoked.active is False
+    # Persisted, not just returned in-memory.
+    assert repo.get_by_email("a@example.com").active is False
+    # The row survives revocation -- get_by_hash still round-trips it (see
+    # api/auth.py's require_api_key, which needs the record to produce a clear 401).
+    assert repo.get_by_hash("hash-1") is not None
+    repo.close()
+
+
+def test_revoke_key_returns_none_for_unknown_email():
+    repo = SQLiteApiKeyRepository(":memory:")
+    assert repo.revoke_key(email="nope@example.com") is None
+    repo.close()
+
+
+def test_revoke_key_is_idempotent():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    first = repo.revoke_key(email="a@example.com")
+    second = repo.revoke_key(email="a@example.com")
+
+    assert first is not None and first.active is False
+    assert second is not None and second.active is False
+    repo.close()
+
+
+def test_revoke_key_does_not_change_other_keys():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+    repo.create_key(
+        key_hash="hash-2", email="b@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    repo.revoke_key(email="a@example.com")
+
+    assert repo.get_by_email("a@example.com").active is False
+    assert repo.get_by_email("b@example.com").active is True
+    repo.close()
+
+
 def test_record_usage_and_get_count_increments_per_day():
     repo = SQLiteApiKeyRepository(":memory:")
     record = repo.create_key(

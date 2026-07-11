@@ -57,6 +57,18 @@ class ApiKeyRepository(ABC):
         """
 
     @abstractmethod
+    def revoke_key(self, email: str) -> ApiKeyRecord | None:
+        """Set `active = False` on the key registered to `email` and return the updated
+        record -- or None if no key is registered to that email. This is the mechanism
+        `api/admin_routes.py`'s revoke endpoint calls (same admin-secret-gated,
+        manual-only shape as `update_tier` -- no self-service path). A revoked key keeps
+        its row (never deleted, same reasoning as tier changes) so `get_by_hash` still
+        round-trips it for `api/auth.py`'s `not record.active` check to produce a clear
+        401 rather than an indistinguishable "not found". Idempotent: revoking an
+        already-inactive key just re-confirms `active = False` and returns it.
+        """
+
+    @abstractmethod
     def record_usage_and_get_count(self, api_key_id: int, day: str) -> int:
         """Atomically increment today's request count for this key and return the new
         total -- the caller compares it against `daily_quota` to decide whether to 429.

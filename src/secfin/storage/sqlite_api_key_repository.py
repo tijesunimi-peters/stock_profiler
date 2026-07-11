@@ -106,6 +106,15 @@ class SQLiteApiKeyRepository(ApiKeyRepository):
             return None
         return self.get_by_email(email)
 
+    def revoke_key(self, email: str) -> ApiKeyRecord | None:
+        cur = self._conn.execute(
+            "UPDATE api_keys SET active = 0 WHERE email = ?",
+            (email,),
+        )
+        if cur.rowcount == 0:
+            return None
+        return self.get_by_email(email)
+
     def record_usage_and_get_count(self, api_key_id: int, day: str) -> int:
         self._conn.execute("BEGIN")
         try:

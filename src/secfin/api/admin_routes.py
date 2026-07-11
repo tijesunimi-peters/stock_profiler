@@ -1,12 +1,18 @@
 """Admin-only endpoints -- not customer-facing.
 
-Today this is exactly one operation: moving an existing key onto a different
-subscription tier (auth/tiers.py). There's no payment integration yet, so a paid-tier
-upgrade is this manual step performed by whoever runs the service, not a self-service
-flow. Gated by a shared secret (`X-Admin-Secret`, config.secfin_admin_secret) rather than
-`require_api_key` -- an admin isn't a customer and shouldn't need a "key" of that kind.
-If the secret isn't configured, every request here 503s rather than falling back to some
-"any request accepted" behavior.
+Two operations: moving an existing key onto a different subscription tier
+(auth/tiers.py), and revoking a key outright (setting `active = False`). Neither has a
+self-service equivalent -- no payment integration yet for tier changes, and no
+self-serve "delete my key" flow for revocation -- so both are manual steps performed by
+whoever runs the service. Gated by a shared secret (`X-Admin-Secret`,
+config.secfin_admin_secret) rather than `require_api_key` -- an admin isn't a customer
+and shouldn't need a "key" of that kind. If the secret isn't configured, every request
+here 503s rather than falling back to some "any request accepted" behavior.
+
+Revocation takes effect on the very next request: `api/auth.py`'s `require_api_key`
+reads the key record fresh from the repository on every call (no in-memory caching of
+`ApiKeyRecord`s), so there is no propagation delay to reason about beyond normal SQLite
+write/read visibility on the same file.
 """
 
 from __future__ import annotations
@@ -82,3 +88,28 @@ async def change_tier(
         rate_limit_per_sec=record.rate_limit_per_sec,
         daily_quota=record.daily_quota,
     )
+
+
+class RevokeKeyResponse(BaseModel):
+    email: str
+    active: bool
+
+
+@admin_router.post(
+    "/admin/keys/{email}/revoke",
+    response_model=RevokeKeyResponse,
+    dependencies=[Depends(require_admin_secret)],
+    include_in_schema=False,
+)
+async def revoke_key(
+    email: str,
+    repo: ApiKeyRepository = Depends(get_api_key_repo),
+) -> RevokeKeyResponse:
+    """Disable the key registered to `email` -- it fails auth (401) on its very next
+    use. 404 if no key is registered to that email. Idempotent: revoking an
+    already-revoked key just re-confirms it's inactive.
+    """
+    record: ApiKeyRecord | None = repo.revoke_key(email=email)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"No API key registered to {email}")
+    return RevokeKeyResponse(email=record.email, active=record.active)

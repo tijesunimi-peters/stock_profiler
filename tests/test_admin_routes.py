@@ -7,7 +7,12 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from secfin.api.admin_routes import TierChangeRequest, change_tier, require_admin_secret
+from secfin.api.admin_routes import (
+    TierChangeRequest,
+    change_tier,
+    require_admin_secret,
+    revoke_key,
+)
 from secfin.config import settings
 from secfin.storage.sqlite_api_key_repository import SQLiteApiKeyRepository
 
@@ -48,6 +53,43 @@ async def test_change_tier_404s_for_unregistered_email():
     with pytest.raises(HTTPException) as exc_info:
         await change_tier("nope@example.com", TierChangeRequest(tier="pro"), repo=repo)
     assert exc_info.value.status_code == 404
+    repo.close()
+
+
+async def test_revoke_key_deactivates_the_key():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    result = await revoke_key("a@example.com", repo=repo)
+
+    assert result.email == "a@example.com"
+    assert result.active is False
+    repo.close()
+
+
+async def test_revoke_key_404s_for_unregistered_email():
+    repo = SQLiteApiKeyRepository(":memory:")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await revoke_key("nope@example.com", repo=repo)
+    assert exc_info.value.status_code == 404
+    repo.close()
+
+
+async def test_revoke_key_is_idempotent():
+    repo = SQLiteApiKeyRepository(":memory:")
+    repo.create_key(
+        key_hash="hash-1", email="a@example.com", tier="free", rate_limit_per_sec=5,
+        daily_quota=1000,
+    )
+
+    await revoke_key("a@example.com", repo=repo)
+    result = await revoke_key("a@example.com", repo=repo)
+
+    assert result.active is False
     repo.close()
 
 
