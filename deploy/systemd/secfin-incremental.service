@@ -1,0 +1,14 @@
+[Unit]
+Description=secfin daily incremental SEC ingest
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=secfin
+WorkingDirectory=/opt/secfin
+ExecStart=/opt/secfin/deploy/scripts/run-incremental.sh
+# Bound runtime so a stuck ingest doesn't run forever and collide with the next
+# scheduled fire -- the incremental job is one day's filings via the throttled
+# SECClient, normally minutes, not hours.
+TimeoutStartSec=1800

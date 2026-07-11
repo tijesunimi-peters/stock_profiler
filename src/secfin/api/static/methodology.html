@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Source &amp; Methodology — Profin</title>
+<meta name="description" content="Where Profin's data comes from (SEC EDGAR, public domain), how fresh each dataset is, and the coverage limits and caveats — including the 13F derived-delta and ~45-day lag — stated plainly.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/guide.css">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/compare">Compare</a>
+      <a href="/screen">Screen</a>
+      <a href="/coverage">Coverage</a>
+      <a href="/guide">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/compare">Compare</a>
+    <a href="/screen">Screen</a>
+    <a href="/coverage">Coverage</a>
+    <a href="/guide">Docs</a>
+    <a href="/explorer">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="guide-hero">
+  <span class="eyebrow">Legal &amp; trust</span>
+  <h1>Data source &amp; methodology.</h1>
+  <p class="guide-hero-sub">Where every number in this API comes from, how fresh it is, how we normalize it, and exactly where our coverage stops. This page exists so you never have to take "clean data" on faith.</p>
+  <nav class="guide-toc" aria-label="On this page">
+    <a href="#source">Source</a>
+    <a href="#freshness">Freshness &amp; lag, per dataset</a>
+    <a href="#13f">The 13F caveat</a>
+    <a href="#normalize">How we normalize</a>
+    <a href="#not-covered">What's not covered</a>
+    <a href="#licensing">Licensing</a>
+  </nav>
+</header>
+
+<section class="section guide-section" id="source">
+  <span class="eyebrow">01</span>
+  <h2>Source: SEC EDGAR, structured filings only</h2>
+  <p class="body-text">Every fact this API serves traces back to <a href="https://www.sec.gov/" target="_blank" rel="noopener">the SEC's own EDGAR system</a> (<code>data.sec.gov</code> and <code>www.sec.gov</code>), specifically its <strong>structured</strong> data:</p>
+  <table class="guide-table">
+    <thead><tr><th>Dataset</th><th>SEC source</th><th>Format</th></tr></thead>
+    <tbody>
+      <tr><td>Income / balance / cash-flow statements</td><td>Company Facts API (<code>/api/xbrl/companyfacts/</code>) and bulk companyfacts</td><td>XBRL (structured)</td></tr>
+      <tr><td>Insider transactions (Forms 3/4/5)</td><td>Company submissions index + the filing's ownership document</td><td>Ownership XML (structured)</td></tr>
+      <tr><td>13F institutional holdings</td><td>Company submissions index + the filing's information table</td><td>13F information-table XML (structured)</td></tr>
+      <tr><td>Schedule 13D/13G (5%+ ownership)</td><td>Company submissions index + the filing document</td><td>Structured XML (modern filings only -- see below)</td></tr>
+      <tr><td>Cross-company screening / concept rank</td><td>Frames API (<code>/api/xbrl/frames/</code>)</td><td>XBRL (structured)</td></tr>
+    </tbody>
+  </table>
+  <p class="body-text"><strong>We never scrape or parse rendered HTML.</strong> If a filing type or era only exists as legacy HTML/text (older 13D/G, pre-XBRL financials), we don't attempt to extract it -- see the coverage floors below. Nothing in this pipeline uses an LLM to read or summarize a filing; every field is a value the filer tagged themselves, re-shaped into one consistent schema.</p>
+</section>
+
+<section class="section guide-section" id="freshness">
+  <span class="eyebrow">02</span>
+  <h2>Freshness &amp; lag, per dataset</h2>
+  <p class="body-text">Two different kinds of "lag" are in play, and it's worth keeping them separate: <strong>filing lag</strong> (how long after a real-world event the SEC's own deadline lets a company wait before filing) and <strong>ingest lag</strong> (how quickly our pipeline picks up a filing once it's public). Ingest lag is small and under our control; filing lag is set by SEC rules and is not something any data vendor -- us included -- can shrink.</p>
+  <table class="guide-table">
+    <thead><tr><th>Dataset</th><th>Filing lag (SEC deadline)</th><th>Ingest lag (ours)</th></tr></thead>
+    <tbody>
+      <tr><td>10-Q financials</td><td>~40–45 days after quarter-end (varies by filer size)</td><td>Picked up by the daily incremental job the day it posts to EDGAR's daily index.</td></tr>
+      <tr><td>10-K financials</td><td>~60–90 days after fiscal year-end (varies by filer size)</td><td>Same daily incremental job.</td></tr>
+      <tr><td>Insider trades (Forms 3/4/5)</td><td>Generally within 2 business days of the transaction, by law</td><td>Daily incremental job, plus cache-aside fetch on first read for a company we haven't seen.</td></tr>
+      <tr><td>13F institutional holdings</td><td>~45 days after quarter-end</td><td>Per-manager: on first read. Whole-quarter: a separate bulk backfill job, run per quarter.</td></tr>
+      <tr><td>Schedule 13D/13G</td><td>Event-driven (within days of crossing the 5% threshold), not periodic</td><td>Cache-aside fetch on first read for an issuer.</td></tr>
+    </tbody>
+  </table>
+  <p class="guide-note">In plain terms: even a "fully up to date" pull from this API reflects filings that were themselves already stale by the time they were required to be filed -- most sharply for 13F (up to 45 days old the moment it's published). This is a structural property of how the SEC's own reporting deadlines work, not a limitation specific to us.</p>
+</section>
+
+<section class="section guide-section" id="13f">
+  <span class="eyebrow">03</span>
+  <h2>The 13F caveat, in full</h2>
+  <div class="guide-callout">
+    <p><strong>Form 13F is a quarter-end snapshot of long holdings. It is not a transaction feed, and the SEC does not require managers to report individual trades through it.</strong> Any "buy" or "sell" you see from this API's activity endpoints is <strong>derived</strong>: we fetch a manager's (or issuer's) holdings for two consecutive quarters and diff them ourselves, classifying each position as new / added / reduced / exited / unchanged based on the share-count change between the two snapshots.</p>
+    <ul>
+      <li><strong>Long-only, 13(f)-securities only</strong> -- no shorts, no cash positions, no non-US holdings. A manager's real book can look very different from what 13F shows.</li>
+      <li><strong>~45-day filing lag</strong> -- see the freshness table above.</li>
+      <li><strong>Amendments can restate a quarter</strong> (a later <code>13F-HR/A</code> supersedes an original <code>13F-HR</code>); we keep the latest-filed version as current.</li>
+      <li><strong>The reported dollar-value convention changed mid-history</strong> -- filings before ~2023 report holding value in thousands of dollars; more recent ones report whole dollars. We store the value exactly as reported and do not silently rescale it, so a caller diffing raw <code>value</code> across that boundary must account for the shift themselves.</li>
+      <li><strong>Issuer-centric "who holds this" results can have an ambiguous empty case</strong>: an empty holder list can mean either "no manager reported holding this issuer" or "this quarter hasn't been ingested for any manager yet" -- because there is no precomputed, coverage-guaranteed cross-manager index yet, only what's been fetched so far.</li>
+    </ul>
+    <p>Every activity/holdings response from the API carries these points in a machine-readable <code>caveats</code> field. If you republish or display this data, carry that caveat forward -- see the <a href="/terms#limits">acceptable-use terms</a>.</p>
+  </div>
+</section>
+
+<section class="section guide-section" id="normalize">
+  <span class="eyebrow">04</span>
+  <h2>How we normalize</h2>
+  <p class="body-text">The SEC requires companies to tag their financial facts with standard US-GAAP XBRL tags, but doesn't require every company to use the <em>same</em> tag for the same concept -- "revenue" alone shows up under at least four different standard tags across real filers, before you even get to company-specific "extension" tags. Our mapping table (<code>normalize/mapping.py</code>) keys a small set of stable canonical concepts (<code>revenue</code>, <code>net_income</code>, <code>total_assets</code>, ...) to an ordered list of candidate GAAP tags; for each company and period, we take the first candidate that has a value.</p>
+  <p class="body-text">Every line we return keeps <strong>its exact source tag</strong> (<code>source_tag</code>) and whether it was a non-standard company "extension" tag (<code>is_extension</code>), so you can audit exactly what we mapped from -- we never hide the original tag behind the clean field name.</p>
+  <p class="body-text"><strong>Restatements are kept, not overwritten.</strong> The same company/period can appear in more than one filing with a different value (a restatement); we keep every version, tagged with its filing accession and filed date, and the latest-filed one wins for "current" views.</p>
+  <p class="body-text">Some structural gaps are real, not tagging bugs, and we say so rather than force a number: banks don't file income statements shaped like commercial companies' (no <code>gross_profit</code>, no <code>operating_income</code> in the usual sense), and some retailers don't tag a discrete <code>gross_profit</code> line even though they compute it internally. Those come back as absent, not a fabricated zero.</p>
+</section>
+
+<section class="section guide-section" id="not-covered">
+  <span class="eyebrow">05</span>
+  <h2>What's not covered</h2>
+  <div class="guide-callout">
+    <ul>
+      <li><strong>No prices, quotes, or OHLCV data.</strong> This API has never served market-price data of any kind and doesn't plan to. If you need prices, pair this API with a price feed rather than expecting one here.</li>
+      <li><strong>US SEC registrants only.</strong> EDGAR covers companies that file with the SEC; there is no international-filer coverage.</li>
+      <li><strong>No narrative text.</strong> No MD&amp;A, risk factors, footnote text, or filing summaries -- structured numeric data only (see <a href="https://en.wikipedia.org/wiki/XBRL" target="_blank" rel="noopener">XBRL</a> vs. free text). This is a deliberate scope decision, not a gap we're about to close casually -- adding it would mean either HTML scraping or LLM summarization, both ruled out for now.</li>
+      <li><strong>No pre-XBRL financial history.</strong> The SEC only required XBRL starting in 2009, phased in by filer size through ~2012 -- so a company's statement history here starts at its own first XBRL filing, which for a company that IPO'd after 2012 can be much later than 2009. There is no earlier fundamentals history by design (we don't parse pre-XBRL HTML filings).</li>
+      <li><strong>Schedule 13D/13G only from ~mid-2025 onward.</strong> The SEC moved these filings to structured XML during 2025; we parse only the modern structured filings, so a company whose 5%+-ownership history predates that transition returns an empty list -- read that as "outside our coverage window," not "no one crossed 5%."</li>
+      <li><strong>No real-time anything.</strong> Every response reflects the latest filing we've ingested as of your request, not live conditions.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section guide-section" id="licensing">
+  <span class="eyebrow">06</span>
+  <h2>Licensing &amp; redistribution</h2>
+  <p class="body-text">SEC EDGAR filings are U.S. federal government records and are in the public domain -- we don't claim ownership over the underlying facts, only over our normalization, schema, and infrastructure. As of our last check (2026-07-07), we found no explicit SEC restriction on redistributing this public data, consistent with its public-domain status.</p>
+  <div class="guide-callout">
+    <p><strong>Open item, not yet closed:</strong> SEC fair-access and redistribution terms are scheduled to be re-verified in the week of launch, since guidance can change and "last checked" isn't the same as "confirmed current." Treat the paragraph above as accurate as of the date stated, not as a permanent guarantee -- this line will be updated once that re-check happens.</p>
+  </div>
+  <p class="body-text">We do rate-limit our own access to SEC's servers (see our <a href="https://www.sec.gov/os/webmaster-faq" target="_blank" rel="noopener">SEC fair-access</a> compliance) and identify every request with a descriptive User-Agent, per SEC's developer guidance.</p>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/guide">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/guide#quickstart">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="/coverage">Coverage</a>
+      <a href="/#covered">Schema</a>
+      <a href="/methodology" class="current">Sources &amp; methodology</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms">Terms of service</a>
+      <a href="/disclaimer">Disclaimer</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

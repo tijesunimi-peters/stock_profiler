@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Profin</title>
+<meta name="description" content="What Profin collects at signup, why, and how long it's kept. Draft — pending legal review before launch.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/guide.css">
+</head>
+<body>
+
+<div class="draft-banner"><strong>Draft — review before launch.</strong> This page is a good-faith, plain-English description of what the running code actually does. It is not legal advice and has not been reviewed by a lawyer. Do not treat it as final or binding until that review happens.</div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/compare">Compare</a>
+      <a href="/screen">Screen</a>
+      <a href="/#covered">Coverage</a>
+      <a href="/guide">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/compare">Compare</a>
+    <a href="/screen">Screen</a>
+    <a href="/#covered">Coverage</a>
+    <a href="/guide">Docs</a>
+    <a href="/explorer">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="guide-hero">
+  <span class="eyebrow">Legal &amp; trust</span>
+  <h1>Privacy policy.</h1>
+  <p class="guide-hero-sub">Profin is a data API, not a data broker on you. This page describes the small amount of account data we collect to run the service, and is explicit about what we do <em>not</em> collect.</p>
+  <nav class="guide-toc" aria-label="On this page">
+    <a href="#collect">What we collect</a>
+    <a href="#not-collect">What we don't collect</a>
+    <a href="#why">Why we collect it</a>
+    <a href="#retention">Retention &amp; security</a>
+    <a href="#rights">Your choices</a>
+    <a href="#changes">Changes &amp; contact</a>
+  </nav>
+</header>
+
+<section class="section guide-section" id="collect">
+  <span class="eyebrow">01</span>
+  <h2>What we collect</h2>
+  <p class="legal-updated">Last updated: 2026-07-11 (draft)</p>
+
+  <h3 class="legal-heading">Account data</h3>
+  <p class="body-text">When you sign up for an API key (<code>POST /v1/signup</code>), we store:</p>
+  <table class="guide-table">
+    <thead><tr><th>Field</th><th>What it is</th><th>Why we keep it</th></tr></thead>
+    <tbody>
+      <tr><td>Email address</td><td>Exactly what you submit at signup -- one email per key.</td><td>Account identity (one key per email), and the only way we have to reach you about your account or a service issue.</td></tr>
+      <tr><td>API key</td><td>We store a one-way hash of the key, never the plaintext. The plaintext key is shown to you exactly once, in the signup response.</td><td>Authenticating your requests. We cannot recover a lost key from the hash -- see <a href="#retention">Retention</a>.</td></tr>
+      <tr><td>Tier &amp; limits</td><td>Your rate limit and daily quota (free/basic/pro).</td><td>Enforcing the published tier limits (<a href="/terms#limits">Terms of Service</a>).</td></tr>
+      <tr><td>Daily request counts</td><td>A per-day count of requests made with your key, tied to the key's internal ID.</td><td>Quota enforcement and <code>GET /v1/usage</code> (so you can see your own trailing usage). We do not log the content of individual requests or responses against your identity.</td></tr>
+      <tr><td>Account created/active status</td><td>Signup timestamp and whether the key is active or disabled.</td><td>Operating and, if needed, disabling abusive accounts.</td></tr>
+    </tbody>
+  </table>
+
+  <h3 class="legal-heading">IP address (transient, not stored)</h3>
+  <p class="body-text">The two public, keyless endpoints (<code>/companies/{symbol}/statements/{statement}</code> and <code>/companies/{symbol}/periods</code>) are rate-limited per IP address so they can't be used to scrape without a key. That check happens against an in-memory counter for the life of the request and is <strong>not written to a database or log file we retain</strong>. Standard web-server-level connection logs (the kind any host produces) may exist transiently at the infrastructure layer; we don't currently build any product feature or profile from them.</p>
+
+  <h3 class="legal-heading">Cookies &amp; analytics</h3>
+  <p class="body-text">The marketing site and docs you're reading right now (<code>/</code>, <code>/guide</code>, <code>/coverage</code>, this page, etc.) run no third-party analytics, trackers, or advertising cookies as of this writing. If that changes before launch, this section will be updated first, not last.</p>
+</section>
+
+<section class="section guide-section" id="not-collect">
+  <span class="eyebrow">02</span>
+  <h2>What we don't collect</h2>
+  <div class="guide-callout">
+    <ul>
+      <li><strong>No payment information.</strong> There is no self-serve billing yet -- every signup gets the free tier, and moving a key to a paid tier is a manual, admin-gated action on our side. If/when self-serve payment ships, this policy will be updated to name the payment processor before it goes live.</li>
+      <li><strong>No name, address, or phone number.</strong> Signup asks for an email address only.</li>
+      <li><strong>No email verification today.</strong> Any syntactically valid email gets a key -- we don't confirm you own the inbox. (This is a known launch-readiness gap, tracked as an abuse-exposure item, not a privacy one -- see the Terms of Service.)</li>
+      <li><strong>No resale or sharing of your account data.</strong> We don't sell, rent, or share your email or usage data with third parties for marketing or any other purpose.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section guide-section" id="why">
+  <span class="eyebrow">03</span>
+  <h2>Why we collect it</h2>
+  <p class="body-text">Every field above exists to operate the service: identify your account, enforce the rate limit/quota that keeps the free tier sustainable for everyone, and let us contact you if something is wrong with your key or the service. None of it is used for advertising, and none of it is sold.</p>
+  <p class="body-text">The <em>financial data</em> served by the API (SEC filings, statements, insider trades, 13F holdings) is a completely separate thing from this policy -- it's public-domain SEC data about public companies, not personal data about you. See the <a href="/methodology">data source &amp; methodology page</a> for that.</p>
+</section>
+
+<section class="section guide-section" id="retention">
+  <span class="eyebrow">04</span>
+  <h2>Retention &amp; security</h2>
+  <p class="body-text"><strong>Retention:</strong> account data is kept for as long as your key is active. There is no automatic data-deletion job today, and key revocation/self-service account deletion is not yet built (tracked as a launch-readiness item) -- if you want your account data removed before that ships, contact us (below) and we'll do it manually.</p>
+  <p class="body-text"><strong>Security:</strong> API keys are stored as one-way hashes, never in plaintext, so a database compromise would not expose usable keys directly. That said, we make <strong>no uptime or security SLA at launch</strong> -- this is a small, early-stage service, not an enterprise vendor with a compliance program. Treat it accordingly for anything sensitive.</p>
+</section>
+
+<section class="section guide-section" id="rights">
+  <span class="eyebrow">05</span>
+  <h2>Your choices</h2>
+  <p class="body-text">You can stop using the service at any time by simply not calling it -- there's no subscription to cancel at launch (no self-serve billing exists yet). To have your email and key data removed, or to ask what we hold about your account, use the contact method below; this is a manual process today, not a self-serve button.</p>
+</section>
+
+<section class="section guide-section" id="changes">
+  <span class="eyebrow">06</span>
+  <h2>Changes to this policy &amp; contact</h2>
+  <p class="body-text">We'll update the date at the top of this page whenever this policy changes, and won't silently narrow your rights in a revision. This document should be reviewed by a qualified professional before it is treated as final, and should be re-read once self-serve payment or email verification ship, since both would add new data categories.</p>
+  <p class="body-text">Questions about this policy or your data: <strong>[support contact -- placeholder, set a real address before launch]</strong>, or open an issue on our GitHub repository <strong>[repo link -- placeholder]</strong>.</p>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/guide">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/guide#quickstart">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="/#covered">Coverage</a>
+      <a href="/#covered">Schema</a>
+      <a href="/methodology">Sources &amp; methodology</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/privacy" class="current">Privacy policy</a>
+      <a href="/terms">Terms of service</a>
+      <a href="/disclaimer">Disclaimer</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disclaimer — Data, Not Investment Advice — Profin</title>
+<meta name="description" content="Profin sells normalized SEC data infrastructure. Nothing here is investment advice, a recommendation, or an offer to buy or sell any security.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/guide.css">
+</head>
+<body>
+
+<div class="draft-banner"><strong>Draft — review before launch.</strong> Written to state our compliance position plainly; not a substitute for a lawyer's review.</div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/compare">Compare</a>
+      <a href="/screen">Screen</a>
+      <a href="/#covered">Coverage</a>
+      <a href="/guide">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/compare">Compare</a>
+    <a href="/screen">Screen</a>
+    <a href="/#covered">Coverage</a>
+    <a href="/guide">Docs</a>
+    <a href="/explorer">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="guide-hero">
+  <span class="eyebrow">Legal &amp; trust</span>
+  <h1>Data, not investment advice.</h1>
+  <p class="guide-hero-sub">Read this before you act on anything you get from this API. It's short on purpose.</p>
+</header>
+
+<section class="section guide-section" id="disclaimer">
+  <span class="eyebrow">—</span>
+  <div class="guide-callout">
+    <p><strong>Profin sells data infrastructure, not investment advice.</strong> We normalize public SEC filings into a clean schema. That's the whole product. Nothing on this site or returned by this API is a recommendation, a solicitation, or an offer to buy, sell, or hold any security, and nothing here should be construed as personalized financial, investment, legal, or tax advice.</p>
+    <p>Every number this API returns is <strong>historical, as-filed (or as-restated) data</strong> -- never a prediction, a rating, a score of "good" or "bad," or a signal about future performance. Percentile ranks and peer comparisons describe where a company sits in its peer group today; they are not a verdict, and a higher or lower percentile is not inherently "better" (e.g. for a leverage metric, a high value is not favorable).</p>
+  </div>
+
+  <h3 class="legal-heading">The 13F caveat, stated plainly</h3>
+  <p class="body-text">If you use the institutional-ownership endpoints (<code>/managers/{cik}/activity</code>, <code>/companies/{symbol}/institutional-activity</code>), read this part twice:</p>
+  <div class="guide-callout">
+    <p><strong>Form 13F is a quarter-end snapshot of long positions, not a record of trades.</strong> No manager files a "bought" or "sold" event with the SEC through 13F. Any "new," "added," "reduced," or "exited" label you see from this API is something <em>we computed</em> by diffing two consecutive quarterly snapshots -- it is never SEC-reported trade data, and every such response carries a <code>caveats</code> field saying so.</p>
+    <ul>
+      <li>13F covers <strong>long positions only</strong>, in Section 13(f) securities only -- no shorts, no cash, no non-US holdings. A manager's real portfolio can look very different from what a 13F reflects.</li>
+      <li>13F is filed with a <strong>~45-day lag</strong> after quarter-end. Even a "current" snapshot is describing a portfolio as of up to a quarter and a half ago, not today.</li>
+      <li>A derived "reduced" or "exited" position does not necessarily mean the manager holds a bearish view -- there are many benign reasons a position size changes quarter to quarter.</li>
+    </ul>
+  </div>
+
+  <h3 class="legal-heading">We have no price data</h3>
+  <p class="body-text">This API does not serve quotes, OHLCV, or any real-time market data, and never has. If you're using this data alongside a price feed to make a trading decision, that decision is entirely yours -- we have no visibility into, and make no claim about, how our fundamentals or ownership data relates to any security's price.</p>
+
+  <h3 class="legal-heading">Talk to a professional</h3>
+  <p class="body-text">If you are making a real financial decision, consult a licensed financial advisor, accountant, or attorney who knows your specific situation. This API is a tool for developers building software, research, and analysis -- it is not a substitute for professional advice.</p>
+
+  <p class="body-text" style="margin-top:24px">For the technical detail behind these caveats -- exactly how 13F deltas are computed, what "long-only" and "45-day lag" mean for the data, and every other coverage boundary -- see the <a href="/methodology">data source &amp; methodology page</a>. For the contractual version of some of this, see the <a href="/terms">Terms of Service</a>.</p>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/guide">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/guide#quickstart">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="/#covered">Coverage</a>
+      <a href="/#covered">Schema</a>
+      <a href="/methodology">Sources &amp; methodology</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms">Terms of service</a>
+      <a href="/disclaimer" class="current">Disclaimer</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

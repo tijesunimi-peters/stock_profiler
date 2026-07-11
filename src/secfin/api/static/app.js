@@ -171,6 +171,8 @@
       '<a href="/explorer">Data Explorer ↗</a>' +
       '<a href="/coverage">Data coverage ↗</a>' +
       '<a href="/docs">API reference ↗</a>' +
+      '<a href="/methodology">Methodology ↗</a>' +
+      '<a href="/disclaimer">Data, not investment advice ↗</a>' +
       '<span class="tagline">Profin · public SEC data, cleaned &amp; queryable</span>' +
       "</footer>"
     );

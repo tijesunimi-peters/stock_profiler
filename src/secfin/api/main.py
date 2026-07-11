@@ -257,6 +257,30 @@ async def screening() -> FileResponse:
     return FileResponse(STATIC_DIR / "screen.html")
 
 
+@app.get("/privacy", include_in_schema=False)
+async def privacy_policy() -> FileResponse:
+    # Draft legal/trust page -- see docs/product/tracks/writing.md for status.
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
+@app.get("/terms", include_in_schema=False)
+async def terms_of_service() -> FileResponse:
+    # Draft legal/trust page -- see docs/product/tracks/writing.md for status.
+    return FileResponse(STATIC_DIR / "terms.html")
+
+
+@app.get("/disclaimer", include_in_schema=False)
+async def data_disclaimer() -> FileResponse:
+    # "Data, not investment advice" -- linked from every page footer (guardrail 2).
+    return FileResponse(STATIC_DIR / "disclaimer.html")
+
+
+@app.get("/methodology", include_in_schema=False)
+async def data_methodology() -> FileResponse:
+    # Data source & methodology page -- doubles as the E-E-A-T surface (content-seo skill).
+    return FileResponse(STATIC_DIR / "methodology.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
