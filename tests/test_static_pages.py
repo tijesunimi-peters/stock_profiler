@@ -11,7 +11,17 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from secfin.auth.tiers import TIERS
 from secfin.config import settings
+
+# Derived from auth/tiers.py rather than hand-copied, so that a future change to a
+# tier's limits (adding a tier, changing a number) breaks this test immediately if the
+# published copy isn't updated to match -- catching drift at the source of truth
+# instead of only catching a typo made once at write time.
+_EXPECTED_TIER_STRINGS = [
+    (f"{limits.rate_limit_per_sec} req/sec", f"{limits.daily_quota:,} req/day")
+    for limits in TIERS.values()
+]
 
 
 def _client(tmp_path, monkeypatch) -> TestClient:
@@ -37,11 +47,23 @@ def test_terms_page_matches_published_tier_limits(tmp_path, monkeypatch):
         resp = client.get("/terms")
     assert resp.status_code == 200
     body = resp.text
-    # Numbers must match auth/tiers.py exactly, not be guessed.
-    assert "5 req/sec" in body and "1,000 req/day" in body
-    assert "20 req/sec" in body and "25,000 req/day" in body
-    assert "100 req/sec" in body and "250,000 req/day" in body
+    # Numbers must match auth/tiers.py exactly, not be guessed -- and not just match
+    # today's numbers by coincidence: derived from TIERS itself (see module docstring).
+    assert len(_EXPECTED_TIER_STRINGS) == 3, "update this test if a tier was added/removed"
+    for rate_str, quota_str in _EXPECTED_TIER_STRINGS:
+        assert rate_str in body and quota_str in body
     assert "No SLA at launch" in body or "no uptime" in body.lower()
+
+
+def test_guide_page_tier_table_matches_auth_tiers(tmp_path, monkeypatch):
+    # The quickstart guide (docs/product/LAUNCH_READINESS.md §5) has its own copy of the
+    # tier table -- a second place the same drift could sneak in independently of /terms.
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/guide")
+    assert resp.status_code == 200
+    body = resp.text
+    for rate_str, quota_str in _EXPECTED_TIER_STRINGS:
+        assert rate_str in body and quota_str in body
 
 
 def test_disclaimer_page_carries_the_13f_derived_delta_caveat(tmp_path, monkeypatch):
