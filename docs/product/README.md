@@ -12,6 +12,10 @@ positioning, pricing, campaigns, and growth measurement. Engineering docs stay i
 - **[CAMPAIGN_OPTIONS.md](CAMPAIGN_OPTIONS.md)** — acquisition channel research and
   a recommended launch/growth sequence (Show HN → Product Hunt → community;
   programmatic SEO + MCP + comparison pages post-launch).
+- **[LAUNCH_READINESS.md](LAUNCH_READINESS.md)** — the launch checklist: what's
+  verified (engineering, per docs/ROADMAP.md) and the seven open workstreams
+  (pricing story, deployment, data seeding, legal pages, onboarding, ops, launch
+  assets). Update statuses in place as items land.
 
 Files created as work progresses (referenced by the skills below, created on first
 real use): `POSITIONING.md`, `PRICING.md`, `CONTENT.md` + `drafts/`, `DEVREL.md`,
