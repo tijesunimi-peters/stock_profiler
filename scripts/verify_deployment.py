@@ -28,10 +28,11 @@ one -- this script does not itself pressure the SEC fair-access ceiling.
 Run locally, against `docker compose up api` (see docs/product/tracks/infra.md for a
 verified example run):
     python3 scripts/verify_deployment.py --base-url http://localhost:8000
-  or, from inside the compose network:
-    docker compose run --rm api python scripts/verify_deployment.py --base-url http://api:8000
-  (needs `httpx`, already a production dependency -- the prod image has it; running
-  from a bare host needs `pip install httpx` first.)
+  or, from inside the compose network (the prod image bakes in `src/` but NOT
+  `scripts/`, so use the bind-mounted test container, not the api image):
+    docker compose --profile test run --rm test bash -c \
+        "pip install -q httpx && python scripts/verify_deployment.py --base-url http://api:8000"
+  (running from a bare host needs `pip install httpx` first.)
 
 Run against a real deployed host once one exists (the actual convergence-phase gate):
     python3 scripts/verify_deployment.py --base-url https://api.yourdomain.com
