@@ -18,10 +18,29 @@ argument as the issuer identity and `InsiderTransactionRepository.upsert_insider
 stores rows under that same CIK -- walking the daily index naively and fetching every
 CIK it mentions would cache real rows under the WRONG `issuer_cik`, corrupting the
 cache. So candidates here are restricted to CIKs we already know are real operating
-companies: the union of `RawFactRepository.get_ingested_ciks` across the two financials
-sources (`ingest.backfill.SOURCE`, `ingest.incremental.SOURCE`). This also naturally
-scopes the job to companies this API actually serves financials for, rather than every
-SEC filer.
+companies: every CIK with at least one companyfacts row in `raw_facts`
+(`RawFactRepository.all_ciks()`), unioned with the checkpoint-tracked CIKs from the two
+financials sources (`ingest.backfill.SOURCE`, `ingest.incremental.SOURCE`) for good
+measure. This also naturally scopes the job to companies this API actually serves
+financials for, rather than every SEC filer.
+
+**Why `all_ciks()` preserves the same safety guarantee, not just a superset of
+convenience:** `raw_facts` is written by exactly three call sites --
+`ingest.backfill` (bulk companyfacts.zip, keyed by issuer CIK), `ingest.incremental`
+(per-CIK companyfacts fetch for issuers that just filed a 10-K/10-Q), and the API's
+cache-aside path (`api/routes.py`'s `_facts_for_cik`/`_statement_facts_for_cik`,
+which resolves a ticker to a CIK via `ticker_cache.py`'s SEC ticker map before ever
+fetching companyfacts). None of those three paths is driven by the daily index's
+arbitrary filer-CIK list (the thing that can surface a reporting-owner-only entity like
+325 Capital GP) -- every one of them fetches *companyfacts* for a CIK already known to
+be a real operating company. So a CIK with any `raw_facts` row is just as trustworthy
+an issuer as one with a checkpoint row; the two checkpoint sources only fail to cover
+CIKs that reached `raw_facts` through the live cache-aside path (e.g. a DB that grew
+mainly from on-demand traffic rather than a completed `ingest.backfill` run -- checkpoint
+rows would then be sparse or empty even though the company universe is fully
+populated). Found and fixed 2026-07-11: exactly that state on the pre-launch DB
+(`ingest_checkpoint` had 0 rows, `raw_facts` had 6,736 distinct CIKs from live traffic),
+which silently reduced this job's candidate set to nothing.
 
 **Skip-or-refresh, cheap to rerun:** for each candidate, `cached_filing_count(cik) >=
 limit` -- the same check `api/routes.py`'s `_insider_transactions_for_cik` uses for a
@@ -66,13 +85,22 @@ _PROGRESS_EVERY = 100
 
 
 def known_issuer_ciks(fact_repo: RawFactRepository) -> set[int]:
-    """Every CIK we've already ingested companyfacts for, via either financials source.
+    """Every CIK we've already ingested companyfacts for, regardless of how it got into
+    `raw_facts` -- bulk/incremental checkpoint sources, or the API's cache-aside path.
 
     This is the safety filter described in the module docstring: only these CIKs are
-    trusted to be real issuers, not reporting-owner-only filer entities.
+    trusted to be real issuers, not reporting-owner-only filer entities. `all_ciks()` is
+    the primary source (it reflects every CIK actually in `raw_facts`, so it alone is
+    sufficient); the two `get_ingested_ciks` calls are unioned in for defense in depth,
+    not because they add coverage `all_ciks()` lacks -- see the module docstring for why
+    a checkpoint-only universe silently degrades to empty on a DB that reached its
+    current state mainly through live cache-aside traffic rather than a completed
+    `ingest.backfill` run.
     """
-    return fact_repo.get_ingested_ciks(BULK_SOURCE) | fact_repo.get_ingested_ciks(
-        INCREMENTAL_SOURCE
+    return (
+        fact_repo.all_ciks()
+        | fact_repo.get_ingested_ciks(BULK_SOURCE)
+        | fact_repo.get_ingested_ciks(INCREMENTAL_SOURCE)
     )
 
 

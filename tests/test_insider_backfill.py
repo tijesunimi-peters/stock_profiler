@@ -12,7 +12,7 @@ from secfin.ingest import insider_backfill as backfill_module
 from secfin.ingest.backfill import SOURCE as BULK_SOURCE
 from secfin.ingest.incremental import SOURCE as INCREMENTAL_SOURCE
 from secfin.ingest.insider_backfill import known_issuer_ciks
-from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
+from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction, RawFact
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
@@ -44,6 +44,40 @@ def test_known_issuer_ciks_deduplicates_a_cik_seen_via_both_sources(tmp_path):
     )
 
     assert known_issuer_ciks(repo) == {BULK_ONLY_CIK}
+    repo.close()
+
+
+def test_known_issuer_ciks_falls_back_to_raw_facts_when_checkpoint_table_is_empty(
+    tmp_path,
+):
+    """Regression test for the real 2026-07-11 pre-launch bug (docs/product/tracks/
+    data.md): a DB whose companies all arrived through the API's cache-aside path
+    (`api/routes.py`'s `_facts_for_cik`, which calls `RawFactRepository.upsert_raw_facts`
+    directly -- no checkpoint row) has an empty `ingest_checkpoint` table even though
+    `raw_facts` is fully populated. Before this fix, `known_issuer_ciks` only looked at
+    checkpoints and silently returned the empty set, no-opping the whole backfill with
+    no error. It must instead fall back to (here, unioned with) `all_ciks()`.
+    """
+    repo = SQLiteRawFactRepository(tmp_path / "test.db")
+    fact = RawFact(
+        cik=AAPL_CIK,
+        taxonomy="us-gaap",
+        gaap_tag="Assets",
+        label="Assets",
+        unit="USD",
+        value=100,
+        instant="2024-09-28",
+        fiscal_year=2024,
+        fiscal_period="FY",
+        form="10-K",
+        filed="2024-11-01",
+        accession="acc-cache-aside",
+    )
+    repo.upsert_raw_facts([fact])  # the cache-aside path -- no checkpoint row written
+
+    ciks = known_issuer_ciks(repo)
+
+    assert ciks == {AAPL_CIK}
     repo.close()
 
 

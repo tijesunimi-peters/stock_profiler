@@ -162,3 +162,42 @@ file. Did not touch `src/secfin/api/static/`, `deploy/`, `docs/DEPLOYMENT.md`,
 2. **Self-serve vs. beta-notice posture** — the launch posture decision in §1 gates
    whether Stripe plumbing is even the right next code task, or whether the
    already-shipped "free during beta" copy on `/terms` is sufficient for launch.
+
+## 2026-07-11 (follow-up) — fixed a real bug the data track hit in this lane
+
+The data track ran `python -m secfin.ingest.insider_backfill` against the live volume
+(§3) and it silently no-opped: `insider backfill: 0 known issuer CIKs, limit=10`, exit
+0, no error. Root cause traced by the data track (not fixed by them — forbidden to
+patch source from that lane; see `docs/product/tracks/data.md` in the main checkout for
+their full trace) and fixed here:
+
+- `ingest/insider_backfill.py`'s `known_issuer_ciks()` only unioned
+  `RawFactRepository.get_ingested_ciks(source)` for the two checkpoint sources
+  (`ingest.backfill`, `ingest.incremental`). On the live DB, all 6,736 companies arrived
+  via the API's cache-aside path (`upsert_raw_facts`, called directly by
+  `api/routes.py`, which never writes a checkpoint row) — so `ingest_checkpoint` had 0
+  rows even though `raw_facts` had 6,736 distinct CIKs.
+- **Fix:** union in `RawFactRepository.all_ciks()` — `SELECT DISTINCT cik FROM
+  raw_facts`, which **already existed** in the abstract repo + SQLite impl (added
+  earlier for `metrics_backfill.py`, same "must cover every company with facts
+  regardless of checkpoint" reasoning) — no repository/interface change needed, just
+  wiring it into this one call site. Safe to trust as an issuer-only universe for the
+  same reason the module's docstring gives for the checkpoint sources: `raw_facts` is
+  written only by companyfacts fetches keyed on a real issuer CIK (bulk zip,
+  incremental, or a ticker-resolved cache-aside fetch) — never by the SEC daily index's
+  arbitrary filer-CIK list, which is the actual reporting-owner mis-attribution risk
+  the filter guards against.
+- `ingest_checkpoint` semantics untouched; this job remains a pure reader (no writes to
+  `ingest_checkpoint`, no change to the single-writer backfill/incremental path).
+- Regression test added: `tests/test_insider_backfill.py::
+  test_known_issuer_ciks_falls_back_to_raw_facts_when_checkpoint_table_is_empty` —
+  writes a fact via `upsert_raw_facts` only (no checkpoint), asserts
+  `known_issuer_ciks()` still returns that CIK.
+- Verified via `docker compose --profile test run --rm test` only, against this
+  worktree's own isolated Docker project (`agent-a178622e33cfab826-*`) — **306 passed, 6
+  skipped** (was 305/6 before this fix's one new test). Did not run the actual insider
+  backfill, did not touch the live volume, did not rebuild or restart
+  `stock_profiler-api-1` or the data track's in-flight `stock_profiler-api-run-...`
+  container (both confirmed still `Up` via `docker ps -a` after this work).
+- Commit: `eb49d6b` on this same branch (`worktree-agent-a178622e33cfab826`), on top of
+  the earlier revocation/tier-consistency work.
