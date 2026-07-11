@@ -1,0 +1,13 @@
+[Unit]
+Description=Run secfin daily incremental SEC ingest once a day
+
+[Timer]
+# 06:00 UTC -- well after SEC's daily-index file for "yesterday" (America/New_York
+# midnight) has been published, and before the backup timer below so the day's backup
+# captures the freshly-ingested data, not stale data from before it landed.
+OnCalendar=*-*-* 06:00:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
