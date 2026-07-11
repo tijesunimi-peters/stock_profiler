@@ -216,6 +216,91 @@ docs portal (M3).
 - [ ] **Public docs / developer portal** *(M3)* — distinct from Swagger: examples, auth/quota
       story, onboarding. Tracked in `docs/ROADMAP.md` M3.
 
+## Phase 5 — Manager portfolio visualizations (planned, not started)
+
+The `/manager/{cik}` profile is tables-only today: holdings, derived activity, and the
+co-filer roster render as rows with no visual summary of what the portfolio *looks like*
+(composition, concentration, what changed). This phase adds charts to that page. Everything
+below consumes **already-shipped endpoints** (`/managers/{cik}/periods`, `.../holdings`,
+`.../activity`) — backend is **ready** for every item; what varies is **data readiness**,
+noted per item: as of 2026-07-11 the bulk 13F ingest has one broadly-populated quarter
+(2026-06-30, 579 managers) and only single-manager coverage of earlier quarters, so
+single-snapshot charts are fully servable now while multi-quarter charts are honest but
+thin until more quarters are backfilled.
+
+**Rendering mechanism (decide once, first item of work):** extend the hand-rolled
+`Profin` SVG builders in `app.js` (the `sparkline` → `trendChart` → `trajectoryChart`
+lineage) rather than adding a chart library to served pages. Observable Plot stays
+confined to the standalone infographic template (`infographic-template.html`), which is a
+CDN-loading export artifact, not a data page. When this phase lands, update
+`STYLE_GUIDE.md` §6/§10 to enumerate the new builders — the "sparklines and position bars
+are the only generated graphics" line already lags Phase 3's trend charts and governs by
+intent (no *decorative* graphics), not by literal list.
+
+**Palette constraint to resolve up front (§10):** composition charts conventionally lean
+on a categorical hue per slice; the style guide allows **one accent, no good/bad color,
+series told apart by dash/position/label**. So prefer chart forms that don't need
+per-category hue at all — ranked horizontal bars, single-hue tint ramps ordered by value,
+position/annotation — over donuts/treemaps that beg for a rainbow. Where a tint ramp is
+used, lightness encodes nothing but rank-order legibility (never a judgment).
+
+**Honesty rules specific to 13F charts (all inherit the standing caveats):**
+- Every chart carries the existing always-present caveats block (derived-not-reported,
+  long-only, ~45-day lag) — a chart is not exempt because it's a picture.
+- `value` is the *reported* market value; its unit convention changed mid-history
+  (thousands → whole dollars, ~2023 — see `DATA_MODEL.md`). Any chart spanning that
+  boundary (portfolio value over time) must normalize explicitly or refuse to cross it —
+  never plot the raw discontinuity as if the portfolio 1000×'d.
+- A "share" of portfolio value is a share of *reported 13F long positions only* — say so
+  in the caption; it is not the manager's AUM or whole book.
+- Rows aren't all common stock: `put_call` (options) and `shares_or_principal` (`SH` vs
+  `PRN`) matter. Composition by `value` may aggregate across them, but never sum *shares*
+  across SH/PRN or option/equity rows; option positions get labeled, not silently pooled.
+- Multi-class issuers appear as distinct CUSIPs — keep them distinct (same rule as
+  `diff_holders`), or label an explicit issuer-level rollup as a rollup.
+
+### Phase 5 tasks
+
+- [ ] **5.1 Composition — top-N value bar list** *(data: ready)*. Horizontal ranked bars of
+      the top 10 holdings by `value` share, plus one "Other (n positions)" bar, on the
+      holdings section of `/manager/{cik}` above the table. Single accent + tint ramp;
+      percent-of-reported-value labels; issuer links to `/company/{cik}` where resolved.
+      Caption carries the "reported long positions only" framing. This is the highest-value,
+      lowest-risk chart — one snapshot, no time axis, no unit-convention hazard.
+- [ ] **5.2 Concentration stat tiles** *(data: ready)*. Alongside 5.1: position count,
+      top-1 / top-5 / top-10 share of reported value, and reported total. Descriptive
+      numbers only — no "diversification score," no judgment color (§9.2). (A single
+      Herfindahl-style index is deliberately out: it reads as a verdict.)
+- [ ] **5.3 Derived activity — diverging change bars** *(data: partial — needs two
+      consecutive ingested quarters for a manager; true for few managers until the next
+      quarterly backfill)*. Signed share-change bars per issuer (reduced/exited left,
+      new/added right), sorted by magnitude, capped at top ±10 with an overflow count.
+      DERIVED framing is load-bearing: title says "Derived activity," caption repeats
+      never-reported-trades, and exited/new positions state they're inferred from
+      presence/absence. Never sum SH and PRN rows; option rows labeled.
+- [ ] **5.4 Portfolio value over time** *(data: partial — most managers have one ingested
+      quarter today)*. A small multi-quarter line (reuse `trendChart`'s conventions: gaps
+      break the line, min/max labels) of total reported value per quarter, on the manager
+      masthead or above the quarter selector. **Blocked on the unit-convention decision:**
+      define where the thousands→dollars boundary is detected and how it's handled
+      (normalize with an explicit basis caption, or clip the series to the
+      post-convention era) *before* building — this is the one chart that can silently lie
+      by three orders of magnitude.
+- [ ] **5.5 Allocation over time — top-holdings share series** *(data: partial; defer
+      until ≥4 quarters are broadly ingested)*. Per-quarter percent-of-portfolio lines for
+      the current top ~5 holdings (dash pattern + legend, one accent — the
+      `trajectoryChart` recipe), NOT a stacked area (stacking implies whole-book
+      completeness and needs per-band hue). Calendar axis; a holding absent from a quarter
+      breaks its line.
+- [ ] **5.6 Reuse on the issuer side** *(scope check, not new design)*. Once 5.1/5.3 exist
+      as `Profin` builders, evaluate reusing them on the company hub's Institutional tab
+      (top holders by value; derived holder activity) — same endpoints' issuer-centric
+      twins, same caveats. Do this as reuse of the shipped builders, not a parallel build.
+
+**Build order:** 5.1 + 5.2 together (one snapshot, ready today), then 5.3, then 5.4
+(after the unit-convention decision), 5.5 last (needs quarters that don't exist yet).
+5.6 whenever 5.1/5.3 are stable.
+
 ---
 
 ## Per-page summary
@@ -237,6 +322,7 @@ docs portal (M3).
 | Screening | 4 | built | `/screen`, `/concepts/{concept}` |
 | Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
 | Public docs portal | 4 | n/a | *(M3)* |
+| Manager portfolio viz | 5 | ready (data partial) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 
 ## Guardrails / do-nots (mirror `STYLE_GUIDE.md` §10)
 
