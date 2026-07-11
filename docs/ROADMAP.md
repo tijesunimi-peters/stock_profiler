@@ -345,8 +345,15 @@ a time.
       issued a real key; a duplicate signup 409'd; the key worked against a gated
       endpoint (real AAPL insider-trade data); 6 rapid requests against the free
       tier's 5 req/s limit correctly returned `200 200 200 200 200 429`; the public
-      `/periods` endpoint kept serving real data with no key at all. No admin CLI /
-      key revocation yet -- unbuilt, later work if needed.
+      `/periods` endpoint kept serving real data with no key at all. **Key revocation
+      added 2026-07-11** (launch-readiness §6): admin-secret-gated `POST
+      /v1/admin/keys/{email}/revoke` (`api/admin_routes.py`), same shape as the
+      tier-change endpoint below, backed by new `ApiKeyRepository.revoke_key`. Sets
+      `active = False` rather than deleting the row, so `require_api_key`'s existing
+      `not record.active` check (already there, previously untriggerable in
+      production since nothing could ever set it) 401s with "Invalid or revoked API
+      key." on the very next request -- no cache to expire, `get_by_hash` reads fresh
+      from SQLite every call.
 - [x] **Subscription tiers (manual upgrade path)** -- `auth/tiers.py` now defines
       "basic" (20 req/s, 25K/day) and "pro" (100 req/s, 250K/day) alongside "free". No
       payment integration yet, so there's no self-service upgrade: `POST
