@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terms of Service — Profin</title>
+<meta name="description" content="Acceptable use, published tier limits, no-SLA-at-launch, and termination terms for the Profin API. Draft — pending legal review before launch.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/guide.css">
+</head>
+<body>
+
+<div class="draft-banner"><strong>Draft — review before launch.</strong> Written to accurately describe what the running service actually does and enforces (cross-checked against <code>auth/tiers.py</code> and the live API), not as a substitute for a lawyer's review. Do not treat as final or binding until reviewed.</div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo" aria-label="Profin home">
+      <span class="logo-mark"><span class="logo-dot"></span></span>
+      <span class="logo-word">Profin</span>
+    </a>
+    <div class="nav-links">
+      <a href="/compare">Compare</a>
+      <a href="/screen">Screen</a>
+      <a href="/#covered">Coverage</a>
+      <a href="/guide">Docs</a>
+      <a href="/explorer">Data Explorer</a>
+      <a href="/docs" class="pill">API Reference</a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+  <div class="nav-mobile" id="navMobile">
+    <a href="/compare">Compare</a>
+    <a href="/screen">Screen</a>
+    <a href="/#covered">Coverage</a>
+    <a href="/guide">Docs</a>
+    <a href="/explorer">Data Explorer</a>
+    <a href="/docs" class="pill">API Reference</a>
+  </div>
+</nav>
+
+<header class="guide-hero">
+  <span class="eyebrow">Legal &amp; trust</span>
+  <h1>Terms of service.</h1>
+  <p class="guide-hero-sub">The rules for using the Profin API: what's allowed, what your tier gets you, and what happens if either side needs to stop. Plain-language, matched to what the code actually enforces.</p>
+  <nav class="guide-toc" aria-label="On this page">
+    <a href="#acceptance">Acceptance</a>
+    <a href="#service">The service</a>
+    <a href="#accounts">Accounts</a>
+    <a href="#limits">Tiers &amp; acceptable use</a>
+    <a href="#sla">No SLA at launch</a>
+    <a href="#termination">Termination</a>
+    <a href="#disclaimers">Disclaimers &amp; liability</a>
+    <a href="#changes">Changes &amp; contact</a>
+  </nav>
+</header>
+
+<section class="section guide-section" id="acceptance">
+  <span class="eyebrow">01</span>
+  <h2>Acceptance of these terms</h2>
+  <p class="legal-updated">Last updated: 2026-07-11 (draft)</p>
+  <p class="body-text">By signing up for an API key or otherwise calling the Profin API, you agree to these terms. If you don't agree, don't use the service. These terms apply to the hosted API and the documentation/marketing site you're reading now; they don't apply to the underlying SEC data itself, which is separately in the public domain (see <a href="/methodology">Data source &amp; methodology</a>).</p>
+</section>
+
+<section class="section guide-section" id="service">
+  <span class="eyebrow">02</span>
+  <h2>The service</h2>
+  <p class="body-text">Profin is a REST API that normalizes public SEC structured filings -- income/balance/cash-flow statements, insider transactions (Forms 3/4/5), and institutional ownership (13F holdings and derived activity, Schedule 13D/13G) -- into one consistent JSON schema, plus derived fundamental metrics and peer rankings.</p>
+  <div class="guide-callout">
+    <p><strong>What the service is explicitly not:</strong></p>
+    <ul>
+      <li>Not a source of prices, quotes, or OHLCV market data -- we don't have any, ever.</li>
+      <li>Not investment advice, a recommendation, or a solicitation to buy or sell any security -- see the <a href="/disclaimer">full disclaimer</a>.</li>
+      <li>Not real-time -- every response reflects the latest SEC filing we've ingested, not live market conditions.</li>
+      <li>Not a source of narrative text -- no MD&amp;A, risk factors, or filing summaries (structured numeric data only).</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section guide-section" id="accounts">
+  <span class="eyebrow">03</span>
+  <h2>Accounts</h2>
+  <p class="body-text"><code>POST /v1/signup</code> issues one API key per email address; signing up again with an already-registered email is rejected. There is currently no email verification -- any syntactically valid email address is accepted. You're responsible for keeping your API key confidential; it's shown to you exactly once at signup (we store only a one-way hash) and there is no self-serve reissue flow today -- if you lose it, you'd need to sign up again with a different email.</p>
+</section>
+
+<section class="section guide-section" id="limits">
+  <span class="eyebrow">04</span>
+  <h2>Tiers &amp; acceptable use</h2>
+  <p class="body-text">Published tier limits, matched exactly to what <code>auth/tiers.py</code> enforces in the running API:</p>
+  <table class="guide-table">
+    <thead><tr><th>Tier</th><th>Rate limit</th><th>Daily quota</th><th>Price</th></tr></thead>
+    <tbody>
+      <tr><td>free</td><td>5 req/sec</td><td>1,000 req/day</td><td>Free during beta -- see note below</td></tr>
+      <tr><td>basic</td><td>20 req/sec</td><td>25,000 req/day</td><td>Free during beta -- see note below</td></tr>
+      <tr><td>pro</td><td>100 req/sec</td><td>250,000 req/day</td><td>Free during beta -- see note below</td></tr>
+    </tbody>
+  </table>
+  <p class="guide-note">Pricing note: <code>docs/product/PRICING.md</code> does not exist yet as of this draft -- no price points have been decided. Every signup gets the free tier today (moving to basic/pro is a manual, admin-gated action, not self-serve). Treat all three tiers as <strong>free during the beta period</strong> until a pricing decision is published here with real numbers.</p>
+
+  <h3 class="legal-heading">Acceptable use</h3>
+  <p class="body-text">You may use the API for any lawful purpose consistent with these terms, including building applications, research, and internal tools. You may not:</p>
+  <ul class="check-list" style="margin:14px 0 0">
+    <li><span class="check">·</span> Circumvent, or attempt to circumvent, your tier's rate limit or daily quota (e.g. via multiple accounts to evade limits, or by bypassing authentication).</li>
+    <li><span class="check">·</span> Use the API to build a directly competing bulk redistribution product that resells our normalized schema as a raw data dump, without a separate agreement.</li>
+    <li><span class="check">·</span> Misrepresent derived 13F activity data (new/added/reduced/exited positions computed by diffing quarterly snapshots) as SEC-reported trades, or otherwise strip the <code>caveats</code> our API attaches to that data when you republish it.</li>
+    <li><span class="check">·</span> Use the service in a way that violates applicable law, or that presents outputs of this API as investment advice to your own users (see the <a href="/disclaimer">disclaimer</a> -- this restriction protects you as much as us).</li>
+    <li><span class="check">·</span> Attempt to probe, scan, or overload the infrastructure beyond normal API use.</li>
+  </ul>
+  <p class="body-text" style="margin-top:14px">We do not claim ownership over the underlying SEC facts (they're public domain -- see <a href="/methodology">methodology</a>); this section is about fair use of <em>our</em> service and infrastructure, not a claim on public information.</p>
+</section>
+
+<section class="section guide-section" id="sla">
+  <span class="eyebrow">05</span>
+  <h2>No SLA at launch</h2>
+  <div class="guide-callout">
+    <p><strong>The service is provided without any uptime, support-response, or data-accuracy SLA at launch.</strong> This is a small, early-stage operation, not an enterprise vendor. We aim to keep the API available and correct, and we monitor for outages, but we make no contractual guarantee about uptime, response time to support requests, or turnaround on bug fixes. If you need a contracted SLA, this service isn't the right fit yet -- talk to us before relying on it for anything mission-critical.</p>
+  </div>
+</section>
+
+<section class="section guide-section" id="termination">
+  <span class="eyebrow">06</span>
+  <h2>Termination</h2>
+  <p class="body-text">We may disable an API key for violating acceptable use, for abuse (e.g. quota-evasion via throwaway signups), or for operational reasons, with or without notice. Today that's a manual, admin-gated action on our side -- self-serve key revocation/rotation is not yet built (tracked as a launch-readiness item), so if you need your own key disabled, contact us.</p>
+  <p class="body-text">You may stop using the service at any time. Since there is no self-serve billing yet, there is nothing to "cancel" -- simply stop calling the API. If self-serve payment ships later, this section will be updated with a real cancellation path.</p>
+</section>
+
+<section class="section guide-section" id="disclaimers">
+  <span class="eyebrow">07</span>
+  <h2>Disclaimers &amp; limitation of liability</h2>
+  <p class="body-text">The service and the data it serves are provided <strong>"as is"</strong> and <strong>"as available,"</strong> without warranties of any kind, express or implied, including without limitation warranties of merchantability, fitness for a particular purpose, or non-infringement. We do our best to normalize SEC filings accurately (see <a href="/methodology">methodology</a> for how, and for the honest limitations we already know about -- bank statement shapes, coverage floors, restatement handling), but errors can exist in any data pipeline, and you're responsible for validating anything you rely on for a material decision.</p>
+  <p class="body-text">To the fullest extent permitted by law, we are not liable for any indirect, incidental, special, or consequential damages arising from your use of the service, including decisions made using the data. <strong>Nothing on this site or in this API is investment advice</strong> -- see the full <a href="/disclaimer">disclaimer</a>.</p>
+  <p class="guide-note">[Placeholder: governing law / jurisdiction clause -- needs an operator/legal decision before this is final.]</p>
+</section>
+
+<section class="section guide-section" id="changes">
+  <span class="eyebrow">08</span>
+  <h2>Changes to these terms &amp; contact</h2>
+  <p class="body-text">We'll update the date at the top of this page when these terms change. Material changes (e.g. real pricing replacing the "free during beta" note, or a new acceptable-use restriction) will be called out here, not buried in a silent edit.</p>
+  <p class="body-text">Questions about these terms: <strong>[support contact -- placeholder, set a real address before launch]</strong>, or open an issue on our GitHub repository <strong>[repo link -- placeholder]</strong>.</p>
+</section>
+
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="logo">
+        <span class="logo-mark logo-mark-sm"><span class="logo-dot logo-dot-sm"></span></span>
+        <span class="logo-word">Profin</span>
+      </div>
+      <p>Clean, affordable SEC financial data — served as developer-friendly JSON.</p>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Developers</div>
+      <a href="/guide">Documentation</a>
+      <a href="/docs">API reference</a>
+      <a href="/guide#quickstart">Quickstart</a>
+      <a href="/health">Status</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Data</div>
+      <a href="/#covered">Coverage</a>
+      <a href="/#covered">Schema</a>
+      <a href="/methodology">Sources &amp; methodology</a>
+      <a href="/#pricing">Pricing</a>
+    </div>
+    <div class="footer-col">
+      <div class="footer-heading">Company</div>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms" class="current">Terms of service</a>
+      <a href="/disclaimer">Disclaimer</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Profin</span>
+    <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
+  </div>
+</footer>
+
+<script src="/static/script.js"></script>
+</body>
+</html>

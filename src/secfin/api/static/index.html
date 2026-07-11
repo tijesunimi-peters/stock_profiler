@@ -62,27 +62,33 @@
         <span class="filename">income-statement.json</span>
       </div>
       <div class="code-request">
-        <span class="verb">GET</span> <span class="path">/v1/financials/income-statement?ticker=</span><span class="accent-text">AAPL</span><span class="path">&amp;period=</span><span class="accent-text">FY2023</span>
+        <span class="verb">GET</span> <span class="path">/v1/companies/</span><span class="accent-text">AAPL</span><span class="path">/statements/</span><span class="accent-text">income</span><span class="path">?year=</span><span class="accent-text">2023</span><span class="path">&amp;period=</span><span class="accent-text">FY</span>
       </div>
       <pre class="code-body"><span class="punct">{</span>
-  <span class="key">"company"</span>: <span class="str">"Apple Inc."</span>,
-  <span class="key">"ticker"</span>: <span class="str">"AAPL"</span>,
-  <span class="key">"cik"</span>: <span class="str">"0000320193"</span>,
-  <span class="key">"period"</span>: <span class="str">"FY2023"</span>,
-  <span class="key">"currency"</span>: <span class="str">"USD"</span>,
-  <span class="key">"income_statement"</span>: <span class="punct">{</span>
-    <span class="key">"revenue"</span>:           <span class="num">383285000000</span>,
-    <span class="key">"cost_of_revenue"</span>:   <span class="num">214137000000</span>,
-    <span class="key">"gross_profit"</span>:      <span class="num">169148000000</span>,
-    <span class="key">"operating_income"</span>:  <span class="num">114301000000</span>,
-    <span class="key">"net_income"</span>:        <span class="num">96995000000</span>,
-    <span class="key">"eps_diluted"</span>:       <span class="num">6.13</span>
-  <span class="punct">}</span>,
-  <span class="key">"source"</span>: <span class="str">"10-K filed 2023-11-03"</span><span class="cursor">▍</span>
+  <span class="key">"cik"</span>: <span class="num">320193</span>,
+  <span class="key">"statement"</span>: <span class="str">"income"</span>,
+  <span class="key">"fiscal_year"</span>: <span class="num">2023</span>,
+  <span class="key">"fiscal_period"</span>: <span class="str">"FY"</span>,
+  <span class="key">"period_end"</span>: <span class="str">"2023-09-30"</span>,
+  <span class="key">"form"</span>: <span class="str">"10-K"</span>,
+  <span class="key">"filed"</span>: <span class="str">"2023-11-03"</span>,
+  <span class="key">"lines"</span>: <span class="punct">[</span>
+    <span class="punct">{</span> <span class="key">"canonical_concept"</span>: <span class="str">"revenue"</span>, <span class="key">"value"</span>: <span class="num">383285000000</span>,
+      <span class="key">"source_tag"</span>: <span class="str">"RevenueFromContractWithCustomerExcludingAssessedTax"</span> <span class="punct">}</span>,
+    <span class="punct">{</span> <span class="key">"canonical_concept"</span>: <span class="str">"gross_profit"</span>, <span class="key">"value"</span>: <span class="num">169148000000</span>,
+      <span class="key">"source_tag"</span>: <span class="str">"GrossProfit"</span> <span class="punct">}</span>,
+    <span class="punct">{</span> <span class="key">"canonical_concept"</span>: <span class="str">"operating_income"</span>, <span class="key">"value"</span>: <span class="num">114301000000</span>,
+      <span class="key">"source_tag"</span>: <span class="str">"OperatingIncomeLoss"</span> <span class="punct">}</span>,
+    <span class="punct">{</span> <span class="key">"canonical_concept"</span>: <span class="str">"net_income"</span>, <span class="key">"value"</span>: <span class="num">96995000000</span>,
+      <span class="key">"source_tag"</span>: <span class="str">"NetIncomeLoss"</span> <span class="punct">}</span>,
+    <span class="punct">{</span> <span class="key">"canonical_concept"</span>: <span class="str">"eps_diluted"</span>, <span class="key">"value"</span>: <span class="num">6.13</span>,
+      <span class="key">"source_tag"</span>: <span class="str">"EarningsPerShareDiluted"</span> <span class="punct">}</span><span class="cursor">▍</span>
+  <span class="punct">]</span>
 <span class="punct">}</span></pre>
     </div>
   </div>
 </header>
+<p class="fine-print" style="text-align:center;margin:-6px 0 8px">No key needed for this endpoint. <code>interest_expense</code> is deliberately absent above — Apple nets it into other income/expense rather than tagging it discretely, and we surface that as a documented limitation instead of guessing a value. Every line keeps its source <code>gaap_tag</code> for audit — see the <a href="/methodology">methodology page</a>.</p>
 
 <div class="trust-strip-wrap">
   <div class="trust-strip">
@@ -231,19 +237,20 @@
       <div class="footer-heading">Data</div>
       <a href="#covered">Coverage</a>
       <a href="#covered">Schema</a>
-      <a href="#covered">Sources</a>
+      <a href="/methodology">Sources &amp; methodology</a>
       <a href="#pricing">Pricing</a>
     </div>
     <div class="footer-col">
       <div class="footer-heading">Company</div>
-      <a href="/">About</a>
-      <a href="/">Changelog</a>
-      <a href="/">Contact</a>
+      <a href="/privacy">Privacy policy</a>
+      <a href="/terms">Terms of service</a>
+      <a href="/disclaimer">Disclaimer</a>
     </div>
   </div>
   <div class="footer-bottom">
     <span>© 2026 Profin</span>
     <span>Data sourced from public SEC EDGAR filings. Not affiliated with the SEC.</span>
+    <a href="/disclaimer">Data, not investment advice</a>
   </div>
 </footer>
 
