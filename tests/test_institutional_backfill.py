@@ -14,7 +14,7 @@ from pathlib import Path
 
 from secfin.ingest import institutional_backfill as backfill_module
 from secfin.ingest.institutional_backfill import find_13f_candidates
-from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding
+from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding, OtherManager13F
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 
 BERKSHIRE_CIK = 1067983
@@ -246,4 +246,45 @@ async def test_process_candidate_skips_without_resolving_when_already_current(mo
     )
 
     assert outcome == "skipped"
+    repo.close()
+
+
+async def test_process_candidate_isolates_a_storage_failure_and_keeps_going(monkeypatch):
+    """Regression test for the real 2026-07-11 bug (docs/product/tracks/data.md): one
+    manager's `repo.upsert_snapshot` raising (here, reproduced via the REAL
+    SQLiteHoldingsSnapshotRepository and the actual UNIQUE-constraint mechanism that
+    crashed the real Q1 2026 bulk run -- two `other_managers` entries sharing a
+    `sequence_number`) must be caught and tallied "failed", not propagate and kill the
+    whole job. Before this fix, `repo.upsert_snapshot(snapshot)` sat outside
+    `_process_candidate`'s try/except entirely.
+    """
+    snapshot = HoldingsSnapshot(
+        manager_cik=BERKSHIRE_CIK,
+        manager_name="BERKSHIRE HATHAWAY INC",
+        report_period="2026-03-31",
+        accession="0001-1",
+        other_managers=[
+            OtherManager13F(sequence_number=1, name="Manager A"),
+            OtherManager13F(sequence_number=1, name="Manager B"),  # duplicate -- real bug
+        ],
+    )
+
+    async def _fake_fetch(client, cik, manager_name, report_period, filing):
+        return snapshot
+
+    async def _fake_resolve(client, resolver, snap):
+        return None
+
+    monkeypatch.setattr(backfill_module, "fetch_13f_snapshot_for_filing", _fake_fetch)
+    monkeypatch.setattr(backfill_module, "resolve_snapshot_cusips", _fake_resolve)
+
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    outcome = await backfill_module._process_candidate(
+        None, repo, object(), "2026-03-31", _candidate("0001-1")
+    )
+
+    assert outcome == "failed"
+    # The failed candidate's transaction rolled back cleanly -- no partial row, and the
+    # DB is left usable for the NEXT candidate (confirmed by not crashing here at all).
+    assert repo.get_snapshot(BERKSHIRE_CIK, "2026-03-31") is None
     repo.close()

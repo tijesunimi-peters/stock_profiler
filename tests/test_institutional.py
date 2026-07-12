@@ -132,6 +132,54 @@ def test_parse_cover_page_xml_real_berkshire_2026_roster():
     assert buffett.name == "Buffett Warren E"
 
 
+def test_parse_cover_page_xml_dedupes_a_reused_sequence_number():
+    """Regression test for the real 2026-07-11 bug (docs/product/tracks/data.md): a
+    real manager's cover page (CIK 1890906, accession 0001890906-26-000040) listed two
+    DIFFERENT co-filers under the SAME sequenceNumber -- a real-world EDGAR
+    data-quality quirk. `holdings_other_managers`'s storage key is
+    (manager_cik, report_period, sequence_number), so storing both raises
+    sqlite3.IntegrityError and crashed a real bulk backfill (see
+    ingest/institutional_backfill.py's per-candidate isolation fix, added the same day).
+    The parser now keeps the FIRST entry for a reused sequenceNumber and drops the rest,
+    so a snapshot from this filing can be stored at all.
+    """
+    xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+<edgarSubmission xmlns="http://www.sec.gov/edgar/thirteenffiler">
+  <formData>
+    <summaryPage>
+      <otherManagers2Info>
+        <otherManager2>
+          <sequenceNumber>1</sequenceNumber>
+          <otherManager>
+            <form13FFileNumber>28-1111</form13FFileNumber>
+            <name>First Co-Filer</name>
+          </otherManager>
+        </otherManager2>
+        <otherManager2>
+          <sequenceNumber>2</sequenceNumber>
+          <otherManager>
+            <form13FFileNumber>28-2222</form13FFileNumber>
+            <name>Second Co-Filer</name>
+          </otherManager>
+        </otherManager2>
+        <otherManager2>
+          <sequenceNumber>2</sequenceNumber>
+          <otherManager>
+            <form13FFileNumber>28-3333</form13FFileNumber>
+            <name>Duplicate-Numbered Co-Filer</name>
+          </otherManager>
+        </otherManager2>
+      </otherManagers2Info>
+    </summaryPage>
+  </formData>
+</edgarSubmission>"""
+
+    roster = parse_cover_page_xml(xml)
+
+    assert [m.sequence_number for m in roster] == [1, 2]
+    assert next(m for m in roster if m.sequence_number == 2).name == "Second Co-Filer"
+
+
 def test_parse_cover_page_xml_ignores_legacy_unnumbered_other_managers_info():
     # Real 2016 Berkshire cover page carries BOTH a legacy, unnumbered
     # <otherManagersInfo> block (one entry: New England Asset Management Inc, no

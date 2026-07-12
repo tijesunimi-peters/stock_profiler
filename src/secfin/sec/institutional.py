@@ -267,16 +267,33 @@ def parse_cover_page_xml(xml_bytes: bytes) -> list[OtherManager13F]:
     `sequenceNumber`, so nothing in the info table can reference it positionally.
     Deliberately not modeled here: only the numbered `otherManagers2Info` roster
     supports per-holding attribution, which is the gap this function closes.
+
+    NOTE: a real filing (found 2026-07-11, launch-readiness §3: manager CIK 1890906,
+    accession 0001890906-26-000040) can list two DIFFERENT co-filers under the SAME
+    `sequenceNumber` -- a real-world EDGAR data-quality quirk, not something the schema
+    is supposed to allow (each entry is meant to number one co-filer uniquely, and
+    `holdings_other_managers`'s storage key is `(manager_cik, report_period,
+    sequence_number)`). Deduped here by keeping the FIRST entry seen for a given
+    `sequenceNumber` and dropping later duplicates -- this is a lossy, best-effort
+    fallback (a duplicate entry's own file_number/name is dropped, and any info-table
+    row that references the dropped duplicate's intended co-filer will resolve to the
+    wrong one), but the alternative (storing both under the same key) is a hard SQLite
+    UNIQUE-constraint violation that crashed a real bulk backfill run before this fix.
     """
     root = ET.fromstring(xml_bytes)
     _strip_namespaces(root)
 
     roster: list[OtherManager13F] = []
+    seen_sequence_numbers: set[int] = set()
     for entry in root.findall("formData/summaryPage/otherManagers2Info/otherManager2"):
+        sequence_number = _to_int(entry.findtext("sequenceNumber")) or 0
+        if sequence_number in seen_sequence_numbers:
+            continue
+        seen_sequence_numbers.add(sequence_number)
         manager = entry.find("otherManager")
         roster.append(
             OtherManager13F(
-                sequence_number=_to_int(entry.findtext("sequenceNumber")) or 0,
+                sequence_number=sequence_number,
                 name=_clean(manager.findtext("name")) if manager is not None else None,
                 file_number=(
                     _clean(manager.findtext("form13FFileNumber")) if manager is not None else None

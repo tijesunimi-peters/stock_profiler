@@ -65,12 +65,24 @@ class RawFactRepository(ABC):
 
     @abstractmethod
     def has_any_facts(self, cik: int) -> bool:
-        """Cheap existence check: has this company EVER been ingested (any period at
-        all)? Lets the period-scoped cache-aside helper (`api/routes.py`'s
-        `_statement_facts_for_cik`) distinguish "never ingested, fetch from SEC" from
-        "ingested, but this specific period genuinely has no data" -- without which a
-        request for an out-of-range period on an already-cached company would refetch
-        the whole company from SEC on every single request.
+        """Cheap existence check: has this company EVER had a real companyfacts
+        ingestion (any period at all)? Lets the period-scoped cache-aside helper
+        (`api/routes.py`'s `_statement_facts_for_cik`) distinguish "never ingested,
+        fetch from SEC" from "ingested, but this specific period genuinely has no
+        data" -- without which a request for an out-of-range period on an
+        already-cached company would refetch the whole company from SEC on every
+        single request.
+
+        Scoped to rows with a real fiscal anchor (`fiscal_year IS NOT NULL`) --
+        deliberately NOT satisfied by frame-only rows (`ingest/frames_backfill.py`,
+        `RawFact.fiscal_year=None` by design; see `normalize/screening.py`). Found and
+        fixed 2026-07-11 (launch-readiness §3): before this scoping, a CIK known only
+        via a one-off cross-company frame scan (PLTR, GME, and 6,719 others -- 6,721 of
+        6,736 known CIKs on the pre-launch DB) satisfied this check, which made the
+        cache-aside statements route treat every period as "known company, genuinely
+        empty" and permanently skip the live SEC fallback that's supposed to self-heal
+        a cache miss -- a real user got a 404 on every statement request, forever, with
+        no way for the system to recover on its own.
         """
 
     @abstractmethod

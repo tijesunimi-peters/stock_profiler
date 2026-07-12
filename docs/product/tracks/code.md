@@ -201,3 +201,134 @@ their full trace) and fixed here:
   container (both confirmed still `Up` via `docker ps -a` after this work).
 - Commit: `eb49d6b` on this same branch (`worktree-agent-a178622e33cfab826`), on top of
   the earlier revocation/tier-consistency work.
+
+## 2026-07-12 — follow-up round 2: two more real bugs the data track hit
+
+The data track completed §3 (insider 294 -> 162,050 transactions; 13F 585 -> 7,321
+snapshots) and found two more real bugs while running the 13F backfill and spot-checking
+the launch basket. Full traces in `docs/product/tracks/data.md` (main checkout). Both
+fixed here, read-only diagnosis credit to the data track.
+
+### Bug 1: `institutional_backfill._process_candidate` didn't isolate storage failures
+
+`repo.upsert_snapshot(snapshot)` sat OUTSIDE any try/except. A real manager (CIK
+1890906, accession 0001890906-26-000040) crashed a live Q1 2026 run ~1h05m in:
+`sqlite3.IntegrityError: UNIQUE constraint failed:
+holdings_other_managers.manager_cik, .report_period, .sequence_number`. Candidate order
+is deterministic (zip `namelist()` order) and CIK 1890906's data doesn't change, so a
+bare rerun would have hit the identical crash and made zero progress on the ~2,040
+candidates after it (8,803 total, 6,759 attempted before the crash).
+
+**Fixes (both, not just the must-have):**
+1. **Per-candidate isolation** (`src/secfin/ingest/institutional_backfill.py`):
+   `_process_candidate` now wraps `resolve_snapshot_cusips` + `repo.upsert_snapshot`
+   in their own `try/except Exception`, logs CIK/report_period/accession, returns
+   `"failed"` (tallied and logged like fetch-side failures already were) instead of
+   propagating. The job's own final log line already reported a failure count -- no
+   change needed there, just making sure a bad candidate reaches it instead of killing
+   the process.
+2. **Root cause itself, also fixed** (`src/secfin/sec/institutional.py`'s
+   `parse_cover_page_xml`): the actual EDGAR quirk was two DIFFERENT co-filing
+   managers listed under the SAME `sequenceNumber` on one cover page. Deduped at parse
+   time -- first entry for a given `sequenceNumber` wins, later duplicates dropped
+   (lossy but deterministic; the alternative was a hard constraint violation). This
+   means CIK 1890906's own quarter can now actually be stored, not just fail cleanly.
+
+**Tests added:**
+- `tests/test_institutional_backfill.py::test_process_candidate_isolates_a_storage_failure_and_keeps_going`
+  -- reproduces the exact mechanism (two `OtherManager13F` entries sharing a
+  `sequence_number`) against the REAL `SQLiteHoldingsSnapshotRepository`, confirms
+  `_process_candidate` returns `"failed"` rather than raising, and confirms the failed
+  candidate leaves no partial row (`get_snapshot` returns `None`).
+- `tests/test_institutional.py::test_parse_cover_page_xml_dedupes_a_reused_sequence_number`
+  -- synthetic cover-page XML with a reused `sequenceNumber`, asserts the roster keeps
+  only the first entry.
+
+### Bug 2: `has_any_facts` didn't distinguish real companyfacts rows from frame-only rows
+
+Confirmed live by the data track: `GET /companies/PLTR/statements/income` (and every
+other statement, every period) 404s permanently, with no self-heal -- same for GME, and
+structurally for 6,721 of the 6,736 known CIKs on the pre-launch DB. Root cause:
+`api/routes.py`'s `_statement_facts_for_cik` treats `repo.has_any_facts(cik) is True` as
+"known company, this period is genuinely empty" and skips the live SEC fallback that's
+supposed to self-heal a cache miss. But `has_any_facts` was just `SELECT 1 FROM
+raw_facts WHERE cik = ?` -- true for a CIK that only ever got a ROW via cross-company
+frame screening (`ingest/frames_backfill.py`, which deliberately leaves `fiscal_year`
+unset -- see `normalize/screening.py`), not just for a real companyfacts ingestion.
+
+**Fix:** scoped `has_any_facts` (`src/secfin/storage/sqlite_repository.py` +
+`repository.py`'s interface docstring) to `fiscal_year IS NOT NULL` -- true only for a
+real companyfacts ingestion (bulk, incremental, or a ticker-resolved cache-aside
+fetch), false for frame-only rows. One-line SQL change behind the existing interface,
+no new method needed; `_statement_facts_for_cik` itself is unchanged, it just gets a
+correct answer now.
+
+**Per-call-site check on `all_ciks()`/`has_any_facts()` more broadly** (the coordinator
+asked me to think this through, not apply one fix everywhere):
+- `metrics_backfill.py`'s `all_ciks()` use: **left unchanged, correctly**. The metrics
+  engine (`normalize/metrics.py`) derives periods from `period_start`/`period_end`/
+  `instant` date math, not from `fiscal_year`/`fiscal_period` -- frame-only rows carry
+  real dates, so metrics genuinely compute over them. This is WHY peer ranking works
+  at all for PLTR/GME today (confirmed by the data track: FY2023 peer ranks exist
+  precisely because of this frame-scan data). Not a bug.
+- `sic_backfill.py`'s `all_ciks()` use: **left unchanged**. SIC classification is a
+  per-company lookup that applies equally to a frame-only-known company; scoping it
+  down would only lose SIC coverage for peer-grouping with no correctness upside.
+- `insider_backfill.py`'s `all_ciks()` use (my own earlier fix, round 1): **left
+  unchanged, deliberately** -- the coordinator's brief specifically floated narrowing
+  this too ("probably ALSO wants real issuers only"). Traced through it and concluded
+  narrowing would be WRONG: frame data only ever comes from real SEC registrants (same
+  safety property the module's docstring already relies on for the checkpoint
+  sources), so a frame-only CIK is not a mis-attribution risk. The data track's own
+  real run already confirmed the current behavior is good: 6,315 of 6,736 candidates
+  came back with real cached Forms 3/4/5 (60,744 filings, 162,050 transactions).
+  Narrowing to the 15 real-companyfacts-only CIKs would have thrown that entire,
+  already-verified result away for zero correctness gain -- the statements route's
+  self-heal concern and this job's mis-attribution-safety concern are different
+  questions that happen to both touch `all_ciks()`, not the same bug. Documented this
+  reasoning directly in `insider_backfill.py`'s module docstring so a future reader
+  doesn't "fix" it into a regression, and added
+  `tests/test_insider_backfill.py::test_known_issuer_ciks_deliberately_includes_frame_only_ciks`
+  to lock the decision in as a regression test.
+
+**Tests added:**
+- `tests/test_storage.py::test_has_any_facts_returns_false_for_frame_only_rows` --
+  direct repository-level test (PLTR's real CIK, a frame-only fact).
+- `tests/test_routes_cache.py::test_statement_facts_frame_only_cik_still_falls_back_to_sec`
+  -- route-level, using the REAL `SQLiteRawFactRepository` (not `_FakeRepo`, which
+  hand-implements `has_any_facts` as `bool(self._facts)` and so cannot reproduce this
+  bug at all): seeds one frame-only fact for PLTR's CIK, confirms
+  `_statement_facts_for_cik` still calls the live SEC fetch instead of returning `[]`.
+- `tests/test_insider_backfill.py::test_known_issuer_ciks_deliberately_includes_frame_only_ciks`
+  -- see above.
+
+### Regression check
+
+Did NOT regress the round-1 checkpoint-empty fix: `known_issuer_ciks`'s existing tests
+(including `test_known_issuer_ciks_falls_back_to_raw_facts_when_checkpoint_table_is_empty`)
+still pass unchanged -- that fix used a real-fiscal-anchored fact, which is untouched by
+the `has_any_facts` scoping (a different method, different table semantics, no shared
+code path).
+
+### Evidence
+
+```
+docker compose build                              # clean rebuild, this worktree's own
+                                                   # isolated compose project
+docker compose --profile test run --rm test       # 311 passed, 6 skipped, 1 warning
+```
+
+(Was 306/6 after round 1; +5 new tests here, all passing.) Confirmed via `docker ps -a`
+throughout that `stock_profiler-api-1` (the live API) was untouched -- no rebuild, no
+restart, no live-volume access, no backfill run.
+
+### Handoff
+
+Per the coordinator's plan: the ~2,040 never-attempted 13F candidates from the crashed
+run can now be picked up by a plain rerun of `institutional_backfill --period
+2026-03-31` (already-cached managers skip instantly via `cached_accession`; the
+previously-fatal manager and everything after it will now be attempted, and any
+individual failure will be isolated rather than fatal). PLTR/GME (and the other 6,721
+frame-only CIKs) should now self-heal on their NEXT statement request -- the fix takes
+effect the moment the rebuilt image is deployed, no data migration needed (existing
+frame-only rows are left as-is; the fix only changes how `has_any_facts` reads them).
