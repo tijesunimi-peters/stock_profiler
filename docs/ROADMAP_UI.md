@@ -316,18 +316,25 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
       `trajectoryChart` recipe), NOT a stacked area (stacking implies whole-book
       completeness and needs per-band hue). Calendar axis; a holding absent from a quarter
       breaks its line.
-- [ ] **5.6 Reuse on the issuer side** *(scope check, not new design)*. Once 5.1/5.3 exist
-      as `Profin` builders, evaluate reusing them on the company hub's Institutional tab
-      (top holders by value; derived holder activity) — same endpoints' issuer-centric
-      twins, same caveats. Do this as reuse of the shipped builders, not a parallel build.
+- [x] **5.6 Reuse on the issuer side** — shipped as true reuse: `compositionBars` /
+      `statTiles` / `divergingBars` were generalized with backward-compatible opts
+      (`labelField`/`linkBase`/`captionLead`/`rowNoun`/`tipLabelKey`/`title`; defaults
+      reproduce the manager-page output unchanged) and wired into the company hub's
+      Institutional tab — "Top holders by value" bars (linked to `/manager/{cik}`) +
+      concentration tiles with issuer-framed precision copy (share of *reported 13F value
+      by ingested filers*, NOT shares outstanding), and "Derived holder activity" bars
+      labeled by manager. Token helpers consolidated onto one `cssVar()` call site.
+      Verified headless (institutional + manager pages, zero console errors).
 
 **Build order:** 5.1 + 5.2 together (one snapshot, ready today), then 5.3, then 5.4
 (after the unit-convention decision), 5.5 last (needs quarters that don't exist yet).
 5.6 whenever 5.1/5.3 are stable.
 
-**Status (2026-07-12):** 5.1–5.4 shipped in one parallel pass (three worktree tracks merged;
-full headless suite + pytest green). 5.5 stays deferred on its data gate (≥4 broadly-ingested
-quarters — real coverage is still one broad quarter). 5.6 in progress.
+**Status (2026-07-12):** 5.1–5.4 and 5.6 shipped in one parallel pass (three worktree tracks
+merged, then the issuer-side reuse pass; full headless suite + pytest green). **5.5 is the
+only open item**, deferred on its data gate (≥4 broadly-ingested quarters — real coverage is
+still one broad quarter); the mechanism it needs (vendored Plot + the calendar-axis
+conventions) is now all in place.
 
 ---
 
@@ -350,7 +357,7 @@ quarters — real coverage is still one broad quarter). 5.6 in progress.
 | Screening | 4 | built | `/screen`, `/concepts/{concept}` |
 | Peer rankings | 4 | built | `/peers` (distribution endpoint served, not yet consumed) |
 | Public docs portal | 4 | n/a | *(M3)* |
-| Manager portfolio viz | 5 | built (5.1–5.4; 5.5 deferred on data) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
+| Manager portfolio viz | 5 | built (5.1–5.4 + 5.6 issuer reuse; 5.5 deferred on data) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 
 ## Guardrails / do-nots (mirror `STYLE_GUIDE.md` §10)
 
