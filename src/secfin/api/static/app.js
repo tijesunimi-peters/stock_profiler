@@ -604,6 +604,159 @@
     });
   }
 
+  // ---------- Phase 5.4: portfolio value over time (vendored Observable Plot, §6) ----------
+  //
+  // The first vendored-Plot `Profin` builder (STYLE_GUIDE §6 / ROADMAP_UI.md Phase 5): unlike
+  // the hand-rolled sparkline/trendChart/trajectoryChart above (HTML strings), this returns a
+  // DOM node -- callers append it, never innerHTML it. Reads the shared color tokens from CSS
+  // (never hard-codes a second hue) with a literal fallback so it degrades safely if a variable
+  // is ever missing; still only one terracotta accent, no good/bad color.
+
+  function cssVar(name, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name);
+      v = v && v.trim();
+      return v || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  var VL_ACCENT = cssVar("--accent", "#c0703a");
+  var VL_INK = cssVar("--ink", "#1c1a16");
+  var VL_INK_SOFT = cssVar("--ink-soft", "#6b6459");
+  var VL_BORDER_TINT_RULE = cssVar("--border-tint-rule", "#e5dfd3");
+  var VL_BG_CARD = cssVar("--bg-card", "#fdfbf7");
+  var VL_FONT_MONO = "'IBM Plex Mono', monospace";
+
+  // "Q2 25" from an ISO quarter-end date -- compact axis/point labels, IBM Plex Mono numerals.
+  function valueLineQuarterTick(iso) {
+    var p = iso.split("-");
+    var q = Math.ceil(parseInt(p[1], 10) / 3);
+    return "Q" + q + " " + p[0].slice(2);
+  }
+
+  function valueLineExclusionCaption(n) {
+    return (
+      n + (n === 1 ? " earlier quarter" : " earlier quarters") +
+      " excluded: pre-2024 13F values use a different unit convention."
+    );
+  }
+
+  var VALUE_LINE_CAPTION =
+    "Total of reported 13F long positions only (not AUM or a manager's whole book) · " +
+    "quarter-end snapshot, filed with a ~45-day lag.";
+
+  // points: [{period, value}] ascending chronological (oldest first); value is null for a gap
+  // (a quarter whose fetch failed -- never a fabricated number). opts.excludedCount is the
+  // count of pre-2024 quarters this manager has ingested that were dropped by the DECIDED
+  // unit-convention rule (ROADMAP_UI.md 5.4: clip, don't normalize -- the SEC's `value`
+  // convention changed thousands->whole-dollars ~2023 with no reliable per-filer boundary, so a
+  // wrong guess would misstate the total by 3 orders of magnitude). Returns a DOM node, or null
+  // when there is truly nothing to show (no eligible quarters and none excluded either).
+  function valueLineChart(points, opts) {
+    opts = opts || {};
+    var excluded = opts.excludedCount || 0;
+    points = points || [];
+    var present = points.filter(function (p) { return p && p.value !== null && p.value !== undefined; });
+
+    var wrap = document.createElement("div");
+    wrap.className = "trend-chart value-line-chart";
+
+    function caption(text) {
+      var p = document.createElement("div");
+      p.className = "trend-caption";
+      p.textContent = text;
+      return p;
+    }
+    function empty(text) {
+      var p = document.createElement("div");
+      p.className = "trend-empty";
+      p.textContent = text;
+      return p;
+    }
+
+    if (!points.length) {
+      if (!excluded) return null; // nothing ingested, nothing excluded -- render nothing at all
+      wrap.appendChild(empty(valueLineExclusionCaption(excluded)));
+      return wrap;
+    }
+
+    if (!present.length) {
+      wrap.appendChild(empty(
+        "Couldn’t load a reported value for the eligible quarter" + (points.length === 1 ? "" : "s") + "."
+      ));
+      if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
+      return wrap;
+    }
+
+    if (points.length === 1) {
+      // Exactly one eligible quarter -- an honest single point, never a fake one-point "line".
+      var only = points[0];
+      var single = document.createElement("div");
+      single.className = "value-line-single";
+      single.innerHTML =
+        '<span class="value-line-single-value">' + esc(fmt.usd(only.value)) + "</span>" +
+        '<span class="value-line-single-period">' + esc(valueLineQuarterTick(only.period)) + "</span>";
+      wrap.appendChild(single);
+      wrap.appendChild(caption(
+        "Only one 2024-or-later quarter is ingested for this manager — not enough history for a trend line."
+      ));
+      wrap.appendChild(caption(VALUE_LINE_CAPTION));
+      if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
+      return wrap;
+    }
+
+    var vals = present.map(function (p) { return p.value; });
+    var maxV = Math.max.apply(null, vals), minV = Math.min.apply(null, vals);
+    // Both labels sit ABOVE their dot, never below: a below-placed label on the first/last
+    // point collides with the x-axis quarter tick directly underneath it (confirmed against a
+    // real render -- a falling line puts the min at the last point, right above its own tick).
+    function extremeLabel(v) {
+      var matches = present.filter(function (p) { return p.value === v; });
+      if (!matches.length) return null;
+      return Plot.text(matches, {
+        x: "period", y: "value", dy: -12,
+        text: function (d) { return fmt.usd(d.value); },
+        fontFamily: VL_FONT_MONO, fontWeight: 700, fontSize: 10.5, fill: VL_INK,
+      });
+    }
+
+    var plotNode = window.Plot.plot({
+      width: 720,
+      height: 150,
+      marginLeft: 20,
+      marginRight: 20,
+      marginTop: 26,
+      marginBottom: 26,
+      style: { fontFamily: VL_FONT_MONO, fontSize: 10, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
+      x: { type: "point", tickFormat: valueLineQuarterTick, label: null },
+      y: { axis: null, nice: true },
+      marks: [
+        Plot.gridY({ stroke: VL_BORDER_TINT_RULE, strokeOpacity: 0.6 }),
+        // The line breaks wherever `value` is null (a gap quarter) -- Plot never interpolates
+        // across an undefined/null channel value; this is never done manually.
+        Plot.lineY(points, { x: "period", y: "value", stroke: VL_ACCENT, strokeWidth: 1.75, curve: "linear" }),
+        Plot.dot(present, { x: "period", y: "value", r: 3.5, fill: VL_ACCENT, stroke: VL_BG_CARD, strokeWidth: 1.5 }),
+        Plot.dot(present, {
+          x: "period", y: "value", r: 9, fill: "transparent",
+          channels: { quarter: function (d) { return valueLineQuarterTick(d.period); }, value: "value" },
+          tip: { format: { x: false, y: false, quarter: true, value: function (v) { return fmt.usd(v); } } },
+        }),
+        extremeLabel(maxV),
+        maxV !== minV ? extremeLabel(minV) : null,
+      ].filter(Boolean),
+    });
+
+    wrap.appendChild(plotNode);
+    var hasGap = points.some(function (p) { return p.value === null || p.value === undefined; });
+    wrap.appendChild(caption(
+      VALUE_LINE_CAPTION + (hasGap ? " Gaps are quarters that failed to load, not interpolated." : "")
+    ));
+    if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
+    return wrap;
+  }
+
   window.Profin = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -621,6 +774,7 @@
     trendChart: trendChart,
     trajectoryChart: trajectoryChart,
     positionBar: positionBar,
+    valueLineChart: valueLineChart,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,
