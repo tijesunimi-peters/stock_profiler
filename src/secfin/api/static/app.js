@@ -412,19 +412,16 @@
   // second hue, never green/red. Tokens are read from the live CSS variables at call time with
   // literal fallbacks, same recipe as infographic-template.html's chart block.
 
+  // Built on the single shared token reader `cssVar()` (defined below, hoisted -- this and
+  // the diverging-bars/value-line token reads all go through the same primitive now, instead
+  // of each Plot-chart family growing its own getComputedStyle lookup).
   function plotTokens() {
-    var cs = window.getComputedStyle ? getComputedStyle(document.documentElement) : null;
-    function v(name, fallback) {
-      var val = cs ? cs.getPropertyValue(name) : "";
-      val = val && val.trim();
-      return val || fallback;
-    }
     return {
-      accent: v("--accent", "#c0703a"),
-      accentWash: v("--accent-wash", "#f3e4d5"),
-      ink: v("--ink", "#1c1a16"),
-      inkSoft: v("--ink-soft", "#6b6459"),
-      trackBorder: v("--border-strong", "#d8d1c4"),
+      accent: cssVar("--accent", "#c0703a"),
+      accentWash: cssVar("--accent-wash", "#f3e4d5"),
+      ink: cssVar("--ink", "#1c1a16"),
+      inkSoft: cssVar("--ink-soft", "#6b6459"),
+      trackBorder: cssVar("--border-strong", "#d8d1c4"),
       fontSans: "'Hanken Grotesk', system-ui, sans-serif",
       fontMono: "'IBM Plex Mono', monospace",
     };
@@ -443,17 +440,42 @@
     return "rgb(" + m.join(",") + ")";
   }
 
-  // holdings: InstitutionalHolding[] (GET /managers/{cik}/holdings, or the issuer-centric twin
-  // for §5.6 reuse). Ranks the top-N by `value` (default 10) as a share of TOTAL reported value
-  // across ALL usable rows -- not just the ones shown -- plus one aggregated "Other (n
-  // positions)" bar. `value` is the reported market value of 13(f) long positions only; this is
-  // never AUM or the manager's whole book, and the returned caption says so. Returns a DOM node
-  // (a Plot SVG + a caption <p>), or null when there's no positive reported value to chart --
-  // callers keep their own honest empty-state note rather than dividing by zero.
+  // holdings: InstitutionalHolding[] (GET /managers/{cik}/holdings) or IssuerHolder[] (the
+  // issuer-centric twin, GET /companies/{symbol}/institutional-holders -- §5.6 reuse). Ranks
+  // the top-N by `value` (default 10) as a share of TOTAL reported value across ALL usable rows
+  // -- not just the ones shown -- plus one aggregated "Other (n ...)" bar. `value` is the
+  // reported market value of 13(f) long positions only; this is never AUM, a whole book, or a
+  // share of shares outstanding, and the returned caption says so. Returns a DOM node (a Plot
+  // SVG + a caption <p>), or null when there's no positive reported value to chart -- callers
+  // keep their own honest empty-state note rather than dividing by zero.
+  //
+  // opts (all optional; defaults reproduce the original manager-holdings chart byte-for-byte):
+  //   topN               -- ranked bars before rolling the rest into "Other" (default 10).
+  //   labelField         -- the row's display-name field (default "issuer_name"; pass
+  //                         "manager_name" for the issuer-centric holder list).
+  //   idField            -- field used to disambiguate same-label rows, and to build a link
+  //                         (default "cusip").
+  //   unknownLabel       -- fallback label when labelField and idField are both missing.
+  //   rowNoun            -- {singular, plural} noun for the caption/"Other" bar (default
+  //                         {"position","positions"}; pass {"holder","holders"} for reuse).
+  //   captionLead        -- the caption's leading sentence (default is the manager-book
+  //                         framing; the issuer-centric caller supplies its own "not shares
+  //                         outstanding, only ingested 13F filers" framing -- see company.js).
+  //   linkField/linkBase -- when both given, each bar and its label link to
+  //                         `linkBase + row[linkField]` (e.g. "/manager/" + manager_cik); rows
+  //                         missing the field (the aggregated "Other" bar) render unlinked.
   function compositionBars(holdings, opts) {
     if (!window.Plot) return null;
     opts = opts || {};
     var topN = opts.topN || 10;
+    var labelField = opts.labelField || "issuer_name";
+    var idField = opts.idField || "cusip";
+    var unknownLabel = opts.unknownLabel || "Unknown issuer";
+    var rowNoun = opts.rowNoun || { singular: "position", plural: "positions" };
+    var captionLead = opts.captionLead ||
+      "Share of reported 13F long positions only (not AUM or the manager's whole book)";
+    var linkField = opts.linkField, linkBase = opts.linkBase;
+    var hasLinks = !!(linkField && linkBase);
     var usable = (holdings || []).filter(function (h) { return typeof h.value === "number" && h.value > 0; });
     var total = usable.reduce(function (s, h) { return s + h.value; }, 0);
     if (!usable.length || !total) return null;
@@ -462,30 +484,40 @@
     var top = sorted.slice(0, topN);
     var rest = sorted.slice(topN);
 
-    // Multi-class issuers file distinct CUSIPs per class -- disambiguate same-name rows with
-    // the CUSIP rather than collapsing them (same rule as normalize/flows.py's diff_holders).
+    // Multi-class issuers file distinct CUSIPs per class (or, for the issuer-centric reuse, one
+    // manager can hold more than one class of the same issuer) -- disambiguate same-label rows
+    // with idField rather than collapsing them (same rule as normalize/flows.py's diff_holders).
     var nameCounts = {};
     top.forEach(function (h) {
-      var n = h.issuer_name || h.cusip || "Unknown issuer";
+      var n = h[labelField] || h[idField] || unknownLabel;
       nameCounts[n] = (nameCounts[n] || 0) + 1;
     });
 
     var t = plotTokens();
     var rows = top.map(function (h, i) {
-      var name = h.issuer_name || h.cusip || "Unknown issuer";
-      var label = nameCounts[name] > 1 ? name + " (" + h.cusip + ")" : name;
+      var name = h[labelField] || h[idField] || unknownLabel;
+      var label = nameCounts[name] > 1 ? name + " (" + h[idField] + ")" : name;
       if (h.put_call) label += h.put_call === "Put" ? " (PUT)" : " (CALL)"; // options labeled, never pooled silently
       var rampT = top.length > 1 ? i / (top.length - 1) : 0;
-      return { label: label, pct: (h.value / total) * 100, fillColor: mixHex(t.accent, t.accentWash, rampT) };
+      var row = { label: label, pct: (h.value / total) * 100, fillColor: mixHex(t.accent, t.accentWash, rampT) };
+      if (hasLinks && h[linkField] != null) row.href = linkBase + encodeURIComponent(h[linkField]);
+      return row;
     });
     if (rest.length) {
       var restValue = rest.reduce(function (s, h) { return s + h.value; }, 0);
       rows.push({
-        label: "Other (" + rest.length + " position" + (rest.length === 1 ? "" : "s") + ")",
+        label: "Other (" + rest.length + " " + (rest.length === 1 ? rowNoun.singular : rowNoun.plural) + ")",
         pct: (restValue / total) * 100,
         fillColor: t.trackBorder, // aggregate, not a rank -- neutral, not part of the accent ramp
       });
     }
+
+    var barMarkOpts = { x: "pct", y: "label", fill: "fillColor", rx: 3, insetTop: 5, insetBottom: 5 };
+    var labelMarkOpts = {
+      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
+      fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
+    };
+    if (hasLinks) { barMarkOpts.href = "href"; labelMarkOpts.href = "href"; }
 
     var ROW_H = 32, MARGIN_V = 10;
     var plot = window.Plot.plot({
@@ -501,12 +533,9 @@
       style: { background: "transparent", overflow: "visible" },
       marks: [
         window.Plot.gridX({ ticks: [25, 50, 75, 100], stroke: t.trackBorder, strokeOpacity: 0.5 }),
-        window.Plot.barX(rows, { x: "pct", y: "label", fill: "fillColor", rx: 3, insetTop: 5, insetBottom: 5 }),
-        // Issuer label: Hanken (entity name), sits left of the bar in the margin.
-        window.Plot.text(rows, {
-          x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
-          fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
-        }),
+        window.Plot.barX(rows, barMarkOpts),
+        // Issuer/manager label: Hanken (entity name), sits left of the bar in the margin.
+        window.Plot.text(rows, labelMarkOpts),
         // Percent-of-reported-value label: IBM Plex Mono (numeral), sits right of the bar end.
         window.Plot.text(rows, {
           x: "pct", y: "label",
@@ -523,8 +552,8 @@
     var caption = document.createElement("p");
     caption.className = "stmt-caption";
     caption.textContent =
-      "Share of reported 13F long positions only (not AUM or the manager's whole book) — top " +
-      top.length + " of " + usable.length + " positions with a reported value" +
+      captionLead + " — top " + top.length + " of " + usable.length + " " + rowNoun.plural +
+      " with a reported value" +
       (rest.length ? ", remaining " + rest.length + " rolled into “Other.”" : ".") +
       " Options are labeled PUT/CALL, never pooled with equity positions.";
     wrap.appendChild(caption);
@@ -539,9 +568,20 @@
   // product refuses to render). Shares are computed the same way compositionBars computes them
   // (usable rows = value > 0, share is of the total across ALL usable rows) so the two widgets
   // never disagree with each other.
+  // holdings: InstitutionalHolding[] or IssuerHolder[] (§5.6 reuse). opts (all optional;
+  // defaults reproduce the original manager-holdings tiles byte-for-byte):
+  //   ranks      -- top-N ranks to show (default [1, 5, 10]).
+  //   rowLabel   -- the row-count tile's label (default "Positions reported"; pass "Holders
+  //                 reported" for the issuer-centric reuse).
+  //   totalNote  -- caption under the "Reported total" tile (default "Reported 13F long
+  //                 positions only"; the issuer-centric caller supplies its own framing).
+  //   caption    -- optional trailing paragraph under all tiles, for precision that doesn't fit
+  //                 one tile's note (e.g. "not shares outstanding, only ingested 13F filers").
   function statTiles(holdings, opts) {
     opts = opts || {};
     var ranks = opts.ranks || [1, 5, 10];
+    var rowLabel = opts.rowLabel || "Positions reported";
+    var totalNote = opts.totalNote || "Reported 13F long positions only";
     var rows = holdings || [];
     if (!rows.length) return "";
     var usable = rows.filter(function (h) { return typeof h.value === "number" && h.value > 0; });
@@ -557,7 +597,7 @@
       );
     }
 
-    var tiles = [tile("Positions reported", esc(String(rows.length)))];
+    var tiles = [tile(rowLabel, esc(String(rows.length)))];
     if (!total) {
       // Never render a share as 0% when there's nothing positive to divide by -- the honest
       // token is N/A, same rule as the status vocabulary (§7).
@@ -568,9 +608,10 @@
         var topSum = sorted.slice(0, n).reduce(function (s, h) { return s + h.value; }, 0);
         tiles.push(tile("Top-" + n + " share", esc(pct(topSum / total))));
       });
-      tiles.push(tile("Reported total", esc(usd(total)), "Reported 13F long positions only"));
+      tiles.push(tile("Reported total", esc(usd(total)), totalNote));
     }
-    return '<div class="stat-tiles">' + tiles.join("") + "</div>";
+    return '<div class="stat-tiles">' + tiles.join("") + "</div>" +
+      (opts.caption ? '<p class="stmt-caption">' + esc(opts.caption) + "</p>" : "");
   }
 
   // ---------- position bar (§10: peer percentile — position, never a good/bad verdict) ----------
@@ -804,24 +845,34 @@
 
   var HOLDING_ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited" };
 
-  // Signed share-change bars per issuer, for the 13F DERIVED activity diff (`normalize/flows.py`
-  // HoldingDelta rows, as returned by /managers/{cik}/activity and .../institutional-activity).
-  // `activity`: HoldingDelta[] exactly as the API returns it -- never re-derived client-side.
-  // `opts`: { fromLabel, toLabel, fromPeriod, toPeriod, cap }. fromLabel/toLabel are pre-formatted
-  // quarter-end labels (the caller already has a date formatter); fromPeriod/toPeriod (raw ISO)
-  // are used only as a fallback caption if no label was passed. `cap` defaults to 10.
+  // Signed share-change bars per issuer (or, for the issuer-centric reuse, per manager), for
+  // the 13F DERIVED activity diff (`normalize/flows.py` HoldingDelta rows, as returned by
+  // /managers/{cik}/activity and .../institutional-activity). `activity`: HoldingDelta[]
+  // exactly as the API returns it -- never re-derived client-side.
+  //
+  // `opts`: { fromLabel, toLabel, fromPeriod, toPeriod, cap, labelField, tipLabelKey, title }.
+  // fromLabel/toLabel are pre-formatted quarter-end labels (the caller already has a date
+  // formatter); fromPeriod/toPeriod (raw ISO) are used only as a fallback caption if no label
+  // was passed. `cap` defaults to 10. `labelField` picks the bar's display name (default
+  // "issuer_name"; pass "manager_name" for the issuer-centric reuse -- each HoldingDelta row is
+  // keyed by (manager_cik, cusip) either way, so the same cusip-suffix disambiguation logic
+  // applies to repeated manager names too). `tipLabelKey`/`title` rename the tooltip channel and
+  // chart title to match (default "Issuer"/"Derived activity").
   //
   // Note on option/instrument labeling: HoldingDelta (normalize/schema.py) does NOT carry
   // put_call or shares_or_principal -- those live only on the raw InstitutionalHolding rows
-  // that flows.diff_snapshots sums by CUSIP before diffing. So there is nothing to label here;
-  // the caption states the SH/PRN and option/equity non-summing rule as a standing caveat
-  // instead of a per-bar flag, since the delta rows carry no such flag to render.
+  // that flows.diff_snapshots/diff_holders sum by CUSIP before diffing. So there is nothing to
+  // label here; the caption states the SH/PRN and option/equity non-summing rule as a standing
+  // caveat instead of a per-bar flag, since the delta rows carry no such flag to render.
   //
   // Returns a DOM node, or null when there's nothing honest to chart (every row unchanged or a
   // zero net change) -- callers should skip appending rather than draw an empty axis.
   function divergingBars(activity, opts) {
     opts = opts || {};
     var cap = opts.cap || 10;
+    var labelField = opts.labelField || "issuer_name";
+    var tipLabelKey = opts.tipLabelKey || "Issuer";
+    var titleText = opts.title || "Derived activity";
     var fromLabel = opts.fromLabel || opts.fromPeriod || "the prior quarter";
     var toLabel = opts.toLabel || opts.toPeriod || "this quarter";
 
@@ -835,15 +886,17 @@
     var overflow = Math.max(0, rows.length - cap);
     rows = rows.slice(0, cap);
 
-    // Multi-class issuers (same issuer_name, distinct CUSIPs) must stay distinct rows (never
-    // merged) -- disambiguate the label with a short CUSIP suffix only where a name repeats.
+    // Multi-class issuers (same issuer_name, distinct CUSIPs) -- or, for the issuer-centric
+    // reuse, the same manager holding more than one class of this issuer -- must stay distinct
+    // rows (never merged); disambiguate the label with a short CUSIP suffix only where the
+    // label repeats.
     var seen = {};
     rows.forEach(function (a) {
-      var nm = a.issuer_name || a.cusip || "—";
+      var nm = a[labelField] || a.cusip || "—";
       seen[nm] = (seen[nm] || 0) + 1;
     });
     var data = rows.map(function (a) {
-      var nm = a.issuer_name || a.cusip || "—";
+      var nm = a[labelField] || a.cusip || "—";
       var label = seen[nm] > 1 && a.cusip ? nm + " (" + a.cusip.slice(-6) + ")" : nm;
       var full = a.action === "new" || a.action === "exited"; // a position opened/closed outright
       return {
@@ -868,6 +921,13 @@
 
     var rowH = 26;
     var height = Math.max(90, data.length * rowH + 46);
+
+    // Tooltip channel/format keys are built off tipLabelKey so the issuer-centric reuse can
+    // rename "Issuer" -> "Manager" without a second copy of this mark's options.
+    var tipChannels = { CUSIP: "cusip", Action: "actionLabel", "Shares before": "beforeFmt", "Shares after": "afterFmt", Change: "changeFmt" };
+    tipChannels[tipLabelKey] = "label";
+    var tipFormat = { x: false, y: false, fill: false, stroke: false, CUSIP: true, Action: true, "Shares before": true, "Shares after": true, Change: true };
+    tipFormat[tipLabelKey] = true;
 
     var plotNode = window.Plot.plot({
       width: 640,
@@ -894,17 +954,8 @@
           stroke: ACCENT,
           strokeWidth: 1,
           rx: 3,
-          channels: {
-            Issuer: "label", CUSIP: "cusip", Action: "actionLabel",
-            "Shares before": "beforeFmt", "Shares after": "afterFmt", Change: "changeFmt",
-          },
-          tip: {
-            format: {
-              x: false, y: false, fill: false, stroke: false,
-              Issuer: true, CUSIP: true, Action: true,
-              "Shares before": true, "Shares after": true, Change: true,
-            },
-          },
+          channels: tipChannels,
+          tip: { format: tipFormat },
         }),
         window.Plot.ruleX([0], { stroke: INK, strokeOpacity: 0.75 }),
       ],
@@ -915,7 +966,7 @@
 
     var title = document.createElement("div");
     title.className = "plot-chart-title";
-    title.textContent = "Derived activity";
+    title.textContent = titleText;
     wrap.appendChild(title);
 
     var body = document.createElement("div");
