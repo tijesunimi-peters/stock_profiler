@@ -153,18 +153,31 @@ def _seed_beneficial(db_path: str) -> None:
 
 # Synthetic 13F holdings for the demo Institutional tab + Manager profile page. Three
 # managers holding AAPL (037833100, resolved in the fixture below) and Ally (02005N100,
-# deliberately left unresolved) across two consecutive quarters, so: the issuer/manager
-# period axes are non-empty, holders render, and the quarter-over-quarter diff yields real
-# New/Added/Reduced activity. Only these two CUSIPs are used, so resolve_snapshot_cusips
-# hits the seeded cusip cache instead of fetching company_tickers.json live -- keeping the
-# manager page (and its default newest-quarter activity diff) offline in the e2e profile,
-# same as the insider/13D-G tabs. Plausible but NOT real positions.
-_HOLDINGS_QUARTERS = ["2025-12-31", "2026-03-31"]  # newest last; the views default to newest
+# deliberately left unresolved) across four consecutive quarters, so: the issuer/manager
+# period axes are non-empty, holders render, the quarter-over-quarter diff yields real
+# New/Added/Reduced activity, and the Phase 5.4 portfolio-value-over-time line has a real
+# multi-point series to draw (all four quarters are >= 2024-01-01, so none are excluded by
+# that feature's unit-convention rule). Only these two CUSIPs are used, so
+# resolve_snapshot_cusips hits the seeded cusip cache instead of fetching
+# company_tickers.json live -- keeping the manager page (and its default newest-quarter
+# activity diff) offline in the e2e profile, same as the insider/13D-G tabs. Plausible but
+# NOT real positions.
+_HOLDINGS_QUARTERS = ["2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31"]  # newest last;
+# the views default to newest, and it's unchanged from before this series was extended.
 # (manager_cik, name, {quarter: AAPL shares}); the second (Ally) line is a fixed smaller position.
 _HOLDINGS_MANAGERS = [
-    (1067983, "BERKSHIRE HATHAWAY INC", {"2025-12-31": 300_000_000, "2026-03-31": 280_000_000}),
-    (102909, "VANGUARD GROUP INC", {"2025-12-31": 1_250_000_000, "2026-03-31": 1_310_000_000}),
-    (93751, "STATE STREET CORP", {"2025-12-31": 590_000_000, "2026-03-31": 640_000_000}),
+    (1067983, "BERKSHIRE HATHAWAY INC", {
+        "2025-06-30": 320_000_000, "2025-09-30": 310_000_000,
+        "2025-12-31": 300_000_000, "2026-03-31": 280_000_000,
+    }),
+    (102909, "VANGUARD GROUP INC", {
+        "2025-06-30": 1_180_000_000, "2025-09-30": 1_210_000_000,
+        "2025-12-31": 1_250_000_000, "2026-03-31": 1_310_000_000,
+    }),
+    (93751, "STATE STREET CORP", {
+        "2025-06-30": 540_000_000, "2025-09-30": 565_000_000,
+        "2025-12-31": 590_000_000, "2026-03-31": 640_000_000,
+    }),
 ]
 _AAPL_PRICE = 190.0  # rough $/share to derive a plausible position value
 

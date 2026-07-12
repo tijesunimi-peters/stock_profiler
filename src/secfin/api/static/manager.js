@@ -64,6 +64,7 @@
         populate();
         $("controls").hidden = false;
         render();
+        loadValueSeries(); // independent of the quarter selector; fetched once, not per-switch
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), loadPeriods);
@@ -256,6 +257,62 @@
     if (!caveats || !caveats.length) return "";
     var items = caveats.map(function (c) { return "<li>" + P.esc(c) + "</li>"; }).join("");
     return '<details class="disclosure" style="margin-top:18px"><summary>13F caveats (always apply)</summary><ul>' + items + "</ul></details>";
+  }
+
+  // ---------- Phase 5.4: total reported 13F value per quarter (Profin.valueLineChart) ----------
+  // Own top-level mount (#value-line, outside #view) so this never re-fetches when the quarter
+  // selector changes -- fetched exactly once, right after /periods resolves.
+
+  // DECIDED (ROADMAP_UI.md 5.4): clip, don't normalize. The SEC's `value` unit convention
+  // changed thousands->whole-dollars ~2023 with no reliable per-filer boundary, so pre-2024
+  // quarters are excluded from this series entirely rather than rescaled or guessed at.
+  var VALUE_LINE_MIN_PERIOD = "2024-01-01";
+  var VALUE_LINE_MAX_QUARTERS = 8;
+
+  // Sum of reported `value` over one snapshot's holdings, skipping null/undefined rows (never
+  // invents a number for an unpriced row). A snapshot with holdings but no priced rows at all
+  // becomes a gap (null), not an honest "$0" -- $0 would misleadingly read as a real total. A
+  // snapshot with zero holdings is a real reported "$0", not missing data.
+  function totalReportedValue(snapshot) {
+    var holdings = snapshot.holdings || [];
+    if (!holdings.length) return 0;
+    var sum = 0, any = false;
+    holdings.forEach(function (h) {
+      if (h.value !== null && h.value !== undefined) { sum += h.value; any = true; }
+    });
+    return any ? sum : null;
+  }
+
+  function renderValueLine(points, excludedCount) {
+    var mount = $("value-line");
+    if (!mount) return;
+    var node = P.valueLineChart(points, { excludedCount: excludedCount });
+    if (!node) { mount.innerHTML = ""; return; }
+    mount.innerHTML = '<h3 class="metric-group-title">Portfolio value over time</h3>';
+    mount.appendChild(node);
+  }
+
+  // Fetches at most the 8 most recent >=2024 quarters' holdings snapshots (Promise.all) and
+  // totals each. A failed fetch resolves to a gap (null value) instead of rejecting -- one bad
+  // quarter breaks its point on the line, never the page. Never blocks the main render() above.
+  function loadValueSeries() {
+    var periods = state.periods || [];
+    var eligible = periods.filter(function (p) { return p >= VALUE_LINE_MIN_PERIOD; });
+    var excludedCount = periods.length - eligible.length;
+    var chronological = eligible.slice(0, VALUE_LINE_MAX_QUARTERS).slice().reverse(); // oldest->newest
+    if (!chronological.length) {
+      renderValueLine([], excludedCount);
+      return;
+    }
+    var base = "/managers/" + encodeURIComponent(cik) + "/holdings?period=";
+    Promise.all(
+      chronological.map(function (period) {
+        return P.api(base + encodeURIComponent(period)).then(
+          function (snap) { return { period: period, value: totalReportedValue(snap) }; },
+          function () { return { period: period, value: null }; } // failed quarter -> gap
+        );
+      })
+    ).then(function (points) { renderValueLine(points, excludedCount); });
   }
 
   init();
