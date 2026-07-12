@@ -273,25 +273,33 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 
 ### Phase 5 tasks
 
-- [ ] **5.1 Composition — top-N value bar list** *(data: ready)*. Horizontal ranked bars of
-      the top 10 holdings by `value` share, plus one "Other (n positions)" bar, on the
-      holdings section of `/manager/{cik}` above the table. Single accent + tint ramp;
-      percent-of-reported-value labels; issuer links to `/company/{cik}` where resolved.
-      Caption carries the "reported long positions only" framing. This is the highest-value,
-      lowest-risk chart — one snapshot, no time axis, no unit-convention hazard.
-- [ ] **5.2 Concentration stat tiles** *(data: ready)*. Alongside 5.1: position count,
-      top-1 / top-5 / top-10 share of reported value, and reported total. Descriptive
-      numbers only — no "diversification score," no judgment color (§9.2). (A single
-      Herfindahl-style index is deliberately out: it reads as a verdict.)
-- [ ] **5.3 Derived activity — diverging change bars** *(data: partial — needs two
-      consecutive ingested quarters for a manager; true for few managers until the next
-      quarterly backfill)*. Signed share-change bars per issuer (reduced/exited left,
-      new/added right), sorted by magnitude, capped at top ±10 with an overflow count.
-      DERIVED framing is load-bearing: title says "Derived activity," caption repeats
-      never-reported-trades, and exited/new positions state they're inferred from
-      presence/absence. Never sum SH and PRN rows; option rows labeled.
-- [ ] **5.4 Portfolio value over time** *(data: partial — most managers have one ingested
-      quarter today)*. A small multi-quarter line (reuse `trendChart`'s conventions: gaps
+- [x] **5.1 Composition — top-N value bar list** — shipped: `Profin.compositionBars(holdings,
+      opts)` (vendored Plot, DOM-node builder), mounted above the holdings table on
+      `/manager/{cik}`. Top-10 by `value` share + "Other (n positions)"; single accent +
+      rank-order tint ramp; same-name issuers disambiguated by CUSIP; `(PUT)`/`(CALL)`
+      suffixes on option rows; "reported long positions only" caption; returns `null` (honest
+      empty note) when no positive total. Verified headless (zero console errors).
+- [x] **5.2 Concentration stat tiles** — shipped: `Profin.statTiles(holdings, opts)` alongside
+      5.1 — positions reported, top-1/5/10 share of reported value, reported total.
+      Descriptive only; renders N/A tiles (never `0%`) when total reported value is absent;
+      no Herfindahl by design. Verified headless.
+- [x] **5.3 Derived activity — diverging change bars** — shipped: `Profin.divergingBars(
+      activity, opts)`, mounted above the activity table. Signed share-change bars per CUSIP
+      (reduced/exited left, new/added right), top ±10 by magnitude + overflow note; solid
+      fill = opened/closed outright, lighter tint = resized (one hue, no green/red). DERIVED
+      framing carried in title + caption (never-reported-trades, presence/absence inference,
+      shares-not-value, no SH/PRN summing). Note: `HoldingDelta` carries no `put_call` /
+      `shares_or_principal`, so option labeling is a standing caption caveat, not per-bar.
+      Verified headless.
+- [x] **5.4 Portfolio value over time** — shipped: `Profin.valueLineChart(points, opts)` in
+      its own mount above the quarter selector (fetched once via `/periods` +
+      per-quarter `/holdings`, capped at the 8 most recent eligible quarters; a failed
+      quarter is a gap, never a page error). Implements the DECIDED clip rule below
+      (`report_period >= 2024-01-01` only, exclusion count surfaced in the caption); gaps
+      break the line; one eligible quarter renders an honest single value, never a fake
+      line. e2e fixture extended to 4 consecutive quarters. Verified headless.
+      *(Original spec follows; the unit-convention decision is recorded inline.)*
+      A small multi-quarter line (reuse `trendChart`'s conventions: gaps
       break the line, min/max labels) of total reported value per quarter, on the manager
       masthead or above the quarter selector. **Unit-convention decision (DECIDED
       2026-07-12): clip, don't normalize.** The series only plots quarters with
@@ -317,6 +325,10 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 (after the unit-convention decision), 5.5 last (needs quarters that don't exist yet).
 5.6 whenever 5.1/5.3 are stable.
 
+**Status (2026-07-12):** 5.1–5.4 shipped in one parallel pass (three worktree tracks merged;
+full headless suite + pytest green). 5.5 stays deferred on its data gate (≥4 broadly-ingested
+quarters — real coverage is still one broad quarter). 5.6 in progress.
+
 ---
 
 ## Per-page summary
@@ -338,7 +350,7 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 | Screening | 4 | built | `/screen`, `/concepts/{concept}` |
 | Peer rankings | 4 | built | `/peers` (distribution endpoint served, not yet consumed) |
 | Public docs portal | 4 | n/a | *(M3)* |
-| Manager portfolio viz | 5 | ready (data partial) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
+| Manager portfolio viz | 5 | built (5.1–5.4; 5.5 deferred on data) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 
 ## Guardrails / do-nots (mirror `STYLE_GUIDE.md` §10)
 

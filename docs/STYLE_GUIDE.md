@@ -185,6 +185,10 @@ Links: accent color, mono. Resolve every href to a real destination — never le
   rank order only, IBM Plex Mono numerals) and its honesty caption. Plot builders return a
   **DOM node** (callers append it), unlike the older string builders. The hand-rolled
   `sparkline`/`trendChart`/`trajectoryChart`/`positionBar` stay as they are — not migrated.
+  Shipped builders: `compositionBars` (ranked value-share bars + "Other"), `statTiles`
+  (concentration tiles — plain HTML string, no Plot), `divergingBars` (signed share-change
+  around a zero rule), `valueLineChart` (reported total per quarter, clip-not-normalize
+  unit rule, gaps break the line).
 
 ---
 
