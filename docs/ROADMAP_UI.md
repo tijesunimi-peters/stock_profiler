@@ -233,14 +233,21 @@ noted per item: as of 2026-07-11 the bulk 13F ingest has one broadly-populated q
 single-snapshot charts are fully servable now while multi-quarter charts are honest but
 thin until more quarters are backfilled.
 
-**Rendering mechanism (decide once, first item of work):** extend the hand-rolled
-`Profin` SVG builders in `app.js` (the `sparkline` → `trendChart` → `trajectoryChart`
-lineage) rather than adding a chart library to served pages. Observable Plot stays
-confined to the standalone infographic template (`infographic-template.html`), which is a
-CDN-loading export artifact, not a data page. When this phase lands, update
-`STYLE_GUIDE.md` §6/§10 to enumerate the new builders — the "sparklines and position bars
-are the only generated graphics" line already lags Phase 3's trend charts and governs by
-intent (no *decorative* graphics), not by literal list.
+**Rendering mechanism (DECIDED 2026-07-12, reversing the earlier hand-rolled-SVG call):**
+Phase 5 charts use **Observable Plot**, per product direction. Constraints that make this
+compatible with the design system:
+- **Vendored, not CDN-loaded, on data pages:** `/static/vendor/d3.min.js` (v7.9.0) then
+  `/static/vendor/plot.umd.min.js` (v0.6.17 — the UMD build requires the global `d3`,
+  load order matters), exposing `window.Plot`. Data pages stay self-hosted; only the
+  standalone infographic template keeps its CDN ESM import.
+- **Wrapped in `Profin` builders:** pages never call `Plot.plot()` directly — each chart
+  is a `Profin.*` builder in `app.js` that owns its Plot spec, style-guide styling (one
+  terracotta accent, tint ramps, IBM Plex Mono numerals), and honesty captions, so 5.6
+  reuse and the §6 inventory stay meaningful. Plot builders return a DOM node (Plot
+  renders SVG elements), unlike the older string builders — callers append, not innerHTML.
+- The existing hand-rolled builders (`sparkline`/`trendChart`/`trajectoryChart`/
+  `positionBar`) stay as they are; they are not being migrated.
+`STYLE_GUIDE.md` §6/§10 updated to match (vendored-Plot mechanism + the graphics line).
 
 **Palette constraint to resolve up front (§10):** composition charts conventionally lean
 on a categorical hue per slice; the style guide allows **one accent, no good/bad color,
@@ -286,11 +293,15 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 - [ ] **5.4 Portfolio value over time** *(data: partial — most managers have one ingested
       quarter today)*. A small multi-quarter line (reuse `trendChart`'s conventions: gaps
       break the line, min/max labels) of total reported value per quarter, on the manager
-      masthead or above the quarter selector. **Blocked on the unit-convention decision:**
-      define where the thousands→dollars boundary is detected and how it's handled
-      (normalize with an explicit basis caption, or clip the series to the
-      post-convention era) *before* building — this is the one chart that can silently lie
-      by three orders of magnitude.
+      masthead or above the quarter selector. **Unit-convention decision (DECIDED
+      2026-07-12): clip, don't normalize.** The series only plots quarters with
+      `report_period >= 2024-01-01` — safely inside the whole-dollar era (the
+      thousands→dollars switch happened "around 2023" per `DATA_MODEL.md`'s unit caveat,
+      with no per-filer boundary detection available). Excluded earlier quarters are
+      surfaced in the caption as a count ("N earlier quarters excluded: pre-2024 13F
+      values use a different unit convention"), never silently dropped, and never plotted
+      across the boundary — normalizing was rejected because the boundary is fuzzy and
+      per-filer, and a wrong guess lies by three orders of magnitude.
 - [ ] **5.5 Allocation over time — top-holdings share series** *(data: partial; defer
       until ≥4 quarters are broadly ingested)*. Per-quarter percent-of-portfolio lines for
       the current top ~5 holdings (dash pattern + legend, one accent — the

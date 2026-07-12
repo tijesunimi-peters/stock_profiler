@@ -178,6 +178,13 @@ Links: accent color, mono. Resolve every href to a real destination — never le
   `--ext-color` + recovery chips) / `error`.
 - **Global search** — `Profin.mountSearch()`: ticker-or-CIK input that resolves and routes to the
   company hub.
+- **Plot charts (Phase 5, 13F portfolio viz)** — `Profin.*` builders backed by **vendored
+  Observable Plot** (`/static/vendor/d3.min.js` + `/static/vendor/plot.umd.min.js`, load d3
+  first; exposes `window.Plot`). Pages never call `Plot.plot()` directly — every chart is a
+  `Profin` builder that owns its Plot spec, the tokens (one terracotta accent, tint ramps for
+  rank order only, IBM Plex Mono numerals) and its honesty caption. Plot builders return a
+  **DOM node** (callers append it), unlike the older string builders. The hand-rolled
+  `sparkline`/`trendChart`/`trajectoryChart`/`positionBar` stay as they are — not migrated.
 
 ---
 
@@ -254,8 +261,9 @@ These are the reason the product exists. A page that violates them is broken.
 - Color-coding metrics green/red for good/bad, or ranking companies overall.
 - Rendering a missing/inapplicable value as `0`, `—`, blank, or a guess.
 - Dropping the status chip, the basis tag, or the provenance affordance on a derived number.
-- Emoji or decorative icons (sparklines/position bars are the only generated graphics; keep them
-  literal and data-driven).
+- Emoji or decorative icons. Generated graphics are data-driven charts only — the hand-rolled
+  SVG builders and the vendored-Plot `Profin` builders (§6) — never decoration; keep them
+  literal, and never CDN-load a chart library on a data page.
 - Inter/Roboto/Arial substitutes for the two chosen families.
 - Inline-block whitespace layout instead of flex/grid `gap`.
 - Placeholder links. Every href resolves to a real route.
