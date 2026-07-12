@@ -195,8 +195,7 @@ profile, 13D/G) are shipped and headless-verified.
 
 **Phase 3 is complete.** Company Comparison (matrix) and Metric trend/history (company-hub trend
 + `/compare` trajectories) are all shipped and headless-verified. **Phase 4** is underway:
-Screening (`/screen`) is shipped; remaining are Peer rankings (Metrics Phase 2) and the public
-docs portal (M3).
+Screening (`/screen`) and Peer rankings are shipped; remaining is the public docs portal (M3).
 
 ## Phase 4 — Discovery & scale
 
@@ -211,8 +210,14 @@ docs portal (M3).
       from `/statements`). **Descriptive only — no good/bad coloring** (§9.2). Deep-linkable
       (`?view=rank&concept=…` / `?year=&revenue_min=…`); reachable via a new **Screen** nav link.
       Verified headless (zero console errors).
-- [ ] **Peer comparison & rankings** *(blocked — Metrics Phase 2)* — percentile/z-score within
-      SIC peer groups. Ranks exclude N/A/N/M; components shown transparently (no black-box score).
+- [x] **Peer comparison & rankings** — shipped with Metrics Phase 2 (see `ROADMAP_METRICS.md`):
+      each company-hub Fundamentals metric card shows a **peer position bar** (`Profin.positionBar`)
+      with "Nth pctile · k peers · SIC {group}" from **`GET /companies/{symbol}/peers`**, fetched
+      alongside `/metrics` (best-effort — a peers miss never breaks the grid). Ranks exclude
+      N/A/N/M rows; percentile is position, not a verdict (one accent, no good/bad color — §9.2).
+      *Remaining follow-on:* the **`GET .../peers/{metric}/distribution`** endpoint (five-number
+      summary) is served but not yet consumed by any data page — a peer-distribution strip on the
+      hub is the natural next increment.
 - [ ] **Public docs / developer portal** *(M3)* — distinct from Swagger: examples, auth/quota
       story, onboarding. Tracked in `docs/ROADMAP.md` M3.
 
@@ -320,7 +325,7 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 | Company Comparison | 3 | built | `/metrics` ×N, `/metric-periods` |
 | Metric trend/history | 3 | built | `/metrics/{metric}/history` |
 | Screening | 4 | built | `/screen`, `/concepts/{concept}` |
-| Peer rankings | 4 | blocked | *(Metrics Phase 2)* |
+| Peer rankings | 4 | built | `/peers` (distribution endpoint served, not yet consumed) |
 | Public docs portal | 4 | n/a | *(M3)* |
 | Manager portfolio viz | 5 | ready (data partial) | `/managers/{cik}/periods`, `/holdings`, `/activity` |
 
