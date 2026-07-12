@@ -409,6 +409,50 @@
 .app-footer a:hover { color: var(--accent-hover); }
 .app-footer .tagline { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); margin-left: auto; }
 
+/* ---------- Plot charts (Phase 5, vendored Observable Plot — STYLE_GUIDE §6) ----------
+ *
+ * Every Profin.* Plot builder (divergingBars today; more land alongside it) returns a DOM node
+ * wrapped the same way: a mono eyebrow title, a horizontally-scrollable body holding Plot's own
+ * SVG, and an honesty caption. Card chrome matches .trend-chart's (bg-tint, soft border, rounded)
+ * so a chart never looks like a foreign widget dropped onto the page.
+ */
+
+.plot-chart {
+  margin: 4px 0 22px;
+  padding: 16px 18px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+}
+.plot-chart-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+/* Plot renders a fixed-width SVG (width/height attributes, not a scaling viewBox); scroll it
+ * inside its own box on narrow viewports rather than distorting it with max-width or letting it
+ * overflow the page body. */
+.plot-chart-body { overflow-x: auto; }
+.plot-chart-body svg { display: block; }
+.plot-chart-caption {
+  margin: 12px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--mono-muted);
+}
+.plot-chart-note {
+  margin: 4px 2px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 640px) {

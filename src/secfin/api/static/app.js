@@ -604,6 +604,177 @@
     });
   }
 
+  // ---------- Plot charts (Phase 5, manager/issuer portfolio viz) ----------
+  //
+  // Observable Plot is vendored (d3 then the Plot UMD build, see manager.html) and exposes
+  // window.Plot. Every chart here is a Profin.* builder that owns its own Plot spec, styling,
+  // and honesty caption, and RETURNS A DOM NODE (Plot renders SVG elements) -- callers append
+  // it; pages never call Plot.plot() directly (STYLE_GUIDE §6/§10). The hand-rolled
+  // sparkline/trendChart/trajectoryChart/positionBar above stay string builders -- not migrated.
+
+  // Read a design token at call time so the page's CSS is always the source of truth; the
+  // literal is only a fallback if the variable can't be read (e.g. called before stylesheets
+  // apply). Keeps chart colors in lockstep with style.css/app.css without re-declaring hexes.
+  function cssVar(name, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  // Signed share-count formatter for axis ticks/tooltips -- same convention manager.js's
+  // signedShares() uses for the table (+/− prefix, magnitude via fmt.shares), kept here so
+  // every Plot builder that shows signed share deltas formats them identically.
+  function signedSharesTick(v) {
+    if (v === 0) return "0";
+    return (v > 0 ? "+" : MINUS) + shares(Math.abs(v));
+  }
+
+  var HOLDING_ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited" };
+
+  // Signed share-change bars per issuer, for the 13F DERIVED activity diff (`normalize/flows.py`
+  // HoldingDelta rows, as returned by /managers/{cik}/activity and .../institutional-activity).
+  // `activity`: HoldingDelta[] exactly as the API returns it -- never re-derived client-side.
+  // `opts`: { fromLabel, toLabel, fromPeriod, toPeriod, cap }. fromLabel/toLabel are pre-formatted
+  // quarter-end labels (the caller already has a date formatter); fromPeriod/toPeriod (raw ISO)
+  // are used only as a fallback caption if no label was passed. `cap` defaults to 10.
+  //
+  // Note on option/instrument labeling: HoldingDelta (normalize/schema.py) does NOT carry
+  // put_call or shares_or_principal -- those live only on the raw InstitutionalHolding rows
+  // that flows.diff_snapshots sums by CUSIP before diffing. So there is nothing to label here;
+  // the caption states the SH/PRN and option/equity non-summing rule as a standing caveat
+  // instead of a per-bar flag, since the delta rows carry no such flag to render.
+  //
+  // Returns a DOM node, or null when there's nothing honest to chart (every row unchanged or a
+  // zero net change) -- callers should skip appending rather than draw an empty axis.
+  function divergingBars(activity, opts) {
+    opts = opts || {};
+    var cap = opts.cap || 10;
+    var fromLabel = opts.fromLabel || opts.fromPeriod || "the prior quarter";
+    var toLabel = opts.toLabel || opts.toPeriod || "this quarter";
+
+    // Honest filter: unchanged rows and non-numeric/zero changes never get a zero-length bar.
+    var rows = (activity || []).filter(function (a) {
+      return a && a.action !== "unchanged" && typeof a.shares_change === "number" && a.shares_change !== 0;
+    });
+    if (!rows.length) return null;
+
+    rows = rows.slice().sort(function (a, b) { return Math.abs(b.shares_change) - Math.abs(a.shares_change); });
+    var overflow = Math.max(0, rows.length - cap);
+    rows = rows.slice(0, cap);
+
+    // Multi-class issuers (same issuer_name, distinct CUSIPs) must stay distinct rows (never
+    // merged) -- disambiguate the label with a short CUSIP suffix only where a name repeats.
+    var seen = {};
+    rows.forEach(function (a) {
+      var nm = a.issuer_name || a.cusip || "—";
+      seen[nm] = (seen[nm] || 0) + 1;
+    });
+    var data = rows.map(function (a) {
+      var nm = a.issuer_name || a.cusip || "—";
+      var label = seen[nm] > 1 && a.cusip ? nm + " (" + a.cusip.slice(-6) + ")" : nm;
+      var full = a.action === "new" || a.action === "exited"; // a position opened/closed outright
+      return {
+        label: label,
+        cusip: a.cusip || "—",
+        actionLabel: HOLDING_ACTION_LABEL[a.action] || a.action || "—",
+        change: a.shares_change,
+        beforeFmt: a.shares_before != null ? shares(a.shares_before) : "—",
+        afterFmt: a.shares_after != null ? shares(a.shares_after) : "—",
+        changeFmt: signedSharesTick(a.shares_change),
+        kind: full ? "full" : "partial",
+      };
+    });
+    var domain = data.map(function (d) { return d.label; }); // sorted by |change|, largest first
+
+    var ACCENT = cssVar("--accent", "#C0703A");
+    var ACCENT_WASH = cssVar("--accent-wash", "#F3E4D5");
+    var INK = cssVar("--ink", "#1C1A16");
+    var INK_SOFT = cssVar("--ink-soft", "#6B6459");
+    var BORDER_TINT = cssVar("--border-tint-rule", "#E5DFD3");
+    var FONT_MONO = cssVar("--font-mono", "'IBM Plex Mono', monospace");
+
+    var rowH = 26;
+    var height = Math.max(90, data.length * rowH + 46);
+
+    var plotNode = window.Plot.plot({
+      width: 640,
+      height: height,
+      marginLeft: 196,
+      marginRight: 22,
+      marginTop: 8,
+      marginBottom: 30,
+      style: {
+        fontFamily: FONT_MONO, fontSize: 10.5, background: "transparent",
+        color: INK_SOFT, overflow: "visible",
+      },
+      x: { label: "shares change (signed)", tickFormat: signedSharesTick, grid: false },
+      y: { domain: domain, label: null },
+      marks: [
+        window.Plot.gridX({ stroke: BORDER_TINT, strokeOpacity: 0.7 }),
+        window.Plot.barX(data, {
+          x: "change",
+          y: "label",
+          // One terracotta accent, no good/bad hue (§10): a lighter tint of the SAME hue marks
+          // an opened/closed position (new/exited) vs. a resized one (added/reduced). Direction
+          // (left = reduced/exited, right = new/added) already carries increase/decrease.
+          fill: function (d) { return d.kind === "full" ? ACCENT : ACCENT_WASH; },
+          stroke: ACCENT,
+          strokeWidth: 1,
+          rx: 3,
+          channels: {
+            Issuer: "label", CUSIP: "cusip", Action: "actionLabel",
+            "Shares before": "beforeFmt", "Shares after": "afterFmt", Change: "changeFmt",
+          },
+          tip: {
+            format: {
+              x: false, y: false, fill: false, stroke: false,
+              Issuer: true, CUSIP: true, Action: true,
+              "Shares before": true, "Shares after": true, Change: true,
+            },
+          },
+        }),
+        window.Plot.ruleX([0], { stroke: INK, strokeOpacity: 0.75 }),
+      ],
+    });
+
+    var wrap = document.createElement("div");
+    wrap.className = "plot-chart plot-diverging-bars";
+
+    var title = document.createElement("div");
+    title.className = "plot-chart-title";
+    title.textContent = "Derived activity";
+    wrap.appendChild(title);
+
+    var body = document.createElement("div");
+    body.className = "plot-chart-body";
+    body.appendChild(plotNode);
+    wrap.appendChild(body);
+
+    var caption = document.createElement("p");
+    caption.className = "plot-chart-caption";
+    caption.textContent =
+      "DERIVED by diffing " + fromLabel + " → " + toLabel + " 13F snapshots — never reported " +
+      "trades. New/Exited positions are inferred from a CUSIP's presence or absence between the two " +
+      "snapshots, not an observed transaction. Units are shares, not value; SH/PRN and option/equity " +
+      "rows are never summed together, and each bar is one CUSIP exactly as reported (multi-class " +
+      "issuers stay distinct). Solid fill = a position opened or closed outright (new/exited); " +
+      "lighter fill = an existing position resized (added/reduced).";
+    wrap.appendChild(caption);
+
+    if (overflow > 0) {
+      var note = document.createElement("p");
+      note.className = "plot-chart-note";
+      note.textContent = "+ " + overflow + " more change" + (overflow === 1 ? "" : "s") +
+        " not shown (top " + cap + " by magnitude).";
+      wrap.appendChild(note);
+    }
+
+    return wrap;
+  }
+
   window.Profin = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -621,6 +792,7 @@
     trendChart: trendChart,
     trajectoryChart: trajectoryChart,
     positionBar: positionBar,
+    divergingBars: divergingBars,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

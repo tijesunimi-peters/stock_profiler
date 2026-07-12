@@ -101,6 +101,7 @@
           holdingsSection(period, snapshot) +
           activitySection(period, act.from_period, act.activity || []) +
           caveatsBlock(act.caveats || []);
+        mountActivityChart(period, act.from_period, act.activity || []);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), render);
@@ -171,8 +172,13 @@
         "</tr>"
       );
     }).join("");
+    // Chart mount point (Phase 5.3): filled by mountActivityChart() after this markup lands in
+    // the DOM, above the table -- Profin.divergingBars returns a DOM node (Plot renders SVG),
+    // so it's appended post-innerHTML rather than built into this HTML string. Left empty (no
+    // visual footprint) when divergingBars honestly has nothing to chart.
+    var chartMount = '<div id="activity-chart-mount"></div>';
     return (
-      head +
+      head + chartMount +
       '<table class="stmt-table"><thead><tr><th>Issuer</th><th>CUSIP</th><th>Action</th>' +
       '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
       "</tr></thead><tbody>" + body + "</tbody></table>" +
@@ -180,6 +186,22 @@
       P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
       "opened/closed appear as New/Exited.</p>"
     );
+  }
+
+  // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's
+  // markup (including that placeholder) is in the DOM. No-ops when the placeholder is absent
+  // (the "no prior-quarter comparison" empty state never renders it) or when divergingBars
+  // returns null (nothing honest to chart -- e.g. every row was unchanged).
+  function mountActivityChart(period, fromPeriod, activity) {
+    var mount = $("activity-chart-mount");
+    if (!mount) return;
+    var node = P.divergingBars(activity, {
+      fromLabel: quarterLabel(fromPeriod),
+      toLabel: quarterLabel(period),
+      fromPeriod: fromPeriod,
+      toPeriod: period,
+    });
+    if (node) mount.appendChild(node);
   }
 
   function rosterSection(managers) {
