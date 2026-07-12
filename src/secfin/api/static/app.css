@@ -409,6 +409,61 @@
 .app-footer a:hover { color: var(--accent-hover); }
 .app-footer .tagline { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); margin-left: auto; }
 
+/* ---------- composition chart + concentration stat tiles (Phase 5.1/5.2) ---------- */
+
+.composition-block {
+  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  gap: 12px;
+}
+.stat-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stat-tile-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+}
+.stat-tile-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.stat-tile-note { font-size: 10.5px; line-height: 1.4; color: var(--ink-soft); }
+
+/* Plot returns a bare <svg> sized to its own width/height attrs; scale it to the card via CSS
+   (aspect ratio preserved -- Plot's default viewBox keeps the bars proportional, never
+   stretched). #composition-chart-mount is the innerHTML placeholder manager.js appends into. */
+#composition-chart-mount:empty { display: none; }
+.composition-chart {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 16px 18px 10px;
+}
+.composition-chart svg { display: block; width: 100%; height: auto; }
+.composition-chart .stmt-caption { margin: 8px 2px 0; }
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 640px) {

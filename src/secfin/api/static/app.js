@@ -403,6 +403,176 @@
     );
   }
 
+  // ---------- Plot-backed charts (Phase 5: 13F portfolio composition) ----------
+  //
+  // Observable Plot is vendored (see manager.html: d3 then plot.umd.min.js, exposing
+  // window.Plot) and these are the ONLY functions in the app that call Plot.plot() for this
+  // chart family (STYLE_GUIDE §6) -- pages append the returned DOM node, they never touch Plot
+  // directly. One terracotta accent plus a lightness ramp for RANK ORDER ONLY (§10) -- never a
+  // second hue, never green/red. Tokens are read from the live CSS variables at call time with
+  // literal fallbacks, same recipe as infographic-template.html's chart block.
+
+  function plotTokens() {
+    var cs = window.getComputedStyle ? getComputedStyle(document.documentElement) : null;
+    function v(name, fallback) {
+      var val = cs ? cs.getPropertyValue(name) : "";
+      val = val && val.trim();
+      return val || fallback;
+    }
+    return {
+      accent: v("--accent", "#c0703a"),
+      accentWash: v("--accent-wash", "#f3e4d5"),
+      ink: v("--ink", "#1c1a16"),
+      inkSoft: v("--ink-soft", "#6b6459"),
+      trackBorder: v("--border-strong", "#d8d1c4"),
+      fontSans: "'Hanken Grotesk', system-ui, sans-serif",
+      fontMono: "'IBM Plex Mono', monospace",
+    };
+  }
+
+  // Interpolate between two "#rrggbb" colors at t in [0,1] -- used ONLY to fade the single
+  // accent by rank order; never introduces a second hue or a judgment color.
+  function mixHex(a, b, t) {
+    function rgb(h) {
+      h = h.replace("#", "");
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      return [parseInt(h.substr(0, 2), 16), parseInt(h.substr(2, 2), 16), parseInt(h.substr(4, 2), 16)];
+    }
+    var ca = rgb(a), cb = rgb(b);
+    var m = ca.map(function (c, i) { return Math.round(c + (cb[i] - c) * t); });
+    return "rgb(" + m.join(",") + ")";
+  }
+
+  // holdings: InstitutionalHolding[] (GET /managers/{cik}/holdings, or the issuer-centric twin
+  // for §5.6 reuse). Ranks the top-N by `value` (default 10) as a share of TOTAL reported value
+  // across ALL usable rows -- not just the ones shown -- plus one aggregated "Other (n
+  // positions)" bar. `value` is the reported market value of 13(f) long positions only; this is
+  // never AUM or the manager's whole book, and the returned caption says so. Returns a DOM node
+  // (a Plot SVG + a caption <p>), or null when there's no positive reported value to chart --
+  // callers keep their own honest empty-state note rather than dividing by zero.
+  function compositionBars(holdings, opts) {
+    if (!window.Plot) return null;
+    opts = opts || {};
+    var topN = opts.topN || 10;
+    var usable = (holdings || []).filter(function (h) { return typeof h.value === "number" && h.value > 0; });
+    var total = usable.reduce(function (s, h) { return s + h.value; }, 0);
+    if (!usable.length || !total) return null;
+
+    var sorted = usable.slice().sort(function (a, b) { return b.value - a.value; });
+    var top = sorted.slice(0, topN);
+    var rest = sorted.slice(topN);
+
+    // Multi-class issuers file distinct CUSIPs per class -- disambiguate same-name rows with
+    // the CUSIP rather than collapsing them (same rule as normalize/flows.py's diff_holders).
+    var nameCounts = {};
+    top.forEach(function (h) {
+      var n = h.issuer_name || h.cusip || "Unknown issuer";
+      nameCounts[n] = (nameCounts[n] || 0) + 1;
+    });
+
+    var t = plotTokens();
+    var rows = top.map(function (h, i) {
+      var name = h.issuer_name || h.cusip || "Unknown issuer";
+      var label = nameCounts[name] > 1 ? name + " (" + h.cusip + ")" : name;
+      if (h.put_call) label += h.put_call === "Put" ? " (PUT)" : " (CALL)"; // options labeled, never pooled silently
+      var rampT = top.length > 1 ? i / (top.length - 1) : 0;
+      return { label: label, pct: (h.value / total) * 100, fillColor: mixHex(t.accent, t.accentWash, rampT) };
+    });
+    if (rest.length) {
+      var restValue = rest.reduce(function (s, h) { return s + h.value; }, 0);
+      rows.push({
+        label: "Other (" + rest.length + " position" + (rest.length === 1 ? "" : "s") + ")",
+        pct: (restValue / total) * 100,
+        fillColor: t.trackBorder, // aggregate, not a rank -- neutral, not part of the accent ramp
+      });
+    }
+
+    var ROW_H = 32, MARGIN_V = 10;
+    var plot = window.Plot.plot({
+      width: 640,
+      height: rows.length * ROW_H + MARGIN_V * 2,
+      marginTop: MARGIN_V,
+      marginBottom: MARGIN_V,
+      marginLeft: 230,
+      marginRight: 56,
+      axis: null, // no default axis text -- labels are drawn as marks below, in the right font each
+      x: { domain: [0, 100] },
+      y: { domain: rows.map(function (r) { return r.label; }) }, // preserves rank order top-to-bottom
+      style: { background: "transparent", overflow: "visible" },
+      marks: [
+        window.Plot.gridX({ ticks: [25, 50, 75, 100], stroke: t.trackBorder, strokeOpacity: 0.5 }),
+        window.Plot.barX(rows, { x: "pct", y: "label", fill: "fillColor", rx: 3, insetTop: 5, insetBottom: 5 }),
+        // Issuer label: Hanken (entity name), sits left of the bar in the margin.
+        window.Plot.text(rows, {
+          x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
+          fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
+        }),
+        // Percent-of-reported-value label: IBM Plex Mono (numeral), sits right of the bar end.
+        window.Plot.text(rows, {
+          x: "pct", y: "label",
+          text: function (d) { return d.pct.toFixed(1) + "%"; },
+          textAnchor: "start", dx: 6,
+          fontFamily: t.fontMono, fontSize: 11, fill: t.inkSoft,
+        }),
+      ],
+    });
+
+    var wrap = document.createElement("div");
+    wrap.className = "composition-chart";
+    wrap.appendChild(plot);
+    var caption = document.createElement("p");
+    caption.className = "stmt-caption";
+    caption.textContent =
+      "Share of reported 13F long positions only (not AUM or the manager's whole book) — top " +
+      top.length + " of " + usable.length + " positions with a reported value" +
+      (rest.length ? ", remaining " + rest.length + " rolled into “Other.”" : ".") +
+      " Options are labeled PUT/CALL, never pooled with equity positions.";
+    wrap.appendChild(caption);
+    return wrap;
+  }
+
+  // ---------- concentration stat tiles (Phase 5.2) ----------
+  //
+  // Plain HTML tiles (no Plot needed): position count, top-1/5/10 share of reported value, and
+  // the reported total. Descriptive numbers only -- no "diversification score," no Herfindahl
+  // index, no judgment color (§9.2: a single concentration index reads as a verdict, which this
+  // product refuses to render). Shares are computed the same way compositionBars computes them
+  // (usable rows = value > 0, share is of the total across ALL usable rows) so the two widgets
+  // never disagree with each other.
+  function statTiles(holdings, opts) {
+    opts = opts || {};
+    var ranks = opts.ranks || [1, 5, 10];
+    var rows = holdings || [];
+    if (!rows.length) return "";
+    var usable = rows.filter(function (h) { return typeof h.value === "number" && h.value > 0; });
+    var sorted = usable.slice().sort(function (a, b) { return b.value - a.value; });
+    var total = usable.reduce(function (s, h) { return s + h.value; }, 0);
+
+    function tile(label, valueHtml, note) {
+      return (
+        '<div class="stat-tile"><span class="stat-tile-label">' + esc(label) + "</span>" +
+        '<span class="stat-tile-value">' + valueHtml + "</span>" +
+        (note ? '<span class="stat-tile-note">' + esc(note) + "</span>" : "") +
+        "</div>"
+      );
+    }
+
+    var tiles = [tile("Positions reported", esc(String(rows.length)))];
+    if (!total) {
+      // Never render a share as 0% when there's nothing positive to divide by -- the honest
+      // token is N/A, same rule as the status vocabulary (§7).
+      ranks.forEach(function (n) { tiles.push(tile("Top-" + n + " share", "N/A")); });
+      tiles.push(tile("Reported total", "N/A", "No positive reported value on record for this quarter"));
+    } else {
+      ranks.forEach(function (n) {
+        var topSum = sorted.slice(0, n).reduce(function (s, h) { return s + h.value; }, 0);
+        tiles.push(tile("Top-" + n + " share", esc(pct(topSum / total))));
+      });
+      tiles.push(tile("Reported total", esc(usd(total)), "Reported 13F long positions only"));
+    }
+    return '<div class="stat-tiles">' + tiles.join("") + "</div>";
+  }
+
   // ---------- position bar (§10: peer percentile — position, never a good/bad verdict) ----------
 
   function ordinal(n) {
@@ -620,6 +790,8 @@
     sparkline: sparkline,
     trendChart: trendChart,
     trajectoryChart: trajectoryChart,
+    compositionBars: compositionBars,
+    statTiles: statTiles,
     positionBar: positionBar,
     masthead: masthead,
     footer: footer,
