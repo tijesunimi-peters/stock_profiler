@@ -172,3 +172,21 @@ def test_has_any_facts_distinguishes_known_from_unknown_companies(tmp_path):
     assert repo.has_any_facts(320193) is True
     assert repo.has_any_facts(999999) is False
     repo.close()
+
+
+def test_has_any_facts_returns_false_for_frame_only_rows(tmp_path):
+    """Regression test (code-track follow-up, 2026-07-12; docs/product/tracks/data.md):
+    a CIK known ONLY via cross-company frame screening (`ingest/frames_backfill.py`,
+    `fiscal_year IS NULL` by design -- see `normalize/screening.py`) must NOT satisfy
+    `has_any_facts`. Before this fix, PLTR/GME (and 6,719 other frame-only CIKs on the
+    real pre-launch DB) satisfied this check, which made the statements cache-aside
+    route (`api/routes.py`'s `_statement_facts_for_cik`) treat every period as "known
+    company, genuinely empty" and permanently skip the live SEC fallback -- a real user
+    got a 404 on every statement request for that company, forever.
+    """
+    repo = SQLiteRawFactRepository(tmp_path / "secfin.db")
+    pltr_cik = 1321655
+    repo.upsert_raw_facts([_frame_fact(pltr_cik, "Assets", 100, "CY2023Q4I")])
+
+    assert repo.has_any_facts(pltr_cik) is False
+    repo.close()

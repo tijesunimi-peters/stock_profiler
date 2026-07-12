@@ -222,6 +222,15 @@ async def _statement_facts_for_cik(
     without a second full-history fetch, so an out-of-range period on an
     already-cached company stays a cheap local negative instead of refetching the
     whole company from SEC on every request.
+
+    `has_any_facts` must mean "had a real companyfacts ingestion", not just "has ANY
+    row in raw_facts" -- a CIK that only ever appeared via cross-company frame
+    screening (`ingest/frames_backfill.py`) has raw_facts rows with no `fiscal_year`,
+    and treating those as "known, empty period" would permanently 404 every statement
+    request for that company with no path to self-heal. Found live 2026-07-11
+    (launch-readiness §3, PLTR/GME both confirmed affected, 6,721 of 6,736 known CIKs
+    at the time) and fixed by scoping `has_any_facts` itself
+    (`storage/sqlite_repository.py`) rather than special-casing it here.
     """
     cached = repo.get_raw_facts_for_period(cik, fiscal_year, fiscal_period)
     if cached:

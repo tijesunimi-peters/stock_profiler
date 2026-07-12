@@ -167,7 +167,16 @@ class SQLiteRawFactRepository(RawFactRepository):
         return [self._row_to_fact(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
     def has_any_facts(self, cik: int) -> bool:
-        cur = self._conn.execute("SELECT 1 FROM raw_facts WHERE cik = ? LIMIT 1", (cik,))
+        # fiscal_year IS NOT NULL scopes this to a real companyfacts ingestion (bulk,
+        # incremental, or a ticker-resolved cache-aside fetch -- all three flatten a
+        # real SEC companyfacts payload, which always carries fy/fp per data point).
+        # Frame-derived rows (ingest/frames_backfill.py) deliberately leave fiscal_year
+        # unset -- see normalize/screening.py -- so they never satisfy this check. See
+        # this method's docstring in repository.py for why that distinction matters.
+        cur = self._conn.execute(
+            "SELECT 1 FROM raw_facts WHERE cik = ? AND fiscal_year IS NOT NULL LIMIT 1",
+            (cik,),
+        )
         return cur.fetchone() is not None
 
     def get_ingested_ciks(self, source: str) -> set[int]:

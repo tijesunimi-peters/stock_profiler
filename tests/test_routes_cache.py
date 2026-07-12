@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from secfin.api import routes as routes_module
 from secfin.normalize.schema import RawFact
+from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 
 def _fact(tag: str, fiscal_year: int = 2024, fiscal_period: str = "FY") -> RawFact:
@@ -121,6 +122,52 @@ async def test_statement_facts_out_of_range_period_on_known_company_skips_sec_fe
     )
     assert result == []
     assert repo.upserted is None
+
+
+async def test_statement_facts_frame_only_cik_still_falls_back_to_sec(monkeypatch, tmp_path):
+    """Regression test for the real 2026-07-11 bug (docs/product/tracks/data.md,
+    code-track follow-up): a CIK known ONLY via cross-company frame screening (raw_facts
+    rows with `fiscal_year IS NULL`, e.g. PLTR/GME pre-launch) must NOT be treated as
+    "known company, this period is genuinely empty" -- it must still fall back to a
+    live SEC fetch, the same as a never-ingested company. Uses the REAL
+    SQLiteRawFactRepository (not `_FakeRepo`, which hand-implements `has_any_facts` as
+    `bool(self._facts)` and so can't reproduce this bug) to exercise the actual fixed
+    query.
+    """
+    repo = SQLiteRawFactRepository(tmp_path / "test.db")
+    pltr_cik = 1321655
+    frame_only_fact = RawFact(
+        cik=pltr_cik,
+        taxonomy="us-gaap",
+        gaap_tag="Assets",
+        label="Assets",
+        unit="USD",
+        value=100,
+        instant="2023-12-31",
+        fiscal_year=None,
+        fiscal_period=None,
+        frame="CY2023Q4I",
+    )
+    repo.upsert_raw_facts([frame_only_fact])
+
+    fetched = [_fact("NetIncomeLoss", 2024, "FY")]
+    fetch_called = False
+
+    async def _fake_fetch(client, cik):
+        nonlocal fetch_called
+        fetch_called = True
+        return fetched
+
+    monkeypatch.setattr(routes_module, "fetch_raw_facts_all", _fake_fetch)
+
+    result = await routes_module._statement_facts_for_cik(
+        repo, client=None, cik=pltr_cik, fiscal_year=2024, fiscal_period="FY"
+    )
+
+    assert fetch_called, "a frame-only CIK must still hit the live SEC fallback"
+    assert len(result) == 1
+    assert result[0].gaap_tag == "NetIncomeLoss"
+    repo.close()
 
 
 async def test_statement_facts_miss_on_never_ingested_company_fetches_and_filters(

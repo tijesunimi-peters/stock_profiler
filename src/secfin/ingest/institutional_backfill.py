@@ -28,6 +28,15 @@ quarter, which is what this job produces.
   "amendment freshness across the aggregate": a later-filed amendment has a different
   accession, so it's never mistaken for already-current). A mismatch (including "nothing
   cached yet") means fetch + upsert.
+- **Per-candidate error isolation:** `_process_candidate` wraps BOTH the fetch and the
+  resolve/store step in their own `try/except`, tallying either as `"failed"` and moving
+  on to the next candidate -- a single manager's malformed data (a bad fetch, or a
+  storage-layer constraint violation like a cover page listing two co-filers under the
+  same `sequenceNumber`) must never take down the whole run. Found missing for the
+  store step 2026-07-11 (fixed the same day): one such manager crashed a real Q1 2026
+  run ~1h05m in, and because candidate order is deterministic, a rerun would have hit
+  the identical crash and made zero progress on the ~2,040 candidates after it -- see
+  `_process_candidate`'s docstring for the full trace.
 - **Single async process, sequential, no producer/consumer pool:** unlike
   `ingest/backfill.py` (parallel because parsing huge local companyfacts JSON is
   CPU-bound), this job's cost is network I/O against the same rate-limited `SECClient`
@@ -122,7 +131,8 @@ async def _process_candidate(
     "fetched", "skipped", or "failed" for the caller's tally."""
     cik = candidate["manager_cik"]
     filing = candidate["filing"]
-    if repo.cached_accession(cik, report_period) == filing["accessionNumber"]:
+    accession = filing.get("accessionNumber")
+    if repo.cached_accession(cik, report_period) == accession:
         return "skipped"
     try:
         snapshot = await fetch_13f_snapshot_for_filing(
@@ -131,8 +141,37 @@ async def _process_candidate(
     except Exception:
         logger.exception("failed to fetch 13F for CIK %d at %s", cik, report_period)
         return "failed"
-    await resolve_snapshot_cusips(client, cusip_resolver, snapshot)
-    repo.upsert_snapshot(snapshot)
+    try:
+        await resolve_snapshot_cusips(client, cusip_resolver, snapshot)
+        repo.upsert_snapshot(snapshot)
+    except Exception:
+        # Defense in depth, not just for the one bug that motivated it: any exception
+        # from CUSIP resolution (network) or storage -- e.g. a cover page with a data
+        # quirk `sec/institutional.py`'s `parse_cover_page_xml` doesn't already tolerate
+        # -- must fail just THIS candidate, not the whole bulk job.
+        #
+        # Found 2026-07-11 (launch-readiness §3): a real manager's cover page (CIK
+        # 1890906, accession 0001890906-26-000040) listed two different co-filing
+        # managers under the SAME `sequenceNumber`, which trips
+        # `holdings_other_managers`'s (manager_cik, report_period, sequence_number)
+        # UNIQUE constraint inside `upsert_snapshot`'s transaction --
+        # `sqlite3.IntegrityError`. `parse_cover_page_xml` now dedupes that specific
+        # case at parse time (see its docstring), but this line sat outside ANY
+        # try/except before this fix, so that one manager took down the entire process
+        # ~1h05m into a real run, leaving ~2,040 of 8,803 candidates never attempted --
+        # and because candidate order is deterministic, a rerun would have hit the
+        # identical crash again with zero net progress on the untouched tail.
+        # `upsert_snapshot` itself already rolls back its own transaction on failure
+        # (see sqlite_holdings_repository.py), so no partial row ever lands for a
+        # failed candidate -- this is purely about not letting one bad candidate stop
+        # the other ~8,800.
+        logger.exception(
+            "failed to resolve/store 13F snapshot for CIK %d at %s (accession %s)",
+            cik,
+            report_period,
+            accession,
+        )
+        return "failed"
     return "fetched"
 
 

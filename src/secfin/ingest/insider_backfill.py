@@ -25,22 +25,38 @@ measure. This also naturally scopes the job to companies this API actually serve
 financials for, rather than every SEC filer.
 
 **Why `all_ciks()` preserves the same safety guarantee, not just a superset of
-convenience:** `raw_facts` is written by exactly three call sites --
-`ingest.backfill` (bulk companyfacts.zip, keyed by issuer CIK), `ingest.incremental`
-(per-CIK companyfacts fetch for issuers that just filed a 10-K/10-Q), and the API's
-cache-aside path (`api/routes.py`'s `_facts_for_cik`/`_statement_facts_for_cik`,
-which resolves a ticker to a CIK via `ticker_cache.py`'s SEC ticker map before ever
-fetching companyfacts). None of those three paths is driven by the daily index's
+convenience:** `raw_facts` is written by four call sites -- `ingest.backfill` (bulk
+companyfacts.zip, keyed by issuer CIK), `ingest.incremental` (per-CIK companyfacts
+fetch for issuers that just filed a 10-K/10-Q), the API's cache-aside path
+(`api/routes.py`'s `_facts_for_cik`/`_statement_facts_for_cik`, which resolves a ticker
+to a CIK via `ticker_cache.py`'s SEC ticker map before ever fetching companyfacts), and
+`ingest.frames_backfill` (cross-company screening, Milestone 4 -- see
+`normalize/screening.py`). None of those four paths is driven by the daily index's
 arbitrary filer-CIK list (the thing that can surface a reporting-owner-only entity like
-325 Capital GP) -- every one of them fetches *companyfacts* for a CIK already known to
-be a real operating company. So a CIK with any `raw_facts` row is just as trustworthy
-an issuer as one with a checkpoint row; the two checkpoint sources only fail to cover
-CIKs that reached `raw_facts` through the live cache-aside path (e.g. a DB that grew
-mainly from on-demand traffic rather than a completed `ingest.backfill` run -- checkpoint
-rows would then be sparse or empty even though the company universe is fully
-populated). Found and fixed 2026-07-11: exactly that state on the pre-launch DB
-(`ingest_checkpoint` had 0 rows, `raw_facts` had 6,736 distinct CIKs from live traffic),
-which silently reduced this job's candidate set to nothing.
+325 Capital GP) -- every one of them writes rows for a CIK the SEC itself reported as a
+real registrant (a companyfacts fetch, or a frames-endpoint row keyed by CIK). So a CIK
+with any `raw_facts` row is just as trustworthy an issuer as one with a checkpoint row;
+the two checkpoint sources only fail to cover CIKs that reached `raw_facts` through the
+live cache-aside path (e.g. a DB that grew mainly from on-demand traffic rather than a
+completed `ingest.backfill` run -- checkpoint rows would then be sparse or empty even
+though the company universe is fully populated). Found and fixed 2026-07-11: exactly
+that state on the pre-launch DB (`ingest_checkpoint` had 0 rows, `raw_facts` had 6,736
+distinct CIKs from live traffic), which silently reduced this job's candidate set to
+nothing.
+
+**Deliberately NOT narrowed to "has a real companyfacts ingestion" (unlike
+`api/routes.py`'s `has_any_facts`, scoped 2026-07-11 to exclude frame-only rows for a
+DIFFERENT reason -- see that method's docstring):** of the 6,736 known CIKs on the
+pre-launch DB, only 15 ever had a real companyfacts ingestion; the other 6,721
+(including PLTR, GME) are frame-only. Those 6,721 are still real SEC registrants, so
+fetching their insider trades is correct, not a mis-attribution risk -- and this job's
+own real run (2026-07-11) confirmed it: 6,315 of the 6,736 candidates came back with at
+least one real cached Form 3/4/5 filing. Narrowing the candidate universe to the 15
+companyfacts-only CIKs would have thrown away that entire, already-verified 60,744-
+filing/162,050-transaction result for no correctness gain -- the two "real issuer
+universe" concerns (statements' self-heal loop vs. this job's mis-attribution guard)
+are genuinely different questions with different answers, not the same bug in two
+places.
 
 **Skip-or-refresh, cheap to rerun:** for each candidate, `cached_filing_count(cik) >=
 limit` -- the same check `api/routes.py`'s `_insider_transactions_for_cik` uses for a
@@ -85,17 +101,18 @@ _PROGRESS_EVERY = 100
 
 
 def known_issuer_ciks(fact_repo: RawFactRepository) -> set[int]:
-    """Every CIK we've already ingested companyfacts for, regardless of how it got into
-    `raw_facts` -- bulk/incremental checkpoint sources, or the API's cache-aside path.
+    """Every CIK we already have ANY `raw_facts` row for -- companyfacts (bulk,
+    incremental, or cache-aside) or frame-derived -- regardless of how it got there.
 
     This is the safety filter described in the module docstring: only these CIKs are
     trusted to be real issuers, not reporting-owner-only filer entities. `all_ciks()` is
     the primary source (it reflects every CIK actually in `raw_facts`, so it alone is
-    sufficient); the two `get_ingested_ciks` calls are unioned in for defense in depth,
-    not because they add coverage `all_ciks()` lacks -- see the module docstring for why
-    a checkpoint-only universe silently degrades to empty on a DB that reached its
-    current state mainly through live cache-aside traffic rather than a completed
-    `ingest.backfill` run.
+    sufficient, and deliberately includes frame-only CIKs -- see the module docstring's
+    "Deliberately NOT narrowed" section for why that's correct here); the two
+    `get_ingested_ciks` calls are unioned in for defense in depth, not because they add
+    coverage `all_ciks()` lacks -- see the module docstring for why a checkpoint-only
+    universe silently degrades to empty on a DB that reached its current state mainly
+    through live cache-aside traffic rather than a completed `ingest.backfill` run.
     """
     return (
         fact_repo.all_ciks()

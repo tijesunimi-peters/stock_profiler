@@ -81,6 +81,38 @@ def test_known_issuer_ciks_falls_back_to_raw_facts_when_checkpoint_table_is_empt
     repo.close()
 
 
+def test_known_issuer_ciks_deliberately_includes_frame_only_ciks(tmp_path):
+    """Locks in a deliberate decision (docs/product/tracks/data.md, code-track
+    follow-up 2026-07-12): unlike `api/routes.py`'s `has_any_facts` (scoped to real
+    companyfacts rows for a DIFFERENT reason -- see its docstring), this job's
+    candidate universe must still include CIKs known only via frame-derived screening
+    rows (`fiscal_year IS NULL`, e.g. PLTR/GME pre-launch). Frame data only ever comes
+    from real SEC registrants, so including them is not a mis-attribution risk -- and
+    narrowing this job to real-companyfacts-only CIKs would have thrown away a
+    real, already-verified 60,744-filing/162,050-transaction result covering 6,315 of
+    6,736 known issuers for essentially zero correctness gain.
+    """
+    repo = SQLiteRawFactRepository(tmp_path / "test.db")
+    frame_only_cik = 1321655  # PLTR, frame-only on the real pre-launch DB
+    frame_fact = RawFact(
+        cik=frame_only_cik,
+        taxonomy="us-gaap",
+        gaap_tag="Assets",
+        label="Assets",
+        unit="USD",
+        value=100,
+        instant="2023-12-31",
+        fiscal_year=None,
+        fiscal_period=None,
+        accession=None,
+        frame="CY2023Q4I",
+    )
+    repo.upsert_raw_facts([frame_fact])
+
+    assert frame_only_cik in known_issuer_ciks(repo)
+    repo.close()
+
+
 async def test_process_candidate_fetches_and_upserts_when_cold(monkeypatch):
     filings = [InsiderFilingMeta(accession="0001-1", filed="2026-07-01", form_type="4")]
     transactions = [
