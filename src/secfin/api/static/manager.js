@@ -101,6 +101,7 @@
           holdingsSection(period, snapshot) +
           activitySection(period, act.from_period, act.activity || []) +
           caveatsBlock(act.caveats || []);
+        mountCompositionChart(snapshot.holdings || []);
         mountActivityChart(period, act.from_period, act.activity || []);
       },
       function (err) {
@@ -126,6 +127,15 @@
     if (!holdings.length) {
       return head + P.states.empty({ title: "No positions", copy: "This 13F snapshot reports no positions." });
     }
+    // 5.1/5.2: composition bars (top-10 by value + "Other") and concentration stat tiles, above
+    // the holdings table. statTiles is a plain HTML string; the bar chart is a Plot DOM node
+    // mounted into #composition-chart-mount by mountCompositionChart() once this markup lands
+    // in the page (called from render(), right after this string is assigned to innerHTML).
+    var composition =
+      '<div class="composition-block">' +
+      P.statTiles(holdings) +
+      '<div id="composition-chart-mount"></div>' +
+      "</div>";
     var body = holdings.map(function (h) {
       return (
         "<tr>" +
@@ -142,10 +152,30 @@
       (snapshot.is_amendment ? " · amendment" : "");
     return (
       head +
+      composition +
       '<table class="stmt-table"><thead><tr><th>Issuer</th><th>CUSIP</th>' +
       '<th class="amt">Shares</th><th class="amt">Value</th></tr></thead><tbody>' + body + "</tbody></table>" +
       '<p class="stmt-caption">' + caption + "</p>"
     );
+  }
+
+  // Appends the Plot-backed composition chart into the placeholder holdingsSection() just
+  // rendered (Plot returns a DOM node, not a string -- see STYLE_GUIDE §6). Skips quietly when
+  // there are no holdings at all (holdingsSection already showed its own empty state and
+  // rendered no placeholder), and shows the standard honest empty-state note, instead of a
+  // divide-by-zero chart, when nothing here carries a positive reported value.
+  function mountCompositionChart(holdings) {
+    var mount = $("composition-chart-mount");
+    if (!mount) return;
+    var node = P.compositionBars(holdings, { topN: 10 });
+    if (node) {
+      mount.appendChild(node);
+    } else {
+      mount.innerHTML = P.states.empty({
+        title: "No reported value to chart",
+        copy: "This snapshot's positions carry no usable value field, so composition can't be shown as a share of value.",
+      });
+    }
   }
 
   function activitySection(period, fromPeriod, activity) {
