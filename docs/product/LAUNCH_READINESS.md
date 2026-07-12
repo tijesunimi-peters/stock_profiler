@@ -28,7 +28,11 @@ and verification evidence next to each, matching the ROADMAP.md style.*
       launch; unclear pricing does not.
 - [ ] If (a): payment flow behind the existing `ApiKeyRepository` boundary; billing
       state must not leak into route handlers (repo guardrail 5)
-- [ ] Published tier limits and `auth/tiers.py` enforced limits match exactly
+- [x] Published tier limits and `auth/tiers.py` enforced limits match exactly —
+      verified 2026-07-12 (code track): `/terms`, `/guide`, ROADMAP, and
+      MARKET_FEASIBILITY all match `TIERS`; enforcement (burst + daily quota)
+      matches published numbers with no off-by-one; drift tests now derive
+      expected strings from `TIERS` at import time (`tests/test_static_pages.py`).
 
 ## 2. Production deployment
 
@@ -54,15 +58,30 @@ each is now a runbook step rather than open design work.*
 
 ## 3. Data coverage at launch
 
-- [ ] Bulk-seed insider cache (`python -m secfin.ingest.insider_backfill`) — live DB
-      held only **72 insider filings** at the 2026-07-07 restore check
-- [ ] Bulk-seed 13F holdings (`python -m secfin.ingest.institutional_backfill
-      --period <latest quarter>`) — live DB held only **2 holdings snapshots**
-- [ ] Re-run the metrics pipeline afterward (sic_backfill → metrics_backfill →
-      peer_ranks) so peer ranks reflect the seeded data
-- [ ] Spot-check a launch-day basket (AAPL-class large caps + a few likely HN
+- [x] Bulk-seed insider cache (`python -m secfin.ingest.insider_backfill`) — done
+      2026-07-12 (data track): 122 → **60,744 filings / 162,050 transactions**,
+      6,315/6,736 issuers. First attempt no-opped on a real bug (issuer discovery
+      trusted only the empty `ingest_checkpoint`); fixed by the code track with a
+      regression test, then re-run on the rebuilt image. See `tracks/data.md`.
+- [x] Bulk-seed 13F holdings (`python -m secfin.ingest.institutional_backfill
+      --period 2026-03-31`) — done 2026-07-12 (data track): 5 → **8,771 snapshots
+      at 2026-03-31** (99.6% of 8,803 candidates; 32 validation-error stragglers),
+      3.38M holding rows. First run crashed on a duplicate cover-page
+      `sequenceNumber` (CIK 1890906); code track added per-candidate isolation +
+      parse-time dedup, rerun completed cleanly in ~16 min.
+- [x] Re-run the metrics pipeline afterward (sic_backfill → metrics_backfill →
+      peer_ranks) so peer ranks reflect the seeded data — done 2026-07-12:
+      6,736/6,736 SIC codes, metrics + ranks idempotent, zero failures.
+      *Known limit: peer-ranks/screening breadth is real only at FY2023 —
+      `frames_backfill` was never run for 2024–2026 (operator scope decision;
+      hours of SEC requests).*
+- [x] Spot-check a launch-day basket (AAPL-class large caps + a few likely HN
       favorites) across ALL endpoint families: statements, insider, 13F manager +
-      issuer views, metrics, peers, screening
+      issuer views, metrics, peers, screening — done 2026-07-12 (data track basket:
+      AAPL/MSFT/NVDA/TSLA/WMT/JPM/PLTR/GME + Berkshire-as-manager). Found the
+      frame-only-CIK bug that permanently 404'd statements for 6,721 of 6,736
+      CIKs; fixed (code track), verified healed live on PLTR + GME (real income
+      statements via SEC fallback, 2026-07-12).
 
 ## 4. Legal & trust pages
 
@@ -114,8 +133,12 @@ each is now a runbook step rather than open design work.*
 
 ## 6. Ops & abuse handling
 
-- [ ] Key revocation path (explicitly unbuilt per ROADMAP M3 notes) — at minimum an
-      admin-gated disable before strangers hold keys
+- [x] Key revocation path (explicitly unbuilt per ROADMAP M3 notes) — at minimum an
+      admin-gated disable before strangers hold keys — done 2026-07-12 (code
+      track): `POST /v1/admin/keys/{email}/revoke` (`X-Admin-Secret`-gated, 503 if
+      secret unset), behind `ApiKeyRepository.revoke_key`. Verified live at
+      convergence: signup → 200 → revoke → **401 on the very next request** (no
+      cache, no delay). Requires `SECFIN_ADMIN_SECRET` set in production env.
 - [ ] Error-rate visibility: a way to see 5xx spikes and yesterday's traffic without
       SSHing around (log review routine is enough at this scale) — *routine
       documented 2026-07-11 in `docs/DEPLOYMENT.md` (Caddy JSON access logs +
@@ -170,6 +193,17 @@ and a notes log under `tracks/`:
 **Run log:** 2026-07-11 — writing + infra tracks ran and converged (merged to
 master; full suite 294 passed / 6 skipped post-merge; `verify_deployment.py`
 re-run independently, 10/10). code and data tracks have NOT run yet.
+
+**Run log:** 2026-07-12 — code + data tracks ran and converged. Code: key
+revocation + tier-drift tests, plus three real bugs found by the data track's
+live runs and fixed mid-session (insider issuer discovery on checkpoint-less
+DBs; 13F per-candidate crash isolation + cover-page `sequenceNumber` dedup;
+frame-only-CIK statements 404). Data: §3 fully seeded (counts above), backup
+taken first (`secfin-20260711T190135Z.db`). Convergence verification on the
+rebuilt image: full suite **311 passed / 6 skipped**; revocation live
+(200 → revoke → 401); PLTR/GME statements healed; `verify_deployment.py`
+10/10. All four tracks are now complete; the remaining unchecked items are
+operator-only or need a deployed host.
 
 Convergence (orchestrator, after tracks land): merge branches, verify claims, flip
 checkboxes here, then the deployed-host verifications (§2 external check, §5 timed
