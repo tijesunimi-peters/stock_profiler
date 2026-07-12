@@ -377,13 +377,15 @@
       P.api(base + "/institutional-activity?period=" + encodeURIComponent(period)),
     ]).then(
       function (res) {
-        $("view").innerHTML = institutionalView(
-          period,
-          res[0].holders || [],
-          res[1].activity || [],
-          res[1].from_period,
-          res[0].caveats || []
-        );
+        var holders = res[0].holders || [];
+        var activity = res[1].activity || [];
+        var fromPeriod = res[1].from_period;
+        var caveats = res[0].caveats || [];
+        $("view").innerHTML = institutionalView(period, holders, activity, fromPeriod, caveats);
+        // Plot builders return DOM nodes (not HTML strings) -- mount them into the placeholder
+        // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
+        mountHoldersChart(holders);
+        mountActivityChart(period, fromPeriod, activity);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), renderInstitutional);
@@ -405,6 +407,23 @@
       return "<h3 class=\"metric-group-title\">Holders as of " + P.esc(quarterLabel(period)) + "</h3>" +
         P.states.empty({ title: "No holders for this quarter", copy: "No manager reported holding this issuer for the selected quarter." });
     }
+    // Phase 5.6: reuse of the manager page's composition builders on the issuer side --
+    // "who holds this stock," ranked by reported value, plus the same concentration stat
+    // tiles reframed for an issuer (holder count / top-1/5/10 share of REPORTED 13F value
+    // across ingested filers, never % of shares outstanding or all institutional owners).
+    // statTiles is a plain HTML string; the ranked-bar chart is a Plot DOM node mounted into
+    // #holders-chart-mount by mountHoldersChart() once this markup lands in the page.
+    var composition =
+      '<div class="composition-block">' +
+      P.statTiles(holders, {
+        rowLabel: "Holders reported",
+        totalNote: "Reported 13F value across all ingested filers for this issuer",
+        caption: "Share of reported 13F value held by filers who reported holding this issuer " +
+          "— not the company’s shares outstanding, and not all institutional owners, " +
+          "only ingested 13F filers.",
+      }) +
+      '<div id="holders-chart-mount"></div>' +
+      "</div>";
     var body = holders.map(function (h) {
       return (
         "<tr>" +
@@ -417,11 +436,41 @@
     }).join("");
     return (
       '<h3 class="metric-group-title">Holders as of ' + P.esc(quarterLabel(period)) + "</h3>" +
+      composition +
       '<table class="stmt-table"><thead><tr><th>Manager</th><th>CUSIP</th>' +
       '<th class="amt">Shares</th><th class="amt">Value</th></tr></thead><tbody>' + body + "</tbody></table>" +
       '<p class="stmt-caption">Reported 13F positions across all ingested managers · quarter-end ' +
       "snapshot, not real-time · long positions in 13(f) securities only.</p>"
     );
+  }
+
+  // Appends the Plot-backed composition chart into the placeholder holdersSection() just
+  // rendered (Plot returns a DOM node, not a string -- STYLE_GUIDE §6). Skips quietly when
+  // there are no holders at all (holdersSection already showed its own empty state and
+  // rendered no placeholder), and shows the standard honest empty-state note, instead of a
+  // divide-by-zero chart, when nothing here carries a positive reported value.
+  function mountHoldersChart(holders) {
+    var mount = $("holders-chart-mount");
+    if (!mount) return;
+    var node = P.compositionBars(holders, {
+      topN: 10,
+      labelField: "manager_name",
+      unknownLabel: "Unknown manager",
+      rowNoun: { singular: "holder", plural: "holders" },
+      linkField: "manager_cik",
+      linkBase: "/manager/",
+      captionLead: "Share of reported 13F value held by filers who reported holding this " +
+        "issuer (not the company’s shares outstanding, and not all institutional owners " +
+        "— only ingested 13F filers)",
+    });
+    if (node) {
+      mount.appendChild(node);
+    } else {
+      mount.innerHTML = P.states.empty({
+        title: "No reported value to chart",
+        copy: "These holders carry no usable value field, so composition can't be shown as a share of value.",
+      });
+    }
   }
 
   function activitySection(period, fromPeriod, activity) {
@@ -447,8 +496,14 @@
         "</tr>"
       );
     }).join("");
+    // Chart mount point (Phase 5.6 reuse of manager.js's 5.3 diverging bars): filled by
+    // mountActivityChart() after this markup lands in the DOM, above the table --
+    // Profin.divergingBars returns a DOM node (Plot renders SVG), so it's appended
+    // post-innerHTML rather than built into this HTML string. Left empty (no visual footprint)
+    // when divergingBars honestly has nothing to chart.
+    var chartMount = '<div id="activity-chart-mount"></div>';
     return (
-      head +
+      head + chartMount +
       '<table class="stmt-table"><thead><tr><th>Manager</th><th>Action</th>' +
       '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
       "</tr></thead><tbody>" + body + "</tbody></table>" +
@@ -456,6 +511,27 @@
       P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
       "opened/closed appear as New/Exited.</p>"
     );
+  }
+
+  // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's
+  // markup (including that placeholder) is in the DOM. No-ops when the placeholder is absent
+  // (the "no prior-quarter comparison" empty state never renders it) or when divergingBars
+  // returns null (nothing honest to chart -- e.g. every row was unchanged). Rows are per
+  // manager here (the issuer-centric twin of the manager page's per-issuer bars), so the chart
+  // is labeled/tooltipped by manager instead of by issuer.
+  function mountActivityChart(period, fromPeriod, activity) {
+    var mount = $("activity-chart-mount");
+    if (!mount) return;
+    var node = P.divergingBars(activity, {
+      fromLabel: quarterLabel(fromPeriod),
+      toLabel: quarterLabel(period),
+      fromPeriod: fromPeriod,
+      toPeriod: period,
+      labelField: "manager_name",
+      tipLabelKey: "Manager",
+      title: "Derived holder activity",
+    });
+    if (node) mount.appendChild(node);
   }
 
   // Signed share delta with the U+2212 minus glyph (§2), e.g. "+2.0M" / "−1.5M".
