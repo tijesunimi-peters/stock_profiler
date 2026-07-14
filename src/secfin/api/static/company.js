@@ -394,8 +394,23 @@
     );
   }
 
+  // Phase 5 polish (caption dedup, holdings side): this precision framing used to repeat under
+  // both the stat tiles and the composition chart on this tab -- it now renders exactly ONCE,
+  // here, at the top of the tab's content. Chart/tile captions below keep only what's specific
+  // to them (STYLE_GUIDE §6).
+  function institutionalStandingCaveat() {
+    return (
+      '<p class="stmt-caption" style="margin:0 0 18px">Share of reported 13F value held by ' +
+      "filers who reported holding this issuer — not the company’s shares outstanding, and not " +
+      "all institutional owners, only ingested 13F filers.</p>"
+    );
+  }
+
   function institutionalView(period, holders, activity, fromPeriod, caveats) {
-    return holdersSection(period, holders) + activitySection(period, fromPeriod, activity) + caveatsBlock(caveats);
+    return (
+      institutionalStandingCaveat() +
+      holdersSection(period, holders) + activitySection(period, fromPeriod, activity) + caveatsBlock(caveats)
+    );
   }
 
   function managerLink(cik, name) {
@@ -413,14 +428,14 @@
     // across ingested filers, never % of shares outstanding or all institutional owners).
     // statTiles is a plain HTML string; the ranked-bar chart is a Plot DOM node mounted into
     // #holders-chart-mount by mountHoldersChart() once this markup lands in the page.
+    // The "share of reported 13F value... not shares outstanding... not all institutional
+    // owners" precision framing renders once, above, via institutionalStandingCaveat() -- not
+    // repeated here (Phase 5 polish: caption dedup).
     var composition =
       '<div class="composition-block">' +
       P.statTiles(holders, {
         rowLabel: "Holders reported",
         totalNote: "Reported 13F value across all ingested filers for this issuer",
-        caption: "Share of reported 13F value held by filers who reported holding this issuer " +
-          "— not the company’s shares outstanding, and not all institutional owners, " +
-          "only ingested 13F filers.",
       }) +
       '<div id="holders-chart-mount"></div>' +
       "</div>";
@@ -452,6 +467,10 @@
   function mountHoldersChart(holders) {
     var mount = $("holders-chart-mount");
     if (!mount) return;
+    // No captionLead here (Phase 5 polish: caption dedup) -- the "share of reported 13F
+    // value... not shares outstanding... not all institutional owners" framing already renders
+    // once at the top of the tab via institutionalStandingCaveat(); this chart's own caption
+    // carries only its chart-specific mechanics.
     var node = P.compositionBars(holders, {
       topN: 10,
       labelField: "manager_name",
@@ -459,9 +478,8 @@
       rowNoun: { singular: "holder", plural: "holders" },
       linkField: "manager_cik",
       linkBase: "/manager/",
-      captionLead: "Share of reported 13F value held by filers who reported holding this " +
-        "issuer (not the company’s shares outstanding, and not all institutional owners " +
-        "— only ingested 13F filers)",
+      captionLead: "",
+      width: P.measuredWidth(mount, 640),
     });
     if (node) {
       mount.appendChild(node);

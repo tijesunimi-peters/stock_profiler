@@ -496,17 +496,75 @@
 
 /* Plot returns a bare <svg> sized to its own width/height attrs; scale it to the card via CSS
    (aspect ratio preserved -- Plot's default viewBox keeps the bars proportional, never
-   stretched). #composition-chart-mount is the innerHTML placeholder manager.js appends into. */
-#composition-chart-mount:empty { display: none; }
-.composition-chart {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: var(--shadow-soft);
-  padding: 16px 18px 10px;
+   stretched). #composition-chart-mount / #holders-chart-mount are the innerHTML placeholders
+   manager.js / company.js append the Plot-backed compositionBars() node into -- the node itself
+   is a chartCard() root (`.plot-chart`), so no dedicated outer-card class is needed here anymore. */
+#composition-chart-mount:empty, #holders-chart-mount:empty { display: none; }
+.composition-bars svg { display: block; width: 100%; height: auto; }
+
+/* Sub-labels inside the shared chartCard() body distinguishing the strip from the ranked bars
+   (Phase 5 polish: composition redesign -- one card, two pieces). */
+.composition-subhead {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+  margin: 0 0 8px;
 }
-.composition-chart svg { display: block; width: 100%; height: auto; }
-.composition-chart .stmt-caption { margin: 8px 2px 0; }
+.composition-subhead:not(:first-child) { margin-top: 22px; }
+
+/* Part-to-whole strip: one 100%-stacked bar, ordered top-1/top-2-5/top-6-10/other bands with a
+   2px surface gap between them (the flex `gap` shows --bg-page through, and the container's
+   overflow:hidden + border-radius keeps the ends visually rounded without rounding every
+   segment). Direct labels sit inside a band when there's room; otherwise they move to the
+   outside legend below -- never clipped (Phase 5 polish: composition redesign). */
+.composition-strip-bar {
+  display: flex;
+  gap: 2px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-page);
+}
+.composition-strip-seg {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  min-width: 2px;
+}
+.composition-strip-seg-label {
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 10px;
+}
+.composition-strip-outside {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 2px 0;
+}
+.composition-strip-outside-item {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.composition-strip-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
 
 /* ---------- responsive ---------- */
 
