@@ -481,30 +481,162 @@
     return "rgb(" + m.join(",") + ")";
   }
 
+  // Builds the part-to-whole strip: one 100%-stacked bar of TOTAL reported value split into
+  // ORDERED bands (top-1 / top-2-5 / top-6-10 / other) with a 2px surface gap between them. This
+  // is a rank-ORDER grouping (not a free-order category), so an ordinal tint ramp of the single
+  // accent is correct here -- kind/order, never darker-where-bigger (STYLE_GUIDE §6). A band's
+  // label (name + %) sits directly inside it when there's room; otherwise it moves to the
+  // outside legend below (each band also carries a `title` hover tooltip) -- never clipped.
+  function compositionStrip(segs, width) {
+    var wrap = document.createElement("div");
+    wrap.className = "composition-strip";
+    var bar = document.createElement("div");
+    bar.className = "composition-strip-bar";
+    bar.setAttribute("role", "img");
+    bar.setAttribute(
+      "aria-label",
+      "Composition of reported value: " +
+        segs.map(function (s) { return s.name + " " + s.pct.toFixed(1) + "%"; }).join(", ")
+    );
+    var outside = [];
+    segs.forEach(function (s) {
+      var seg = document.createElement("div");
+      seg.className = "composition-strip-seg";
+      seg.style.flexBasis = s.pct + "%";
+      seg.style.background = s.fill;
+      var text = s.name + " · " + s.pct.toFixed(1) + "%";
+      seg.title = text;
+      // Estimate whether the label fits its own segment's pixel width (we know the chart's
+      // total width from opts.width, so no DOM measurement round-trip is needed) -- a rough
+      // average glyph width for the 11.5px sans label, plus horizontal padding.
+      var segPx = (s.pct / 100) * width;
+      var estWidth = text.length * 6.4 + 20;
+      if (segPx >= estWidth) {
+        var lbl = document.createElement("span");
+        lbl.className = "composition-strip-seg-label";
+        lbl.textContent = text;
+        seg.appendChild(lbl);
+      } else {
+        outside.push({ text: text, fill: s.fill });
+      }
+      bar.appendChild(seg);
+    });
+    wrap.appendChild(bar);
+    if (outside.length) {
+      var legend = document.createElement("div");
+      legend.className = "composition-strip-outside";
+      legend.innerHTML = outside
+        .map(function (o) {
+          return (
+            '<span class="composition-strip-outside-item"><i class="composition-strip-swatch" style="background:' +
+            o.fill + '"></i>' + esc(o.text) + "</span>"
+          );
+        })
+        .join("");
+      wrap.appendChild(legend);
+    }
+    return wrap;
+  }
+
+  // Builds the top-N ranked-bars Plot node. Single accent fill for every bar -- the tint ramp is
+  // gone; bar length already encodes the value (STYLE_GUIDE §6). The x-domain is the top-N's OWN
+  // max, never the whole book's total, so the tail (carried by the strip above) can't crush the
+  // top bars into illegibility. Each bar's %-label is still of TOTAL reported value (not the
+  // top-N subset), and a Plot `tip` carries issuer/manager, value, % of reported value, and
+  // shares -- labeling PRN (principal) rows so they're never read as a share count.
+  function compositionRankedBars(top, o) {
+    var t = o.t;
+    var tipLabelKey = o.labelField === "manager_name" ? "Manager" : "Issuer";
+    var rows = top.map(function (h) {
+      var isPrn = h.shares_or_principal === "PRN";
+      var row = {
+        label: o.rowLabel(h),
+        value: h.value,
+        pctOfTotal: (h.value / o.total) * 100,
+        unitsDisplay: h.shares != null ? shares(h.shares) + (isPrn ? " principal (PRN)" : " shares") : "—",
+      };
+      var href = o.rowHref(h);
+      if (href) row.href = href;
+      return row;
+    });
+    var domain = rows.map(function (r) { return r.label; }); // preserves rank order top-to-bottom
+
+    var barMarkOpts = { x: "value", y: "label", fill: t.accent, rx: 3, insetTop: 5, insetBottom: 5 };
+    var tipChannels = {};
+    tipChannels[tipLabelKey] = "label";
+    tipChannels["Value"] = "value";
+    tipChannels["% of reported value"] = "pctOfTotal";
+    tipChannels["Shares"] = "unitsDisplay";
+    barMarkOpts.channels = tipChannels;
+    var tipFormat = { x: false, y: false, fill: false };
+    tipFormat[tipLabelKey] = true;
+    tipFormat["Value"] = function (v) { return usd(v); };
+    tipFormat["% of reported value"] = function (v) { return v.toFixed(1) + "%"; };
+    tipFormat["Shares"] = true;
+    barMarkOpts.tip = { format: tipFormat };
+
+    var labelMarkOpts = {
+      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
+      fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
+    };
+    if (o.hasLinks) { barMarkOpts.href = "href"; labelMarkOpts.href = "href"; }
+
+    var ROW_H = 32, MARGIN_V = 10;
+    var plot = window.Plot.plot({
+      width: o.width,
+      height: rows.length * ROW_H + MARGIN_V * 2,
+      marginTop: MARGIN_V,
+      marginBottom: MARGIN_V,
+      marginLeft: 230,
+      marginRight: 64,
+      axis: null, // no default axis text -- labels are drawn as marks below, in the right font each
+      x: { domain: [0, o.topMax] }, // the top-N's OWN max -- never the whole book's total
+      y: { domain: domain },
+      style: { background: "transparent", overflow: "visible" },
+      marks: [
+        window.Plot.gridX({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+        window.Plot.barX(rows, barMarkOpts),
+        window.Plot.text(rows, labelMarkOpts),
+        // Percent-of-TOTAL-reported-value label (not of the top-N subset): IBM Plex Mono, sits
+        // right of the bar end.
+        window.Plot.text(rows, {
+          x: "value", y: "label",
+          text: function (d) { return d.pctOfTotal.toFixed(1) + "%"; },
+          textAnchor: "start", dx: 6,
+          fontFamily: t.fontMono, fontSize: 11, fill: t.inkSoft,
+        }),
+      ],
+    });
+    var body = document.createElement("div");
+    body.className = "composition-bars";
+    body.appendChild(plot);
+    return body;
+  }
+
   // holdings: InstitutionalHolding[] (GET /managers/{cik}/holdings) or IssuerHolder[] (the
-  // issuer-centric twin, GET /companies/{symbol}/institutional-holders -- §5.6 reuse). Ranks
-  // the top-N by `value` (default 10) as a share of TOTAL reported value across ALL usable rows
-  // -- not just the ones shown -- plus one aggregated "Other (n ...)" bar. `value` is the
-  // reported market value of 13(f) long positions only; this is never AUM, a whole book, or a
-  // share of shares outstanding, and the returned caption says so. Returns a DOM node (a Plot
-  // SVG + a caption <p>), or null when there's no positive reported value to chart -- callers
-  // keep their own honest empty-state note rather than dividing by zero.
+  // issuer-centric twin, GET /companies/{symbol}/institutional-holders -- §5.6 reuse). `value` is
+  // the reported market value of 13(f) long positions only; this is never AUM, a whole book, or
+  // a share of shares outstanding. Returns ONE chartCard() DOM node holding two pieces -- the
+  // part-to-whole strip (all usable rows, ordered top-1/top-2-5/top-6-10/other bands) and top-N
+  // ranked bars on their own value scale -- or null when there's no positive reported value to
+  // chart, so callers can render their own honest empty-state note rather than dividing by zero.
   //
-  // opts (all optional; defaults reproduce the original manager-holdings chart byte-for-byte):
-  //   topN               -- ranked bars before rolling the rest into "Other" (default 10).
+  // opts (all optional; defaults reproduce the original manager-holdings framing):
+  //   topN               -- ranked bars, and the strip's "top-6-10" band ceiling (default 10).
   //   labelField         -- the row's display-name field (default "issuer_name"; pass
   //                         "manager_name" for the issuer-centric holder list).
   //   idField            -- field used to disambiguate same-label rows, and to build a link
   //                         (default "cusip").
   //   unknownLabel       -- fallback label when labelField and idField are both missing.
-  //   rowNoun            -- {singular, plural} noun for the caption/"Other" bar (default
+  //   rowNoun            -- {singular, plural} noun for the caption/"Other" band (default
   //                         {"position","positions"}; pass {"holder","holders"} for reuse).
-  //   captionLead        -- the caption's leading sentence (default is the manager-book
-  //                         framing; the issuer-centric caller supplies its own "not shares
-  //                         outstanding, only ingested 13F filers" framing -- see company.js).
+  //   captionLead        -- the caption's leading sentence (default is the manager-book framing).
+  //                         Pass "" to omit the lead entirely -- e.g. when the caller already
+  //                         renders that precision framing once at the top of the page and the
+  //                         chart's own caption should carry only chart-specific mechanics.
   //   linkField/linkBase -- when both given, each bar and its label link to
-  //                         `linkBase + row[linkField]` (e.g. "/manager/" + manager_cik); rows
-  //                         missing the field (the aggregated "Other" bar) render unlinked.
+  //                         `linkBase + row[linkField]` (e.g. "/manager/" + manager_cik).
+  //   width              -- chart width in px; mount sites pass P.measuredWidth(el, 640).
   function compositionBars(holdings, opts) {
     if (!window.Plot) return null;
     opts = opts || {};
@@ -513,92 +645,94 @@
     var idField = opts.idField || "cusip";
     var unknownLabel = opts.unknownLabel || "Unknown issuer";
     var rowNoun = opts.rowNoun || { singular: "position", plural: "positions" };
-    var captionLead = opts.captionLead ||
-      "Share of reported 13F long positions only (not AUM or the manager's whole book)";
+    var DEFAULT_LEAD = "Share of reported 13F long positions only (not AUM or the manager's whole book)";
+    var captionLead = opts.captionLead !== undefined ? opts.captionLead : DEFAULT_LEAD;
     var linkField = opts.linkField, linkBase = opts.linkBase;
     var hasLinks = !!(linkField && linkBase);
+    var width = opts.width || 640;
+
     var usable = (holdings || []).filter(function (h) { return typeof h.value === "number" && h.value > 0; });
     var total = usable.reduce(function (s, h) { return s + h.value; }, 0);
     if (!usable.length || !total) return null;
 
     var sorted = usable.slice().sort(function (a, b) { return b.value - a.value; });
-    var top = sorted.slice(0, topN);
-    var rest = sorted.slice(topN);
+    var n = sorted.length;
+    var t = plotTokens();
 
     // Multi-class issuers file distinct CUSIPs per class (or, for the issuer-centric reuse, one
     // manager can hold more than one class of the same issuer) -- disambiguate same-label rows
     // with idField rather than collapsing them (same rule as normalize/flows.py's diff_holders).
     var nameCounts = {};
-    top.forEach(function (h) {
-      var n = h[labelField] || h[idField] || unknownLabel;
-      nameCounts[n] = (nameCounts[n] || 0) + 1;
+    sorted.forEach(function (h) {
+      var nm = h[labelField] || h[idField] || unknownLabel;
+      nameCounts[nm] = (nameCounts[nm] || 0) + 1;
     });
-
-    var t = plotTokens();
-    var rows = top.map(function (h, i) {
-      var name = h[labelField] || h[idField] || unknownLabel;
-      var label = nameCounts[name] > 1 ? name + " (" + h[idField] + ")" : name;
+    function rowLabel(h) {
+      var nm = h[labelField] || h[idField] || unknownLabel;
+      var label = nameCounts[nm] > 1 ? nm + " (" + h[idField] + ")" : nm;
       if (h.put_call) label += h.put_call === "Put" ? " (PUT)" : " (CALL)"; // options labeled, never pooled silently
-      var rampT = top.length > 1 ? i / (top.length - 1) : 0;
-      var row = { label: label, pct: (h.value / total) * 100, fillColor: mixHex(t.accent, t.accentWash, rampT) };
-      if (hasLinks && h[linkField] != null) row.href = linkBase + encodeURIComponent(h[linkField]);
-      return row;
-    });
-    if (rest.length) {
-      var restValue = rest.reduce(function (s, h) { return s + h.value; }, 0);
-      rows.push({
-        label: "Other (" + rest.length + " " + (rest.length === 1 ? rowNoun.singular : rowNoun.plural) + ")",
-        pct: (restValue / total) * 100,
-        fillColor: t.trackBorder, // aggregate, not a rank -- neutral, not part of the accent ramp
-      });
+      return label;
+    }
+    function rowHref(h) {
+      return hasLinks && h[linkField] != null ? linkBase + encodeURIComponent(h[linkField]) : null;
     }
 
-    var barMarkOpts = { x: "pct", y: "label", fill: "fillColor", rx: 3, insetTop: 5, insetBottom: 5 };
-    var labelMarkOpts = {
-      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
-      fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
-    };
-    if (hasLinks) { barMarkOpts.href = "href"; labelMarkOpts.href = "href"; }
-
-    var ROW_H = 32, MARGIN_V = 10;
-    var plot = window.Plot.plot({
-      width: 640,
-      height: rows.length * ROW_H + MARGIN_V * 2,
-      marginTop: MARGIN_V,
-      marginBottom: MARGIN_V,
-      marginLeft: 230,
-      marginRight: 56,
-      axis: null, // no default axis text -- labels are drawn as marks below, in the right font each
-      x: { domain: [0, 100] },
-      y: { domain: rows.map(function (r) { return r.label; }) }, // preserves rank order top-to-bottom
-      style: { background: "transparent", overflow: "visible" },
-      marks: [
-        window.Plot.gridX({ ticks: [25, 50, 75, 100], stroke: t.trackBorder, strokeOpacity: 0.5 }),
-        window.Plot.barX(rows, barMarkOpts),
-        // Issuer/manager label: Hanken (entity name), sits left of the bar in the margin.
-        window.Plot.text(rows, labelMarkOpts),
-        // Percent-of-reported-value label: IBM Plex Mono (numeral), sits right of the bar end.
-        window.Plot.text(rows, {
-          x: "pct", y: "label",
-          text: function (d) { return d.pct.toFixed(1) + "%"; },
-          textAnchor: "start", dx: 6,
-          fontFamily: t.fontMono, fontSize: 11, fill: t.inkSoft,
-        }),
-      ],
+    // ---- part-to-whole strip bands: top-1 / top-2-5 / top-6-10 / other. A band is only formed
+    // when the book actually reaches it -- otherwise its would-be members fold into "other"
+    // rather than rendering a partially-filled, misleadingly-named band (e.g. a 2-position book
+    // renders top-1 + other, never a "top 2-5" band holding a single position).
+    function bandSum(fromIdx, toIdx) {
+      var rows = sorted.slice(fromIdx, toIdx);
+      return { rows: rows, value: rows.reduce(function (s, h) { return s + h.value; }, 0) };
+    }
+    var segs = [{ name: "Top 1", data: bandSum(0, Math.min(1, n)) }];
+    var band2Full = n >= 5;
+    if (band2Full) segs.push({ name: "Top 2–5", data: bandSum(1, 5) });
+    var band3Full = band2Full && n >= topN;
+    if (band3Full) segs.push({ name: "Top 6–" + topN, data: bandSum(5, topN) });
+    var consumed = band3Full ? topN : (band2Full ? 5 : 1);
+    if (consumed < n) {
+      var restData = bandSum(consumed, n);
+      segs.push({
+        name: "Other (" + restData.rows.length + " " +
+          (restData.rows.length === 1 ? rowNoun.singular : rowNoun.plural) + ")",
+        data: restData,
+      });
+    }
+    segs = segs.filter(function (s) { return s.data.rows.length > 0; });
+    segs.forEach(function (s, i) {
+      s.pct = (s.data.value / total) * 100;
+      s.fill = segs.length > 1 ? mixHex(t.accent, t.accentWash, i / (segs.length - 1)) : t.accent;
     });
 
-    var wrap = document.createElement("div");
-    wrap.className = "composition-chart";
-    wrap.appendChild(plot);
-    var caption = document.createElement("p");
-    caption.className = "stmt-caption";
-    caption.textContent =
-      captionLead + " — top " + top.length + " of " + usable.length + " " + rowNoun.plural +
-      " with a reported value" +
-      (rest.length ? ", remaining " + rest.length + " rolled into “Other.”" : ".") +
-      " Options are labeled PUT/CALL, never pooled with equity positions.";
-    wrap.appendChild(caption);
-    return wrap;
+    // ---- top-N ranked bars, scaled to their own range ----
+    var top = sorted.slice(0, topN);
+    var topMax = top[0].value; // sorted desc, so the first row is the max -- always > 0 here
+
+    var card = chartCard("Composition — reported value");
+    var stripHead = document.createElement("div");
+    stripHead.className = "composition-subhead";
+    stripHead.textContent = "Share of total reported value";
+    card.body.appendChild(stripHead);
+    card.body.appendChild(compositionStrip(segs, width));
+
+    var barsHead = document.createElement("div");
+    barsHead.className = "composition-subhead";
+    barsHead.textContent = "Top " + top.length + " by value (own scale)";
+    card.body.appendChild(barsHead);
+    card.body.appendChild(compositionRankedBars(top, {
+      width: width, topMax: topMax, total: total, labelField: labelField, hasLinks: hasLinks,
+      rowLabel: rowLabel, rowHref: rowHref, t: t,
+    }));
+
+    var mechanics =
+      "Top " + top.length + " of " + usable.length + " " + rowNoun.plural + " with a reported value: " +
+      "bars are scaled to their own top-" + topN + " range, not the whole book; the strip above " +
+      "splits the full book into top-1 / top-2–5 / top-6–" + topN + " / other bands of " +
+      "reported value. Options are labeled PUT/CALL; principal-amount (PRN) rows are shown " +
+      "separately and never summed with share (SH) rows.";
+    card.caption(captionLead ? captionLead + " — " + mechanics : mechanics);
+    return card.root;
   }
 
   // ---------- concentration stat tiles (Phase 5.2) ----------
@@ -611,7 +745,10 @@
   // never disagree with each other.
   // holdings: InstitutionalHolding[] or IssuerHolder[] (§5.6 reuse). opts (all optional;
   // defaults reproduce the original manager-holdings tiles byte-for-byte):
-  //   ranks      -- top-N ranks to show (default [1, 5, 10]).
+  //   ranks      -- top-N ranks to show (default [1, 5, 10]). A rank is DROPPED (not just shown
+  //                 as N/A) once N reaches or passes the number of positions carrying a reported
+  //                 value -- top-10 of a 2-position book is noise, not information (Phase 5
+  //                 polish: degenerate-state guard).
   //   rowLabel   -- the row-count tile's label (default "Positions reported"; pass "Holders
   //                 reported" for the issuer-centric reuse).
   //   totalNote  -- caption under the "Reported total" tile (default "Reported 13F long
@@ -638,14 +775,22 @@
       );
     }
 
+    // Degenerate-state guard: hide a top-N tile once N reaches (or passes) the number of
+    // positions that actually carry a reported value -- top-5/top-10 = 100.0% of a 2-position
+    // book is noise, not information, and repeating "100.0%" across several tiles trains readers
+    // to stop reading them. A rank that clears the guard still renders N/A rather than 0% when
+    // there's no positive total to divide by (§7 status vocabulary), so that behavior is
+    // unaffected below -- this only decides which ranks are shown at all.
+    var visibleRanks = ranks.filter(function (n) { return n < usable.length; });
+
     var tiles = [tile(rowLabel, esc(String(rows.length)))];
     if (!total) {
       // Never render a share as 0% when there's nothing positive to divide by -- the honest
       // token is N/A, same rule as the status vocabulary (§7).
-      ranks.forEach(function (n) { tiles.push(tile("Top-" + n + " share", "N/A")); });
+      visibleRanks.forEach(function (n) { tiles.push(tile("Top-" + n + " share", "N/A")); });
       tiles.push(tile("Reported total", "N/A", "No positive reported value on record for this quarter"));
     } else {
-      ranks.forEach(function (n) {
+      visibleRanks.forEach(function (n) {
         var topSum = sorted.slice(0, n).reduce(function (s, h) { return s + h.value; }, 0);
         tiles.push(tile("Top-" + n + " share", esc(pct(topSum / total))));
       });

@@ -196,7 +196,7 @@
   function mountCompositionChart(holdings) {
     var mount = $("composition-chart-mount");
     if (!mount) return;
-    var node = P.compositionBars(holdings, { topN: 10 });
+    var node = P.compositionBars(holdings, { topN: 10, width: P.measuredWidth(mount, 640) });
     if (node) {
       mount.appendChild(node);
     } else {
