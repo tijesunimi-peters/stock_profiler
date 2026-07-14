@@ -463,7 +463,6 @@
       ink: cssVar("--ink", "#1c1a16"),
       inkSoft: cssVar("--ink-soft", "#6b6459"),
       trackBorder: cssVar("--border-strong", "#d8d1c4"),
-      fontSans: "'Hanken Grotesk', system-ui, sans-serif",
       fontMono: "'IBM Plex Mono', monospace",
     };
   }
@@ -575,9 +574,12 @@
     tipFormat["Shares"] = true;
     barMarkOpts.tip = { format: tipFormat };
 
+    // Chart typography is standardized on the diverging (derived-activity) chart's: IBM Plex
+    // Mono, 10.5px for row names / axis text, 10px for inline value labels -- every Plot
+    // builder uses the same pair so the charts read as one family.
     var labelMarkOpts = {
       x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
-      fontFamily: t.fontSans, fontSize: 12, fill: t.ink,
+      fontFamily: t.fontMono, fontSize: 10.5, fill: t.ink,
     };
     if (o.hasLinks) { barMarkOpts.href = "href"; labelMarkOpts.href = "href"; }
 
@@ -603,7 +605,7 @@
           x: "value", y: "label",
           text: function (d) { return d.pctOfTotal.toFixed(1) + "%"; },
           textAnchor: "start", dx: 6,
-          fontFamily: t.fontMono, fontSize: 11, fill: t.inkSoft,
+          fontFamily: t.fontMono, fontSize: 10, fill: t.inkSoft,
         }),
       ],
     });
@@ -1491,12 +1493,13 @@
       x: "labelAnchorX", y: "label",
       text: function (d) { return labelSet[d.label] ? (d.isNew ? "New" : d.currentPct.toFixed(1) + "%") : ""; },
       textAnchor: "start", dx: 9,
-      fontFamily: FONT_MONO, fontSize: 10.5, fill: INK_SOFT,
+      fontFamily: FONT_MONO, fontSize: 10, fill: INK_SOFT,
     }));
-    // Issuer/manager name, left of the plot area (same convention as compositionBars).
+    // Issuer/manager name, left of the plot area (same convention as compositionBars):
+    // mono 10.5, the standardized chart typography (matches the diverging chart's rows).
     marks.push(window.Plot.text(rows, {
       x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
-      fontFamily: "'Hanken Grotesk', system-ui, sans-serif", fontSize: 12, fill: INK,
+      fontFamily: FONT_MONO, fontSize: 10.5, fill: INK,
     }));
 
     var plotNode = window.Plot.plot({
@@ -1508,8 +1511,8 @@
       marginRight: 60,
       // Real x-axis (percent scale, so every row has a scale reference even though only the
       // biggest movers get an inline label) but a suppressed y-axis -- row names are drawn as
-      // their own Hanken text mark below (entity name vs. numeral gets its own font, same
-      // convention as compositionBars), so Plot's own (mono) y-tick text would just duplicate it.
+      // their own text mark below (ink fill + optional link support, same convention as
+      // compositionBars), so Plot's own y-tick text would just duplicate it.
       x: {
         domain: [0, Math.max(10, maxPct * 1.25)],
         label: "% of reported portfolio value",
@@ -1639,7 +1642,7 @@
       marginRight: 20,
       marginTop: 26,
       marginBottom: 26,
-      style: { fontFamily: VL_FONT_MONO, fontSize: 10, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
+      style: { fontFamily: VL_FONT_MONO, fontSize: 10.5, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
       x: { type: "point", tickFormat: valueLineQuarterTick, label: null },
       y: { axis: null, nice: true },
       marks: [
@@ -1708,7 +1711,7 @@
       marginRight: 12,
       marginTop: 6,
       marginBottom: 20,
-      style: { fontFamily: VL_FONT_MONO, fontSize: 9.5, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
+      style: { fontFamily: VL_FONT_MONO, fontSize: 10.5, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
       x: { type: "point", tickFormat: valueLineQuarterTick, label: null },
       y: { grid: true, nice: true, ticks: 3, tickFormat: Math.round, label: null },
       marks: [
@@ -1795,7 +1798,7 @@
         text.setAttribute("y", H - 3);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-family", VL_FONT_MONO);
-        text.setAttribute("font-size", "9");
+        text.setAttribute("font-size", "10.5");
         text.setAttribute("fill", VL_INK_SOFT);
         text.textContent = valueLineQuarterTick(q);
         svg.appendChild(text);
