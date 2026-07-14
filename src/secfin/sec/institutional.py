@@ -236,8 +236,8 @@ def parse_info_table_xml(xml_bytes: bytes) -> list[InstitutionalHolding]:
     for row in root.findall("infoTable"):
         shares_block = row.find("shrsOrPrnAmt")
         shares = _to_float(shares_block.findtext("sshPrnamt")) if shares_block is not None else None
-        shares_type = shares_block.findtext("sshPrnamtType") if shares_block is not None else None
-        put_call = row.findtext("putCall")
+        shares_type = _clean(shares_block.findtext("sshPrnamtType")) if shares_block is not None else None
+        put_call = _clean(row.findtext("putCall"))
         holdings.append(
             InstitutionalHolding(
                 cusip=(row.findtext("cusip") or "").strip(),

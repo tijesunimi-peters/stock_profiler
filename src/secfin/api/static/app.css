@@ -497,23 +497,11 @@
 /* Plot returns a bare <svg> sized to its own width/height attrs; scale it to the card via CSS
    (aspect ratio preserved -- Plot's default viewBox keeps the bars proportional, never
    stretched). #composition-chart-mount / #holders-chart-mount are the innerHTML placeholders
-   manager.js / company.js append the Plot-backed compositionBars() node into -- the node itself
-   is a chartCard() root (`.plot-chart`), so no dedicated outer-card class is needed here anymore. */
+   manager.js / company.js append the Plot-backed compositionBars() fragment into -- each of its
+   two nodes is its own chartCard() root (`.plot-chart`), so no dedicated outer-card class is
+   needed here. */
 #composition-chart-mount:empty, #holders-chart-mount:empty { display: none; }
 .composition-bars svg { display: block; width: 100%; height: auto; }
-
-/* Sub-labels inside the shared chartCard() body distinguishing the strip from the ranked bars
-   (Phase 5 polish: composition redesign -- one card, two pieces). */
-.composition-subhead {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--mono-muted);
-  margin: 0 0 8px;
-}
-.composition-subhead:not(:first-child) { margin-top: 22px; }
 
 /* Part-to-whole strip: one 100%-stacked bar, ordered top-1/top-2-5/top-6-10/other bands with a
    2px surface gap between them (the flex `gap` shows --bg-page through, and the container's

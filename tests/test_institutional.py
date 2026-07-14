@@ -112,6 +112,32 @@ def test_parse_info_table_xml_2026_reports_whole_dollars():
     assert ally_rows[1].other_managers == [2, 4, 11]
 
 
+def test_parse_info_table_xml_tolerates_padded_enum_fields():
+    """Some filers pad sshPrnamtType/putCall with trailing whitespace (e.g. "SH ") --
+    found live 2026-07-14 during the 2025-06-30 bulk backfill, where it silently dropped
+    the entire manager's snapshot via a Pydantic Literal mismatch on the un-stripped value.
+    """
+    xml = b"""<?xml version="1.0"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>ALLY FINL INC</nameOfIssuer>
+    <titleOfClass>COM</titleOfClass>
+    <cusip>02005N100</cusip>
+    <value>498992850</value>
+    <shrsOrPrnAmt>
+      <sshPrnamt>12719675</sshPrnamt>
+      <sshPrnamtType>SH </sshPrnamtType>
+    </shrsOrPrnAmt>
+    <putCall>Put </putCall>
+    <investmentDiscretion>DFND</investmentDiscretion>
+  </infoTable>
+</informationTable>"""
+    holdings = parse_info_table_xml(xml)
+    assert len(holdings) == 1
+    assert holdings[0].shares_or_principal == "SH"
+    assert holdings[0].put_call == "Put"
+
+
 def test_parse_other_manager_refs():
     assert _parse_other_manager_refs(None) == []
     assert _parse_other_manager_refs("") == []

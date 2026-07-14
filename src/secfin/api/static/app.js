@@ -543,6 +543,18 @@
   // top bars into illegibility. Each bar's %-label is still of TOTAL reported value (not the
   // top-N subset), and a Plot `tip` carries issuer/manager, value, % of reported value, and
   // shares -- labeling PRN (principal) rows so they're never read as a share count.
+  // Binary-search-truncate `label` to the longest prefix (+ "…") that fits `maxWidth` px,
+  // measured via a 2D canvas context already configured with the target font.
+  function truncateToWidth(label, maxWidth, ctx) {
+    if (ctx.measureText(label).width <= maxWidth) return label;
+    var lo = 0, hi = label.length;
+    while (lo < hi) {
+      var mid = (lo + hi + 1) >> 1;
+      if (ctx.measureText(label.slice(0, mid) + "…").width <= maxWidth) lo = mid; else hi = mid - 1;
+    }
+    return lo > 0 ? label.slice(0, lo) + "…" : "…";
+  }
+
   function compositionRankedBars(top, o) {
     var t = o.t;
     var tipLabelKey = o.labelField === "manager_name" ? "Manager" : "Issuer";
@@ -560,7 +572,7 @@
     });
     var domain = rows.map(function (r) { return r.label; }); // preserves rank order top-to-bottom
 
-    var barMarkOpts = { x: "value", y: "label", fill: t.accent, rx: 3, insetTop: 5, insetBottom: 5 };
+    var barMarkOpts = { x: "value", y: "label", fill: t.accent, rx: 3, insetTop: 4, insetBottom: 4 };
     var tipChannels = {};
     tipChannels[tipLabelKey] = "label";
     tipChannels["Value"] = "value";
@@ -577,19 +589,38 @@
     // Chart typography is standardized on the diverging (derived-activity) chart's: IBM Plex
     // Mono, 10.5px for row names / axis text, 10px for inline value labels -- every Plot
     // builder uses the same pair so the charts read as one family.
+    var MARGIN_LEFT = 230, LABEL_FONT_SIZE = 10.5, LABEL_DX = 8;
+    // Row names are drawn as a Plot.text mark anchored at the plot frame's left edge (x=0,
+    // dx=-LABEL_DX), extending leftward into the marginLeft gutter -- a name wider than that
+    // gutter runs past pixel 0 of the SVG itself and gets clipped by .plot-chart-body's
+    // horizontal scroll (there's nothing to scroll to, left of the origin). Found live
+    // 2026-07-15 on AAPL's holder list ("CHARLES SCHWAB INVESTMENT MANAGEMENT INC" rendering
+    // as ".ES SCHWAB INVESTMENT MANAGEMENT INC"). Truncate to fit with an ellipsis -- the
+    // full name is still in the existing tooltip (tipChannels[tipLabelKey] above).
+    var measureCtx = document.createElement("canvas").getContext("2d");
+    measureCtx.font = LABEL_FONT_SIZE + "px " + t.fontMono;
+    var maxLabelWidth = MARGIN_LEFT - LABEL_DX - 4;
+    rows.forEach(function (r) {
+      r.displayLabel = truncateToWidth(r.label, maxLabelWidth, measureCtx);
+    });
+
     var labelMarkOpts = {
-      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
-      fontFamily: t.fontMono, fontSize: 10.5, fill: t.ink,
+      x: 0, y: "label", text: "displayLabel", textAnchor: "end", dx: -LABEL_DX,
+      fontFamily: t.fontMono, fontSize: LABEL_FONT_SIZE, fill: t.ink,
     };
     if (o.hasLinks) { barMarkOpts.href = "href"; labelMarkOpts.href = "href"; }
 
-    var ROW_H = 32, MARGIN_V = 10;
+    // Row band matches the diverging (derived-activity) chart's compactness (26px vs. this
+    // chart's previous 32px) -- same "one chart family" reasoning as the shared typography
+    // above, and a real ~19% height cut on a 10-row chart. Bar insets scaled down with it
+    // (4px vs. 5px) to keep roughly the same bar-to-row-height proportion.
+    var ROW_H = 26, MARGIN_V = 8;
     var plot = window.Plot.plot({
       width: o.width,
       height: rows.length * ROW_H + MARGIN_V * 2,
       marginTop: MARGIN_V,
       marginBottom: MARGIN_V,
-      marginLeft: 230,
+      marginLeft: MARGIN_LEFT,
       marginRight: 64,
       axis: null, // no default axis text -- labels are drawn as marks below, in the right font each
       x: { domain: [0, o.topMax] }, // the top-N's OWN max -- never the whole book's total
@@ -618,10 +649,13 @@
   // holdings: InstitutionalHolding[] (GET /managers/{cik}/holdings) or IssuerHolder[] (the
   // issuer-centric twin, GET /companies/{symbol}/institutional-holders -- §5.6 reuse). `value` is
   // the reported market value of 13(f) long positions only; this is never AUM, a whole book, or
-  // a share of shares outstanding. Returns ONE chartCard() DOM node holding two pieces -- the
-  // part-to-whole strip (all usable rows, ordered top-1/top-2-5/top-6-10/other bands) and top-N
-  // ranked bars on their own value scale -- or null when there's no positive reported value to
-  // chart, so callers can render their own honest empty-state note rather than dividing by zero.
+  // a share of shares outstanding. Returns a DocumentFragment holding TWO independent
+  // chartCard() nodes -- the part-to-whole strip (all usable rows, ordered
+  // top-1/top-2-5/top-6-10/other bands) and top-N ranked bars on their own value scale, each
+  // with its own title/caption -- or null when there's no positive reported value to chart, so
+  // callers can render their own honest empty-state note rather than dividing by zero. Callers
+  // keep appending a single node (mount.appendChild(node)); the fragment disappears on append,
+  // leaving the two cards as ordinary stacked siblings.
   //
   // opts (all optional; defaults reproduce the original manager-holdings framing):
   //   topN               -- ranked bars, and the strip's "top-6-10" band ceiling (default 10).
@@ -711,30 +745,33 @@
     var top = sorted.slice(0, topN);
     var topMax = top[0].value; // sorted desc, so the first row is the max -- always > 0 here
 
-    var card = chartCard("Composition — reported value");
-    var stripHead = document.createElement("div");
-    stripHead.className = "composition-subhead";
-    stripHead.textContent = "Share of total reported value";
-    card.body.appendChild(stripHead);
-    card.body.appendChild(compositionStrip(segs, width));
+    // Two independent chartCards, not one shared card with two labeled sub-sections (the
+    // prior "Phase 5 polish: composition redesign" layout) -- each chart now stands alone
+    // with its own title and caption instead of reading as one fused chart. Combined into a
+    // DocumentFragment so callers keep appending a single node (mount.appendChild(node)); the
+    // fragment itself never lands in the DOM, leaving the two .plot-chart cards as ordinary
+    // stacked siblings, same as any other pair of charts on these pages.
+    var stripCard = chartCard("Share of total reported value");
+    stripCard.body.appendChild(compositionStrip(segs, width));
+    var stripCaption = "split into top-1 / top-2–5 / top-6–" + topN + " / other bands of reported value.";
+    stripCard.caption(captionLead ? captionLead + " — " + stripCaption : stripCaption.charAt(0).toUpperCase() + stripCaption.slice(1));
 
-    var barsHead = document.createElement("div");
-    barsHead.className = "composition-subhead";
-    barsHead.textContent = "Top " + top.length + " by value (own scale)";
-    card.body.appendChild(barsHead);
-    card.body.appendChild(compositionRankedBars(top, {
+    var barsCard = chartCard("Top " + top.length + " by value (own scale)");
+    barsCard.body.appendChild(compositionRankedBars(top, {
       width: width, topMax: topMax, total: total, labelField: labelField, hasLinks: hasLinks,
       rowLabel: rowLabel, rowHref: rowHref, t: t,
     }));
+    barsCard.caption(
+      "Top " + top.length + " of " + usable.length + " " + rowNoun.plural + " with a reported " +
+      "value: bars are scaled to their own top-" + topN + " range, not the whole book. Options " +
+      "are labeled PUT/CALL; principal-amount (PRN) rows are shown separately and never summed " +
+      "with share (SH) rows."
+    );
 
-    var mechanics =
-      "Top " + top.length + " of " + usable.length + " " + rowNoun.plural + " with a reported value: " +
-      "bars are scaled to their own top-" + topN + " range, not the whole book; the strip above " +
-      "splits the full book into top-1 / top-2–5 / top-6–" + topN + " / other bands of " +
-      "reported value. Options are labeled PUT/CALL; principal-amount (PRN) rows are shown " +
-      "separately and never summed with share (SH) rows.";
-    card.caption(captionLead ? captionLead + " — " + mechanics : mechanics);
-    return card.root;
+    var frag = document.createDocumentFragment();
+    frag.appendChild(stripCard.root);
+    frag.appendChild(barsCard.root);
+    return frag;
   }
 
   // ---------- concentration stat tiles (Phase 5.2) ----------
@@ -1288,10 +1325,21 @@
       }));
     }
 
+    var Y_MARGIN_LEFT = 196;
+    // Row names render via Plot's default y-axis tick text, anchored at the axis line and
+    // extending left -- same clipping mechanism as compositionRankedBars: a name wider than
+    // Y_MARGIN_LEFT runs past pixel 0 of the SVG and gets clipped by .plot-chart-body's
+    // horizontal scroll. Found live 2026-07-15 alongside the composition-chart bug ("Virtus
+    // Investment Advisers, LLC" rendering as "irtus Investment Advisers, LLC"). Truncate via
+    // tickFormat; the full name is still in the existing tooltip (tip.channels[tipLabelKey]).
+    var measureCtx = document.createElement("canvas").getContext("2d");
+    measureCtx.font = "10.5px " + FONT_MONO;
+    var maxLabelWidth = Y_MARGIN_LEFT - 14;
+
     var plotNode = window.Plot.plot({
       width: width,
       height: height,
-      marginLeft: 196,
+      marginLeft: Y_MARGIN_LEFT,
       marginRight: 90,
       marginTop: 8,
       marginBottom: 30,
@@ -1300,7 +1348,10 @@
         color: INK_SOFT, overflow: "visible",
       },
       x: { label: "% of prior position (signed)", tickFormat: signedPctChangeTick, grid: false, domain: xDomain },
-      y: { domain: domain, label: null },
+      y: {
+        domain: domain, label: null,
+        tickFormat: function (d) { return truncateToWidth(String(d), maxLabelWidth, measureCtx); },
+      },
       marks: marks,
     });
 
@@ -1444,6 +1495,21 @@
     var ACCENT = t.accent, ACCENT_WASH = t.accentWash, INK = t.ink, INK_SOFT = t.inkSoft;
     var BORDER_TINT = cssVar("--border-tint-rule", "#e5dfd3");
     var FONT_MONO = t.fontMono;
+    var tipLabelKey = labelField === "manager_name" ? "Manager" : "Issuer";
+
+    var DUMBBELL_MARGIN_LEFT = 210;
+    // Row names render as a custom text mark anchored at x=0/dx=-8 -- same convention, and
+    // the same left-clipping failure mode, as compositionBars/divergingBars: a name wider
+    // than the margin runs past pixel 0 of the SVG and gets clipped by .plot-chart-body's
+    // horizontal scroll. Found live 2026-07-15 on a manager's "Prior -> current allocation"
+    // chart. Truncate to fit; the full name is now also a named tooltip channel below (this
+    // chart previously had none -- its tipFormat explicitly suppressed the y/label channel).
+    var measureCtx = document.createElement("canvas").getContext("2d");
+    measureCtx.font = "10.5px " + FONT_MONO;
+    var maxLabelWidth = DUMBBELL_MARGIN_LEFT - 8 - 4;
+    rows.forEach(function (r) {
+      r.displayLabel = truncateToWidth(r.label, maxLabelWidth, measureCtx);
+    });
 
     var rowH = 30;
     var height = Math.max(100, rows.length * rowH + 40);
@@ -1462,6 +1528,7 @@
     newRows.forEach(function (r) { labelSet[r.label] = true; });
 
     var tipFormat = { x: false, y: false, fill: false, stroke: false, Prior: true, Current: true, "Prior value": true, "Current value": true };
+    tipFormat[tipLabelKey] = true;
 
     var marks = [
       window.Plot.gridX({ stroke: BORDER_TINT, strokeOpacity: 0.6 }),
@@ -1474,19 +1541,23 @@
         stroke: BORDER_TINT, strokeWidth: 2,
       }));
       // Prior dot: a lighter/hollow tint (kind, not magnitude -- §10).
+      var priorChannels = { Prior: "priorPct", "Prior value": "priorValueFmt" };
+      priorChannels[tipLabelKey] = "label";
       marks.push(window.Plot.dot(matched, {
         x: "priorPct", y: "label", r: 5, fill: ACCENT_WASH, stroke: ACCENT, strokeWidth: 1.25,
-        channels: { Prior: "priorPct", "Prior value": "priorValueFmt" },
+        channels: priorChannels,
         tip: { format: tipFormat },
       }));
     }
     // Current dot: solid accent, drawn for every row (matched or New).
+    var currentChannels = {
+      Current: "currentPct", "Current value": "currentValueFmt",
+      Prior: function (d) { return d.isNew ? "New — no prior position" : signedPctChangeTick(d.priorPct); },
+    };
+    currentChannels[tipLabelKey] = "label";
     marks.push(window.Plot.dot(rows, {
       x: "currentPct", y: "label", r: 5.5, fill: ACCENT, stroke: t.trackBorder, strokeWidth: 1,
-      channels: {
-        Current: "currentPct", "Current value": "currentValueFmt",
-        Prior: function (d) { return d.isNew ? "New — no prior position" : signedPctChangeTick(d.priorPct); },
-      },
+      channels: currentChannels,
       tip: { format: tipFormat },
     }));
     marks.push(window.Plot.text(rows, {
@@ -1498,7 +1569,7 @@
     // Issuer/manager name, left of the plot area (same convention as compositionBars):
     // mono 10.5, the standardized chart typography (matches the diverging chart's rows).
     marks.push(window.Plot.text(rows, {
-      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
+      x: 0, y: "label", text: "displayLabel", textAnchor: "end", dx: -8,
       fontFamily: FONT_MONO, fontSize: 10.5, fill: INK,
     }));
 
@@ -1507,7 +1578,7 @@
       height: height,
       marginTop: 10,
       marginBottom: 30,
-      marginLeft: 210,
+      marginLeft: DUMBBELL_MARGIN_LEFT,
       marginRight: 60,
       // Real x-axis (percent scale, so every row has a scale reference even though only the
       // biggest movers get an inline label) but a suppressed y-axis -- row names are drawn as
