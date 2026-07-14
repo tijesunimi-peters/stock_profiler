@@ -1031,19 +1031,61 @@
 
   var HOLDING_ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited" };
 
+  // Signed percent-of-prior-position tick/label -- "+18.2%" / "−6.7%" / "0%". Percent, not
+  // shares, is what divergingBars' bar LENGTH now encodes (see below); kept next to
+  // signedSharesTick so both signed-delta formatters live in one place.
+  function signedPctChangeTick(v) {
+    if (v === 0) return "0%";
+    return (v > 0 ? "+" : MINUS) + Math.abs(v).toFixed(1) + "%";
+  }
+
+  // One sentence per changed row, for the <3-changed-rows degenerate case (a one-or-two-bar
+  // chart with a full axis apparatus is the anti-pattern this replaces -- ROADMAP_UI.md's
+  // Phase 5 polish pass). Mirrors the same wording the chart's tooltip/labels use, so the
+  // sentence and the chart never disagree when a caller straddles the 3-row boundary across
+  // renders (e.g. paging a quarter selector).
+  function describeActivityRow(a, labelField) {
+    var name = a[labelField] || a.cusip || "—";
+    if (a.action === "new") {
+      return name + " is a new position (" + shares(a.shares_after || 0) + " shares).";
+    }
+    if (a.action === "exited") {
+      return name + " exited (was " + shares(a.shares_before || 0) + " shares).";
+    }
+    var verb = a.action === "added" ? "added" : "reduced";
+    var pctText = typeof a.shares_before === "number" && a.shares_before
+      ? " (" + signedPctChangeTick((a.shares_change / a.shares_before) * 100) + ")"
+      : "";
+    return name + " " + verb + " " + signedSharesTick(a.shares_change) + " shares" + pctText + ".";
+  }
+
   // Signed share-change bars per issuer (or, for the issuer-centric reuse, per manager), for
   // the 13F DERIVED activity diff (`normalize/flows.py` HoldingDelta rows, as returned by
   // /managers/{cik}/activity and .../institutional-activity). `activity`: HoldingDelta[]
   // exactly as the API returns it -- never re-derived client-side.
   //
-  // `opts`: { fromLabel, toLabel, fromPeriod, toPeriod, cap, labelField, tipLabelKey, title }.
-  // fromLabel/toLabel are pre-formatted quarter-end labels (the caller already has a date
-  // formatter); fromPeriod/toPeriod (raw ISO) are used only as a fallback caption if no label
-  // was passed. `cap` defaults to 10. `labelField` picks the bar's display name (default
+  // Bar LENGTH is now **% of the prior position** (shares_change / shares_before), not raw
+  // shares -- raw share counts aren't comparable across issuers/managers of wildly different
+  // size, so a chart ranked/scaled by raw shares mostly just shows "who is biggest," not "who
+  // moved the most." Absolute shares stay visible as the direct on-bar label and in the
+  // tooltip (STYLE_GUIDE/ROADMAP_UI Phase 5 polish pass, "Derived activity redesign").
+  //
+  // A **New** position has no prior base to divide by -- it is NEVER given a fake +100% bar.
+  // It renders as a full-length OUTLINE marker (dashed stroke, no fill; §10 kind-not-magnitude
+  // tint rule) at the same +100 extent a doubling-or-more "added" bar would reach, clearly
+  // distinguished from the solid/tinted real bars, labeled "New" inline and "New — no prior
+  // position" in its tooltip. **Exited** genuinely IS −100% of the prior position (shares_after
+  // is 0) -- it renders as a real, solid bar (a position opened/closed outright), not a marker.
+  //
+  // `opts`: { fromLabel, toLabel, fromPeriod, toPeriod, cap, labelField, tipLabelKey, title,
+  // width }. fromLabel/toLabel are pre-formatted quarter-end labels (the caller already has a
+  // date formatter); fromPeriod/toPeriod (raw ISO) are used only as a fallback caption if no
+  // label was passed. `cap` defaults to 10. `labelField` picks the bar's display name (default
   // "issuer_name"; pass "manager_name" for the issuer-centric reuse -- each HoldingDelta row is
   // keyed by (manager_cik, cusip) either way, so the same cusip-suffix disambiguation logic
   // applies to repeated manager names too). `tipLabelKey`/`title` rename the tooltip channel and
-  // chart title to match (default "Issuer"/"Derived activity").
+  // chart title to match (default "Issuer"/"Derived activity"). `width` is the mount site's
+  // measured width (`Profin.measuredWidth(el, 640)`) -- never a hardcoded pixel width.
   //
   // Note on option/instrument labeling: HoldingDelta (normalize/schema.py) does NOT carry
   // put_call or shares_or_principal -- those live only on the raw InstitutionalHolding rows
@@ -1051,8 +1093,9 @@
   // label here; the caption states the SH/PRN and option/equity non-summing rule as a standing
   // caveat instead of a per-bar flag, since the delta rows carry no such flag to render.
   //
-  // Returns a DOM node, or null when there's nothing honest to chart (every row unchanged or a
-  // zero net change) -- callers should skip appending rather than draw an empty axis.
+  // Returns a DOM node: the Plot chart when >=3 rows changed, or (the degenerate case) a plain
+  // sentence in the same chartCard chrome when 1-2 rows changed; null when nothing changed at
+  // all (every row unchanged or a zero net change) -- callers should skip appending.
   function divergingBars(activity, opts) {
     opts = opts || {};
     var cap = opts.cap || 10;
@@ -1061,16 +1104,36 @@
     var titleText = opts.title || "Derived activity";
     var fromLabel = opts.fromLabel || opts.fromPeriod || "the prior quarter";
     var toLabel = opts.toLabel || opts.toPeriod || "this quarter";
+    var width = opts.width || 640;
 
     // Honest filter: unchanged rows and non-numeric/zero changes never get a zero-length bar.
-    var rows = (activity || []).filter(function (a) {
+    var changed = (activity || []).filter(function (a) {
       return a && a.action !== "unchanged" && typeof a.shares_change === "number" && a.shares_change !== 0;
     });
-    if (!rows.length) return null;
+    if (!changed.length) return null;
 
-    rows = rows.slice().sort(function (a, b) { return Math.abs(b.shares_change) - Math.abs(a.shares_change); });
+    // Degenerate case (§ Phase 5 polish pass): fewer than 3 changed rows is a sentence, not a
+    // one-or-two-bar chart with a full axis apparatus. Still carries the DERIVED caveat, in the
+    // same chartCard chrome as the real chart so the page never looks like two visual dialects.
+    if (changed.length < 3) {
+      var card = chartCard(titleText);
+      var lead = changed.length + (changed.length === 1 ? " position changed" : " positions changed") +
+        " vs " + fromLabel + ": ";
+      var sentences = changed.map(function (a) { return describeActivityRow(a, labelField); });
+      var p = document.createElement("p");
+      p.className = "state-copy";
+      p.style.margin = "0";
+      p.textContent = lead + sentences.join(" ");
+      card.body.appendChild(p);
+      card.caption(
+        "DERIVED by diffing " + fromLabel + " → " + toLabel + " 13F snapshots — never reported " +
+        "trades. Too few changed positions this quarter for a comparative chart."
+      );
+      return card.root;
+    }
+
+    var rows = changed.slice();
     var overflow = Math.max(0, rows.length - cap);
-    rows = rows.slice(0, cap);
 
     // Multi-class issuers (same issuer_name, distinct CUSIPs) -- or, for the issuer-centric
     // reuse, the same manager holding more than one class of this issuer -- must stay distinct
@@ -1081,22 +1144,60 @@
       var nm = a[labelField] || a.cusip || "—";
       seen[nm] = (seen[nm] || 0) + 1;
     });
+
     var data = rows.map(function (a) {
       var nm = a[labelField] || a.cusip || "—";
       var label = seen[nm] > 1 && a.cusip ? nm + " (" + a.cusip.slice(-6) + ")" : nm;
-      var full = a.action === "new" || a.action === "exited"; // a position opened/closed outright
+      var actionLabel = HOLDING_ACTION_LABEL[a.action] || a.action || "—";
+      // "New" never gets a fake prior-base percent; a defensive fallback also catches the
+      // (shouldn't-happen) case of a non-new row with no usable shares_before -- both render
+      // as the same distinct outline marker rather than a computed bar.
+      var hasBase = a.action !== "new" && typeof a.shares_before === "number" && a.shares_before !== 0;
+      var isMarker = !hasBase;
+      var pct = hasBase ? (a.shares_change / a.shares_before) * 100 : null;
+      var markerPct = a.shares_change >= 0 ? 100 : -100; // full-length, direction-honest position
+      var sortKey = isMarker ? Infinity : Math.abs(pct); // New pins at the top regardless of size
+      var kind = a.action === "exited" ? "full" : isMarker ? "new" : "partial";
+      var inlineLabel;
+      if (isMarker) {
+        inlineLabel = actionLabel + " " + signedSharesTick(a.shares_change);
+      } else if (a.action === "exited") {
+        inlineLabel = actionLabel + " " + signedSharesTick(a.shares_change) + " (" + signedPctChangeTick(pct) + ")";
+      } else {
+        inlineLabel = signedSharesTick(a.shares_change) + " (" + signedPctChangeTick(pct) + ")";
+      }
+      var rowPct = isMarker ? markerPct : pct;
+      // Full-length bars/markers (Exited/New) reach the domain edge, right next to the row-name
+      // margin -- a label placed AT that far end collides with the margin text (confirmed
+      // against a real render). Those labels instead go from the zero rule OUT INTO the empty
+      // opposite half (a full/marker row only ever draws on one side, so the other half is
+      // always clear) -- e.g. an Exited bar runs left, its label runs right from x=0. A
+      // "partial" (added/reduced) bar is normally short enough that labeling at its own end,
+      // same side, has room.
+      var labelSide = kind === "partial" ? (rowPct >= 0 ? 1 : -1) : (rowPct >= 0 ? -1 : 1);
       return {
         label: label,
         cusip: a.cusip || "—",
-        actionLabel: HOLDING_ACTION_LABEL[a.action] || a.action || "—",
-        change: a.shares_change,
+        actionLabel: isMarker ? actionLabel + " — no prior position" : actionLabel,
+        pctForTip: isMarker ? "n/a — no prior position" : signedPctChangeTick(pct),
         beforeFmt: a.shares_before != null ? shares(a.shares_before) : "—",
         afterFmt: a.shares_after != null ? shares(a.shares_after) : "—",
         changeFmt: signedSharesTick(a.shares_change),
-        kind: full ? "full" : "partial",
+        pct: rowPct,
+        kind: kind,
+        inlineLabel: inlineLabel,
+        labelX: kind === "partial" ? rowPct : 0,
+        labelSide: labelSide,
+        sortKey: sortKey,
       };
     });
-    var domain = data.map(function (d) { return d.label; }); // sorted by |change|, largest first
+
+    // Rank by |% of prior position| (New pinned at the top -- see sortKey above -- since it has
+    // no magnitude to rank by, and an outright new position is at least as notable as any
+    // resize). Cap at the top N by that same rank, exactly like the shares-based cap before it.
+    data.sort(function (a, b) { return b.sortKey - a.sortKey; });
+    data = data.slice(0, cap);
+    var domain = data.map(function (d) { return d.label; });
 
     var ACCENT = cssVar("--accent", "#C0703A");
     var ACCENT_WASH = cssVar("--accent-wash", "#F3E4D5");
@@ -1108,78 +1209,330 @@
     var rowH = 26;
     var height = Math.max(90, data.length * rowH + 46);
 
+    // Domain always reaches at least ±100 (Exited and New/marker rows sit exactly there); a
+    // rare "added"/"reduced" row that more than doubled/halved its own magnitude past 100%
+    // simply extends it further -- never clipped.
+    var maxAbsPct = data.reduce(function (m, d) { return Math.max(m, Math.abs(d.pct)); }, 100);
+    var xDomain = [-maxAbsPct * 1.18, maxAbsPct * 1.18];
+
+    var bars = data.filter(function (d) { return d.kind !== "new"; });
+    var markers = data.filter(function (d) { return d.kind === "new"; });
+
     // Tooltip channel/format keys are built off tipLabelKey so the issuer-centric reuse can
     // rename "Issuer" -> "Manager" without a second copy of this mark's options.
-    var tipChannels = { CUSIP: "cusip", Action: "actionLabel", "Shares before": "beforeFmt", "Shares after": "afterFmt", Change: "changeFmt" };
-    tipChannels[tipLabelKey] = "label";
-    var tipFormat = { x: false, y: false, fill: false, stroke: false, CUSIP: true, Action: true, "Shares before": true, "Shares after": true, Change: true };
-    tipFormat[tipLabelKey] = true;
+    function tipChannelsFor() {
+      var channels = { CUSIP: "cusip", Action: "actionLabel", "Shares before": "beforeFmt", "Shares after": "afterFmt", Change: "changeFmt", "% of prior": "pctForTip" };
+      channels[tipLabelKey] = "label";
+      var format = { x: false, y: false, fill: false, stroke: false, CUSIP: true, Action: true, "Shares before": true, "Shares after": true, Change: true, "% of prior": true };
+      format[tipLabelKey] = true;
+      return { channels: channels, format: format };
+    }
+    var tip = tipChannelsFor();
+
+    var marks = [
+      window.Plot.gridX({ stroke: BORDER_TINT, strokeOpacity: 0.7 }),
+    ];
+    if (bars.length) {
+      marks.push(window.Plot.barX(bars, {
+        x: "pct",
+        y: "label",
+        // One terracotta accent, no good/bad hue (§10): solid = opened/closed outright
+        // (exited), lighter tint = an existing position resized (added/reduced). Direction
+        // (left = reduced/exited, right = added) already carries increase/decrease.
+        fill: function (d) { return d.kind === "full" ? ACCENT : ACCENT_WASH; },
+        stroke: ACCENT,
+        strokeWidth: 1,
+        rx: 3,
+        channels: tip.channels,
+        tip: { format: tip.format },
+      }));
+    }
+    if (markers.length) {
+      // New: a full-length OUTLINE marker, never a filled bar -- distinct in KIND (unfilled +
+      // dashed), not just a lighter tint, so it can never be mistaken for a real +100% change.
+      marks.push(window.Plot.barX(markers, {
+        x: "pct",
+        y: "label",
+        fill: "none",
+        stroke: ACCENT,
+        strokeWidth: 1.5,
+        strokeDasharray: "3,2",
+        rx: 3,
+        channels: tip.channels,
+        tip: { format: tip.format },
+      }));
+    }
+    marks.push(window.Plot.ruleX([0], { stroke: INK, strokeOpacity: 0.75 }));
+    // Direct on-bar label: absolute shares (+ percent for real bars), so the number is visible
+    // without hovering -- the tooltip repeats it alongside the raw before/after shares. Split
+    // into two constant-textAnchor marks (positive-side vs negative-side) rather than one mark
+    // with a per-datum function for textAnchor/dx -- Plot's text mark treats those two options
+    // as marks-level constants, not per-datum channels, so a function there stringifies instead
+    // of evaluating (confirmed against a real render: it broke the mark's own transform).
+    var posLabels = data.filter(function (d) { return d.labelSide >= 0; });
+    var negLabels = data.filter(function (d) { return d.labelSide < 0; });
+    if (posLabels.length) {
+      marks.push(window.Plot.text(posLabels, {
+        x: "labelX", y: "label", text: function (d) { return d.inlineLabel; },
+        textAnchor: "start", dx: 6,
+        fontFamily: FONT_MONO, fontSize: 10, fill: INK_SOFT,
+      }));
+    }
+    if (negLabels.length) {
+      marks.push(window.Plot.text(negLabels, {
+        x: "labelX", y: "label", text: function (d) { return d.inlineLabel; },
+        textAnchor: "end", dx: -6,
+        fontFamily: FONT_MONO, fontSize: 10, fill: INK_SOFT,
+      }));
+    }
 
     var plotNode = window.Plot.plot({
-      width: 640,
+      width: width,
       height: height,
       marginLeft: 196,
-      marginRight: 22,
+      marginRight: 90,
       marginTop: 8,
       marginBottom: 30,
       style: {
         fontFamily: FONT_MONO, fontSize: 10.5, background: "transparent",
         color: INK_SOFT, overflow: "visible",
       },
-      x: { label: "shares change (signed)", tickFormat: signedSharesTick, grid: false },
+      x: { label: "% of prior position (signed)", tickFormat: signedPctChangeTick, grid: false, domain: xDomain },
       y: { domain: domain, label: null },
-      marks: [
-        window.Plot.gridX({ stroke: BORDER_TINT, strokeOpacity: 0.7 }),
-        window.Plot.barX(data, {
-          x: "change",
-          y: "label",
-          // One terracotta accent, no good/bad hue (§10): a lighter tint of the SAME hue marks
-          // an opened/closed position (new/exited) vs. a resized one (added/reduced). Direction
-          // (left = reduced/exited, right = new/added) already carries increase/decrease.
-          fill: function (d) { return d.kind === "full" ? ACCENT : ACCENT_WASH; },
-          stroke: ACCENT,
-          strokeWidth: 1,
-          rx: 3,
-          channels: tipChannels,
-          tip: { format: tipFormat },
-        }),
-        window.Plot.ruleX([0], { stroke: INK, strokeOpacity: 0.75 }),
-      ],
+      marks: marks,
     });
 
-    var wrap = document.createElement("div");
-    wrap.className = "plot-chart plot-diverging-bars";
-
-    var title = document.createElement("div");
-    title.className = "plot-chart-title";
-    title.textContent = titleText;
-    wrap.appendChild(title);
-
-    var body = document.createElement("div");
-    body.className = "plot-chart-body";
-    body.appendChild(plotNode);
-    wrap.appendChild(body);
-
-    var caption = document.createElement("p");
-    caption.className = "plot-chart-caption";
-    caption.textContent =
+    var chart = chartCard(titleText);
+    chart.body.appendChild(plotNode);
+    chart.caption(
       "DERIVED by diffing " + fromLabel + " → " + toLabel + " 13F snapshots — never reported " +
-      "trades. New/Exited positions are inferred from a CUSIP's presence or absence between the two " +
-      "snapshots, not an observed transaction. Units are shares, not value; SH/PRN and option/equity " +
-      "rows are never summed together, and each bar is one CUSIP exactly as reported (multi-class " +
-      "issuers stay distinct). Solid fill = a position opened or closed outright (new/exited); " +
-      "lighter fill = an existing position resized (added/reduced).";
-    wrap.appendChild(caption);
-
+      "trades. Bar length is percent of the PRIOR position (shares_change ÷ shares_before), so " +
+      "issuers/managers of different size are comparable; absolute shares are the direct label. " +
+      "New/Exited positions are inferred from a CUSIP's presence or absence between the two " +
+      "snapshots, not an observed transaction -- New has no prior base and never gets a fake " +
+      "+100% bar (shown as an outlined marker instead); Exited genuinely is −100% and renders as " +
+      "a real bar. Units are shares, not value; SH/PRN and option/equity rows are never summed " +
+      "together, and each bar is one CUSIP exactly as reported (multi-class issuers stay distinct)."
+    );
     if (overflow > 0) {
-      var note = document.createElement("p");
-      note.className = "plot-chart-note";
-      note.textContent = "+ " + overflow + " more change" + (overflow === 1 ? "" : "s") +
-        " not shown (top " + cap + " by magnitude).";
-      wrap.appendChild(note);
+      chart.note("+ " + overflow + " more change" + (overflow === 1 ? "" : "s") +
+        " not shown (top " + cap + " by |% of prior position|, New pinned first).");
+    }
+    return chart.root;
+  }
+
+  // ---------- Phase 5 polish pass: activity summary tiles ----------
+  //
+  // Small count-only tiles (n new / added / reduced / exited) above the diverging-bars chart
+  // (or the degenerate sentence) -- an at-a-glance headline before the row-by-row detail.
+  // Reuses the existing .stat-tiles/.stat-tile* CSS (Phase 5.2), a plain HTML string builder
+  // like statTiles -- no Plot needed for four numbers. `activity`: HoldingDelta[] exactly as
+  // the API returns it (NOT pre-filtered/capped -- these counts are over every changed row,
+  // independent of divergingBars' top-N cap, so the tiles and the "+N more" note can honestly
+  // disagree in a large book: the tiles count everything, the chart caps what it draws).
+  // Zero-count kinds are omitted (never invent a "0 new" tile that implies we checked and found
+  // none, when e.g. this manager's book simply doesn't have that shape of quarter).
+  function activitySummaryTiles(activity) {
+    var rows = (activity || []).filter(function (a) { return a && a.action && a.action !== "unchanged"; });
+    if (!rows.length) return "";
+    var counts = { new: 0, added: 0, reduced: 0, exited: 0 };
+    rows.forEach(function (a) { if (counts[a.action] !== undefined) counts[a.action]++; });
+    var order = [
+      ["new", "New"], ["added", "Added"], ["reduced", "Reduced"], ["exited", "Exited"],
+    ];
+    var tiles = order
+      .filter(function (o) { return counts[o[0]] > 0; })
+      .map(function (o) {
+        return (
+          '<div class="stat-tile"><span class="stat-tile-label">' + esc(o[1]) + "</span>" +
+          '<span class="stat-tile-value">' + esc(String(counts[o[0]])) + "</span></div>"
+        );
+      });
+    if (!tiles.length) return "";
+    return '<div class="stat-tiles">' + tiles.join("") + "</div>";
+  }
+
+  // ---------- Phase 5 polish pass: dumbbell (prior -> current % of reported value) ----------
+  //
+  // Top-10 holdings by CURRENT reported value, each shown as prior -> current **% of that
+  // quarter's own reported total** -- the two-quarter special case of the deferred 5.5
+  // (allocation-over-time). Computing each percent within its own snapshot (numerator AND
+  // denominator both from the same filing) is what makes this comparable across the
+  // thousands->whole-dollars unit-convention boundary (CLAUDE.md/DATA_MODEL.md): the raw `value`
+  // unit cancels out of the ratio, so this is safe to plot even spanning that boundary, unlike
+  // valueLineChart's raw totals (which clip instead of normalizing -- see 5.4).
+  //
+  // `current`/`prior`: raw holdings rows for the two quarters (InstitutionalHolding[] from
+  // /managers/{cik}/holdings, or IssuerHolder[] from /companies/{symbol}/institutional-holders
+  // -- same shapes compositionBars/statTiles already consume). `prior` may be `null`/`[]` when
+  // no prior snapshot could be fetched (caller's fetch failed, or genuinely the first quarter)
+  // -- every current row then renders as a single "New" dot, never a fabricated line.
+  //
+  // opts: { topN (10), labelField ("issuer_name"; pass "manager_name" for the issuer-centric
+  // reuse), idField (matches rows between the two snapshots; default "cusip" -- pass
+  // ["manager_cik","cusip"] for the issuer-centric reuse, matching normalize/flows.diff_holders'
+  // own (manager_cik, cusip) key so multi-class issuers/managers-holding-two-classes stay
+  // distinct), unknownLabel, rowNoun, fromLabel/toLabel (pre-formatted quarter-end labels),
+  // width. Returns a DOM node, or null when there's no positive reported CURRENT value to rank
+  // (mirrors compositionBars' guard).
+  function dumbbellChart(current, prior, opts) {
+    if (!window.Plot) return null;
+    opts = opts || {};
+    var topN = opts.topN || 10;
+    var labelField = opts.labelField || "issuer_name";
+    var idField = opts.idField || "cusip"; // string, or an array for a composite key
+    var unknownLabel = opts.unknownLabel || "Unknown";
+    var rowNoun = opts.rowNoun || { singular: "holding", plural: "holdings" };
+    var fromLabel = opts.fromLabel || "the prior quarter";
+    var toLabel = opts.toLabel || "this quarter";
+    var width = opts.width || 640;
+
+    function keyOf(row) {
+      if (Array.isArray(idField)) return idField.map(function (f) { return row[f]; }).join("|");
+      return row[idField];
     }
 
-    return wrap;
+    var curUsable = (current || []).filter(function (h) { return typeof h.value === "number" && h.value > 0; });
+    var curTotal = curUsable.reduce(function (s, h) { return s + h.value; }, 0);
+    if (!curUsable.length || !curTotal) return null;
+
+    var priorUsable = (prior || []).filter(function (h) { return typeof h.value === "number" && h.value > 0; });
+    var priorTotal = priorUsable.reduce(function (s, h) { return s + h.value; }, 0);
+    var priorByKey = {};
+    priorUsable.forEach(function (h) { priorByKey[keyOf(h)] = h; }); // last-wins on a rare dup key
+
+    var top = curUsable.slice().sort(function (a, b) { return b.value - a.value; }).slice(0, topN);
+
+    // Multi-class issuers/managers holding >1 class disambiguate by idField, same rule as
+    // compositionBars/divergingBars (never silently collapse distinct CUSIPs).
+    var nameCounts = {};
+    top.forEach(function (h) {
+      var n = h[labelField] || unknownLabel;
+      nameCounts[n] = (nameCounts[n] || 0) + 1;
+    });
+
+    var rows = top.map(function (h) {
+      var name = h[labelField] || unknownLabel;
+      var label = nameCounts[name] > 1 ? name + " (" + (h.cusip || keyOf(h)) + ")" : name;
+      if (h.put_call) label += h.put_call === "Put" ? " (PUT)" : " (CALL)"; // options labeled, never pooled silently
+      var priorRow = priorByKey[keyOf(h)];
+      var currentPct = (h.value / curTotal) * 100;
+      var isNew = !priorRow; // absent from the prior snapshot entirely -- presence/absence, same convention as HoldingDelta
+      var priorPct = isNew || !priorTotal ? null : (priorRow.value / priorTotal) * 100;
+      return {
+        label: label,
+        currentPct: currentPct,
+        priorPct: priorPct,
+        currentValueFmt: usd(h.value),
+        priorValueFmt: priorRow ? usd(priorRow.value) : "—",
+        isNew: isNew,
+        delta: priorPct === null ? null : currentPct - priorPct,
+        // The inline label anchors past whichever of the two dots is further right, not always
+        // "past currentPct" -- when the pair is close together (a small move), anchoring at
+        // currentPct alone can land the label right on top of the OTHER dot (confirmed against
+        // a real render: a ~3-point move put the label directly over the prior dot).
+        labelAnchorX: Math.max(currentPct, priorPct === null ? currentPct : priorPct),
+      };
+    });
+    // Ranked by current value (already top's order) -- current % of a shared total moves in
+    // lockstep with value rank, so the y-domain reads top-to-bottom exactly like compositionBars.
+    var domain = rows.map(function (r) { return r.label; });
+
+    var t = plotTokens();
+    var ACCENT = t.accent, ACCENT_WASH = t.accentWash, INK = t.ink, INK_SOFT = t.inkSoft;
+    var BORDER_TINT = cssVar("--border-tint-rule", "#e5dfd3");
+    var FONT_MONO = t.fontMono;
+
+    var rowH = 30;
+    var height = Math.max(100, rows.length * rowH + 40);
+    var maxPct = rows.reduce(function (m, r) {
+      return Math.max(m, r.currentPct, r.priorPct || 0);
+    }, 0);
+
+    var matched = rows.filter(function (r) { return !r.isNew; });
+    var newRows = rows.filter(function (r) { return r.isNew; });
+    // Selective direct labels (STYLE_GUIDE §6: label the point, not every point) -- the biggest
+    // movers by |delta| among matched rows, plus every New dot (it always needs the explicit
+    // "New" word; there's no line/delta to imply it otherwise).
+    var biggestMovers = matched.slice().sort(function (a, b) { return Math.abs(b.delta) - Math.abs(a.delta); }).slice(0, 3);
+    var labelSet = {};
+    biggestMovers.forEach(function (r) { labelSet[r.label] = true; });
+    newRows.forEach(function (r) { labelSet[r.label] = true; });
+
+    var tipFormat = { x: false, y: false, fill: false, stroke: false, Prior: true, Current: true, "Prior value": true, "Current value": true };
+
+    var marks = [
+      window.Plot.gridX({ stroke: BORDER_TINT, strokeOpacity: 0.6 }),
+    ];
+    if (matched.length) {
+      // Connecting line: neutral (not the accent) so the two dots -- the actual data -- read as
+      // the point, not the line.
+      marks.push(window.Plot.link(matched, {
+        x1: "priorPct", x2: "currentPct", y1: "label", y2: "label",
+        stroke: BORDER_TINT, strokeWidth: 2,
+      }));
+      // Prior dot: a lighter/hollow tint (kind, not magnitude -- §10).
+      marks.push(window.Plot.dot(matched, {
+        x: "priorPct", y: "label", r: 5, fill: ACCENT_WASH, stroke: ACCENT, strokeWidth: 1.25,
+        channels: { Prior: "priorPct", "Prior value": "priorValueFmt" },
+        tip: { format: tipFormat },
+      }));
+    }
+    // Current dot: solid accent, drawn for every row (matched or New).
+    marks.push(window.Plot.dot(rows, {
+      x: "currentPct", y: "label", r: 5.5, fill: ACCENT, stroke: t.trackBorder, strokeWidth: 1,
+      channels: {
+        Current: "currentPct", "Current value": "currentValueFmt",
+        Prior: function (d) { return d.isNew ? "New — no prior position" : signedPctChangeTick(d.priorPct); },
+      },
+      tip: { format: tipFormat },
+    }));
+    marks.push(window.Plot.text(rows, {
+      x: "labelAnchorX", y: "label",
+      text: function (d) { return labelSet[d.label] ? (d.isNew ? "New" : d.currentPct.toFixed(1) + "%") : ""; },
+      textAnchor: "start", dx: 9,
+      fontFamily: FONT_MONO, fontSize: 10.5, fill: INK_SOFT,
+    }));
+    // Issuer/manager name, left of the plot area (same convention as compositionBars).
+    marks.push(window.Plot.text(rows, {
+      x: 0, y: "label", text: "label", textAnchor: "end", dx: -8,
+      fontFamily: "'Hanken Grotesk', system-ui, sans-serif", fontSize: 12, fill: INK,
+    }));
+
+    var plotNode = window.Plot.plot({
+      width: width,
+      height: height,
+      marginTop: 10,
+      marginBottom: 30,
+      marginLeft: 210,
+      marginRight: 60,
+      // Real x-axis (percent scale, so every row has a scale reference even though only the
+      // biggest movers get an inline label) but a suppressed y-axis -- row names are drawn as
+      // their own Hanken text mark below (entity name vs. numeral gets its own font, same
+      // convention as compositionBars), so Plot's own (mono) y-tick text would just duplicate it.
+      x: {
+        domain: [0, Math.max(10, maxPct * 1.25)],
+        label: "% of reported portfolio value",
+        tickFormat: function (v) { return v.toFixed(0) + "%"; },
+      },
+      y: { domain: domain, axis: null },
+      style: { background: "transparent", overflow: "visible", fontFamily: FONT_MONO, fontSize: 10.5, color: INK_SOFT },
+      marks: marks,
+    });
+
+    var chart = chartCard(opts.title || "Prior → current allocation");
+    chart.body.appendChild(plotNode);
+    chart.caption(
+      "Each holding's share of TOTAL reported value in its OWN quarter's snapshot (" + fromLabel +
+      " → " + toLabel + ") -- the numerator and denominator both come from the same filing, so " +
+      "the value-unit convention cancels out of the ratio. Top " + rows.length + " of " +
+      curUsable.length + " " + rowNoun.plural + " by current value" +
+      (priorUsable.length ? "." : " -- no prior-quarter snapshot was available, so every " +
+        "holding renders as a single “New” dot with no line.") +
+      " A " + rowNoun.singular + " absent from " + fromLabel + " renders as one dot labeled " +
+      "“New,” never a fabricated prior point."
+    );
+    return chart.root;
   }
 
   // ---------- Phase 5.4: portfolio value over time ----------
@@ -1478,6 +1831,8 @@
     statTiles: statTiles,
     positionBar: positionBar,
     divergingBars: divergingBars,
+    activitySummaryTiles: activitySummaryTiles,
+    dumbbellChart: dumbbellChart,
     valueLineChart: valueLineChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,

@@ -132,6 +132,7 @@
           caveatsBlock(act.caveats || []);
         mountCompositionChart(snapshot.holdings || []);
         mountActivityChart(period, act.from_period, act.activity || []);
+        mountDumbbellChart(period, act.from_period, snapshot.holdings || []);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), render);
@@ -240,13 +241,18 @@
         "</tr>"
       );
     }).join("");
-    // Chart mount point (Phase 5.3): filled by mountActivityChart() after this markup lands in
-    // the DOM, above the table -- Profin.divergingBars returns a DOM node (Plot renders SVG),
-    // so it's appended post-innerHTML rather than built into this HTML string. Left empty (no
-    // visual footprint) when divergingBars honestly has nothing to chart.
+    // Phase 5 polish pass: summary tiles (n new/added/reduced/exited, unit-free counts) first --
+    // an at-a-glance headline -- then the diverging-bars chart (or its <3-changed-rows sentence
+    // fallback), then the dumbbell (prior->current % of reported book). That order goes
+    // headline -> "what changed" (ties directly to the table immediately below it) ->
+    // "where it sits in the whole book" (the extra fetch, so it lands last). Both chart mounts
+    // are filled post-innerHTML (Profin.divergingBars/dumbbellChart return Plot DOM nodes);
+    // left empty (no visual footprint) when either honestly has nothing to show.
+    var tiles = P.activitySummaryTiles(activity);
     var chartMount = '<div id="activity-chart-mount"></div>';
+    var dumbbellMount = '<div id="activity-dumbbell-mount"></div>';
     return (
-      head + chartMount +
+      head + tiles + chartMount + dumbbellMount +
       '<table class="stmt-table"><thead><tr><th>Issuer</th><th>CUSIP</th><th>Action</th>' +
       '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
       "</tr></thead><tbody>" + body + "</tbody></table>" +
@@ -268,8 +274,31 @@
       toLabel: quarterLabel(period),
       fromPeriod: fromPeriod,
       toPeriod: period,
+      width: P.measuredWidth(mount, 640),
     });
     if (node) mount.appendChild(node);
+  }
+
+  // Phase 5 polish pass, dumbbell chart: fetches the ONE extra request (the prior quarter's
+  // full holdings snapshot) beyond what render() already has, and mounts Profin.dumbbellChart.
+  // No-ops quietly (never an error state) when there's no prior quarter to compare against, or
+  // when that fetch fails -- a missing dumbbell is a smaller loss than breaking the page over an
+  // enhancement chart the table above it doesn't depend on.
+  function mountDumbbellChart(period, fromPeriod, currentHoldings) {
+    var mount = $("activity-dumbbell-mount");
+    if (!mount || !fromPeriod) return;
+    P.api("/managers/" + encodeURIComponent(cik) + "/holdings?period=" + encodeURIComponent(fromPeriod)).then(
+      function (priorSnapshot) {
+        var node = P.dumbbellChart(currentHoldings, priorSnapshot.holdings || [], {
+          fromLabel: quarterLabel(fromPeriod),
+          toLabel: quarterLabel(period),
+          width: P.measuredWidth(mount, 640),
+          rowNoun: { singular: "position", plural: "positions" },
+        });
+        if (node) mount.appendChild(node);
+      },
+      function () { /* prior-quarter fetch failed -- skip the dumbbell, never break the page */ }
+    );
   }
 
   function rosterSection(managers) {
