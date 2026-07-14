@@ -160,9 +160,11 @@
     // the holdings table. statTiles is a plain HTML string; the bar chart is a Plot DOM node
     // mounted into #composition-chart-mount by mountCompositionChart() once this markup lands
     // in the page (called from render(), right after this string is assigned to innerHTML).
+    // totalNote overrides the default "long positions only" framing (Phase 5 polish,
+    // caption dedup) -- that standing line renders once at the top of the page.
     var composition =
       '<div class="composition-block">' +
-      P.statTiles(holdings) +
+      P.statTiles(holdings, { totalNote: "Total of this snapshot's reported values" }) +
       '<div id="composition-chart-mount"></div>' +
       "</div>";
     var body = holdings.map(function (h) {
@@ -196,7 +198,14 @@
   function mountCompositionChart(holdings) {
     var mount = $("composition-chart-mount");
     if (!mount) return;
-    var node = P.compositionBars(holdings, { topN: 10, width: P.measuredWidth(mount, 640) });
+    // captionLead "" (Phase 5 polish, caption dedup): the standing "reported 13F long
+    // positions only" framing renders once at the top of this page (#standing-caveat) --
+    // the chart caption keeps only its own mechanics.
+    var node = P.compositionBars(holdings, {
+      topN: 10,
+      width: P.measuredWidth(mount, 640),
+      captionLead: "",
+    });
     if (node) {
       mount.appendChild(node);
     } else {
