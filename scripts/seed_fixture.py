@@ -157,11 +157,11 @@ def _seed_beneficial(db_path: str) -> None:
 # period axes are non-empty, holders render, the quarter-over-quarter diff yields real
 # New/Added/Reduced activity, and the Phase 5.4 portfolio-value-over-time line has a real
 # multi-point series to draw (all four quarters are >= 2024-01-01, so none are excluded by
-# that feature's unit-convention rule). Only these two CUSIPs are used, so
-# resolve_snapshot_cusips hits the seeded cusip cache instead of fetching
-# company_tickers.json live -- keeping the manager page (and its default newest-quarter
-# activity diff) offline in the e2e profile, same as the insider/13D-G tabs. Plausible but
-# NOT real positions.
+# that feature's unit-convention rule). AAPL resolves from the seeded cusip cache; every
+# other CUSIP (Ally + the synthetic _BRK_EXTRA_POSITIONS below) stays honestly unresolved --
+# their invented issuer names have no exact match in SEC's company_tickers.json, so the
+# resolver records them unresolved (one live name-index fetch per process, same as before).
+# Plausible but NOT real positions.
 _HOLDINGS_QUARTERS = ["2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31"]  # newest last;
 # the views default to newest, and it's unchanged from before this series was extended.
 # (manager_cik, name, {quarter: AAPL shares}); the second (Ally) line is a fixed smaller position.
@@ -180,6 +180,42 @@ _HOLDINGS_MANAGERS = [
     }),
 ]
 _AAPL_PRICE = 190.0  # rough $/share to derive a plausible position value
+
+# Extra synthetic Berkshire-only positions so the Phase 5 charts have a realistically deep
+# book to draw (composition strip/bars, % -change diverging bars, dumbbells, stat tiles).
+# Issuer names are deliberately INVENTED (no normalized exact match in SEC's
+# company_tickers.json), so the resolver records them unresolved rather than attaching a
+# real CIK; CUSIPs use a reserved-looking 90000... prefix. Per-quarter share maps encode a
+# spread of actions in the newest diff (Q4'25 -> Q1'26): added, reduced, new, exited,
+# unchanged, plus one Put option row and one PRN (principal) row that charts must label /
+# never share-sum. A quarter missing from a map = position not held that quarter.
+# (cusip, issuer_name, $/unit, put_call, shares_or_principal, {quarter: units})
+_BRK_EXTRA_POSITIONS = [
+    ("90000AAA1", "NORTHWIND TRADING CO", 58.0, None, "SH",
+     {"2025-06-30": 40_000_000, "2025-09-30": 44_000_000, "2025-12-31": 44_000_000, "2026-03-31": 52_000_000}),
+    ("90000BBB2", "CASCADE FOODS CORP", 112.0, None, "SH",
+     {"2025-06-30": 18_000_000, "2025-09-30": 18_000_000, "2025-12-31": 16_000_000, "2026-03-31": 14_000_000}),
+    ("90000CCC3", "HARBORLIGHT ENERGY CO", 34.0, None, "SH",
+     {"2025-06-30": 60_000_000, "2025-09-30": 55_000_000, "2025-12-31": 48_000_000, "2026-03-31": 48_000_000}),
+    ("90000DDD4", "BLUE MESA RAILWAYS INC", 205.0, None, "SH",
+     {"2025-06-30": 9_000_000, "2025-09-30": 9_000_000, "2025-12-31": 9_000_000, "2026-03-31": 9_000_000}),
+    ("90000EEE5", "IRONGATE INSURANCE GRP", 77.0, None, "SH",
+     {"2025-06-30": 25_000_000, "2025-09-30": 27_000_000, "2025-12-31": 27_000_000, "2026-03-31": 30_000_000}),
+    ("90000FFF6", "SUMMIT PAPER MILLS INC", 23.0, None, "SH",
+     {"2025-06-30": 70_000_000}),  # exited early: only shows in the oldest diff
+    ("90000GGG7", "COPPERFIELD BANCORP", 41.0, None, "SH",
+     {"2025-12-31": 12_000_000, "2026-03-31": 20_000_000}),  # new mid-history, then added
+    ("90000HHH8", "LANTERN MEDIA HLDGS", 16.0, None, "SH",
+     {"2025-06-30": 30_000_000, "2025-09-30": 30_000_000, "2025-12-31": 30_000_000}),  # exited in newest diff
+    ("90000III9", "QUARRY INDUSTRIAL PARTNERS", 88.0, None, "SH",
+     {"2026-03-31": 11_000_000}),  # new in newest diff
+    ("90000JJJ0", "DRIFTWOOD HOTELS CORP", 52.0, None, "SH",
+     {"2025-06-30": 14_000_000, "2025-09-30": 14_000_000, "2025-12-31": 15_000_000, "2026-03-31": 15_000_000}),
+    ("90000KKK1", "THISTLEDOWN PHARMA INC", 9.0, "Put", "SH",
+     {"2025-06-30": 8_000_000, "2025-09-30": 8_000_000, "2025-12-31": 6_000_000, "2026-03-31": 6_000_000}),
+    ("90000LLL2", "MERIDIAN GRAIN CO NOTES", 1.0, None, "PRN",
+     {"2025-06-30": 250_000_000, "2025-09-30": 250_000_000, "2025-12-31": 250_000_000, "2026-03-31": 250_000_000}),
+]
 
 
 def _seed_holdings(db_path: str) -> None:
@@ -204,6 +240,21 @@ def _seed_holdings(db_path: str) -> None:
                         value=ally_shares * 35.0,
                     ),
                 ]
+                if mcik == 1067983:
+                    for cusip, iname, price, put_call, sop, by_q in _BRK_EXTRA_POSITIONS:
+                        units = by_q.get(quarter)
+                        if units is None:
+                            continue
+                        holdings.append(
+                            InstitutionalHolding(
+                                cusip=cusip,
+                                issuer_name=iname,
+                                shares=float(units),
+                                shares_or_principal=sop,
+                                put_call=put_call,
+                                value=float(units) * price,
+                            )
+                        )
                 # Give one manager a co-filer roster so the manager page's roster renders.
                 other = (
                     [

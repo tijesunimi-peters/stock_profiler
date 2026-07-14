@@ -181,14 +181,20 @@ Links: accent color, mono. Resolve every href to a real destination — never le
 - **Plot charts (Phase 5, 13F portfolio viz)** — `Profin.*` builders backed by **vendored
   Observable Plot** (`/static/vendor/d3.min.js` + `/static/vendor/plot.umd.min.js`, load d3
   first; exposes `window.Plot`). Pages never call `Plot.plot()` directly — every chart is a
-  `Profin` builder that owns its Plot spec, the tokens (one terracotta accent, tint ramps for
-  rank order only, IBM Plex Mono numerals) and its honesty caption. Plot builders return a
-  **DOM node** (callers append it), unlike the older string builders. The hand-rolled
-  `sparkline`/`trendChart`/`trajectoryChart`/`positionBar` stay as they are — not migrated.
-  Shipped builders: `compositionBars` (ranked value-share bars + "Other"), `statTiles`
-  (concentration tiles — plain HTML string, no Plot), `divergingBars` (signed share-change
-  around a zero rule), `valueLineChart` (reported total per quarter, clip-not-normalize
-  unit rule, gaps break the line).
+  `Profin` builder that owns its Plot spec, the tokens (one terracotta accent, IBM Plex Mono
+  numerals) and its honesty caption. Plot builders return a **DOM node** (callers append it),
+  unlike the older string builders. The hand-rolled `sparkline`/`trendChart`/
+  `trajectoryChart`/`positionBar` stay as they are — not migrated. Shared chrome + sizing:
+  every Plot chart wraps itself in `chartCard()` (`.plot-chart`: eyebrow title, scrollable
+  body, caption/note) — one visual dialect per page — and takes `opts.width` from its mount
+  site via `Profin.measuredWidth(container, fallback)`, never a hardcoded pixel width.
+  **Ranked bars take one fill** — bar length already encodes the value, so a
+  darker-where-bigger lightness ramp double-encodes it; use *emphasis* (accent one mark,
+  mute the rest) when one mark is the point. Tint still distinguishes mark *kinds* (e.g.
+  solid = opened/closed outright vs lighter = resized) — kind is identity, not magnitude.
+  **Captions dedupe:** a standing caveat (e.g. "reported 13F long positions only") renders
+  once per page, prominently; each chart's caption carries only what is specific to that
+  chart. Repeating the same line under every chart trains readers to skip captions.
 
 ---
 

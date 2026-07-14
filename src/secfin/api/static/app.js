@@ -408,9 +408,50 @@
   // Observable Plot is vendored (see manager.html: d3 then plot.umd.min.js, exposing
   // window.Plot) and these are the ONLY functions in the app that call Plot.plot() for this
   // chart family (STYLE_GUIDE §6) -- pages append the returned DOM node, they never touch Plot
-  // directly. One terracotta accent plus a lightness ramp for RANK ORDER ONLY (§10) -- never a
-  // second hue, never green/red. Tokens are read from the live CSS variables at call time with
-  // literal fallbacks, same recipe as infographic-template.html's chart block.
+  // directly. One terracotta accent -- never a second hue, never green/red, and ranked bars
+  // take ONE fill (bar length already encodes the value; darker-where-bigger double-encodes
+  // it -- §10). Tokens are read from the live CSS variables at call time with literal
+  // fallbacks, same recipe as infographic-template.html's chart block.
+
+  // Width a Plot chart should render at: the mount container's live width, bounded to sane
+  // chart proportions, with the caller's fallback when the container isn't measurable yet.
+  // Convention: charts are built AFTER their placeholder is in the DOM, so mount sites pass
+  // measuredWidth(container, <default>) as opts.width. Measured once at build time --
+  // deliberately no resize re-render (no build step, no observers; a reload re-measures).
+  function measuredWidth(el, fallback) {
+    var w = el && el.clientWidth ? el.clientWidth : 0;
+    return w >= 280 ? Math.min(w, 1400) : fallback;
+  }
+
+  // Shared card chrome for every Plot builder (STYLE_GUIDE §6): mono eyebrow title, a
+  // horizontally-scrollable body the Plot SVG lands in, and honesty caption/note appenders.
+  // All three chart families wrap themselves in this -- one visual dialect per page.
+  function chartCard(title) {
+    var root = document.createElement("div");
+    root.className = "plot-chart";
+    if (title) {
+      var t = document.createElement("div");
+      t.className = "plot-chart-title";
+      t.textContent = title;
+      root.appendChild(t);
+    }
+    var body = document.createElement("div");
+    body.className = "plot-chart-body";
+    root.appendChild(body);
+    function para(cls, text) {
+      var p = document.createElement("p");
+      p.className = cls;
+      p.textContent = text;
+      root.appendChild(p);
+      return p;
+    }
+    return {
+      root: root,
+      body: body,
+      caption: function (text) { return para("plot-chart-caption", text); },
+      note: function (text) { return para("plot-chart-note", text); },
+    };
+  }
 
   // Built on the single shared token reader `cssVar()` (defined below, hoisted -- this and
   // the diverging-bars/value-line token reads all go through the same primitive now, instead
@@ -1149,6 +1190,8 @@
     sparkline: sparkline,
     trendChart: trendChart,
     trajectoryChart: trajectoryChart,
+    measuredWidth: measuredWidth,
+    chartCard: chartCard,
     compositionBars: compositionBars,
     statTiles: statTiles,
     positionBar: positionBar,
