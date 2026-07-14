@@ -23,6 +23,12 @@ _EXPECTED_TIER_STRINGS = [
     for limits in TIERS.values()
 ]
 
+# Planned (beta-posture) prices as decided 2026-07-14 in docs/product/PRICING.md.
+# There is no code source of truth for prices (billing isn't built yet), so this
+# constant is the drift tripwire: /terms and /guide must both carry these exact
+# strings. Update PRICING.md FIRST if these ever change.
+_PLANNED_PRICES = ["$19/mo", "$79/mo"]
+
 
 def _client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setattr(settings, "secfin_db_path", str(tmp_path / "test.db"))
@@ -53,6 +59,8 @@ def test_terms_page_matches_published_tier_limits(tmp_path, monkeypatch):
     for rate_str, quota_str in _EXPECTED_TIER_STRINGS:
         assert rate_str in body and quota_str in body
     assert "No SLA at launch" in body or "no uptime" in body.lower()
+    for planned in _PLANNED_PRICES:
+        assert planned in body, f"planned price {planned} missing from /terms"
 
 
 def test_guide_page_tier_table_matches_auth_tiers(tmp_path, monkeypatch):
@@ -64,6 +72,8 @@ def test_guide_page_tier_table_matches_auth_tiers(tmp_path, monkeypatch):
     body = resp.text
     for rate_str, quota_str in _EXPECTED_TIER_STRINGS:
         assert rate_str in body and quota_str in body
+    for planned in _PLANNED_PRICES:
+        assert planned in body, f"planned price {planned} missing from /guide"
 
 
 def test_disclaimer_page_carries_the_13f_derived_delta_caveat(tmp_path, monkeypatch):

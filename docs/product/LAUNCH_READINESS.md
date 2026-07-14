@@ -18,16 +18,21 @@ and verification evidence next to each, matching the ROADMAP.md style.*
 - [x] All Track 1 features complete (M4 done); auth, tiers, quotas, usage metering
       verified end-to-end
 
-## 1. Pricing story — THE launch blocker
+## 1. Pricing story — THE launch blocker (RESOLVED 2026-07-14)
 
-- [ ] Decide price points for basic and pro (landscape input:
-      `MARKET_FEASIBILITY.md` suggests $15–29 basic, $79–99 pro; use the
-      `pricing-strategy` skill; record the decision in `PRICING.md`)
-- [ ] Choose the launch posture: (a) Stripe self-serve upgrade, or (b) explicit
-      "free during beta — planned prices are X/Y" note on the site. Either unblocks
-      launch; unclear pricing does not.
-- [ ] If (a): payment flow behind the existing `ApiKeyRepository` boundary; billing
-      state must not leak into route handlers (repo guardrail 5)
+- [x] Decide price points for basic and pro — decided 2026-07-14 (operator):
+      **$19/mo basic, $79/mo pro (planned)**, recorded with the landscape snapshot,
+      standing commitments (free-tier promise, grandfathering) and revisit triggers
+      in `PRICING.md`.
+- [x] Choose the launch posture — decided 2026-07-14 (operator): **(b) free during
+      beta with planned prices published**. Site updated: `/terms` tier table +
+      pricing note, `/guide` tier note, and the landing pricing section (which also
+      had a stale fictional "$29 Developer" card and a false "signups aren't open
+      yet" line — replaced with the real tiers and a `POST /v1/signup` CTA).
+- [ ] ~~If (a): payment flow~~ — N/A for launch (posture (b) chosen). Stripe is
+      post-launch work, gated by `PRICING.md` revisit trigger 1 (re-verify landscape,
+      announce beta end, grandfather beta keys) and stays behind the
+      `ApiKeyRepository` boundary when built (repo guardrail 5).
 - [x] Published tier limits and `auth/tiers.py` enforced limits match exactly —
       verified 2026-07-12 (code track): `/terms`, `/guide`, ROADMAP, and
       MARKET_FEASIBILITY all match `TIERS`; enforcement (burst + daily quota)
@@ -145,9 +150,13 @@ each is now a runbook step rather than open design work.*
       journald); verify on the real host before checking*
 - [ ] Feedback/support channel (GitHub issues is enough) linked from docs and site
       footer
-- [ ] Decide on email verification at signup: currently none (any string gets a
-      key). Acceptable for launch? If deferring, note the abuse exposure and the
-      trigger to revisit (e.g. quota-evasion via throwaway signups)
+- [x] Decide on email verification at signup — decided 2026-07-14 (operator):
+      **defer**; launch without verification. Exposure: throwaway strings get free
+      keys, so per-key quotas can be evaded by re-signup; blast radius is bounded
+      (keys are admin-revocable, the shared SEC throttle is process-wide, and the
+      anon limiter caps keyless traffic). Revisit triggers: evidence of
+      quota-evasion via throwaway signups (visible in `api_key_usage` review), or
+      before billing goes live (payment requires a real address anyway).
 - [ ] Signup-spike safety re-check on the deployed host: burst of new keys must not
       translate into an SEC request spike (cache-aside + shared limiter held in
       testing; confirm once on production hardware)

@@ -61,12 +61,12 @@ There aren't any, on purpose, in either sense of the question:
   filings) and we'd rather be excellent at fundamentals + ownership than mediocre at
   everything. If you need both, pair us with whatever price feed you already use --
   we're built to be a companion API, not a replacement for one.
-- **No public dollar pricing for the API itself yet.** [Launch-week status, update
-  before posting: either "self-serve payment is live at $X/$Y" if that shipped, or
-  "we're free during the beta period while we validate usage patterns -- planned tiers
-  and prices are noted on the pricing section of the site" if it hasn't. Do not leave
-  this bracket in the published version -- see `docs/product/PRICING.md` for the
-  actual decision once it exists.]
+- **No dollar charge for the API itself yet, on purpose.** Everything is free during
+  the beta while we validate usage patterns. The planned prices are published on the
+  site and in the terms — $19/mo basic, $79/mo pro when billing goes live — and the
+  free tier (1,000 req/day) is a standing promise that won't be reduced. Beta keys
+  keep working when billing starts; nothing gets repriced silently. (Decision recorded
+  2026-07-14 in `docs/product/PRICING.md`.)
 
 ---
 
