@@ -336,6 +336,11 @@ only open item**, deferred on its data gate (≥4 broadly-ingested quarters — 
 still one broad quarter); the mechanism it needs (vendored Plot + the calendar-axis
 conventions) is now all in place.
 
+**Follow-on analysis layer:** the next wave of manager/institutional features (sector
+composition, 13D/G cross-reference, option/PRN exposure, turnover/tenure series, overlap
+and leaderboard batch jobs) is scoped and sequenced in **`docs/ROADMAP_13F_ANALYTICS.md`**,
+including its parallel execution plan and data-readiness gates.
+
 ### Phase 5 polish pass (visualization review, 2026-07-14)
 
 A review of the shipped charts against chart-form/anti-pattern references produced these
