@@ -199,19 +199,16 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 .trend-signal-value { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
 .trend-signal-reason { color: var(--ink-soft); font-size: 11px; }
 
-/* ---------- Phase 5.4: portfolio value over time (Profin.valueLineChart, vendored Plot) ---------
- * Reuses .trend-chart / .trend-caption / .trend-empty above for the outer card + captions so it
- * matches the existing trend-chart look; these rules cover only what's new: the vendored-Plot
- * SVG's own scroll container and the single-quarter fallback display.
+/* ---------- Phase 5.4 + polish pass: portfolio value over time (Profin.valueLineChart) and its
+ * sibling position-count strip (Profin.positionCountChart), both vendored Plot wrapped in the
+ * shared Profin.chartCard() chrome (STYLE_GUIDE §6) -- .plot-chart / .plot-chart-body already
+ * cover the card + horizontally-scrollable SVG container in app.css. These rules cover only
+ * what's chart-specific: mount spacing/collapse and the single-quarter fallback display (shared
+ * by both charts).
  */
 .value-line-mount { margin: 0 0 22px; }
 .value-line-mount:empty { display: none; margin: 0; }
-.value-line-mount .metric-group-title { margin-bottom: 10px; }
-.value-line-chart {
-  /* The vendored Plot SVG has a fixed pixel width (§6: Plot doesn't do percentage widths) --
-     scroll rather than overflow the page on narrow viewports, same convention as wide tables. */
-  overflow-x: auto;
-}
+.position-count-chart { margin-top: 0; } /* directly below the value line, no title of its own */
 .value-line-single { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .value-line-single-value {
   font-family: var(--font-mono);
@@ -228,3 +225,13 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   letter-spacing: 0.08em;
   color: var(--mono-muted);
 }
+
+/* ---------- Phase 5 polish: ingestion coverage strip (Profin.ingestionCoverageStrip) ---------- */
+.coverage-strip-mount { margin: 4px 0 4px; }
+.coverage-strip-mount:empty { display: none; margin: 0; }
+.coverage-strip .plot-chart-body svg { display: block; }
+
+/* ---------- Phase 5 polish: standing caveat (caption-dedup, STYLE_GUIDE §6) ---------- */
+.standing-caveat-mount { margin: 2px 0 18px; }
+.standing-caveat-mount:empty { display: none; margin: 0; }
+.standing-caveat { margin: 0; }

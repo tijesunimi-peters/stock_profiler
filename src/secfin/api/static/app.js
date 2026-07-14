@@ -1060,51 +1060,49 @@
     );
   }
 
-  var VALUE_LINE_CAPTION =
-    "Total of reported 13F long positions only (not AUM or a manager's whole book) · " +
-    "quarter-end snapshot, filed with a ~45-day lag.";
+  // The standing "reported 13F long positions only" line now renders ONCE at the top of the
+  // manager page (STYLE_GUIDE §6 caption-dedup rule -- Profin.standingCaveat / manager.js's
+  // renderStandingCaveat). Charts below keep only what's specific to them.
+  var STANDING_CAVEAT_TEXT =
+    "All figures on this page are reported 13F long positions only — not AUM or the " +
+    "manager's whole book; quarter-end snapshots filed with a ~45-day lag.";
 
   // points: [{period, value}] ascending chronological (oldest first); value is null for a gap
   // (a quarter whose fetch failed -- never a fabricated number). opts.excludedCount is the
   // count of pre-2024 quarters this manager has ingested that were dropped by the DECIDED
   // unit-convention rule (ROADMAP_UI.md 5.4: clip, don't normalize -- the SEC's `value`
   // convention changed thousands->whole-dollars ~2023 with no reliable per-filer boundary, so a
-  // wrong guess would misstate the total by 3 orders of magnitude). Returns a DOM node, or null
-  // when there is truly nothing to show (no eligible quarters and none excluded either).
+  // wrong guess would misstate the total by 3 orders of magnitude). opts.width should come from
+  // Profin.measuredWidth(mountEl, fallback) -- never a hardcoded pixel width (STYLE_GUIDE §6).
+  // Returns a DOM node, or null when there is truly nothing to show (no eligible quarters and
+  // none excluded either).
   function valueLineChart(points, opts) {
     opts = opts || {};
     var excluded = opts.excludedCount || 0;
+    var width = opts.width || 720;
     points = points || [];
     var present = points.filter(function (p) { return p && p.value !== null && p.value !== undefined; });
 
-    var wrap = document.createElement("div");
-    wrap.className = "trend-chart value-line-chart";
+    var card = chartCard("Portfolio value over time");
+    card.root.classList.add("value-line-chart");
 
-    function caption(text) {
-      var p = document.createElement("div");
-      p.className = "trend-caption";
-      p.textContent = text;
-      return p;
-    }
     function empty(text) {
       var p = document.createElement("div");
       p.className = "trend-empty";
       p.textContent = text;
-      return p;
+      card.body.appendChild(p);
     }
 
     if (!points.length) {
       if (!excluded) return null; // nothing ingested, nothing excluded -- render nothing at all
-      wrap.appendChild(empty(valueLineExclusionCaption(excluded)));
-      return wrap;
+      empty(valueLineExclusionCaption(excluded));
+      return card.root;
     }
 
     if (!present.length) {
-      wrap.appendChild(empty(
-        "Couldn’t load a reported value for the eligible quarter" + (points.length === 1 ? "" : "s") + "."
-      ));
-      if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
-      return wrap;
+      empty("Couldn’t load a reported value for the eligible quarter" + (points.length === 1 ? "" : "s") + ".");
+      if (excluded) card.caption(valueLineExclusionCaption(excluded));
+      return card.root;
     }
 
     if (points.length === 1) {
@@ -1115,13 +1113,10 @@
       single.innerHTML =
         '<span class="value-line-single-value">' + esc(fmt.usd(only.value)) + "</span>" +
         '<span class="value-line-single-period">' + esc(valueLineQuarterTick(only.period)) + "</span>";
-      wrap.appendChild(single);
-      wrap.appendChild(caption(
-        "Only one 2024-or-later quarter is ingested for this manager — not enough history for a trend line."
-      ));
-      wrap.appendChild(caption(VALUE_LINE_CAPTION));
-      if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
-      return wrap;
+      card.body.appendChild(single);
+      card.caption("Only one 2024-or-later quarter is ingested for this manager — not enough history for a trend line.");
+      if (excluded) card.caption(valueLineExclusionCaption(excluded));
+      return card.root;
     }
 
     var vals = present.map(function (p) { return p.value; });
@@ -1140,7 +1135,7 @@
     }
 
     var plotNode = window.Plot.plot({
-      width: 720,
+      width: width,
       height: 150,
       marginLeft: 20,
       marginRight: 20,
@@ -1165,13 +1160,155 @@
       ].filter(Boolean),
     });
 
-    wrap.appendChild(plotNode);
+    card.body.appendChild(plotNode);
     var hasGap = points.some(function (p) { return p.value === null || p.value === undefined; });
-    wrap.appendChild(caption(
-      VALUE_LINE_CAPTION + (hasGap ? " Gaps are quarters that failed to load, not interpolated." : "")
-    ));
-    if (excluded) wrap.appendChild(caption(valueLineExclusionCaption(excluded)));
-    return wrap;
+    // Chart-specific captions only -- the standing "reported 13F long positions only" line now
+    // lives once at the top of the page (STYLE_GUIDE §6 caption-dedup rule), not here.
+    if (hasGap) card.caption("Gaps are quarters that failed to load, not interpolated.");
+    if (excluded) card.caption(valueLineExclusionCaption(excluded));
+    return card.root;
+  }
+
+  // ---------- Phase 5 polish: position-count strip (sibling small multiple to valueLineChart)
+  //
+  // points: [{period, value, positions}] -- same shape loadValueSeries already builds for the
+  // value line (period ascending chronological, oldest first); `positions` is the count of
+  // holdings rows on that quarter's fetched snapshot, or null for a gap (the quarter's fetch
+  // failed -- same failure that gaps the value line, never a separate/different gap set). NO
+  // new network fetches: this reads fields already present on the value line's points array.
+  // Deliberately never a second y-axis on the value-line plot (STYLE_GUIDE anti-dual-axis rule)
+  // -- a second, smaller Plot chart instead, sharing the same x-domain/tick treatment so the
+  // two read as small multiples. Returns a DOM node, or null when there's nothing to plot.
+  function positionCountChart(points, opts) {
+    opts = opts || {};
+    var width = opts.width || 720;
+    points = (points || []).map(function (p) {
+      return { period: p.period, value: p && p.positions !== null && p.positions !== undefined ? p.positions : null };
+    });
+    var present = points.filter(function (p) { return p.value !== null && p.value !== undefined; });
+    if (!points.length || !present.length) return null;
+
+    var card = chartCard(null);
+    card.root.classList.add("position-count-chart");
+
+    if (points.length === 1) {
+      var only = points[0];
+      var single = document.createElement("div");
+      single.className = "value-line-single";
+      single.innerHTML =
+        '<span class="value-line-single-value">' + esc(String(only.value)) + "</span>" +
+        '<span class="value-line-single-period">' + esc(valueLineQuarterTick(only.period)) + "</span>";
+      card.body.appendChild(single);
+      card.caption("Positions reported per quarter.");
+      return card.root;
+    }
+
+    var plotNode = window.Plot.plot({
+      width: width,
+      height: 72,
+      marginLeft: 28,
+      marginRight: 12,
+      marginTop: 6,
+      marginBottom: 20,
+      style: { fontFamily: VL_FONT_MONO, fontSize: 9.5, background: "transparent", color: VL_INK_SOFT, overflow: "visible" },
+      x: { type: "point", tickFormat: valueLineQuarterTick, label: null },
+      y: { grid: true, nice: true, ticks: 3, tickFormat: Math.round, label: null },
+      marks: [
+        Plot.gridY({ stroke: VL_BORDER_TINT_RULE, strokeOpacity: 0.6 }),
+        // Same rule as the value line: a null `value` breaks the line rather than interpolating.
+        Plot.lineY(points, { x: "period", y: "value", stroke: VL_ACCENT, strokeWidth: 1.5, curve: "linear" }),
+        Plot.dot(present, { x: "period", y: "value", r: 2.75, fill: VL_ACCENT, stroke: VL_BG_CARD, strokeWidth: 1.25 }),
+        Plot.dot(present, {
+          x: "period", y: "value", r: 8, fill: "transparent",
+          channels: { quarter: function (d) { return valueLineQuarterTick(d.period); }, positions: "value" },
+          tip: { format: { x: false, y: false, quarter: true, positions: true } },
+        }),
+      ],
+    });
+
+    card.body.appendChild(plotNode);
+    card.caption("Positions reported per quarter.");
+    return card.root;
+  }
+
+  // ---------- Phase 5 polish: ingestion coverage strip ----------
+  //
+  // periods: the `/managers/{cik}/periods` list (report_period ISO quarter-end strings, any
+  // order) -- already fetched by the caller (manager.js's loadPeriods), no new requests. Fills
+  // in every CALENDAR quarter-end between the oldest and newest ingested period and marks each
+  // as filled (a snapshot is ingested for it) or hollow (a calendar quarter in range with no
+  // snapshot) -- makes "empty ≠ never filed" visible instead of prose-only (ROADMAP_UI.md). A
+  // hand-rolled SVG (STYLE_GUIDE §6 permits this for charts simple enough not to need Plot's
+  // scales/marks) wrapped in the same chartCard chrome as every other Plot builder. Returns a
+  // DOM node, or null when there's nothing ingested at all.
+  function nextCalendarQuarterEnd(iso) {
+    var p = iso.split("-");
+    var year = parseInt(p[0], 10), month = p[1];
+    if (month === "12") return (year + 1) + "-03-31";
+    var nextEnd = { "03": "06-30", "06": "09-30", "09": "12-31" }[month];
+    return nextEnd ? year + "-" + nextEnd : null; // non-calendar-quarter-end date -- stop rather than guess
+  }
+
+  function ingestionCoverageStrip(periods, opts) {
+    opts = opts || {};
+    var ingested = (periods || []).slice();
+    if (!ingested.length) return null;
+    var sorted = ingested.slice().sort(); // ISO YYYY-MM-DD sorts chronologically as strings
+    var ingestedSet = {};
+    ingested.forEach(function (p) { ingestedSet[p] = true; });
+
+    var all = [sorted[0]];
+    var guard = 0;
+    while (all[all.length - 1] < sorted[sorted.length - 1] && guard++ < 400) {
+      var next = nextCalendarQuarterEnd(all[all.length - 1]);
+      if (!next) break; // unrecognized date shape -- stop rather than fabricate a gap
+      all.push(next);
+    }
+
+    var card = chartCard("Ingested 13F quarters");
+    card.root.classList.add("coverage-strip");
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var STEP = 26, PAD = 14, H = 36, R = 5;
+    var width = Math.max(opts.width || 0, all.length > 1 ? PAD * 2 + (all.length - 1) * STEP : PAD * 2);
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", H);
+    svg.setAttribute("viewBox", "0 0 " + width + " " + H);
+
+    all.forEach(function (q, i) {
+      var cx = PAD + i * STEP;
+      var cy = H / 2 - 3;
+      var filled = !!ingestedSet[q];
+      var circle = document.createElementNS(svgNS, "circle");
+      circle.setAttribute("cx", cx);
+      circle.setAttribute("cy", cy);
+      circle.setAttribute("r", R);
+      circle.setAttribute("fill", filled ? VL_ACCENT : "transparent");
+      circle.setAttribute("stroke", VL_ACCENT);
+      circle.setAttribute("stroke-width", "1.5");
+      var title = document.createElementNS(svgNS, "title");
+      title.textContent = valueLineQuarterTick(q) + (filled ? " — ingested" : " — not ingested");
+      circle.appendChild(title);
+      svg.appendChild(circle);
+      if (i === 0 || i === all.length - 1 || all.length <= 6) {
+        var text = document.createElementNS(svgNS, "text");
+        text.setAttribute("x", cx);
+        text.setAttribute("y", H - 3);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("font-family", VL_FONT_MONO);
+        text.setAttribute("font-size", "9");
+        text.setAttribute("fill", VL_INK_SOFT);
+        text.textContent = valueLineQuarterTick(q);
+        svg.appendChild(text);
+      }
+    });
+
+    card.body.appendChild(svg);
+    card.caption(
+      "Ingested 13F quarters — a hollow tick means no snapshot ingested, not that the manager didn’t file."
+    );
+    return card.root;
   }
 
   window.Profin = {
@@ -1197,6 +1334,9 @@
     positionBar: positionBar,
     divergingBars: divergingBars,
     valueLineChart: valueLineChart,
+    positionCountChart: positionCountChart,
+    ingestionCoverageStrip: ingestionCoverageStrip,
+    standingCaveatText: STANDING_CAVEAT_TEXT,
     masthead: masthead,
     footer: footer,
     sectionHead: sectionHead,

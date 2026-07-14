@@ -52,9 +52,21 @@
       </div>
     </div>
 
-    <!-- Phase 5.4: total reported 13F value per quarter (Profin.valueLineChart, vendored
-         Observable Plot). Its own top-level mount, outside #view, so switching the quarter
-         selector never re-fetches or re-renders it -- see manager.js's loadValueSeries. -->
+    <!-- Phase 5 polish: the standing "reported 13F long positions only" caveat, rendered once
+         at the top of the page (STYLE_GUIDE §6 caption-dedup rule) -- see manager.js's
+         renderStandingCaveat(). Every chart caption below keeps only its own chart-specific
+         caveats instead of repeating this line. -->
+    <div id="standing-caveat" class="standing-caveat-mount"></div>
+
+    <!-- Ingestion coverage strip (Phase 5 polish): a tick per calendar quarter across the
+         ingested range, filled = snapshot ingested, hollow = not -- built from the /periods
+         list manager.js already fetched, no new requests. See renderCoverageStrip(). -->
+    <div id="coverage-strip" class="coverage-strip-mount"></div>
+
+    <!-- Phase 5.4 (+ polish pass): total reported 13F value per quarter (Profin.valueLineChart)
+         and the sibling position-count strip (Profin.positionCountChart), vendored Observable
+         Plot. Own top-level mount, outside #view, so switching the quarter selector never
+         re-fetches or re-renders it -- see manager.js's loadValueSeries. -->
     <div id="value-line" class="value-line-mount"></div>
 
     <div id="legend"></div>

@@ -27,6 +27,32 @@
     });
   }
 
+  // Phase 5 polish (caption dedup, STYLE_GUIDE §6): the standing "reported 13F long positions
+  // only" caveat renders ONCE at the top of the page, here -- every chart's own caption below
+  // (value line, position-count strip, composition, activity) keeps only what's specific to it
+  // instead of repeating this line.
+  function renderStandingCaveat() {
+    var mount = $("standing-caveat");
+    if (!mount) return;
+    mount.innerHTML = '<p class="plot-chart-note standing-caveat">' + P.esc(P.standingCaveatText) + "</p>";
+  }
+
+  // Phase 5 polish: ingestion coverage strip, built from the /periods list already fetched by
+  // loadPeriods() -- no new requests. No-ops (leaves the mount empty) when there's nothing
+  // ingested at all, matching the "no periods" empty state shown in #view.
+  function renderCoverageStrip() {
+    var mount = $("coverage-strip");
+    if (!mount) return;
+    mount.innerHTML = "";
+    // Measured off #controls, not this mount: the mount is empty right up until we append a
+    // node (and .coverage-strip-mount:empty collapses via CSS, same trick as .value-line-mount),
+    // so its own clientWidth would read 0 at measurement time. #controls is a same-width full-
+    // bleed sibling inside <main class="page"> that's already unhidden by this point.
+    var widthSrc = $("controls") || mount;
+    var node = P.ingestionCoverageStrip(state.periods, { width: P.measuredWidth(widthSrc, 360) });
+    if (node) mount.appendChild(node);
+  }
+
   function init() {
     $("footer").innerHTML = P.footer();
     setMasthead();
@@ -41,6 +67,7 @@
       return;
     }
 
+    renderStandingCaveat();
     $("view").innerHTML = P.states.loading({ title: "Loading 13F quarters" });
     $("period-select").addEventListener("change", onPeriodChange);
     loadPeriods();
@@ -63,6 +90,7 @@
         state.value = state.periods[0];
         populate();
         $("controls").hidden = false;
+        renderCoverageStrip();
         render();
         loadValueSeries(); // independent of the quarter selector; fetched once, not per-switch
       },
@@ -283,18 +311,31 @@
     return any ? sum : null;
   }
 
+  // Renders the value line and its sibling position-count strip (Phase 5 polish) into the same
+  // top-level mount -- both take opts.width from the mount's measured width (STYLE_GUIDE §6),
+  // never a hardcoded pixel width, so the value line fills its card instead of huddling in part
+  // of it. Position counts come from `points[].positions`, set by loadValueSeries below from
+  // the same fetched snapshots -- no separate fetch for the strip.
   function renderValueLine(points, excludedCount) {
     var mount = $("value-line");
     if (!mount) return;
-    var node = P.valueLineChart(points, { excludedCount: excludedCount });
-    if (!node) { mount.innerHTML = ""; return; }
-    mount.innerHTML = '<h3 class="metric-group-title">Portfolio value over time</h3>';
+    mount.innerHTML = "";
+    // Measured off #controls, not this mount: .value-line-mount:empty collapses to width 0 via
+    // CSS right up until a node is appended, so the mount's own clientWidth isn't usable at
+    // measurement time. #controls is a same-width full-bleed sibling already unhidden by now.
+    var width = P.measuredWidth($("controls") || mount, 720);
+    var node = P.valueLineChart(points, { excludedCount: excludedCount, width: width });
+    if (!node) return;
     mount.appendChild(node);
+    var countNode = P.positionCountChart(points, { width: width });
+    if (countNode) mount.appendChild(countNode);
   }
 
   // Fetches at most the 8 most recent >=2024 quarters' holdings snapshots (Promise.all) and
-  // totals each. A failed fetch resolves to a gap (null value) instead of rejecting -- one bad
-  // quarter breaks its point on the line, never the page. Never blocks the main render() above.
+  // totals each, also keeping the position count (`holdings.length`) already in hand for the
+  // Phase 5 polish position-count strip -- no second fetch. A failed fetch resolves to a gap
+  // (null value, null positions) instead of rejecting -- one bad quarter breaks its point on
+  // both charts, never the page. Never blocks the main render() above.
   function loadValueSeries() {
     var periods = state.periods || [];
     var eligible = periods.filter(function (p) { return p >= VALUE_LINE_MIN_PERIOD; });
@@ -308,8 +349,14 @@
     Promise.all(
       chronological.map(function (period) {
         return P.api(base + encodeURIComponent(period)).then(
-          function (snap) { return { period: period, value: totalReportedValue(snap) }; },
-          function () { return { period: period, value: null }; } // failed quarter -> gap
+          function (snap) {
+            return {
+              period: period,
+              value: totalReportedValue(snap),
+              positions: (snap.holdings || []).length,
+            };
+          },
+          function () { return { period: period, value: null, positions: null }; } // failed quarter -> gap
         );
       })
     ).then(function (points) { renderValueLine(points, excludedCount); });
