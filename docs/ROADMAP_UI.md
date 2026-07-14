@@ -345,28 +345,28 @@ one shared `.plot-chart` chrome), `Profin.measuredWidth()` (container-measured w
 hardcoded 640/720), the single-fill + caption-dedup rules in `STYLE_GUIDE.md` §6, and a
 deep 14-position Berkshire fixture (option row, PRN row, new/added/reduced/exited spread).
 
-- [ ] **Composition redesign** — single fill (drop the rank-order tint ramp:
+- [x] **Composition redesign** — single fill (drop the rank-order tint ramp:
       darker-where-bigger double-encodes bar length); replace the "Other" bar (which
       dwarfs the top-10 on any deep real book) with a **part-to-whole strip**
       (top-1 / top-2–5 / top-6–10 / other segments, labeled) + top-10 ranked bars scaled
       to their own values; per-bar tooltips; `chartCard` chrome.
-- [ ] **Stat tiles: degenerate states** — hide a top-N tile when N ≥ position count
+- [x] **Stat tiles: degenerate states** — hide a top-N tile when N ≥ position count
       (top-10 = 100% of a 2-position book is noise, not information).
-- [ ] **Derived activity redesign** — bars in **% of prior position** (comparable across
+- [x] **Derived activity redesign** — bars in **% of prior position** (comparable across
       issuers; raw shares aren't) with absolute shares as the label; New/Exited as labeled
       full-length markers (a New position has no prior base — never a fake +100% bar;
       Exited genuinely is −100% and may render as one, labeled); <3 changes renders a
       sentence, not a one-bar chart; **activity summary tiles** (n new / added / reduced /
       exited) above the chart.
-- [ ] **Dumbbell chart** — top-10 holdings, prior→current **% of reported portfolio
+- [x] **Dumbbell chart** — top-10 holdings, prior→current **% of reported portfolio
       value** (unit-convention-safe: numerator and denominator come from the same filing).
       The two-quarter special case of 5.5.
-- [ ] **Value line polish** — `chartCard` chrome + measured width; sibling
+- [x] **Value line polish** — `chartCard` chrome + measured width; sibling
       **position-count strip** (a second small line, never a dual axis).
-- [ ] **Ingestion coverage strip** — quarter ticks near the selector (filled = ingested,
+- [x] **Ingestion coverage strip** — quarter ticks near the selector (filled = ingested,
       hollow gap = not), amendment badge on the loaded quarter; makes "empty ≠ never
       filed" visible instead of prose-only.
-- [ ] **Caption dedup** — the standing "reported 13F long positions only" line renders
+- [x] **Caption dedup** — the standing "reported 13F long positions only" line renders
       once per page (top of the manager page / top of the Institutional tab); each chart
       caption keeps only its chart-specific caveats.
 
