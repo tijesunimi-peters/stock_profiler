@@ -63,14 +63,17 @@
          list manager.js already fetched, no new requests. See renderCoverageStrip(). -->
     <div id="coverage-strip" class="coverage-strip-mount"></div>
 
+    <div id="legend"></div>
+    <div id="view" style="margin-top:18px"></div>
+
     <!-- Phase 5.4 (+ polish pass): total reported 13F value per quarter (Profin.valueLineChart)
          and the sibling position-count strip (Profin.positionCountChart), vendored Observable
          Plot. Own top-level mount, outside #view, so switching the quarter selector never
-         re-fetches or re-renders it -- see manager.js's loadValueSeries. -->
+         re-fetches or re-renders it -- see manager.js's loadValueSeries. Placed BELOW the
+         per-quarter sections (re-arranged): current-quarter detail first, multi-quarter
+         context after. -->
     <div id="value-line" class="value-line-mount"></div>
 
-    <div id="legend"></div>
-    <div id="view" style="margin-top:18px"></div>
     <div id="disclosure"></div>
   </main>
   <div id="footer"></div>

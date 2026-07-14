@@ -125,14 +125,20 @@
           state.name = snapshot.manager_name;
           setMasthead();
         }
+        // Section order (re-arranged): holdings (the primary lens) first, derived activity
+        // second, the co-filer roster demoted to the bottom (metadata, collapsed) ahead of
+        // the standing caveats. The multi-quarter value/position-count strips live below
+        // #view (see manager.html).
         $("view").innerHTML =
-          rosterSection(snapshot.other_managers || []) +
           holdingsSection(period, snapshot) +
-          activitySection(period, act.from_period, act.activity || []) +
+          activitySection(act.activity || []) +
+          rosterSection(snapshot.other_managers || []) +
           caveatsBlock(act.caveats || []);
         mountCompositionChart(snapshot.holdings || []);
+        mountHoldingsTable(snapshot);
         mountActivityChart(period, act.from_period, act.activity || []);
         mountDumbbellChart(period, act.from_period, snapshot.holdings || []);
+        mountActivityTable(period, act.from_period, act.activity || []);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), render);
@@ -168,27 +174,37 @@
       P.statTiles(holdings, { totalNote: "Total of this snapshot's reported values" }) +
       '<div id="composition-chart-mount"></div>' +
       "</div>";
-    var body = holdings.map(function (h) {
-      return (
-        "<tr>" +
-        '<td class="stmt-label">' + issuerCell(h) + "</td>" +
-        '<td class="stmt-tag">' + P.esc(h.cusip || "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(h.shares != null ? P.fmt.shares(h.shares) : "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(h.value != null ? P.fmt.usd(h.value) : "—") + "</td>" +
-        "</tr>"
-      );
-    }).join("");
+    // The holdings table is paginated (Profin.paginatedTable) -- a real filer reports
+    // thousands of positions. Rendered post-innerHTML into this mount, like the charts.
+    return head + composition + '<div id="holdings-table-mount"></div>';
+  }
+
+  // Renders the paginated holdings detail table (10 rows/page; charts+tiles above always
+  // summarize the FULL snapshot, so paging never changes what the numbers mean).
+  function mountHoldingsTable(snapshot) {
+    var mount = $("holdings-table-mount");
+    if (!mount) return;
+    var holdings = snapshot.holdings || [];
     var caption = "Reported 13F positions · quarter-end snapshot" +
       (snapshot.filed ? " · filed " + P.esc(snapshot.filed) : "") +
       (snapshot.accession ? " · " + P.esc(snapshot.accession) : "") +
       (snapshot.is_amendment ? " · amendment" : "");
-    return (
-      head +
-      composition +
-      '<table class="stmt-table"><thead><tr><th>Issuer</th><th>CUSIP</th>' +
-      '<th class="amt">Shares</th><th class="amt">Value</th></tr></thead><tbody>' + body + "</tbody></table>" +
-      '<p class="stmt-caption">' + caption + "</p>"
-    );
+    mount.appendChild(P.paginatedTable({
+      headHtml: '<tr><th>Issuer</th><th>CUSIP</th><th class="amt">Shares</th><th class="amt">Value</th></tr>',
+      rows: holdings,
+      pageSize: 10,
+      renderRow: function (h) {
+        return (
+          "<tr>" +
+          '<td class="stmt-label">' + issuerCell(h) + "</td>" +
+          '<td class="stmt-tag">' + P.esc(h.cusip || "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(h.shares != null ? P.fmt.shares(h.shares) : "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(h.value != null ? P.fmt.usd(h.value) : "—") + "</td>" +
+          "</tr>"
+        );
+      },
+      captionHtml: caption,
+    }));
   }
 
   // Appends the Plot-backed composition chart into the placeholder holdingsSection() just
@@ -217,7 +233,7 @@
     }
   }
 
-  function activitySection(period, fromPeriod, activity) {
+  function activitySection(activity) {
     var head = '<h3 class="metric-group-title" style="margin-top:26px">Derived activity vs. prior quarter</h3>';
     if (!activity.length) {
       return head + P.states.empty({
@@ -225,41 +241,51 @@
         copy: "No prior 13F quarter is ingested to diff against. This is a DERIVED view, never reported trades.",
       });
     }
-    var body = activity.map(function (a) {
-      var before = a.shares_before != null ? P.fmt.shares(a.shares_before) : "—";
-      var after = a.shares_after != null ? P.fmt.shares(a.shares_after) : "—";
-      var chg = a.shares_change != null ? signedShares(a.shares_change) : "—";
-      var issuer = a.cik ? '<a href="/company/' + encodeURIComponent(a.cik) + '">' + P.esc(a.issuer_name || "—") + "</a>" : P.esc(a.issuer_name || "—");
-      return (
-        "<tr>" +
-        '<td class="stmt-label">' + issuer + "</td>" +
-        '<td class="stmt-tag">' + P.esc(a.cusip || "—") + "</td>" +
-        "<td>" + P.esc(ACTION_LABEL[a.action] || a.action || "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(before) + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(chg) + "</td>" +
-        "</tr>"
-      );
-    }).join("");
     // Phase 5 polish pass: summary tiles (n new/added/reduced/exited, unit-free counts) first --
     // an at-a-glance headline -- then the diverging-bars chart (or its <3-changed-rows sentence
-    // fallback), then the dumbbell (prior->current % of reported book). That order goes
-    // headline -> "what changed" (ties directly to the table immediately below it) ->
-    // "where it sits in the whole book" (the extra fetch, so it lands last). Both chart mounts
-    // are filled post-innerHTML (Profin.divergingBars/dumbbellChart return Plot DOM nodes);
-    // left empty (no visual footprint) when either honestly has nothing to show.
+    // fallback), then the dumbbell (prior->current % of reported book), then the paginated
+    // detail table. That order goes headline -> "what changed" -> "where it sits in the whole
+    // book" -> row-level detail. All mounts are filled post-innerHTML (the charts return Plot
+    // DOM nodes; the table is Profin.paginatedTable); left empty when there's nothing to show.
     var tiles = P.activitySummaryTiles(activity);
-    var chartMount = '<div id="activity-chart-mount"></div>';
-    var dumbbellMount = '<div id="activity-dumbbell-mount"></div>';
     return (
-      head + tiles + chartMount + dumbbellMount +
-      '<table class="stmt-table"><thead><tr><th>Issuer</th><th>CUSIP</th><th>Action</th>' +
-      '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
-      "</tr></thead><tbody>" + body + "</tbody></table>" +
-      '<p class="stmt-caption">DERIVED by diffing ' + P.esc(quarterLabel(fromPeriod)) + " → " +
-      P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
-      "opened/closed appear as New/Exited.</p>"
+      head + tiles +
+      '<div id="activity-chart-mount"></div>' +
+      '<div id="activity-dumbbell-mount"></div>' +
+      '<div id="activity-table-mount"></div>'
     );
+  }
+
+  // Renders the paginated derived-activity detail table (10 rows/page; the tiles/charts above
+  // always summarize ALL rows, so paging never changes what the numbers mean).
+  function mountActivityTable(period, fromPeriod, activity) {
+    var mount = $("activity-table-mount");
+    if (!mount) return;
+    mount.appendChild(P.paginatedTable({
+      headHtml: '<tr><th>Issuer</th><th>CUSIP</th><th>Action</th>' +
+        '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th></tr>',
+      rows: activity,
+      pageSize: 10,
+      renderRow: function (a) {
+        var before = a.shares_before != null ? P.fmt.shares(a.shares_before) : "—";
+        var after = a.shares_after != null ? P.fmt.shares(a.shares_after) : "—";
+        var chg = a.shares_change != null ? signedShares(a.shares_change) : "—";
+        var issuer = a.cik ? '<a href="/company/' + encodeURIComponent(a.cik) + '">' + P.esc(a.issuer_name || "—") + "</a>" : P.esc(a.issuer_name || "—");
+        return (
+          "<tr>" +
+          '<td class="stmt-label">' + issuer + "</td>" +
+          '<td class="stmt-tag">' + P.esc(a.cusip || "—") + "</td>" +
+          "<td>" + P.esc(ACTION_LABEL[a.action] || a.action || "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(before) + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(chg) + "</td>" +
+          "</tr>"
+        );
+      },
+      captionHtml: "DERIVED by diffing " + P.esc(quarterLabel(fromPeriod)) + " → " +
+        P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
+        "opened/closed appear as New/Exited.",
+    }));
   }
 
   // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's
@@ -307,7 +333,7 @@
       return "<li>" + P.esc(m.name || "—") + (m.file_number ? " <span class=\"stmt-tag\">(" + P.esc(m.file_number) + ")</span>" : "") + "</li>";
     }).join("");
     return (
-      '<details class="disclosure" open style="margin-bottom:18px"><summary>Co-filing managers (' +
+      '<details class="disclosure" style="margin-top:26px"><summary>Co-filing managers (' +
       managers.length + ")</summary><ul>" + items +
       "</ul><p class=\"stmt-caption\">Managers on this filing's cover-page roster; individual positions may " +
       "attribute discretion to them.</p></details>"

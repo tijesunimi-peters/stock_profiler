@@ -381,12 +381,14 @@
         var activity = res[1].activity || [];
         var fromPeriod = res[1].from_period;
         var caveats = res[0].caveats || [];
-        $("view").innerHTML = institutionalView(period, holders, activity, fromPeriod, caveats);
+        $("view").innerHTML = institutionalView(period, holders, activity, caveats);
         // Plot builders return DOM nodes (not HTML strings) -- mount them into the placeholder
         // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
         mountHoldersChart(holders);
+        mountHoldersTable(holders);
         mountActivityChart(period, fromPeriod, activity);
         mountDumbbellChart(period, fromPeriod, holders);
+        mountInstActivityTable(period, fromPeriod, activity);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), renderInstitutional);
@@ -407,10 +409,10 @@
     );
   }
 
-  function institutionalView(period, holders, activity, fromPeriod, caveats) {
+  function institutionalView(period, holders, activity, caveats) {
     return (
       institutionalStandingCaveat() +
-      holdersSection(period, holders) + activitySection(period, fromPeriod, activity) + caveatsBlock(caveats)
+      holdersSection(period, holders) + activitySection(activity) + caveatsBlock(caveats)
     );
   }
 
@@ -440,24 +442,38 @@
       }) +
       '<div id="holders-chart-mount"></div>' +
       "</div>";
-    var body = holders.map(function (h) {
-      return (
-        "<tr>" +
-        '<td class="stmt-label">' + managerLink(h.manager_cik, h.manager_name) + "</td>" +
-        '<td class="stmt-tag">' + P.esc(h.cusip || "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(h.shares != null ? P.fmt.shares(h.shares) : "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(h.value != null ? P.fmt.usd(h.value) : "—") + "</td>" +
-        "</tr>"
-      );
-    }).join("");
+    // The holders detail table is paginated (Profin.paginatedTable) -- a widely-held issuer
+    // can have hundreds of reporting filers. Rendered post-innerHTML into this mount, like
+    // the charts (same pattern as manager.js).
     return (
       '<h3 class="metric-group-title">Holders as of ' + P.esc(quarterLabel(period)) + "</h3>" +
       composition +
-      '<table class="stmt-table"><thead><tr><th>Manager</th><th>CUSIP</th>' +
-      '<th class="amt">Shares</th><th class="amt">Value</th></tr></thead><tbody>' + body + "</tbody></table>" +
-      '<p class="stmt-caption">Reported 13F positions across all ingested managers · quarter-end ' +
-      "snapshot, not real-time · long positions in 13(f) securities only.</p>"
+      '<div id="holders-table-mount"></div>'
     );
+  }
+
+  // Renders the paginated holders detail table (10 rows/page; the tiles/chart above always
+  // summarize ALL holders, so paging never changes what the numbers mean).
+  function mountHoldersTable(holders) {
+    var mount = $("holders-table-mount");
+    if (!mount) return;
+    mount.appendChild(P.paginatedTable({
+      headHtml: '<tr><th>Manager</th><th>CUSIP</th><th class="amt">Shares</th><th class="amt">Value</th></tr>',
+      rows: holders,
+      pageSize: 10,
+      renderRow: function (h) {
+        return (
+          "<tr>" +
+          '<td class="stmt-label">' + managerLink(h.manager_cik, h.manager_name) + "</td>" +
+          '<td class="stmt-tag">' + P.esc(h.cusip || "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(h.shares != null ? P.fmt.shares(h.shares) : "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(h.value != null ? P.fmt.usd(h.value) : "—") + "</td>" +
+          "</tr>"
+        );
+      },
+      captionHtml: "Reported 13F positions across all ingested managers · quarter-end " +
+        "snapshot, not real-time · long positions in 13(f) securities only.",
+    }));
   }
 
   // Appends the Plot-backed composition chart into the placeholder holdersSection() just
@@ -492,7 +508,7 @@
     }
   }
 
-  function activitySection(period, fromPeriod, activity) {
+  function activitySection(activity) {
     var head = '<h3 class="metric-group-title" style="margin-top:26px">Derived activity vs. prior quarter</h3>';
     if (!activity.length) {
       return head + P.states.empty({
@@ -501,38 +517,49 @@
           "has nothing to compare to. This is a DERIVED view, never reported trades.",
       });
     }
-    var body = activity.map(function (a) {
-      var before = a.shares_before != null ? P.fmt.shares(a.shares_before) : "—";
-      var after = a.shares_after != null ? P.fmt.shares(a.shares_after) : "—";
-      var chg = a.shares_change != null ? signedShares(a.shares_change) : "—";
-      return (
-        "<tr>" +
-        '<td class="stmt-label">' + managerLink(a.manager_cik, a.manager_name) + "</td>" +
-        "<td>" + P.esc(ACTION_LABEL[a.action] || a.action || "—") + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(before) + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(chg) + "</td>" +
-        "</tr>"
-      );
-    }).join("");
     // Phase 5 polish pass reuse (issuer-centric twin of manager.js's wiring): summary tiles
     // first (headline counts), then the diverging-bars chart (or its <3-changed-rows sentence),
     // then the dumbbell (prior->current % of this issuer's total reported 13F value across
-    // ingested filers) -- same order/reasoning as the manager page. Both Plot chart mounts are
-    // filled post-innerHTML (Profin.divergingBars/dumbbellChart return DOM nodes); left empty
-    // (no visual footprint) when either honestly has nothing to show.
+    // ingested filers), then the paginated detail table -- same order/reasoning as the manager
+    // page. All mounts are filled post-innerHTML (the charts return Plot DOM nodes; the table
+    // is Profin.paginatedTable); left empty when there's honestly nothing to show.
     var tiles = P.activitySummaryTiles(activity);
-    var chartMount = '<div id="activity-chart-mount"></div>';
-    var dumbbellMount = '<div id="activity-dumbbell-mount"></div>';
     return (
-      head + tiles + chartMount + dumbbellMount +
-      '<table class="stmt-table"><thead><tr><th>Manager</th><th>Action</th>' +
-      '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
-      "</tr></thead><tbody>" + body + "</tbody></table>" +
-      '<p class="stmt-caption">DERIVED by diffing ' + P.esc(quarterLabel(fromPeriod)) + " → " +
-      P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
-      "opened/closed appear as New/Exited.</p>"
+      head + tiles +
+      '<div id="activity-chart-mount"></div>' +
+      '<div id="activity-dumbbell-mount"></div>' +
+      '<div id="inst-activity-table-mount"></div>'
     );
+  }
+
+  // Renders the paginated derived-activity detail table (10 rows/page; the tiles/charts above
+  // always summarize ALL rows, so paging never changes what the numbers mean).
+  function mountInstActivityTable(period, fromPeriod, activity) {
+    var mount = $("inst-activity-table-mount");
+    if (!mount) return;
+    mount.appendChild(P.paginatedTable({
+      headHtml: '<tr><th>Manager</th><th>Action</th>' +
+        '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th></tr>',
+      rows: activity,
+      pageSize: 10,
+      renderRow: function (a) {
+        var before = a.shares_before != null ? P.fmt.shares(a.shares_before) : "—";
+        var after = a.shares_after != null ? P.fmt.shares(a.shares_after) : "—";
+        var chg = a.shares_change != null ? signedShares(a.shares_change) : "—";
+        return (
+          "<tr>" +
+          '<td class="stmt-label">' + managerLink(a.manager_cik, a.manager_name) + "</td>" +
+          "<td>" + P.esc(ACTION_LABEL[a.action] || a.action || "—") + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(before) + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(after) + "</td>" +
+          '<td class="amt stmt-amt">' + P.esc(chg) + "</td>" +
+          "</tr>"
+        );
+      },
+      captionHtml: "DERIVED by diffing " + P.esc(quarterLabel(fromPeriod)) + " → " +
+        P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
+        "opened/closed appear as New/Exited.",
+    }));
   }
 
   // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's

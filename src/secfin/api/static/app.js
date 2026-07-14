@@ -1812,6 +1812,79 @@
     return card.root;
   }
 
+  // ---------- paginated table (client-side pager over an already-fetched row set) ----------
+  //
+  // The 13F tables (a manager's holdings, an issuer's holders, derived activity) are unbounded
+  // on real data -- a large filer reports thousands of positions -- so the detail tables page
+  // client-side instead of rendering every row. This pages the DOM only: the full row set is
+  // already fetched and the charts/tiles above always summarize ALL rows, so pagination never
+  // changes what the numbers mean.
+  //
+  // opts: { headHtml    -- "<tr>...</tr>" for <thead> (same markup the inline tables used),
+  //         rows        -- full row array,
+  //         renderRow   -- function(row) -> "<tr>...</tr>" HTML string,
+  //         pageSize    -- rows per page (default 25),
+  //         captionHtml -- optional caption under the table; built by callers from
+  //                        already-escaped pieces, same as the old inline captions }
+  // Returns a DOM node. The pager row (range label + Prev/Next) only renders when there is
+  // more than one page -- a table that fits on one page looks exactly like before.
+  function paginatedTable(opts) {
+    opts = opts || {};
+    var rows = opts.rows || [];
+    var pageSize = opts.pageSize || 25;
+    var pages = Math.max(1, Math.ceil(rows.length / pageSize));
+    var page = 0;
+
+    var root = document.createElement("div");
+    root.className = "paged-table";
+    var table = document.createElement("table");
+    table.className = "stmt-table";
+    table.innerHTML = "<thead>" + (opts.headHtml || "") + "</thead><tbody></tbody>";
+    root.appendChild(table);
+    var tbody = table.querySelector("tbody");
+
+    var label = null, prev = null, next = null;
+    if (pages > 1) {
+      var pager = document.createElement("div");
+      pager.className = "table-pager";
+      prev = document.createElement("button");
+      prev.type = "button";
+      prev.className = "pager-btn";
+      prev.textContent = "← Prev";
+      label = document.createElement("span");
+      label.className = "pager-label";
+      next = document.createElement("button");
+      next.type = "button";
+      next.className = "pager-btn";
+      next.textContent = "Next →";
+      pager.appendChild(prev);
+      pager.appendChild(label);
+      pager.appendChild(next);
+      prev.addEventListener("click", function () { if (page > 0) { page -= 1; draw(); } });
+      next.addEventListener("click", function () { if (page < pages - 1) { page += 1; draw(); } });
+      root.appendChild(pager);
+    }
+    if (opts.captionHtml) {
+      var cap = document.createElement("p");
+      cap.className = "stmt-caption";
+      cap.innerHTML = opts.captionHtml;
+      root.appendChild(cap);
+    }
+
+    function draw() {
+      var start = page * pageSize;
+      var slice = rows.slice(start, start + pageSize);
+      tbody.innerHTML = slice.map(opts.renderRow).join("");
+      if (label) {
+        label.textContent = (start + 1) + "–" + (start + slice.length) + " of " + rows.length;
+        prev.disabled = page === 0;
+        next.disabled = page >= pages - 1;
+      }
+    }
+    draw();
+    return root;
+  }
+
   window.Profin = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -1830,6 +1903,7 @@
     trajectoryChart: trajectoryChart,
     measuredWidth: measuredWidth,
     chartCard: chartCard,
+    paginatedTable: paginatedTable,
     compositionBars: compositionBars,
     statTiles: statTiles,
     positionBar: positionBar,
