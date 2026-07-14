@@ -386,6 +386,7 @@
         // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
         mountHoldersChart(holders);
         mountActivityChart(period, fromPeriod, activity);
+        mountDumbbellChart(period, fromPeriod, holders);
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), renderInstitutional);
@@ -496,14 +497,17 @@
         "</tr>"
       );
     }).join("");
-    // Chart mount point (Phase 5.6 reuse of manager.js's 5.3 diverging bars): filled by
-    // mountActivityChart() after this markup lands in the DOM, above the table --
-    // Profin.divergingBars returns a DOM node (Plot renders SVG), so it's appended
-    // post-innerHTML rather than built into this HTML string. Left empty (no visual footprint)
-    // when divergingBars honestly has nothing to chart.
+    // Phase 5 polish pass reuse (issuer-centric twin of manager.js's wiring): summary tiles
+    // first (headline counts), then the diverging-bars chart (or its <3-changed-rows sentence),
+    // then the dumbbell (prior->current % of this issuer's total reported 13F value across
+    // ingested filers) -- same order/reasoning as the manager page. Both Plot chart mounts are
+    // filled post-innerHTML (Profin.divergingBars/dumbbellChart return DOM nodes); left empty
+    // (no visual footprint) when either honestly has nothing to show.
+    var tiles = P.activitySummaryTiles(activity);
     var chartMount = '<div id="activity-chart-mount"></div>';
+    var dumbbellMount = '<div id="activity-dumbbell-mount"></div>';
     return (
-      head + chartMount +
+      head + tiles + chartMount + dumbbellMount +
       '<table class="stmt-table"><thead><tr><th>Manager</th><th>Action</th>' +
       '<th class="amt">Shares before</th><th class="amt">Shares after</th><th class="amt">Change</th>' +
       "</tr></thead><tbody>" + body + "</tbody></table>" +
@@ -530,8 +534,39 @@
       labelField: "manager_name",
       tipLabelKey: "Manager",
       title: "Derived holder activity",
+      width: P.measuredWidth(mount, 640),
     });
     if (node) mount.appendChild(node);
+  }
+
+  // Phase 5 polish pass, dumbbell chart (issuer-centric twin of manager.js's): the prior
+  // quarter's holders ARE cleanly available here -- `/companies/{symbol}/institutional-holders`
+  // takes the same `period=` query param manager.js's `/managers/{cik}/holdings` does, so
+  // fetching it for `fromPeriod` is the same one-extra-request pattern, just against the
+  // issuer-centric endpoint instead of the manager-centric one. Rows are matched between
+  // quarters by (manager_cik, cusip) -- normalize/flows.diff_holders' own key -- not cusip
+  // alone, since two different managers holding the same issuer share a cusip. No-ops quietly
+  // (never an error state) when there's no prior quarter, or when the fetch fails.
+  function mountDumbbellChart(period, fromPeriod, currentHolders) {
+    var mount = $("activity-dumbbell-mount");
+    if (!mount || !fromPeriod) return;
+    var base = "/companies/" + encodeURIComponent(symbol);
+    P.api(base + "/institutional-holders?period=" + encodeURIComponent(fromPeriod)).then(
+      function (res) {
+        var node = P.dumbbellChart(currentHolders, res.holders || [], {
+          fromLabel: quarterLabel(fromPeriod),
+          toLabel: quarterLabel(period),
+          width: P.measuredWidth(mount, 640),
+          labelField: "manager_name",
+          idField: ["manager_cik", "cusip"],
+          unknownLabel: "Unknown manager",
+          rowNoun: { singular: "holder", plural: "holders" },
+          title: "Prior → current holder allocation",
+        });
+        if (node) mount.appendChild(node);
+      },
+      function () { /* prior-quarter fetch failed -- skip the dumbbell, never break the page */ }
+    );
   }
 
   // Signed share delta with the U+2212 minus glyph (§2), e.g. "+2.0M" / "−1.5M".
