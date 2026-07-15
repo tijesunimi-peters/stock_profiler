@@ -7,6 +7,8 @@ Docs at /docs.
 
 from __future__ import annotations
 
+import datetime as dt
+from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -161,6 +163,28 @@ app = FastAPI(
     openapi_tags=_OPENAPI_TAGS,
     lifespan=lifespan,
 )
+
+# Process-lifetime response counters for GET /v1/admin/ops (admin_routes.py) -- the
+# error-rate half of the observability story (traffic/keys come from the repository).
+# Deliberately in-memory, not persisted: the app is a hard single process
+# (docs/DEPLOYMENT.md §1), so one process's counters ARE the whole picture, and they
+# resetting on restart is fine for "is production erroring right now?". Counted by
+# class ("2xx".."5xx") -- handled exceptions (the 502/503 handlers below, HTTPException)
+# arrive here as normal responses; only an unhandled exception takes the `except`
+# branch, and is counted as the 500 Starlette will turn it into.
+app.state.ops_started_at = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+app.state.ops_response_counts = Counter()
+
+
+@app.middleware("http")
+async def _count_response_classes(request: Request, call_next):  # type: ignore[no-untyped-def]
+    try:
+        response = await call_next(request)
+    except Exception:
+        app.state.ops_response_counts["5xx"] += 1
+        raise
+    app.state.ops_response_counts[f"{response.status_code // 100}xx"] += 1
+    return response
 
 
 # Pre-launch cold-path finding (2026-07-07): a cache MISS on any cache-aside endpoint

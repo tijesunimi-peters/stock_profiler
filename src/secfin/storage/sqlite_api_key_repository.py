@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from secfin.auth.models import ApiKeyRecord, DailyUsage
+from secfin.auth.models import ApiKeyRecord, DailyCount, DailyTraffic, DailyUsage, OpsOverview
 from secfin.storage.api_key_repository import ApiKeyRepository
 
 _SCHEMA = """
@@ -136,6 +136,37 @@ class SQLiteApiKeyRepository(ApiKeyRepository):
             (api_key_id, since_day),
         )
         return [DailyUsage(date=row[0], request_count=row[1]) for row in cur.fetchall()]
+
+    def ops_overview(self, since_day: str) -> OpsOverview:
+        total, active = self._conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(active), 0) FROM api_keys"
+        ).fetchone()
+        by_tier = self._conn.execute(
+            "SELECT tier, COUNT(*) FROM api_keys WHERE active = 1 GROUP BY tier"
+        ).fetchall()
+        traffic = self._conn.execute(
+            "SELECT usage_date, SUM(request_count), COUNT(DISTINCT api_key_id) "
+            "FROM api_key_usage WHERE usage_date >= ? "
+            "GROUP BY usage_date ORDER BY usage_date",
+            (since_day,),
+        ).fetchall()
+        # created_at is "YYYY-MM-DD HH:MM:SS" (UTC), so the lexicographic >= against a
+        # bare "YYYY-MM-DD" boundary is a correct date comparison.
+        signups = self._conn.execute(
+            "SELECT substr(created_at, 1, 10) AS day, COUNT(*) FROM api_keys "
+            "WHERE created_at >= ? GROUP BY day ORDER BY day",
+            (since_day,),
+        ).fetchall()
+        return OpsOverview(
+            keys_total=total,
+            keys_active=active,
+            keys_by_tier={tier: count for tier, count in by_tier},
+            traffic_by_day=[
+                DailyTraffic(date=row[0], request_count=row[1], active_keys=row[2])
+                for row in traffic
+            ],
+            signups_by_day=[DailyCount(date=row[0], count=row[1]) for row in signups],
+        )
 
     def close(self) -> None:
         self._conn.close()

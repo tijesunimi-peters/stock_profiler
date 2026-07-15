@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from secfin.auth.models import ApiKeyRecord, DailyUsage
+from secfin.auth.models import ApiKeyRecord, DailyUsage, OpsOverview
 
 
 class ApiKeyRepository(ABC):
@@ -85,6 +85,15 @@ class ApiKeyRepository(ABC):
         UTC), ordered by date ascending. Sparse -- a day with no recorded requests has no
         row here; a caller needing a complete window (e.g. `GET /v1/usage`, via
         `auth/usage.py`'s `usage_summary`) fills the gaps itself.
+        """
+
+    @abstractmethod
+    def ops_overview(self, since_day: str) -> OpsOverview:
+        """Aggregate operator snapshot across ALL keys: key totals (overall, active,
+        active-by-tier), per-day traffic (total request count + distinct keys) and
+        per-day signups on/after `since_day` ('YYYY-MM-DD' UTC). Sparse like
+        `usage_by_day` -- days without traffic/signups have no row. Backs
+        `GET /v1/admin/ops` (api/admin_routes.py); read-only.
         """
 
     @abstractmethod

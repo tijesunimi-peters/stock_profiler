@@ -38,3 +38,34 @@ class UsageSummary(BaseModel):
     rate_limit_per_sec: int
     daily_quota: int
     usage_by_day: list[DailyUsage]
+
+
+class DailyTraffic(BaseModel):
+    """One day of aggregate metered traffic across ALL keys (admin ops view): total
+    request count plus how many distinct keys produced it. Days with no traffic simply
+    don't appear -- unlike UsageSummary this is an operator glance, not a billing series.
+    """
+
+    date: str
+    request_count: int
+    active_keys: int
+
+
+class DailyCount(BaseModel):
+    """One (day, count) pair -- signups per day in the admin ops view."""
+
+    date: str
+    count: int
+
+
+class OpsOverview(BaseModel):
+    """Aggregate key/traffic snapshot for `GET /v1/admin/ops` (api/admin_routes.py) --
+    the "yesterday's traffic without SSHing around" view, sourced from the same
+    `api_keys` / `api_key_usage` tables the auth path already writes.
+    """
+
+    keys_total: int
+    keys_active: int
+    keys_by_tier: dict[str, int]
+    traffic_by_day: list[DailyTraffic]
+    signups_by_day: list[DailyCount]

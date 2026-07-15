@@ -17,12 +17,13 @@ write/read visibility on the same file.
 
 from __future__ import annotations
 
+import datetime as dt
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from secfin.auth.models import ApiKeyRecord
+from secfin.auth.models import ApiKeyRecord, OpsOverview
 from secfin.auth.tiers import TIERS
 from secfin.config import settings
 from secfin.storage.api_key_repository import ApiKeyRepository
@@ -113,3 +114,43 @@ async def revoke_key(
     if record is None:
         raise HTTPException(status_code=404, detail=f"No API key registered to {email}")
     return RevokeKeyResponse(email=record.email, active=record.active)
+
+
+class OpsProcess(BaseModel):
+    started_at: str
+    responses_by_class: dict[str, int]
+
+
+class OpsResponse(BaseModel):
+    process: OpsProcess
+    days: int
+    overview: OpsOverview
+
+
+@admin_router.get(
+    "/admin/ops",
+    response_model=OpsResponse,
+    dependencies=[Depends(require_admin_secret)],
+    include_in_schema=False,
+)
+async def ops_snapshot(
+    request: Request,
+    days: int = Query(default=7, ge=1, le=90),
+    repo: ApiKeyRepository = Depends(get_api_key_repo),
+) -> OpsResponse:
+    """Operator observability snapshot: process-lifetime response counts by status
+    class (in-memory, reset on restart -- see api/main.py's counter middleware) plus
+    aggregate traffic/signups/key totals for the trailing `days` window, straight from
+    the `api_keys`/`api_key_usage` tables. Complements, not replaces, the Caddy
+    log-review routine (docs/DEPLOYMENT.md §10) -- this is the one-curl "is production
+    healthy and did anyone show up yesterday?" answer.
+    """
+    since = (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=days - 1)).isoformat()
+    return OpsResponse(
+        process=OpsProcess(
+            started_at=request.app.state.ops_started_at,
+            responses_by_class=dict(request.app.state.ops_response_counts),
+        ),
+        days=days,
+        overview=repo.ops_overview(since),
+    )
