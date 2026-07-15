@@ -170,10 +170,13 @@ each is now a runbook step rather than open design work.*
       secret unset), behind `ApiKeyRepository.revoke_key`. Verified live at
       convergence: signup → 200 → revoke → **401 on the very next request** (no
       cache, no delay). Requires `SECFIN_ADMIN_SECRET` set in production env.
-- [ ] Error-rate visibility: a way to see 5xx spikes and yesterday's traffic without
-      SSHing around (log review routine is enough at this scale) — *routine
-      documented 2026-07-11 in `docs/DEPLOYMENT.md` (Caddy JSON access logs +
-      journald); verify on the real host before checking*
+- [x] Error-rate visibility: a way to see 5xx spikes and yesterday's traffic without
+      SSHing around (log review routine is enough at this scale) — routine verified
+      on the real host 2026-07-14: status-code breakdown, 5xx grep (zero since
+      deploy), and api-container tail all work as documented. Bonus finding: the
+      404s are scanner probes (`/.env`, `/.git/config` — correctly 404ing, nothing
+      sensitive in the web surface) plus missing `/favicon.ico` and `/robots.txt`
+      (polish, not blocking).
 - [ ] Feedback/support channel (GitHub issues is enough) linked from docs and site
       footer
 - [x] Decide on email verification at signup — decided 2026-07-14 (operator):
@@ -183,9 +186,21 @@ each is now a runbook step rather than open design work.*
       anon limiter caps keyless traffic). Revisit triggers: evidence of
       quota-evasion via throwaway signups (visible in `api_key_usage` review), or
       before billing goes live (payment requires a real address anyway).
-- [ ] Signup-spike safety re-check on the deployed host: burst of new keys must not
+- [x] Signup-spike safety re-check on the deployed host: burst of new keys must not
       translate into an SEC request spike (cache-aside + shared limiter held in
-      testing; confirm once on production hardware)
+      testing; confirm once on production hardware) — verified 2026-07-14 on the
+      live droplet: 15 fresh keys issued in ~11s, then 45 gated/public calls across
+      an 8-ticker basket; outbound SEC traffic measured with tcpdump (all outbound
+      :443 SYNs, deduped) = **56 connections over 23s, ~2.4/s avg, peak 2–4/s** —
+      nowhere near the 8 req/s throttle ceiling. Statements/insider served pure
+      cache (zero SEC traffic); the per-IP anon limiter tripped correctly (3×429)
+      on the repeated public-endpoint calls. Test keys revoked after (15/15 → the
+      revocation path exercised again in prod). *Known behavior, not a defect:
+      `beneficial-ownership` (13D/G) revalidates against SEC per request (~2
+      connections each; it was never bulk-seeded, unlike insider/13F) — under a
+      real burst it queues behind the shared throttle and slows down while SEC
+      stays protected, the designed failure mode. Warm-seeding 13D/G is optional
+      post-launch work.*
 
 ## 7. Launch assets (see `launch-campaign` + `content-seo` skills)
 
