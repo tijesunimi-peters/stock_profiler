@@ -184,7 +184,9 @@ src/secfin/
                                #   coverage/guide pages (see docs/ROADMAP_UI.md)
 scripts/                       # committed, reusable one-off scripts (benchmarks, load tests)
 tests/
-docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, ROADMAP,
+docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, DEPLOYMENT
+                               #   (generic runbook), DEPLOYMENT_DO (as-built prod:
+                               #   clearyfi.com on DigitalOcean), ROADMAP,
                                #   ROADMAP_METRICS, ROADMAP_UI, STYLE_GUIDE
 ```
 

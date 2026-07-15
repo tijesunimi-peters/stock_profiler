@@ -11,6 +11,13 @@ This is a prep-only document: everything in it is written and testable against a
 domain, provisioning a VPS, pointing DNS, creating secrets) are called out explicitly
 and collected in the checklist at the end.
 
+> **A real deployment now exists** (2026-07-14): DigitalOcean droplet serving
+> clearyfi.com / api.clearyfi.com. `docs/DEPLOYMENT_DO.md` is the as-built record --
+> what's running, the exact provisioning commands, where it deviates from this
+> runbook (notably: rsync instead of `git clone`, two-host Caddyfile), and the
+> current day-2 flow. This file stays the generic runbook; that one is the truth
+> about production.
+
 ## Contents
 
 1. [Why one process -- read this first](#1-why-one-process----read-this-first)
