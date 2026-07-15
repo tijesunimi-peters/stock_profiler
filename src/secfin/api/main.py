@@ -233,6 +233,25 @@ async def data_coverage() -> FileResponse:
     return FileResponse(STATIC_DIR / "coverage.html")
 
 
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt() -> FileResponse:
+    # Crawlers are welcome on the marketing/docs pages but kept off /v1/ -- API
+    # JSON has no SEO value and would burn the anonymous per-IP rate limit.
+    return FileResponse(STATIC_DIR / "robots.txt")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon_ico() -> FileResponse:
+    # Browsers request this path by default; the pages' <link rel="icon"> data
+    # URI doesn't cover it. Same brand mark as the inline SVG.
+    return FileResponse(STATIC_DIR / "favicon.ico")
+
+
+@app.get("/favicon.svg", include_in_schema=False)
+async def favicon_svg() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.svg")
+
+
 @app.get("/company/{symbol}", include_in_schema=False)
 async def company_hub(symbol: str) -> FileResponse:
     # The company hub shell; company.js reads {symbol} from the path and calls the v1 API.

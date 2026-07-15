@@ -103,3 +103,23 @@ def test_disclaimer_is_reachable_from_every_page_footer(tmp_path, monkeypatch):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert '/disclaimer' in resp.text, f"{path} footer is missing a /disclaimer link"
+
+
+def test_robots_txt_allows_pages_but_blocks_the_api(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/robots.txt")
+    assert resp.status_code == 200
+    assert "text/plain" in resp.headers["content-type"]
+    assert "Disallow: /v1/" in resp.text
+    # The pages themselves must NOT be disallowed -- only the API subtree.
+    assert "Disallow: /\n" not in resp.text
+
+
+def test_favicon_serves_for_default_browser_requests(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        ico = client.get("/favicon.ico")
+        svg = client.get("/favicon.svg")
+    assert ico.status_code == 200
+    assert ico.content[:4] == b"\x00\x00\x01\x00"  # ICO magic bytes
+    assert svg.status_code == 200
+    assert "svg" in svg.headers["content-type"]

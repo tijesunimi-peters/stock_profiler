@@ -1,0 +1,4 @@
+# Marketing/docs pages are crawlable; the JSON API is not -- API responses have
+# no SEO value and crawlers would burn the anonymous per-IP rate limit.
+User-agent: *
+Disallow: /v1/
