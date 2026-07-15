@@ -49,17 +49,43 @@ backup → volume-wipe → restore round trip — see `tracks/infra.md`). The bo
 below describe deployed-state facts and stay unchecked until a host exists;
 each is now a runbook step rather than open design work.*
 
-- [ ] Pick a host (single small VPS fits the design — in-memory per-key limiter and
-      process-wide SEC throttle assume ONE uvicorn process; do not add `--workers`
-      without revisiting both)
-- [ ] Domain + TLS
-- [ ] Uptime monitoring with alerting (external ping service is enough)
-- [ ] `SEC_USER_AGENT` set to a real contact address in production env
-- [ ] Cron: daily incremental ingest (`python -m secfin.ingest.incremental`)
-- [ ] Cron: scheduled backups (`python -m secfin.storage.backup`) with the backup
-      dir on storage that survives the app volume (mirrors the compose setup)
-- [ ] Verify the deployed instance end-to-end: signup → key → gated request → 429
-      behavior, from outside the host
+- [x] Pick a host — decided 2026-07-14 (operator): **DigitalOcean** (PaaS ruled out:
+      ephemeral filesystem loses the SQLite volume). Provisioned same day:
+      droplet `secfin-api`, TOR1, $12 Basic (1 vCPU/2GB/50GB), 143.198.37.67,
+      Ubuntu 24.04, cloud firewall inbound 22/80/443 only. Runbook §3–§8 executed:
+      repo at `/opt/secfin` (rsynced — no deploy key yet, so day-2 `git pull` needs
+      one), prod image built, DB hydrated from the seeded local backup
+      (`secfin-20260715T022201Z.db`, 695MB) via `restore --latest`, `api` service
+      up loopback-only. Verified: `/health` ok; AAPL FY2023 income served from the
+      restored DB; gated endpoint demands key; `:8000` confirmed unreachable from
+      outside (only 22 open until Caddy starts).
+- [x] Domain + TLS — done 2026-07-14: **clearyfi.com** (operator purchase,
+      Namecheap DNS). Two-host layout (operator decision): `clearyfi.com` =
+      site/frontend, `api.clearyfi.com` = documented API base, both proxying the
+      same app; `www` 301s to bare. Let's Encrypt certs obtained for all three on
+      first Caddy start; `guide.html` placeholders replaced with the real domain.
+- [ ] Uptime monitoring with alerting (external ping service is enough) —
+      *operator: free-tier pinger on `https://api.clearyfi.com/health`, 1–5 min
+      interval*
+- [x] `SEC_USER_AGENT` set to a real contact address in production env — done
+      2026-07-14: real contact address in `/opt/secfin/.env` (mode 600), plus a
+      fresh `SECFIN_ADMIN_SECRET` generated on-box (never left the droplet).
+- [x] Cron: daily incremental ingest (`python -m secfin.ingest.incremental`) —
+      installed 2026-07-14 via `deploy/install.sh`; `secfin-incremental.timer`
+      active, first fire 2026-07-15 06:00 UTC. *Re-verify
+      `/var/log/secfin/incremental.status` after the first run.*
+- [x] Cron: scheduled backups (`python -m secfin.storage.backup`) with the backup
+      dir on storage that survives the app volume (mirrors the compose setup) —
+      installed 2026-07-14, same evidence; `secfin-backup.timer` first fire
+      2026-07-15 07:00 UTC, writes to the droplet's `/opt/secfin/data/backups`
+      bind mount. *Off-droplet backup destination still an open operator decision
+      (see the backup-posture discussion, 2026-07-14).*
+- [x] Verify the deployed instance end-to-end: signup → key → gated request → 429
+      behavior, from outside the host — done 2026-07-14:
+      `verify_deployment.py --base-url https://api.clearyfi.com` run from the
+      operator's machine (not the droplet), **10/10 passed** — health, real
+      signup, gated request with the fresh key, free-tier 429 trip, unknown-ticker
+      404, `/docs`, and all four static pages over live TLS.
 
 ## 3. Data coverage at launch
 
