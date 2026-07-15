@@ -8,10 +8,11 @@
 # a hard requirement -- swap in nginx+certbot if you already run one, the app doesn't
 # care what's in front of it.
 #
-# Replace api.example.com with your real domain before starting this stack -- see
-# docker-compose.prod.yml, which mounts this file into the caddy service.
+# Two public hosts, one app (decided 2026-07-14): clearyfi.com is the canonical
+# site/frontend host, api.clearyfi.com is the documented API base -- both proxy to
+# the same FastAPI process. www redirects to the bare domain.
 
-api.example.com {
+clearyfi.com, api.clearyfi.com {
 	reverse_proxy api:8000
 
 	# Basic access logging so "yesterday's traffic" (docs/DEPLOYMENT.md's log-review
@@ -21,4 +22,8 @@ api.example.com {
 		output stdout
 		format json
 	}
+}
+
+www.clearyfi.com {
+	redir https://clearyfi.com{uri} permanent
 }

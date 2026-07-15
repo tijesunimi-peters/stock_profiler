@@ -81,14 +81,14 @@
   <p class="body-text"><code>/statements</code> is one of the two public endpoints (see step 3 below), so this works before you've done anything else:</p>
   <div class="code-panel">
     <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">income-statement.sh</span></div>
-    <pre class="code-body">curl <span class="str">"https://api.example.com/v1/companies/AAPL/statements/income?year=2023&amp;period=FY"</span></pre>
+    <pre class="code-body">curl <span class="str">"https://api.clearyfi.com/v1/companies/AAPL/statements/income?year=2023&amp;period=FY"</span></pre>
   </div>
   <div class="code-panel">
     <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">income-statement.py</span></div>
     <pre class="code-body"><span class="key">import</span> requests
 
 resp = requests.get(
-    <span class="str">"https://api.example.com/v1/companies/AAPL/statements/income"</span>,
+    <span class="str">"https://api.clearyfi.com/v1/companies/AAPL/statements/income"</span>,
     params={<span class="str">"year"</span>: <span class="num">2023</span>, <span class="str">"period"</span>: <span class="str">"FY"</span>},
 )
 statement = resp.json()
@@ -100,7 +100,7 @@ statement = resp.json()
   <p class="guide-step-label">1. Sign up for a key</p>
   <div class="code-panel">
     <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">signup.sh</span></div>
-    <pre class="code-body">curl -X POST https://api.example.com/v1/signup \
+    <pre class="code-body">curl -X POST https://api.clearyfi.com/v1/signup \
   -H <span class="str">"Content-Type: application/json"</span> \
   -d <span class="str">'{"email": "you@example.com"}'</span></pre>
   </div>
@@ -118,7 +118,7 @@ statement = resp.json()
   <p class="guide-step-label">2. Call a gated endpoint with <code>X-API-Key</code></p>
   <div class="code-panel">
     <div class="code-titlebar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="filename">insider-trades.sh</span></div>
-    <pre class="code-body">curl https://api.example.com/v1/companies/AAPL/insider-trades?limit=5 \
+    <pre class="code-body">curl https://api.clearyfi.com/v1/companies/AAPL/insider-trades?limit=5 \
   -H <span class="str">"X-API-Key: sfk_..."</span></pre>
   </div>
 
