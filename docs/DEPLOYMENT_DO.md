@@ -135,9 +135,40 @@ replica). `doctl compute droplet-action resize 584697256 --size <bigger> --wait`
 newest backup in the operator machine's `./data/backups/` (or the droplet's
 `/opt/secfin/data/backups` if the volume died but the disk survived).
 
-## 6. Open items (tracked in docs/product/LAUNCH_READINESS.md)
+## 6. Monitoring & observability (as built, 2026-07-14)
 
-- Uptime pinger on `https://api.clearyfi.com/health` (operator account needed).
+Three layers, all free, no third-party vendors (proportionality argument in runbook
+§9-§10 -- deliberately no Prometheus/Grafana/log-shipping):
+
+**DO Uptime** (external probe, us_east + us_west): check `secfin-health`
+(`039c3697-310c-4d27-a691-5dc758a3db15`) GETs `https://api.clearyfi.com/health`;
+email alerts on **down for 2m** and on **TLS cert < 14 days from expiry** (belt and
+suspenders -- Caddy should renew long before that; this alert firing means renewal is
+broken). `doctl monitoring uptime get <id>` / `... uptime alert list <id>`.
+
+**DO droplet alerts** (agent was enabled at droplet creation), applied by tag
+`secfin`, email to the operator: CPU > 80% for 10m, memory > 90% for 10m,
+disk > 85% for 1h. The disk one matters most -- the DB, Docker images, and local
+backups share the 50GB disk, and the failure mode is gradual. `doctl monitoring
+alert list`.
+
+**In-app ops snapshot** -- `GET /v1/admin/ops` (`X-Admin-Secret`-gated, added
+2026-07-14): process-lifetime response counts by status class (5xx visibility
+without grepping Caddy logs; in-memory by design -- single process, resets on
+restart) plus trailing per-day traffic (total requests + distinct active keys),
+per-day signups, and key totals by tier from `api_keys`/`api_key_usage`.
+The launch-day "is production healthy and did anyone show up?" one-liner:
+
+```bash
+curl -s https://api.clearyfi.com/v1/admin/ops -H "X-Admin-Secret: $(ssh root@143.198.37.67 '. /opt/secfin/.env && echo $SECFIN_ADMIN_SECRET')" | python3 -m json.tool
+```
+
+The Caddy log-review routine (runbook §10) stays the source of truth for per-path
+detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metered
+(keyed) requests plus process-wide response classes.
+
+## 7. Open items (tracked in docs/product/LAUNCH_READINESS.md)
+
 - Off-droplet backup destination -- backups currently live only on the droplet's
   own disk; operator deliberately deferred the decision (Spaces+rclone hourly vs.
   Litestream were the assessed options, 2026-07-14).

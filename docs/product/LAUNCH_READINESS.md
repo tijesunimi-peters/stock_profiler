@@ -64,9 +64,13 @@ each is now a runbook step rather than open design work.*
       site/frontend, `api.clearyfi.com` = documented API base, both proxying the
       same app; `www` 301s to bare. Let's Encrypt certs obtained for all three on
       first Caddy start; `guide.html` placeholders replaced with the real domain.
-- [ ] Uptime monitoring with alerting (external ping service is enough) —
-      *operator: free-tier pinger on `https://api.clearyfi.com/health`, 1–5 min
-      interval*
+- [x] Uptime monitoring with alerting (external ping service is enough) — done
+      2026-07-14 via DO's own (free) monitoring, no third-party account needed:
+      external uptime check on `https://api.clearyfi.com/health` from
+      us_east+us_west with email alerts on down-for-2m and TLS-expiry<14d, plus
+      droplet CPU/memory/disk threshold alerts, plus an in-app
+      `GET /v1/admin/ops` snapshot (response-class counters, per-day
+      traffic/signups/keys). See `docs/DEPLOYMENT_DO.md` §6.
 - [x] `SEC_USER_AGENT` set to a real contact address in production env — done
       2026-07-14: real contact address in `/opt/secfin/.env` (mode 600), plus a
       fresh `SECFIN_ADMIN_SECRET` generated on-box (never left the droplet).
