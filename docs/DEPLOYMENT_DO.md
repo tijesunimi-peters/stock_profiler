@@ -174,4 +174,8 @@ detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metere
   Litestream were the assessed options, 2026-07-14).
 - GitHub deploy key on the droplet so day-2 becomes `git pull` (runbook §12)
   instead of §5's rsync.
-- Verify the first timer runs (morning of 2026-07-15 UTC).
+- ~~Verify the first timer runs (morning of 2026-07-15 UTC)~~ — done. The first
+  scheduled ingest FAILED (`open /opt/secfin/.env: permission denied`: `.env` was
+  root-owned 600, timers run as the `secfin` user). Fixed live (`chown
+  secfin:secfin /opt/secfin/.env`) and permanently in `deploy/install.sh`;
+  re-run verified: 35 companies ingested for 2026-07-14.

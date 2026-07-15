@@ -22,6 +22,15 @@ fi
 mkdir -p "$LOG_DIR"
 chown secfin:secfin "$LOG_DIR"
 
+# The timers run docker compose as the secfin user, and compose must read .env --
+# which the operator typically created as root with mode 600 (it holds
+# SECFIN_ADMIN_SECRET, so group/world bits stay off; ownership is the fix).
+# Found the hard way on the first scheduled run (2026-07-15): "open /opt/secfin/.env:
+# permission denied", exit 1, before the job did anything.
+if [ -f "$APP_DIR/.env" ]; then
+    chown secfin:secfin "$APP_DIR/.env"
+fi
+
 echo "Installing systemd units into $UNIT_DIR..."
 cp "$(dirname "$0")/systemd/"secfin-*.service "$(dirname "$0")/systemd/"secfin-*.timer "$UNIT_DIR/"
 
