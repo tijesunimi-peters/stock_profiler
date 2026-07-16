@@ -73,7 +73,20 @@ for that period. This is how we absorb tag inconsistency across companies and ac
 ## Improving coverage
 
 `statements.coverage_report()` counts mapped vs. unmapped facts. Unmapped high-frequency
-tags are your best candidates to add next. Every time you add a concept or candidate tag:
+tags are your best candidates to add next.
+
+**The mapping-research reference is `docs/tag_glossary.jsonl`** (generated 2026-07-16 by
+`scripts/tag_glossary.py`; regeneration command in its first line's `_meta`): one line
+per distinct us-gaap tag in the store, with the official FASB label/definition, filer
+coverage, units, period type, and current mapped status. Hunt unification candidates by
+*meaning*, not tag name — labels are deduplicated by FASB, so variant tags for one
+economic concept (the `Revenues` family, `AccruedLiabilitiesCurrent` vs the combined
+payables+accruals tags) only surface through definition text and coverage stats, e.g.
+`grep -i "customer advance" docs/tag_glossary.jsonl`. Unmapped rows sorted by
+`companies` are the priority worklist. Coverage numbers are measured against the
+store's fully-ingested companies (73 at generation), not the whole market.
+
+Every time you add a concept or candidate tag:
 
 1. update `mapping.py` (`CONCEPTS` and, if new, `STATEMENT_CONCEPTS`),
 2. update this doc,
