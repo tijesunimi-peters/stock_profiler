@@ -31,6 +31,11 @@ name. (Same honesty rule as the rest of the product.)
 
 ## Phase 1 — Raw-facts endpoint (concrete; small; pre- or at-launch)
 
+**Status (2026-07-16): SHIPPED as specced** — `api/routes.py`'s `internal_router`
+(admin-secret-gated, `include_in_schema=False`), tests in
+`tests/test_raw_facts_route.py`, docs in `DATA_MODEL.md` + `DEPLOYMENT_DO.md` §5.
+Internal-only per the operator decision below; the go-public question stays open.
+
 `GET /v1/companies/{symbol}/facts` — serve the store's raw facts for one company,
 audit fields and all. This is "show your work" promoted to an API surface: power users
 self-serve the 466 tags we haven't canonicalized, without us promising normalization

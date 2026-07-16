@@ -206,6 +206,30 @@ flagged):**
   fixtures* — the dei→BVPS path is covered by a synthetic test in `tests/test_metrics.py`,
   and resolves against real (dei-carrying) filings in production.
 
+## Raw-facts endpoint (INTERNAL-ONLY) — `GET /v1/companies/{symbol}/facts`
+
+The raw layer promoted to an API surface (shipped 2026-07-16, `ROADMAP_DATA_DEPTH.md`
+Phase 1): every stored fact for one company, audit fields and all — tag, taxonomy,
+label, value, unit, period fields, fiscal key, form, filed, accession, frame,
+`is_extension`. Nothing derived, nothing dropped; instant facts carry
+`period_end == instant` exactly as `sec/companyfacts.py` flattens them.
+
+- **Access:** admin-secret-gated (`X-Admin-Secret`, like `/v1/admin/*`) and hidden from
+  the OpenAPI schema — an operator tool, not a customer feature, pending the go-public
+  decision recorded in the roadmap.
+- **Filters:** at least one required (`tag=` repeatable exact tags, and/or `year=` with
+  optional `period=`; `taxonomy=` narrows further) — same "no unbounded scans" stance
+  as `/v1/screen`. `limit=`/`offset=` paginate (default 100, cap 1000) over a
+  deterministic sort; `total` counts matches before pagination.
+- **The fy/fp trap (why the response always carries `caveats`):**
+  `fiscal_year`/`fiscal_period` are the *filing's* period, so one (year, period) key
+  also contains the filing's comparative columns and YTD durations. Filter/aggregate by
+  `period_end`/`instant`, never by fiscal year alone. This is the exact trap the
+  statement builder defends against (`normalize/statements.py`) — raw rows are served
+  undefended, by design.
+- **Serving path:** the existing cache-aside `_facts_for_cik` — no new ingestion, no
+  schema change. See `tests/test_raw_facts_route.py`.
+
 ## Insider transactions
 
 `InsiderTransaction` captures issuer, reporting owner + relationship, and per-trade fields

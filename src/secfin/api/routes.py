@@ -14,7 +14,9 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
+from secfin.api.admin_routes import require_admin_secret
 from secfin.api.auth import get_api_key_repo, require_api_key
 from secfin.auth.models import ApiKeyRecord, UsageSummary
 from secfin.auth.usage import usage_summary
@@ -83,6 +85,12 @@ from secfin.storage.repository import RawFactRepository
 # consumer hits directly. See api/auth.py.
 public_router = APIRouter()
 router = APIRouter()
+# INTERNAL-ONLY endpoints (operator decision 2026-07-16, docs/ROADMAP_DATA_DEPTH.md
+# Phase 1): admin-secret-gated company-data endpoints. Not on `router` (an admin isn't a
+# customer -- no API key), not on `public_router` (not public, and must not burn the
+# anonymous IP budget). Mounted by api/main.py alongside admin_router; every route here
+# carries `Depends(require_admin_secret)` and `include_in_schema=False` itself.
+internal_router = APIRouter()
 
 # Surfaced on every institutional (13F-derived) response per CLAUDE.md: never present
 # derived deltas as reported trades, and always carry the long-only / lag caveats.
@@ -321,6 +329,148 @@ async def get_statement(
             detail=f"No {statement} data found for {symbol} {period} {year}.",
         )
     return result
+
+
+# Raw-facts endpoint caveats -- always present, same convention as the 13F endpoints'.
+# The fy/fp trap is the one that turns this endpoint into a support burden if unread.
+_RAW_FACTS_CAVEATS = [
+    "Raw facts carry provenance but NO normalization promise -- a tag means whatever "
+    "this filer meant by it, and tags are not comparable across companies or years "
+    "the way canonical concepts are.",
+    "fiscal_year/fiscal_period are the FILING's period, not the fact's own: one "
+    "(year, period) key also contains the filing's comparative columns and YTD "
+    "durations. Filter/aggregate by period_end/instant, never by fiscal_year alone. "
+    "See /methodology.",
+    "The same tag+period can appear in multiple filings with different values "
+    "(restatements) -- latest `filed` wins for a 'current' view; prior values are "
+    "deliberately retained.",
+]
+
+
+class RawFactRow(BaseModel):
+    """The full RawFact shape, audit fields and all -- nothing derived, nothing dropped.
+
+    A separate response model (rather than serializing RawFact directly) only because
+    `is_extension` is a computed property on RawFact, which Pydantic doesn't serialize;
+    every other field is carried through verbatim.
+    """
+
+    taxonomy: str
+    gaap_tag: str
+    label: str
+    unit: str
+    value: float | int | None
+    period_start: str | None
+    period_end: str | None
+    instant: str | None
+    fiscal_year: int | None
+    fiscal_period: str | None
+    form: str | None
+    filed: str | None
+    accession: str | None
+    frame: str | None
+    is_extension: bool
+
+
+class RawFactsResponse(BaseModel):
+    cik: int
+    total: int  # matching facts BEFORE pagination, so the operator can page
+    limit: int
+    offset: int
+    caveats: list[str]
+    facts: list[RawFactRow]
+
+
+@internal_router.get(
+    "/companies/{symbol}/facts",
+    response_model=RawFactsResponse,
+    dependencies=[Depends(require_admin_secret)],
+    include_in_schema=False,
+)
+async def get_raw_facts(
+    symbol: str,
+    tag: list[str] | None = Query(default=None, description="Exact us-gaap/dei tag; repeatable"),
+    year: int | None = Query(default=None, description="Fiscal year (the FILING's, see caveats)"),
+    period: FiscalPeriod | None = Query(default=None, description="FY, Q1..Q4; requires year="),
+    taxonomy: str | None = Query(default=None, description="e.g. us-gaap, dei"),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> RawFactsResponse:
+    """INTERNAL-ONLY (docs/ROADMAP_DATA_DEPTH.md Phase 1): serve the store's raw facts
+    for one company -- "show your work" as an API surface. Power users self-serve the
+    hundreds of tags the canonical mapping hasn't earned yet, without us promising
+    normalization we haven't done. Admin-secret-gated and out of the OpenAPI schema
+    until the go-public decision (see the roadmap for why that's an open product
+    question).
+
+    At least one filter (tag= or year=) is required -- same "no unbounded scans" stance
+    as /v1/screen. Serving path is the existing cache-aside `_facts_for_cik`: repo hit,
+    or SEC fetch + store on a miss. No new ingestion, no schema change.
+    """
+    if not tag and year is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one filter: tag= (repeatable) and/or year= "
+            "(optionally with period=).",
+        )
+    if period is not None and year is None:
+        raise HTTPException(status_code=400, detail="period= requires year=.")
+
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+
+    wanted_tags = set(tag) if tag else None
+    matched = [
+        f
+        for f in facts
+        if (wanted_tags is None or f.gaap_tag in wanted_tags)
+        and (year is None or f.fiscal_year == year)
+        and (period is None or f.fiscal_period == period)
+        and (taxonomy is None or f.taxonomy == taxonomy)
+    ]
+    # Deterministic order so limit/offset pagination is stable across requests.
+    matched.sort(
+        key=lambda f: (
+            f.taxonomy,
+            f.gaap_tag,
+            f.unit,
+            f.period_end or f.instant or "",
+            f.period_start or "",
+            f.filed or "",
+            f.accession or "",
+        )
+    )
+    page = matched[offset : offset + limit]
+    return RawFactsResponse(
+        cik=cik,
+        total=len(matched),
+        limit=limit,
+        offset=offset,
+        caveats=_RAW_FACTS_CAVEATS,
+        facts=[
+            RawFactRow(
+                taxonomy=f.taxonomy,
+                gaap_tag=f.gaap_tag,
+                label=f.label,
+                unit=f.unit,
+                value=f.value,
+                period_start=f.period_start,
+                period_end=f.period_end,
+                instant=f.instant,
+                fiscal_year=f.fiscal_year,
+                fiscal_period=f.fiscal_period,
+                form=f.form,
+                filed=f.filed,
+                accession=f.accession,
+                frame=f.frame,
+                is_extension=f.is_extension,
+            )
+            for f in page
+        ],
+    )
 
 
 @public_router.get(

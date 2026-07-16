@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from secfin.api.admin_routes import admin_router
 from secfin.api.auth import limit_anonymous_traffic, require_api_key
 from secfin.api.auth_routes import signup_router
-from secfin.api.routes import public_router, router
+from secfin.api.routes import internal_router, public_router, router
 from secfin.auth.rate_limiter import TokenBucketLimiter
 from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver
@@ -228,6 +228,10 @@ app.include_router(router, prefix="/v1", dependencies=[Depends(require_api_key)]
 # Own gating (require_admin_secret, an admin shared secret) at the route level, not
 # require_api_key -- an admin isn't a paying customer. See admin_routes.py.
 app.include_router(admin_router, prefix="/v1")
+# Internal-only company-data endpoints (raw facts) -- same admin-secret gating as
+# admin_router, declared per-route. See routes.py's internal_router comment and
+# docs/ROADMAP_DATA_DEPTH.md Phase 1.
+app.include_router(internal_router, prefix="/v1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

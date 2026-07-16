@@ -127,6 +127,21 @@ ssh root@143.198.37.67 'systemctl list-timers "secfin-*" --no-pager; tail -5 /va
 **Rotate `SECFIN_ADMIN_SECRET` / `SEC_USER_AGENT`:** edit `/opt/secfin/.env`, then
 `docker compose -f docker-compose.prod.yml up -d` (no rebuild -- runtime env only).
 
+**Raw-facts lookup (INTERNAL-ONLY, admin-gated -- docs/ROADMAP_DATA_DEPTH.md Phase 1):**
+`GET /v1/companies/{symbol}/facts` serves the store's raw facts with provenance --
+useful for mapping research and debugging a served number back to its filing. Gated by
+`X-Admin-Secret` like the §5 admin endpoints, absent from the public OpenAPI schema, and
+NOT a customer feature until the go-public decision (see the roadmap). Requires at least
+one filter (`tag=`, repeatable, and/or `year=` + optional `period=`); `limit=`/`offset=`
+paginate (default 100, cap 1000). Mind the fy/fp trap: `fiscal_year`/`fiscal_period` are
+the FILING's period, so filter by `period_end`/`instant` -- the response's `caveats`
+field spells this out.
+
+```bash
+curl -H "X-Admin-Secret: $SECFIN_ADMIN_SECRET" \
+  'https://clearyfi.com/v1/companies/AAPL/facts?tag=ContractWithCustomerLiability&year=2025&period=FY'
+```
+
 **Resize:** vertical only (runbook §1 -- never `--workers`, never a second
 replica). `doctl compute droplet-action resize 584697256 --size <bigger> --wait`
 (disk resize is one-way; RAM/CPU-only resize is reversible).
