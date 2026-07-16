@@ -87,9 +87,22 @@ def build_statement(
     in_period = [f for f in facts if _period_key(f) == period]
 
     # Pass 1: identify the filing's primary column — the latest period_end/instant
-    # among this period's facts. Everything earlier is a comparative column re-tagged
-    # with the filing's fy/fp (see module docstring).
-    primary_end = max((_column_end(f) for f in in_period), default="")
+    # among this period's facts FOR THIS STATEMENT'S OWN TAGS. Everything earlier is a
+    # comparative column re-tagged with the filing's fy/fp (see module docstring).
+    # Restricting to the statement's candidate tags matters: the same (fy, fp) also
+    # carries dei cover-page instants dated AFTER fiscal period end (e.g. the
+    # shares-outstanding-as-of-filing-date count, ~3 weeks past FY-end) — chasing those
+    # would put the "primary column" on a date where no statement concept exists.
+    stmt_tags = {
+        tag
+        for concept in STATEMENT_CONCEPTS[statement]
+        for tag in candidate_tags(concept)
+    }
+    primary_end = max(
+        (_column_end(f) for f in in_period if f.gaap_tag in stmt_tags), default=""
+    ) or max((_column_end(f) for f in in_period), default="")
+    # ^ fallback to any fact's date so the "filing on record, mapping gap" metadata
+    # path below still works for filings where nothing mapped.
 
     # Pass 2: index the best fact per gaap_tag WITHIN the primary column only.
     best_by_tag: dict[str, RawFact] = {}

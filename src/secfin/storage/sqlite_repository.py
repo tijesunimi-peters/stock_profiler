@@ -69,12 +69,21 @@ INSERT INTO raw_facts (
 ON CONFLICT (cik, gaap_tag, unit, period_start, period_end, instant, accession) DO UPDATE SET
     label = excluded.label,
     value = excluded.value,
-    fiscal_year = excluded.fiscal_year,
-    fiscal_period = excluded.fiscal_period,
-    form = excluded.form,
-    filed = excluded.filed,
-    frame = excluded.frame
+    fiscal_year = COALESCE(excluded.fiscal_year, fiscal_year),
+    fiscal_period = COALESCE(excluded.fiscal_period, fiscal_period),
+    form = COALESCE(excluded.form, form),
+    filed = COALESCE(excluded.filed, filed),
+    frame = COALESCE(excluded.frame, frame)
 """
+# ^ COALESCE, not plain excluded.*: the same physical fact arrives from two sources
+# that each know only half the metadata. Companyfacts rows carry fy/fp/form/filed but
+# no frame; SEC frames rows carry the frame but none of the fiscal fields (confirmed
+# live -- see docs/DATA_MODEL.md's screening section). They collide on this key (frames
+# rows include the accession), and before 2026-07-16 each ingest NULLed the other
+# source's metadata: the frames backfill erased fiscal_year on statement facts (68 CIKs
+# damaged, statements lost their revenue/net_income lines), and any cache-aside
+# companyfacts fetch erased `frame`, silently dropping the company from screening.
+# Merging with COALESCE keeps both halves; value/label still take the newest write.
 
 _UPSERT_CHECKPOINT_SQL = """
 INSERT INTO ingest_checkpoint (cik, source, zip_entry, fact_count)

@@ -169,3 +169,19 @@ def test_balance_sheet_comparative_instant_is_not_served():
     assets = next(line for line in stmt.lines if line.canonical_concept == "total_assets")
     assert assets.value == 352_755e6
     assert stmt.period_end == "2023-09-30"
+
+
+def test_cover_page_instant_after_period_end_does_not_hijack_the_primary_column():
+    # dei cover-page facts (e.g. shares outstanding as of the FILING date, weeks after
+    # fiscal year-end) share the statement facts' (fy, fp). The primary column must be
+    # anchored by the statement's own tags, not by whichever fact has the latest date.
+    facts = [
+        _column_fact("RevenueFromContractWithCustomerExcludingAssessedTax", 416_161e6,
+                     "2024-09-29", "2025-09-27", fy=2025, filed="2025-10-31"),
+        _column_fact("EntityCommonStockSharesOutstanding", 14_773e6, "", "",
+                     fy=2025, filed="2025-10-31", instant="2025-10-17"),
+    ]
+    stmt = build_statement(facts, 320193, "income", 2025, "FY")
+    revenue = next(line for line in stmt.lines if line.canonical_concept == "revenue")
+    assert revenue.value == 416_161e6
+    assert stmt.period_end == "2025-09-27"

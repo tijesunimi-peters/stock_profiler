@@ -190,3 +190,40 @@ def test_has_any_facts_returns_false_for_frame_only_rows(tmp_path):
 
     assert repo.has_any_facts(pltr_cik) is False
     repo.close()
+
+
+def test_frames_and_companyfacts_metadata_merge_instead_of_clobbering(tmp_path):
+    # Regression (2026-07-16 incident): the same physical fact arrives from
+    # companyfacts (has fy/fp/form/filed, no frame) and from the frames API (has
+    # frame, none of the fiscal fields), colliding on the upsert key. Each ingest
+    # used to NULL the other source's metadata -- the frames backfill erased
+    # fiscal_year on 68 CIKs' statement facts, and cache-aside companyfacts fetches
+    # erased `frame`, dropping companies from screening. Metadata must MERGE.
+    repo = SQLiteRawFactRepository(tmp_path / "t.db")
+    base = dict(
+        cik=320193, taxonomy="us-gaap", gaap_tag="Assets", label="Assets",
+        unit="USD", value=359241000000.0, instant="2025-09-27",
+        accession="0000320193-25-000079",
+    )
+    companyfacts_row = RawFact(
+        **base, fiscal_year=2025, fiscal_period="FY", form="10-K", filed="2025-10-31"
+    )
+    frames_row = RawFact(**base, frame="CY2025Q4I")
+
+    # companyfacts first, frames second (the frames-backfill clobber direction)
+    repo.upsert_raw_facts([companyfacts_row])
+    repo.upsert_raw_facts([frames_row])
+    (fact,) = repo.get_raw_facts(320193)
+    assert fact.fiscal_year == 2025
+    assert fact.fiscal_period == "FY"
+    assert fact.filed == "2025-10-31"
+    assert fact.frame == "CY2025Q4I"
+
+    # frames first, companyfacts second (the cache-aside clobber direction)
+    repo2 = SQLiteRawFactRepository(tmp_path / "t2.db")
+    repo2.upsert_raw_facts([frames_row])
+    repo2.upsert_raw_facts([companyfacts_row])
+    (fact2,) = repo2.get_raw_facts(320193)
+    assert fact2.frame == "CY2025Q4I"
+    assert fact2.fiscal_year == 2025
+    assert fact2.form == "10-K"
