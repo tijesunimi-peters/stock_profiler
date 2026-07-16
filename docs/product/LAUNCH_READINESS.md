@@ -190,8 +190,14 @@ each is now a runbook step rather than open design work.*
       404s are scanner probes (`/.env`, `/.git/config` — correctly 404ing, nothing
       sensitive in the web surface) plus missing `/favicon.ico` and `/robots.txt`
       (polish, not blocking).
-- [ ] Feedback/support channel (GitHub issues is enough) linked from docs and site
-      footer
+- [x] Feedback/support channel (GitHub issues is enough) linked from docs and site
+      footer — done 2026-07-16: public **github.com/clearyfi/support** repo
+      (issues-only; the code repo stays private), README with expectations
+      (free beta, no SLA, never post keys) + bug/data-question/feature-request
+      issue templates. Footer-linked from every page (static footers, `app.js`
+      `footer()`, explorer) + a "still stuck" pointer in the guide's error
+      section; link presence test-asserted (`tests/test_static_pages.py`).
+      Verified live on clearyfi.com.
 - [x] Decide on email verification at signup — decided 2026-07-14 (operator):
       **defer**; launch without verification. Exposure: throwaway strings get free
       keys, so per-key quotas can be evaded by re-signup; blast radius is bounded

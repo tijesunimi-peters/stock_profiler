@@ -123,3 +123,15 @@ def test_favicon_serves_for_default_browser_requests(tmp_path, monkeypatch):
     assert ico.content[:4] == b"\x00\x00\x01\x00"  # ICO magic bytes
     assert svg.status_code == 200
     assert "svg" in svg.headers["content-type"]
+
+
+def test_support_channel_is_reachable_from_every_page_footer(tmp_path, monkeypatch):
+    # LAUNCH_READINESS §6: the feedback/support channel (GitHub issues) must be
+    # linked from docs and the site footer -- assert the link, not just the page.
+    with _client(tmp_path, monkeypatch) as client:
+        for path in ("/", "/guide", "/explorer", "/privacy", "/terms", "/methodology"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert "github.com/clearyfi/support" in resp.text, (
+                f"{path} footer is missing the support-repo link"
+            )

@@ -173,6 +173,7 @@
       '<a href="/docs">API reference ↗</a>' +
       '<a href="/methodology">Methodology ↗</a>' +
       '<a href="/disclaimer">Data, not investment advice ↗</a>' +
+      '<a href="https://github.com/clearyfi/support/issues">Support ↗</a>' +
       '<span class="tagline">Profin · public SEC data, cleaned &amp; queryable</span>' +
       "</footer>"
     );

@@ -156,6 +156,7 @@ statement = resp.json()
       <tr><td><code>502</code> / <code>503</code></td><td>Upstream SEC request timed out, couldn't connect, or returned an error (or, for <code>503</code> alone, an internal admin operation was misconfigured).</td><td>Retry -- these mean the failure was upstream (SEC) or transient, not a bug in your request. If it persists across retries, treat it as a real outage and check <a href="/health">/health</a>.</td></tr>
     </tbody>
   </table>
+  <p class="guide-note">Still stuck, or the data looks wrong? <a href="https://github.com/clearyfi/support/issues">Open an issue on the support repo</a> — include the endpoint, ticker/CIK, and the response you got, and we'll take a look.</p>
 </section>
 
 <section class="section guide-section" id="endpoints">
@@ -246,6 +247,7 @@ statement = resp.json()
       <a href="/privacy">Privacy policy</a>
       <a href="/terms">Terms of service</a>
       <a href="/disclaimer">Disclaimer</a>
+      <a href="https://github.com/clearyfi/support/issues">Support</a>
     </div>
   </div>
   <div class="footer-bottom">
