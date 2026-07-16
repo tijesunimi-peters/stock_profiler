@@ -131,13 +131,16 @@ each is now a runbook step rather than open design work.*
 
 - [x] Privacy policy (emails are collected at signup — not optional) — done
       2026-07-11: `/privacy` live; collected fields verified against the actual
-      `api_keys` schema, IPs confirmed in-memory-only, no trackers. **Draft-bannered
-      pending operator legal review**; contact/repo links are placeholders.
+      `api_keys` schema, IPs confirmed in-memory-only, no trackers. Legal review completed by operator 2026-07-16: draft banner
+      removed, contact set to the public support repo (operator chose repo-only,
+      no personal email published).
 - [x] Terms of service (acceptable use, tier limits as published, no-SLA-at-launch,
       termination) — done 2026-07-11: `/terms` live; tier table copied verbatim from
       `auth/tiers.py` (test-asserted); says "free during beta" until `PRICING.md`
       exists; termination matches the real admin-gated revocation state.
-      **Draft-bannered pending legal review**; governing-law clause is a placeholder.
+      Legal review completed by operator 2026-07-16: draft banner removed,
+      governing law set to Ontario, Canada (operator decision), contact set to
+      the public support repo.
 - [x] "Data, not investment advice" disclaimer, linked from the footer — done
       2026-07-11: `/disclaimer` live with the 13F derived-delta/long-only/45-day
       caveats; footer-linked from every page (static footers, `app.js` shared

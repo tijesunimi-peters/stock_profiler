@@ -43,7 +43,10 @@ def test_privacy_page_serves_and_names_what_is_collected(tmp_path, monkeypatch):
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     body = resp.text
-    assert "Draft" in body  # not presented as final/binding legal certainty
+    # Operator legal review completed 2026-07-16: the draft banner must be GONE,
+    # and no bracketed placeholders may remain on a published legal page.
+    assert "Draft" not in body
+    assert "placeholder" not in body.lower()
     assert "Email address" in body
     assert "API key" in body
 
