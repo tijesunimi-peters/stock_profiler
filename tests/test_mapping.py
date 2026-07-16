@@ -185,3 +185,24 @@ def test_cover_page_instant_after_period_end_does_not_hijack_the_primary_column(
     revenue = next(line for line in stmt.lines if line.canonical_concept == "revenue")
     assert revenue.value == 416_161e6
     assert stmt.period_end == "2025-09-27"
+
+
+def test_balance_sheet_keeps_dei_shares_without_letting_them_anchor_the_column():
+    # Live regression (2026-07-16): EntityCommonStockSharesOutstanding (dei) is a real
+    # candidate for shares_outstanding, dated as of the FILING (~3 weeks after FY-end).
+    # Anchoring the primary column on it emptied the balance sheet down to that one
+    # line. The dei fact must be served WITHOUT defining the statement's column.
+    facts = [
+        _column_fact("Assets", 359_241e6, "", "", fy=2025, filed="2025-10-31",
+                     instant="2025-09-27"),
+        _column_fact("Assets", 364_980e6, "", "", fy=2025, filed="2025-10-31",
+                     instant="2024-09-28"),  # comparative year-end instant
+        _column_fact("EntityCommonStockSharesOutstanding", 14_773_260_000, "", "",
+                     fy=2025, filed="2025-10-31", instant="2025-10-17"),
+    ]
+    facts[-1].taxonomy = "dei"
+    stmt = build_statement(facts, 320193, "balance", 2025, "FY")
+    by_concept = {line.canonical_concept: line.value for line in stmt.lines}
+    assert stmt.period_end == "2025-09-27"           # anchored by us-gaap, not dei
+    assert by_concept["total_assets"] == 359_241e6   # primary, not the comparative
+    assert by_concept["shares_outstanding"] == 14_773_260_000  # dei still served

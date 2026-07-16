@@ -98,16 +98,29 @@ def build_statement(
         for concept in STATEMENT_CONCEPTS[statement]
         for tag in candidate_tags(concept)
     }
+    # dei facts never anchor the primary column: they're cover-page metadata dated as
+    # of the FILING (e.g. shares outstanding ~3 weeks after fiscal year-end), and some
+    # dei tags (EntityCommonStockSharesOutstanding) are legitimate concept candidates —
+    # anchoring on them would put the "primary column" past every real statement fact
+    # and empty the statement (this exact failure shipped briefly for balance sheets).
     primary_end = max(
-        (_column_end(f) for f in in_period if f.gaap_tag in stmt_tags), default=""
+        (
+            _column_end(f)
+            for f in in_period
+            if f.gaap_tag in stmt_tags and f.taxonomy != "dei"
+        ),
+        default="",
     ) or max((_column_end(f) for f in in_period), default="")
     # ^ fallback to any fact's date so the "filing on record, mapping gap" metadata
     # path below still works for filings where nothing mapped.
 
-    # Pass 2: index the best fact per gaap_tag WITHIN the primary column only.
+    # Pass 2: index the best fact per gaap_tag WITHIN the primary column. dei facts are
+    # exempt from the column check for the symmetric reason: a cover page is
+    # single-dated, so a dei fact is never a comparative column — there is no
+    # wrong-period risk in serving it alongside the primary column.
     best_by_tag: dict[str, RawFact] = {}
     for f in in_period:
-        if _column_end(f) != primary_end:
+        if f.taxonomy != "dei" and _column_end(f) != primary_end:
             continue
         existing = best_by_tag.get(f.gaap_tag)
         if existing is None or _rank(f, fiscal_period) > _rank(existing, fiscal_period):
@@ -125,7 +138,10 @@ def build_statement(
                 break
         if chosen is None:
             continue
-        meta = meta or chosen
+        # Statement-level period metadata comes from a primary-column fact, never a
+        # dei cover-page fact (whose as-of date is the filing date, not the period).
+        if chosen.taxonomy != "dei":
+            meta = meta or chosen
         lines.append(
             StatementLine(
                 canonical_concept=concept,
