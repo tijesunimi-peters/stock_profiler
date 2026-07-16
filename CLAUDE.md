@@ -187,7 +187,9 @@ tests/
 docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, DEPLOYMENT
                                #   (generic runbook), DEPLOYMENT_DO (as-built prod:
                                #   clearyfi.com on DigitalOcean), ROADMAP,
-                               #   ROADMAP_METRICS, ROADMAP_UI, STYLE_GUIDE
+                               #   ROADMAP_DATA_DEPTH (raw-facts endpoint, tier-2
+                               #   concepts, dimensional-data spike), ROADMAP_METRICS,
+                               #   ROADMAP_UI, STYLE_GUIDE
 ```
 
 ## Conventions (follow these — they prevent whole classes of bugs)
