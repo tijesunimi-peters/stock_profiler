@@ -69,6 +69,14 @@ we haven't done.
 
 ## Phase 2 — Tier-2 canonical concepts (demand-driven, one at a time)
 
+**Status (2026-07-16): SHIPPED — all 15 candidates below landed as 18 canonical
+concepts** (marketable securities split into `_current`/`_noncurrent`; deferred revenue
+shipped as `deferred_revenue_current`), each verified per-concept against the three
+fixture shapes before mapping. Decisions, structural absences, and the fy-column values
+asserted in tests are recorded in `docs/DATA_MODEL.md`'s tier-2 worked example; the
+unlocked metric candidates are queued in `ROADMAP_METRICS.md`'s backlog (not built,
+per the note below). Further tier-2 concepts stay demand-driven.
+
 Candidate list, grouped by statement, chosen for cross-company usefulness and clean
 tag candidates. Each item = candidate-tag research across the three fixture shapes
 (AAPL/WMT/JPM minimum) + `mapping.py` entry + `DATA_MODEL.md` row + fixture-test

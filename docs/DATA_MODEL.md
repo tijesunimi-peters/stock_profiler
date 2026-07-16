@@ -131,6 +131,70 @@ doesn't use the commercial `CashAndCashEquivalentsAtCarryingValue` tag at all, r
   `stockholders_equity`, which is a "combine multiple tags" capability the mapping
   doesn't have (same category as the `debt_current` split limitation above) — tracked as
   a gap, not fixed here.
+**Worked example, tier-2 concepts (2026-07-16, ROADMAP_DATA_DEPTH Phase 2):** eighteen
+new canonical concepts, each verified per-concept against the AAPL/WMT/JPM fixtures
+before mapping (values asserted in `tests/test_real_fixtures.py`):
+
+- *Income:* `comprehensive_income` (parent-attributable tag first, including-NCI
+  fallback — same shape as `net_income`; WMT tags both and they differ),
+  `dividends_per_share` (**unit is USD/shares**, not USD), `share_based_compensation`
+  (the income-statement `AllocatedShareBasedCompensationExpense` element leads, the
+  aggregate cash-flow addback `ShareBasedCompensation` is the fallback — the aggregate
+  is tagged only as the YTD duration in AAPL's 10-Qs, and leading with it served a
+  6-month value on a discrete-quarter income statement. Caught live 2026-07-16; this is
+  the cross-candidate variant of the comparative-column trap: per-concept selection is
+  "first tag with a value", so a YTD-only first candidate shadows a discrete-quarter
+  second one. Regression test: AAPL 2026-Q2 in `tests/test_real_fixtures.py`).
+- *Balance:* `ppe_net`, `goodwill`, `intangible_assets`, `accounts_payable`
+  (trade-only variant as fallback), `deferred_revenue_current`, `retained_earnings`
+  (negative = accumulated deficit; AAPL is genuinely negative from buybacks),
+  `marketable_securities_current` / `marketable_securities_noncurrent`,
+  `operating_lease_liabilities`.
+- *Cash flow:* `dividends_paid` (aggregate tag includes preferred where filers have it,
+  e.g. JPM; WMT tags only the common-stock variant), `share_repurchases` (common stock
+  only — preferred redemptions are a different event, deliberately unmapped),
+  `income_taxes_paid`, and the working-capital delta set `change_in_receivables` /
+  `change_in_inventories` / `change_in_payables` (shipped together — they're read
+  together). **Sign convention:** the deltas carry the us-gaap element's natural sign
+  (positive = the balance increased), not the cash-flow statement's presentation sign.
+
+**Decisions recorded with the tier-2 batch (the current/total questions ROADMAP_DATA_DEPTH
+flagged):**
+
+- **Deferred revenue serves the CURRENT portion** (`ContractWithCustomerLiabilityCurrent`),
+  named `deferred_revenue_current` so the scope is in the name. A pick-one candidate list
+  mixing the total (`ContractWithCustomerLiability`, which AAPL also tags) with
+  current-only would silently change meaning per company. The total stays unserved until
+  it earns its own concept.
+- **Marketable securities ship as two concepts** (`_current` / `_noncurrent`) — no
+  reliable total tag exists (AAPL tags only the pair), and the mapping can't sum. Same
+  precedent as the `long_term_debt` / `debt_current` split.
+- **Operating lease liabilities serve the TOTAL** (`OperatingLeaseLiability`) — all three
+  fixture shapes tag it (JPM tags *only* the total). Falling back to one portion of the
+  current/noncurrent split would silently undercount; filers tagging only the split are a
+  documented gap, not a fallback.
+- **`intangible_assets` has a known undercount fallback**, same class as `debt_current`:
+  `FiniteLivedIntangibleAssetsNet` is finite-lived only, so a filer that also carries
+  indefinite-lived intangibles undercounts when served from it (JPM concretely: 1.3B
+  served from the finite tag while another ~1.3B of indefinite-lived intangibles is
+  tagged separately). The comprehensive `IntangibleAssetsNetExcludingGoodwill` leads.
+
+**Tier-2 structural absences (verified per fixture — don't "fix" with more candidates):**
+
+- **JPM (bank):** no `ppe_net` (premises/equipment aren't XBRL-tagged at all), no
+  `accounts_payable` (only payables-combined-with-accruals aggregates — not
+  like-for-like), no `marketable_securities_*` (bank securities live under
+  AFS/HTM/trading tags, which need a financial-sector schema, not more candidates), and
+  no working-capital deltas (a bank's operating section has no working-capital block).
+- **WMT (retailer):** no `deferred_revenue_current` and no `marketable_securities_*`
+  (genuinely not applicable), and no `intangible_assets` — WMT tags only the
+  indefinite-lived piece (`IndefiniteLivedIntangibleAssetsExcludingGoodwill`), which we
+  deliberately don't serve as "intangible assets" (it would misstate a partial as the
+  whole).
+- **AAPL:** no `goodwill` or `intangible_assets` in recent 10-Ks (not broken out on the
+  balance sheet — the intangibles line reappears in FY2026 10-Qs only). Absent is
+  correct, not a regression.
+
 - **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) — now
   ingested** (was previously dead in practice). The ingest path fetches `dei` alongside
   `us-gaap` via `sec/companyfacts.INGEST_TAXONOMIES = ("us-gaap", "dei")` and the

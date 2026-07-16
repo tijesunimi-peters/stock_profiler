@@ -44,7 +44,7 @@ def test_aapl_income_statement_matches_real_filing():
     # (income + balance + cashflow), not just this statement's -- so these totals moved
     # when balance-sheet/cashflow concepts were added to mapping.py, even though this test
     # only exercises the income statement. See test_..._balance_and_cashflow below.
-    assert coverage_report(period_facts) == {"unmapped": 339, "mapped": 86}
+    assert coverage_report(period_facts) == {"unmapped": 296, "mapped": 129}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -62,6 +62,35 @@ def test_aapl_income_statement_matches_real_filing():
     # discrete interest expense line -- absent here is correct, not a mapping gap.
     assert "interest_expense" not in by_concept
 
+    # Tier-2 income concepts (2026-07-16). dividends_per_share is USD/shares, not USD --
+    # the unit assertion locks that in for downstream consumers.
+    assert by_concept["comprehensive_income"] == 113611000000
+    assert by_concept["share_based_compensation"] == 12863000000
+    dps = next(line for line in stmt.lines if line.canonical_concept == "dividends_per_share")
+    assert dps.value == 1.02
+    assert dps.unit == "USD/shares"
+
+
+def test_aapl_quarterly_sbc_serves_the_discrete_quarter_not_the_ytd():
+    """Cross-candidate variant of the comparative-column trap (caught live 2026-07-16).
+
+    In AAPL's 10-Qs the aggregate ShareBasedCompensation addback is tagged ONLY as the
+    YTD duration, while AllocatedShareBasedCompensationExpense carries both the discrete
+    quarter and the YTD. Per-concept selection takes the first candidate with a value,
+    so leading with the aggregate served a 6-month SBC line (7.122B) on a Q2 income
+    statement whose other lines were all the 13-week quarter. The income-statement
+    expense element must lead.
+    """
+    facts = _load("aapl_companyfacts.json", 320193)
+    stmt = build_statement(facts, 320193, "income", 2026, "Q2")
+    assert stmt.period_start == "2025-12-28"  # the discrete quarter, not 2025-09-28 YTD
+    assert stmt.period_end == "2026-03-28"
+    by_line = {line.canonical_concept: line for line in stmt.lines}
+    assert by_line["revenue"].value == 111184000000
+    sbc = by_line["share_based_compensation"]
+    assert sbc.value == 3528000000  # 13-week quarter -- NOT the 7.122B 26-week YTD
+    assert sbc.source_tag == "AllocatedShareBasedCompensationExpense"
+
 
 def test_wmt_income_statement_has_retailer_shaped_gaps():
     facts = _load("wmt_companyfacts.json", 104169)
@@ -69,7 +98,7 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert latest_fy == (2026, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 434, "mapped": 84}
+    assert coverage_report(period_facts) == {"unmapped": 394, "mapped": 124}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -77,6 +106,16 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert by_concept["revenue"] == 706413000000
     assert by_concept["net_income"] == 21893000000
     assert by_concept["interest_expense"] == 2318000000  # InterestExpenseDebt candidate
+
+    # Tier-2: WMT tags BOTH comprehensive-income variants; the parent-attributable
+    # first candidate must win (22.728B, not the 23.279B including-NCI figure). SBC
+    # comes via the lead candidate -- WMT doesn't tag the aggregate
+    # ShareBasedCompensation addback at all.
+    assert by_concept["comprehensive_income"] == 22728000000
+    assert by_concept["dividends_per_share"] == 0.94
+    sbc = next(line for line in stmt.lines if line.canonical_concept == "share_based_compensation")
+    assert sbc.value == 3603000000
+    assert sbc.source_tag == "AllocatedShareBasedCompensationExpense"
 
     # Walmart's 10-K doesn't tag a discrete gross-profit or aggregate operating-expenses
     # line (or R&D, which is genuinely not applicable to a retailer) -- expected absences,
@@ -92,7 +131,7 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 949, "mapped": 54}
+    assert coverage_report(period_facts) == {"unmapped": 921, "mapped": 82}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -104,6 +143,16 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     # InterestExpenseOperating: the aggregate across JPM's deposit/repo/debt/trading-
     # liability interest expense components.
     assert by_concept["interest_expense"] == 97898000000
+
+    # Tier-2 income concepts map cleanly even for a bank. SBC comes via the aggregate
+    # ShareBasedCompensation fallback (JPM doesn't tag the income-statement expense
+    # element) -- safe here because JPM tags discrete quarters on the aggregate, which
+    # the per-tag span tie-break picks (see mapping.py).
+    assert by_concept["comprehensive_income"] == 65214000000
+    assert by_concept["dividends_per_share"] == 5.8
+    sbc = next(line for line in stmt.lines if line.canonical_concept == "share_based_compensation")
+    assert sbc.value == 3614000000
+    assert sbc.source_tag == "ShareBasedCompensation"
 
     # A bank's income statement doesn't have a cost-of-revenue/gross-profit/operating-
     # income structure at all (it reports net interest income + noninterest income/
@@ -136,11 +185,37 @@ def test_aapl_balance_sheet_and_cashflow_fully_covered():
     assert by_concept["stockholders_equity"] == 73733000000
     assert by_concept["shares_outstanding"] == 14773260000
 
+    # Tier-2 balance concepts (2026-07-16). retained_earnings is genuinely NEGATIVE for
+    # AAPL (accumulated deficit from buybacks) -- the sign must survive. Marketable
+    # securities are the two-concept current/noncurrent split (no total tag exists).
+    assert by_concept["ppe_net"] == 49834000000
+    assert by_concept["accounts_payable"] == 69860000000
+    assert by_concept["deferred_revenue_current"] == 9055000000
+    assert by_concept["retained_earnings"] == -14264000000
+    assert by_concept["marketable_securities_current"] == 18763000000
+    assert by_concept["marketable_securities_noncurrent"] == 77723000000
+    assert by_concept["operating_lease_liabilities"] == 12490000000
+    # Apple's recent 10-Ks don't break out goodwill or the intangibles line on the
+    # balance sheet (the intangibles tags reappear only in FY2026 10-Qs) -- absent is
+    # correct for the FY statement, not a mapping gap.
+    for concept in ("goodwill", "intangible_assets"):
+        assert concept not in by_concept
+
     cashflow = build_statement(facts, 320193, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
     assert by_concept["cash_from_operations"] == 111482000000
     assert by_concept["capital_expenditures"] == 12715000000
     assert by_concept["depreciation_amortization"] == 11698000000
+
+    # Tier-2 cash-flow concepts. The working-capital deltas carry the us-gaap element's
+    # natural sign (positive = balance increased), so inventories at -1.4B means
+    # inventories FELL in FY2025 -- not a sign bug.
+    assert by_concept["dividends_paid"] == 15421000000
+    assert by_concept["share_repurchases"] == 90711000000
+    assert by_concept["income_taxes_paid"] == 43369000000
+    assert by_concept["change_in_receivables"] == 6682000000
+    assert by_concept["change_in_payables"] == 902000000
+    assert by_concept["change_in_inventories"] == -1400000000
 
 
 def test_wmt_balance_sheet_has_retailer_shaped_gaps():
@@ -164,10 +239,44 @@ def test_wmt_balance_sheet_has_retailer_shaped_gaps():
     for concept in ("total_liabilities", "shares_outstanding"):
         assert concept not in by_concept
 
+    # Tier-2 balance concepts (2026-07-16).
+    assert by_concept["ppe_net"] == 136083000000
+    assert by_concept["goodwill"] == 28735000000
+    assert by_concept["accounts_payable"] == 63061000000
+    assert by_concept["retained_earnings"] == 104774000000
+    assert by_concept["operating_lease_liabilities"] == 15572000000
+    # Retailer-shaped absences: no contract-liability (deferred revenue) or marketable-
+    # securities tags at all. intangible_assets is deliberately absent too -- WMT tags
+    # only the indefinite-lived piece, which we don't serve as if it were the whole
+    # (see DATA_MODEL.md's tier-2 notes).
+    for concept in (
+        "deferred_revenue_current",
+        "marketable_securities_current",
+        "marketable_securities_noncurrent",
+        "intangible_assets",
+    ):
+        assert concept not in by_concept
+
     cashflow = build_statement(facts, 104169, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
     assert by_concept["cash_from_operations"] == 41565000000
     assert by_concept["capital_expenditures"] == 26642000000
+
+    # Tier-2 cash-flow concepts, exercising the retailer-specific fallbacks: dividends
+    # via PaymentsOfDividendsCommonStock (the aggregate tag is absent; NCI distributions
+    # are tagged separately and deliberately not folded in), receivables via the
+    # combined IncreaseDecreaseInAccountsAndOtherReceivables, inventories via
+    # IncreaseDecreaseInRetailRelatedInventories.
+    by_tag = {line.canonical_concept: line.source_tag for line in cashflow.lines}
+    assert by_concept["dividends_paid"] == 7507000000
+    assert by_tag["dividends_paid"] == "PaymentsOfDividendsCommonStock"
+    assert by_concept["share_repurchases"] == 8088000000
+    assert by_concept["income_taxes_paid"] == 5364000000
+    assert by_concept["change_in_receivables"] == 1136000000
+    assert by_tag["change_in_receivables"] == "IncreaseDecreaseInAccountsAndOtherReceivables"
+    assert by_concept["change_in_payables"] == 1611000000
+    assert by_concept["change_in_inventories"] == 1443000000
+    assert by_tag["change_in_inventories"] == "IncreaseDecreaseInRetailRelatedInventories"
 
 
 def test_jpm_bank_balance_sheet_has_structural_gaps():
@@ -196,8 +305,42 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
     ):
         assert concept not in by_concept
 
+    # Tier-2 balance concepts. intangible_assets comes via the FiniteLivedIntangibleAssetsNet
+    # fallback -- a KNOWN undercount for JPM (another ~1.3B of indefinite-lived intangibles
+    # is tagged separately; see mapping.py / DATA_MODEL.md). operating_lease_liabilities is
+    # the total tag, which JPM (unlike AAPL/WMT) tags WITHOUT a current/noncurrent split.
+    assert by_concept["goodwill"] == 52731000000
+    assert by_concept["retained_earnings"] == 416055000000
+    assert by_concept["operating_lease_liabilities"] == 9337000000
+    intangibles = next(
+        line for line in balance.lines if line.canonical_concept == "intangible_assets"
+    )
+    assert intangibles.value == 1300000000
+    assert intangibles.source_tag == "FiniteLivedIntangibleAssetsNet"
+    # Bank-shaped absences: premises/equipment aren't XBRL-tagged (no ppe_net), payables
+    # exist only combined with accruals (not like-for-like), and securities live under
+    # AFS/HTM/trading tags a commercial-shape schema can't honestly claim.
+    for concept in (
+        "ppe_net",
+        "accounts_payable",
+        "deferred_revenue_current",
+        "marketable_securities_current",
+        "marketable_securities_noncurrent",
+    ):
+        assert concept not in by_concept
+
     cashflow = build_statement(facts, 19617, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
     assert by_concept["cash_from_operations"] == -147782000000
     # Banks don't report a discrete capex line in XBRL the way commercial filers do.
     assert "capital_expenditures" not in by_concept
+
+    # Tier-2 cash-flow concepts. dividends_paid is the aggregate tag, which for JPM
+    # includes preferred dividends -- documented, not a bug. share_repurchases is common
+    # stock only (JPM's preferred redemptions are tagged separately, deliberately
+    # unmapped). Banks have no working-capital section, so the delta set is absent.
+    assert by_concept["dividends_paid"] == 16625000000
+    assert by_concept["share_repurchases"] == 31591000000
+    assert by_concept["income_taxes_paid"] == 5309000000
+    for concept in ("change_in_receivables", "change_in_payables", "change_in_inventories"):
+        assert concept not in by_concept

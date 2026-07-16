@@ -149,6 +149,19 @@ R1/R2/R4 apply to every metric and are omitted from the column for brevity.
 | FCF per share | `FCF / shares_diluted` | |
 | Share-count trend | `shares_diluted` series over time (falling = buyback, rising = dilution) | |
 
+### Backlog — unlocked by the tier-2 concepts (landed 2026-07-16, ROADMAP_DATA_DEPTH Phase 2)
+
+Candidates only — NOT scheduled; pick up demand-driven like the concepts themselves.
+Formulas use the tier-2 canonical concepts now in `mapping.py`:
+
+| Metric | Formula | Notes |
+|---|---|---|
+| Payout ratio | `dividends_paid / net_income` | dividends_paid includes preferred where filers tag the aggregate (JPM) |
+| Buyback yield ingredient | `share_repurchases` series | pair with share-count trend above |
+| SBC / revenue | `share_based_compensation / revenue` | dilution-cost signal |
+| Cash tax rate | `income_taxes_paid / income_before_tax` | vs. accrual `income_tax_expense` rate |
+| Goodwill / assets | `goodwill / total_assets` | acquisition-heaviness; goodwill absent for AAPL-shaped filers (see DATA_MODEL) |
+
 ---
 
 ## Phase 1 — Metric computation engine

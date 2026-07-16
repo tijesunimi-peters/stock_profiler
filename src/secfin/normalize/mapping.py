@@ -70,6 +70,35 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     ),
     "eps_basic": ("EPS (Basic)", ["EarningsPerShareBasic"]),
     "eps_diluted": ("EPS (Diluted)", ["EarningsPerShareDiluted"]),
+    # --- income statement, tier 2 (ROADMAP_DATA_DEPTH Phase 2, verified 2026-07-16
+    #     against the AAPL/WMT/JPM fixtures like everything else here) ---
+    "comprehensive_income": (
+        "Comprehensive Income",
+        # Parent-attributable first, including-NCI as fallback — same preference shape
+        # as net_income's [NetIncomeLoss, ProfitLoss] (WMT tags both; they differ).
+        [
+            "ComprehensiveIncomeNetOfTax",
+            "ComprehensiveIncomeNetOfTaxIncludingPortionAttributableToNoncontrollingInterest",
+        ],
+    ),
+    "dividends_per_share": (
+        # UNIT WARNING: USD/shares, not USD — declared per-share dividend for the period.
+        "Dividends Per Share (Declared)",
+        ["CommonStockDividendsPerShareDeclared"],
+    ),
+    "share_based_compensation": (
+        "Share-Based Compensation",
+        # The income-statement expense element leads, NOT the aggregate cash-flow addback
+        # (ShareBasedCompensation): in 10-Qs AAPL tags the addback only as the YTD
+        # duration, so leading with it served a 6-month value on a discrete-quarter
+        # income statement (caught live 2026-07-16 — the cross-candidate variant of the
+        # comparative-column trap; candidate selection is per-concept "first tag with a
+        # value", so a YTD-only first candidate shadows a discrete-quarter second one).
+        # AllocatedShareBasedCompensationExpense carries the discrete quarter and its FY
+        # values equal the aggregate's; JPM tags only the aggregate but with discrete
+        # quarters, which the per-tag span tie-break already picks. Verified all three.
+        ["AllocatedShareBasedCompensationExpense", "ShareBasedCompensation"],
+    ),
     # --- balance sheet (instant facts) ---
     "cash_and_equivalents": (
         "Cash & Cash Equivalents",
@@ -103,6 +132,67 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     "stockholders_equity": (
         "Stockholders' Equity",
         ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    ),
+    # --- balance sheet, tier 2 (instant facts; verified 2026-07-16 vs fixtures) ---
+    "ppe_net": (
+        "Property, Plant & Equipment (Net)",
+        # JPM tags no PP&E line at all (premises/equipment stay untagged in XBRL) —
+        # structural absence, not a candidate gap. See DATA_MODEL.md.
+        ["PropertyPlantAndEquipmentNet"],
+    ),
+    "goodwill": (
+        "Goodwill",
+        # AAPL's recent 10-Ks don't break goodwill out at all — absent is correct there.
+        ["Goodwill"],
+    ),
+    "intangible_assets": (
+        "Intangible Assets (Net, Excl. Goodwill)",
+        # KNOWN LIMITATION, same class as debt_current: the fallback is finite-lived
+        # ONLY, so a filer that also carries indefinite-lived intangibles undercounts
+        # when served from it (JPM: 1.3B finite served, another ~1.3B indefinite-lived
+        # tagged separately). The comprehensive tag leads; a correct total in the split
+        # case needs "sum multiple tags", which the mapping doesn't have.
+        ["IntangibleAssetsNetExcludingGoodwill", "FiniteLivedIntangibleAssetsNet"],
+    ),
+    "accounts_payable": (
+        "Accounts Payable",
+        # Trade-only variant as fallback for filers that tag nothing broader (mirrors
+        # accounts_receivable's trade/broader pairing, in the other direction). JPM tags
+        # only payables-combined-with-accruals aggregates — not like-for-like, unmapped.
+        ["AccountsPayableCurrent", "AccountsPayableTradeCurrent"],
+    ),
+    "deferred_revenue_current": (
+        "Deferred Revenue (Current)",
+        # DECISION (2026-07-16, ROADMAP_DATA_DEPTH Phase 2): serve the CURRENT portion,
+        # not the total. The current portion is the balance-sheet-face line and the one
+        # tagged most consistently across filers; a pick-one candidate list mixing the
+        # total (ContractWithCustomerLiability) with current-only would silently change
+        # meaning per company. The total stays unserved until it earns its own concept.
+        ["ContractWithCustomerLiabilityCurrent"],
+    ),
+    "retained_earnings": (
+        # Negative = accumulated deficit (AAPL is negative from buybacks — sign is real).
+        "Retained Earnings (Accumulated Deficit)",
+        ["RetainedEarningsAccumulatedDeficit"],
+    ),
+    # DECISION (2026-07-16): marketable securities ship as TWO concepts — there is no
+    # reliable total tag (AAPL tags only the current/noncurrent pair), and pick-one
+    # can't sum. Same precedent as the long_term_debt / debt_current split.
+    "marketable_securities_current": (
+        "Marketable Securities (Current)",
+        ["MarketableSecuritiesCurrent"],
+    ),
+    "marketable_securities_noncurrent": (
+        "Marketable Securities (Noncurrent)",
+        ["MarketableSecuritiesNoncurrent"],
+    ),
+    "operating_lease_liabilities": (
+        "Operating Lease Liabilities (Total)",
+        # DECISION (2026-07-16): the TOTAL, not the current/noncurrent split — all three
+        # fixture shapes tag OperatingLeaseLiability (JPM tags ONLY the total), and
+        # falling back to one portion would silently undercount. Filers tagging only the
+        # split are a documented gap, not a fallback.
+        ["OperatingLeaseLiability"],
     ),
     # --- share counts ---
     # UNIT WARNING: these facts are reported in "shares" (or dei), NOT USD. Any metric using
@@ -148,6 +238,45 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         "Depreciation & Amortization",
         ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet"],
     ),
+    # --- cash flow, tier 2 (verified 2026-07-16 vs fixtures) ---
+    "dividends_paid": (
+        "Dividends Paid",
+        # The aggregate tag includes preferred dividends where a filer has them (JPM);
+        # the common-only variant is the fallback (WMT tags only that, with NCI
+        # distributions under a separate tag we deliberately don't fold in).
+        ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock"],
+    ),
+    "share_repurchases": (
+        "Share Repurchases",
+        # Common stock only — preferred redemptions (JPM tags them separately) are a
+        # different economic event and stay unmapped.
+        ["PaymentsForRepurchaseOfCommonStock"],
+    ),
+    "income_taxes_paid": (
+        "Income Taxes Paid (Net)",
+        ["IncomeTaxesPaidNet"],
+    ),
+    # Working-capital deltas — shipped as a set (they're read together). SIGN WARNING:
+    # values carry the us-gaap element's natural sign (positive = the balance INCREASED),
+    # not the cash-flow statement's presentation sign; an increase in receivables/
+    # inventories is a USE of cash, an increase in payables is a SOURCE. Banks (JPM)
+    # have no working-capital section at all — structural absence.
+    "change_in_receivables": (
+        "Change in Receivables",
+        # WMT tags the combined receivables variant only. AAPL's separate
+        # IncreaseDecreaseInOtherReceivables (vendor non-trade) is a different concept —
+        # deliberately unmapped.
+        ["IncreaseDecreaseInAccountsReceivable", "IncreaseDecreaseInAccountsAndOtherReceivables"],
+    ),
+    "change_in_inventories": (
+        "Change in Inventories",
+        # Retailers (WMT) use the retail-specific element.
+        ["IncreaseDecreaseInInventories", "IncreaseDecreaseInRetailRelatedInventories"],
+    ),
+    "change_in_payables": (
+        "Change in Accounts Payable",
+        ["IncreaseDecreaseInAccountsPayable"],
+    ),
 }
 
 # Which canonical concepts belong on which statement, in display order.
@@ -164,21 +293,33 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "income_before_tax",
         "income_tax_expense",
         "net_income",
+        "comprehensive_income",
         "eps_basic",
         "eps_diluted",
+        "dividends_per_share",
         "shares_basic",
         "shares_diluted",
+        "share_based_compensation",
     ],
     "balance": [
         "cash_and_equivalents",
+        "marketable_securities_current",
         "accounts_receivable",
         "inventory",
         "total_current_assets",
+        "ppe_net",
+        "goodwill",
+        "intangible_assets",
+        "marketable_securities_noncurrent",
         "total_assets",
+        "accounts_payable",
+        "deferred_revenue_current",
         "total_current_liabilities",
         "debt_current",
         "total_liabilities",
         "long_term_debt",
+        "operating_lease_liabilities",
+        "retained_earnings",
         "stockholders_equity",
         "shares_outstanding",
     ],
@@ -188,6 +329,12 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "cash_from_financing",
         "capital_expenditures",
         "depreciation_amortization",
+        "change_in_receivables",
+        "change_in_inventories",
+        "change_in_payables",
+        "dividends_paid",
+        "share_repurchases",
+        "income_taxes_paid",
     ],
 }
 
