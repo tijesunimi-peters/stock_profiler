@@ -49,16 +49,23 @@ we haven't done.
   YTD durations too. The docs must say "filter/aggregate by period_end/instant, not
   by fy alone" and link the methodology page. Consider echoing a `caveats` field like
   the 13F endpoints do.
-- **Auth:** key-gated like other data endpoints, available on the free tier —
-  "free is rate-limited, not feature-limited" is a published commitment (/guide).
+- **Auth: INTERNAL-ONLY at first (operator decision 2026-07-16).** Gate behind
+  `X-Admin-Secret` (`require_admin_secret`, like /v1/admin/ops), NOT behind customer
+  keys, and keep it out of the public OpenAPI schema (`include_in_schema=False`).
+  Whether it ever goes public is an open product question — raw facts without the
+  normalization promise could confuse the positioning ("we sell the cleanup") and
+  invite support burden from the fy/fp trap. Revisit with real user demand in the
+  support repo. NOTE if it does go public: the free tier's published "rate-limited,
+  not feature-limited" commitment (/guide) means it can't be a paid-only feature.
 - **Serving path:** reuse the existing cache-aside `_facts_for_cik` (repo hit or SEC
   fetch + store). No new ingestion, no schema change, repository interface only.
 - **Tests:** route wiring (auth, 404 unknown ticker, filter required), response
   fidelity against the real fixtures (assert a known unmapped tag round-trips, e.g.
   AAPL `PaymentsOfDividends`), pagination bounds.
-- **Docs:** OpenAPI tag + `/guide` endpoint table row + DATA_MODEL section. Marketing
-  angle (positioning skill owns wording): "every number we DIDN'T normalize yet is
-  still yours to read, with its provenance."
+- **Docs:** while internal-only: a DATA_MODEL section and an ops note in
+  DEPLOYMENT_DO — no /guide row, no public OpenAPI entry. The marketing angle
+  ("every number we didn't normalize is still yours to read, with provenance") is
+  RESERVED until the go-public decision.
 
 ## Phase 2 — Tier-2 canonical concepts (demand-driven, one at a time)
 
@@ -126,7 +133,8 @@ phase is deliberately funded.
 
 ## Sequencing vs launch
 
-Phase 1 is safe pre-launch (additive endpoint, no schema/ingest changes) and gives
-the launch story a strong "and everything else is available raw" beat. Phase 2 starts
+Phase 1 is safe pre-launch (additive, admin-gated, invisible to customers) and
+useful immediately for operator debugging/mapping research; it contributes nothing to
+the launch story while internal-only, by design. Phase 2 starts
 after launch, paced by support-repo demand. Phase 3 only with demonstrated demand and
 an approved spike.
