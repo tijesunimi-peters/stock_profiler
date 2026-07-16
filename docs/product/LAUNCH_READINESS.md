@@ -107,9 +107,18 @@ each is now a runbook step rather than open design work.*
 - [x] Re-run the metrics pipeline afterward (sic_backfill → metrics_backfill →
       peer_ranks) so peer ranks reflect the seeded data — done 2026-07-12:
       6,736/6,736 SIC codes, metrics + ranks idempotent, zero failures.
-      *Known limit: peer-ranks/screening breadth is real only at FY2023 —
-      `frames_backfill` was never run for 2024–2026 (operator scope decision;
-      hours of SEC requests).*
+      ~~*Known limit: peer-ranks/screening breadth is real only at FY2023*~~ —
+      superseded by the 5-year seeding below.
+- [x] **5-year deep seeding (operator-approved 2026-07-15, deployed 2026-07-16):**
+      19 more 13F quarters (2021-06-30 → 2025-12-31; ~26h sequential at the SEC
+      throttle, zero failed stages) + frames FY2021/22/24/25 (seconds each — one
+      request per concept-tag returns ALL companies; the old "hours" estimate was
+      wrong) + full metrics re-run (8,917 CIKs, 1.74M metric rows, 262k rank
+      rows). Final DB: 7.7GB, 149,302 snapshots across 20 quarters, 50.2M holding
+      rows, 5 screening years. Deployed to the droplet via backup → rsync →
+      restore (operator re-approved the live-DB overwrite; the only prod-only rows
+      were 16 throwaway test keys). Verified live: Berkshire 2022-06-30 holdings +
+      derived activity, screening on FY2021/24/25, statements, /health.
 - [x] Spot-check a launch-day basket (AAPL-class large caps + a few likely HN
       favorites) across ALL endpoint families: statements, insider, 13F manager +
       issuer views, metrics, peers, screening — done 2026-07-12 (data track basket:

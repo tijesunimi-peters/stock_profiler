@@ -23,7 +23,7 @@ in production and how do I touch it."
 | TLS | Let's Encrypt via Caddy, all three hosts, auto-renewing (`caddy-data` volume holds the ACME state) |
 | App path | `/opt/secfin` (working tree **rsynced**, not cloned -- see §4) |
 | Stack | `docker compose -f docker-compose.prod.yml` : `api` (loopback-only :8000) + `caddy` (80/443), both `restart: unless-stopped` |
-| Data | SQLite in the `secfin-data` volume, hydrated 2026-07-14 from the operator machine's fully seeded backup (`secfin-20260715T022201Z.db`, 695MB) via `storage/restore.py` -- never re-backfilled on the droplet |
+| Data | SQLite in the `secfin-data` volume -- never re-backfilled on the droplet. Hydrated 2026-07-14 from the operator machine's seeded backup (695MB); re-hydrated 2026-07-16 with the 5-year deep seeding (**7.7GB**: 20 13F quarters / 50.2M holding rows, frames FY2021-FY2025, metrics for 8,917 CIKs). Disk after: ~20/48GB. |
 | Secrets | `/opt/secfin/.env` (mode 600): `SEC_USER_AGENT` (real contact address), `SECFIN_ADMIN_SECRET` (generated on-box with `openssl rand -hex 32`; exists nowhere else -- read it from that file if you need admin calls) |
 | Scheduled jobs | systemd timers via `deploy/install.sh`: `secfin-incremental.timer` 06:00 UTC, `secfin-backup.timer` 07:00 UTC (backups land in `/opt/secfin/data/backups` on the droplet's own disk -- off-droplet copy is an open decision, see §6) |
 | Verified | `scripts/verify_deployment.py --base-url https://api.clearyfi.com` from outside the host, **10/10**, 2026-07-14 |
