@@ -173,6 +173,14 @@ statement = resp.json()
     </tbody>
   </table>
 
+  <h3 class="guide-group-heading">Tag-level data</h3>
+  <table class="guide-table">
+    <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+    <tbody>
+      <tr><td><code>GET /v1/companies/{symbol}/normalized-facts</code></td><td>Every tag a company reported for one fiscal period &mdash; hundreds per filing, not just the canonical concepts &mdash; with the same mechanical cleanups as <code>/statements</code>: primary filing column only, restatements resolved, official FASB labels. Tag-level, <em>not</em> variant-unified across companies; the always-present <code>caveats</code> field explains the difference.</td></tr>
+    </tbody>
+  </table>
+
   <h3 class="guide-group-heading">Insider trades</h3>
   <table class="guide-table">
     <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>

@@ -219,6 +219,34 @@ flagged):**
   fixtures* — the dei→BVPS path is covered by a synthetic test in `tests/test_metrics.py`,
   and resolves against real (dei-carrying) filings in production.
 
+## Normalized tag-level view (PUBLIC) — `GET /v1/companies/{symbol}/normalized-facts`
+
+The middle layer of the three-layer data story (decided 2026-07-16): between raw facts
+(below) and the curated canonical statements sits **"normalize without mapping"** —
+every tag a company reported for one fiscal period, with the statement builder's
+*mechanical* normalizations applied and no concept curation:
+
+- **Same defenses as `build_statement`** (`normalize/statements.py`'s
+  `build_normalized_view`): primary-filing-column selection (the comparative-column
+  trap), discrete-quarter-vs-YTD tie-break, latest-`filed` restatement resolution, dei
+  cover-page rows served without anchoring the column.
+- **No mapping:** one row per (tag, unit) — so a tag reported in two units keeps both
+  rows — with the official FASB label, `is_extension`, and a `canonical_concept`
+  cross-link when the tag feeds the curated layer.
+- **The promise it does NOT make** (spelled out in the always-present `caveats`):
+  tag-level rows are cross-company consistent only to the extent FASB's shared
+  vocabulary makes them so. Variant unification (the `Revenues` family, bank-vs-
+  commercial cash tags) is exactly what the canonical layer sells; this layer serves
+  breadth instead — all ~4,000+ tags across the store, zero per-concept curation cost,
+  auto-covering new tags forever.
+- Customer-key-gated like the rest of the external API (free tier is rate-limited, not
+  feature-limited); serves from the same period-scoped cache-aside read as statements.
+
+Division of labor with the canonical layer: single-tag concepts (e.g.
+`CommonStockSharesAuthorized`) are already served cleanly here, so canonical mapping
+work concentrates on statement faces and multi-tag meaning-clusters — see "Improving
+coverage" above and `docs/tag_glossary.jsonl`.
+
 ## Raw-facts endpoint (INTERNAL-ONLY) — `GET /v1/companies/{symbol}/facts`
 
 The raw layer promoted to an API surface (shipped 2026-07-16, `ROADMAP_DATA_DEPTH.md`

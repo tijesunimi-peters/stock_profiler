@@ -73,6 +73,39 @@ class Statement(BaseModel):
     lines: list[StatementLine] = Field(default_factory=list)
 
 
+class NormalizedFactLine(BaseModel):
+    """One (tag, unit) row of the tag-level normalized view -- the statement builder's
+    mechanical normalizations with NO concept mapping. `canonical_concept` cross-links
+    to the curated layer when the tag happens to feed one."""
+
+    taxonomy: str
+    gaap_tag: str
+    label: str
+    unit: str
+    value: float | int
+    period_start: str | None = None
+    period_end: str | None = None
+    instant: str | None = None
+    is_extension: bool = False
+    canonical_concept: str | None = None
+
+
+class NormalizedView(BaseModel):
+    """Every tag a company reported for one fiscal period, mechanically normalized:
+    primary column only, restatements resolved, one row per (tag, unit). See
+    normalize/statements.py's build_normalized_view."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_start: str | None = None
+    period_end: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+    rows: list[NormalizedFactLine] = Field(default_factory=list)
+
+
 class InsiderTransaction(BaseModel):
     """One insider transaction (from Forms 3/4/5). See sec/insider.py."""
 

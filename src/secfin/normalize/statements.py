@@ -34,6 +34,8 @@ from collections import defaultdict
 from secfin.normalize.mapping import STATEMENT_CONCEPTS, candidate_tags, label_for_concept
 from secfin.normalize.schema import (
     FiscalPeriod,
+    NormalizedFactLine,
+    NormalizedView,
     RawFact,
     Statement,
     StatementLine,
@@ -170,6 +172,93 @@ def build_statement(
         filed=meta.filed if meta else None,
         accession=meta.accession if meta else None,
         lines=lines,
+    )
+
+
+def build_normalized_view(
+    facts: list[RawFact],
+    cik: int,
+    fiscal_year: int,
+    fiscal_period: FiscalPeriod,
+) -> NormalizedView:
+    """The statement builder's mechanical normalizations applied to EVERY tag.
+
+    Same defenses as `build_statement` -- primary-column selection (the comparative-
+    column trap), discrete-quarter-vs-YTD tie-break, latest-`filed` restatement pick,
+    dei cover-page handling -- but with no concept mapping: one row per (tag, unit)
+    present in the filing's primary column. This is the tag-level normalized layer
+    (ROADMAP_DATA_DEPTH): cross-company consistent only to the extent FASB's shared
+    vocabulary makes it so; variant unification remains the canonical layer's job.
+
+    Two deliberate differences from `build_statement`:
+    - The primary column is anchored by ALL non-dei facts (there is no statement tag
+      set to anchor on). dei facts are still served without anchoring, same rationale.
+    - Rows are keyed by (tag, unit), not tag alone, so a tag reported in two units
+      keeps both rows -- nothing dropped.
+    """
+    period = (fiscal_year, fiscal_period)
+    in_period = [f for f in facts if _period_key(f) == period]
+
+    primary_end = max(
+        (_column_end(f) for f in in_period if f.taxonomy != "dei"),
+        default="",
+    ) or max((_column_end(f) for f in in_period), default="")
+
+    best_by_key: dict[tuple[str, str, str], RawFact] = {}
+    for f in in_period:
+        if f.taxonomy != "dei" and _column_end(f) != primary_end:
+            continue
+        key = (f.taxonomy, f.gaap_tag, f.unit)
+        existing = best_by_key.get(key)
+        if existing is None or _rank(f, fiscal_period) > _rank(existing, fiscal_period):
+            best_by_key[key] = f
+
+    from secfin.normalize.mapping import concept_for_tag
+
+    rows = [
+        NormalizedFactLine(
+            taxonomy=f.taxonomy,
+            gaap_tag=f.gaap_tag,
+            label=f.label,
+            unit=f.unit,
+            value=f.value,
+            period_start=f.period_start,
+            period_end=f.period_end,
+            instant=f.instant,
+            is_extension=f.is_extension,
+            canonical_concept=concept_for_tag(f.gaap_tag),
+        )
+        for f in sorted(best_by_key.values(), key=lambda f: (f.taxonomy, f.gaap_tag, f.unit))
+        if f.value is not None
+    ]
+
+    # Statement-level metadata from a primary-column, non-dei fact. Prefer a duration
+    # fact whose span matches the requested period, so the header carries the fiscal
+    # span (an instant winning the tie leaves period_start empty, and in a Q filing
+    # the YTD duration shares the column with the discrete quarter); then latest
+    # filed so amendments set the header.
+    def _meta_rank(f: RawFact) -> tuple[bool, bool, str]:
+        return (bool(f.period_start), _span_matches(f, fiscal_period), f.filed or "")
+
+    meta: RawFact | None = None
+    for f in best_by_key.values():
+        if f.taxonomy == "dei":
+            continue
+        if meta is None or _meta_rank(f) > _meta_rank(meta):
+            meta = f
+    if meta is None and best_by_key:
+        meta = max(best_by_key.values(), key=lambda f: f.filed or "")
+
+    return NormalizedView(
+        cik=cik,
+        fiscal_year=fiscal_year,
+        fiscal_period=fiscal_period,
+        period_start=meta.period_start if meta else None,
+        period_end=(meta.period_end or meta.instant) if meta else None,
+        form=meta.form if meta else None,
+        filed=meta.filed if meta else None,
+        accession=meta.accession if meta else None,
+        rows=rows,
     )
 
 

@@ -119,6 +119,21 @@ Notes:
 - Bank/retailer shapes: run every new concept against the JPM/WMT fixtures and record
   the structural absences in DATA_MODEL like the existing concepts do.
 
+## Phase 2b — Normalized tag-level layer + cluster-driven mapping (decided 2026-07-16)
+
+Operator decisions that supersede the per-tag framing of Phase 2's "what next":
+
+- **Normalized tag-level endpoint — SHIPPED PUBLIC:**
+  `GET /v1/companies/{symbol}/normalized-facts` ("normalize without mapping") — the
+  statement builder's mechanical defenses applied to every tag, no curation. See
+  `DATA_MODEL.md`'s "Normalized tag-level view". This serves the breadth story; the
+  canonical layer no longer chases per-tag completeness.
+- **Canonical expansion is CLUSTER-DRIVEN:** canonicalize (a) statement-face concepts
+  and (b) meaning-clusters of ≥2 variant tags whose combined coverage clears ~25% of
+  ingested filers — worked from `docs/tag_glossary.jsonl` (meanings, not tag names),
+  verified per-concept, shipped in tranches. Single-tag non-face elements stay
+  tag-level. Est. ~80–120 new concepts from the current store.
+
 ## Phase 3 — Dimensional data (segments/geography) — SPIKE FIRST, then decide
 
 What users will eventually ask for ("revenue by segment / by geography") **does not

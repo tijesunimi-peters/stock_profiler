@@ -44,6 +44,7 @@ from secfin.normalize.schema import (
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
+    NormalizedView,
     PeerDistribution,
     PeerRank,
     RawFact,
@@ -55,7 +56,11 @@ from secfin.normalize.screening import (
     frame_period_for_concept,
     resolve_concept_values,
 )
-from secfin.normalize.statements import available_periods, build_statement
+from secfin.normalize.statements import (
+    available_periods,
+    build_normalized_view,
+    build_statement,
+)
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.sec.insider import fetch_insider_transactions_with_filings
@@ -329,6 +334,56 @@ async def get_statement(
             detail=f"No {statement} data found for {symbol} {period} {year}.",
         )
     return result
+
+
+# Normalized tag-level view (public; ROADMAP_DATA_DEPTH "normalize without mapping",
+# operator decision 2026-07-16) -- caveats always present, same convention as 13F.
+_NORMALIZED_FACTS_CAVEATS = [
+    "Tag-level, NOT variant-unified: different companies may report the same economic "
+    "concept under different tags (that unification is the canonical /statements "
+    "layer's job). Cross-company comparisons only hold where filers use the same tag.",
+    "One row per (tag, unit) from the filing's PRIMARY column only: comparative "
+    "columns are removed, restatements resolved to the latest filing, and a discrete "
+    "quarter beats the YTD duration sharing its period end.",
+    "Rows with is_extension=true are company-specific extension tags -- filer-local "
+    "vocabulary with no cross-company meaning at all.",
+]
+
+
+class NormalizedFactsResponse(NormalizedView):
+    caveats: list[str]
+
+
+@router.get(
+    "/companies/{symbol}/normalized-facts",
+    response_model=NormalizedFactsResponse,
+    tags=["Financials"],
+    summary="Every reported tag for one fiscal period, mechanically normalized",
+)
+async def get_normalized_facts(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> NormalizedFactsResponse:
+    """The tag-level normalized layer: every us-gaap/dei tag the company reported for
+    one fiscal period -- not just the canonically mapped ones -- with the statement
+    builder's mechanical cleanups applied (primary filing column only, restatements
+    resolved, one row per tag+unit). Tags keep their official FASB labels; rows that
+    feed a canonical concept carry it in `canonical_concept` as a cross-link to
+    /statements. See the `caveats` field: this layer is NOT variant-unified.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _statement_facts_for_cik(repo, client, cik, year, period)
+    view = build_normalized_view(facts, cik, year, period)
+    if not view.rows and view.accession is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for {symbol} {period} {year}.",
+        )
+    return NormalizedFactsResponse(**view.model_dump(), caveats=_NORMALIZED_FACTS_CAVEATS)
 
 
 # Raw-facts endpoint caveats -- always present, same convention as the 13F endpoints'.
