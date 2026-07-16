@@ -265,16 +265,75 @@
     });
   }
 
+  var PERIOD_COLS = ["FY", "Q1", "Q2", "Q3"]; // SEC has no Q4 fiscal key; FY covers it
+  var PERIOD_YEARS_VISIBLE = 5;
+
   function renderPeriods() {
     var row = qs("periodRow");
     row.innerHTML = "";
+    if (!state.periodsList.length) return;
+
+    // One row per fiscal year with fixed FY/Q1/Q2/Q3 slots, newest first. Fixed
+    // slots make a missing period visible as a gap ("no filing on record for that
+    // key") instead of silently reflowing -- the layout encodes coverage honestly.
+    var byYear = {};
     state.periodsList.forEach(function (p) {
-      var btn = el("button", "period-pill", p.period + " " + p.year);
-      btn.type = "button";
-      if (state.year === p.year && state.period === p.period) btn.classList.add("active");
-      btn.addEventListener("click", function () { onPeriodSelect(p.year, p.period); });
-      row.appendChild(btn);
+      (byYear[p.year] = byYear[p.year] || {})[p.period] = true;
     });
+    var years = Object.keys(byYear).map(Number).sort(function (a, b) { return b - a; });
+
+    // Auto-expand when a deep link selects a year below the fold; after that the
+    // toggle's explicit choice wins.
+    var expanded = state.periodsExpanded;
+    if (expanded == null) {
+      expanded = state.year != null && years.indexOf(state.year) >= PERIOD_YEARS_VISIBLE;
+    }
+    var shown = expanded ? years : years.slice(0, PERIOD_YEARS_VISIBLE);
+
+    var matrix = el("div", "period-matrix", null);
+    var head = el("div", "period-year-row period-matrix-head", null);
+    head.appendChild(el("span", "period-year-label", ""));
+    PERIOD_COLS.forEach(function (fp) {
+      head.appendChild(el("span", "period-col-label", fp));
+    });
+    matrix.appendChild(head);
+
+    shown.forEach(function (year) {
+      var r = el("div", "period-year-row", null);
+      r.appendChild(el("span", "period-year-label", String(year)));
+      PERIOD_COLS.forEach(function (fp) {
+        if (byYear[year][fp]) {
+          var btn = el("button", "period-pill period-slot", fp);
+          btn.type = "button";
+          btn.setAttribute("aria-label", fp + " " + year);
+          if (state.year === year && state.period === fp) btn.classList.add("active");
+          btn.addEventListener("click", function () { onPeriodSelect(year, fp); });
+          r.appendChild(btn);
+        } else {
+          var gap = el("span", "period-slot period-slot-empty", "·");
+          gap.title = "No " + fp + " " + year + " filing on record";
+          r.appendChild(gap);
+        }
+      });
+      matrix.appendChild(r);
+    });
+    row.appendChild(matrix);
+
+    if (years.length > PERIOD_YEARS_VISIBLE) {
+      var toggle = el(
+        "button",
+        "period-more",
+        expanded
+          ? "Recent years only"
+          : "All years · back to " + years[years.length - 1]
+      );
+      toggle.type = "button";
+      toggle.addEventListener("click", function () {
+        state.periodsExpanded = !expanded;
+        renderPeriods();
+      });
+      row.appendChild(toggle);
+    }
   }
 
   function renderResolvedLabel() {
@@ -296,6 +355,11 @@
       link.hidden = false;
     } else {
       link.hidden = true;
+    }
+    // Keep the "more datasets" strip's hub link pointed at the current company.
+    var hub = qs("hubLink");
+    if (hub && state.symbol) {
+      hub.href = "/company/" + encodeURIComponent(state.symbol);
     }
   }
 

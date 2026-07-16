@@ -262,6 +262,74 @@
   font-weight: 600;
 }
 
+#periodRow {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.period-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.period-year-row {
+  display: grid;
+  grid-template-columns: 46px repeat(4, 62px);
+  gap: 7px;
+  align-items: center;
+}
+
+.period-matrix-head .period-col-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  text-align: center;
+}
+
+.period-year-label {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.period-slot {
+  text-align: center;
+  padding: 6px 0;
+}
+
+.period-slot-empty {
+  color: var(--mono-muted);
+  user-select: none;
+}
+
+.period-more {
+  margin-top: 10px;
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--accent-ink);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.period-more:hover { color: var(--accent); }
+
+@media (max-width: 560px) {
+  .period-year-row {
+    grid-template-columns: 40px repeat(4, minmax(48px, 1fr));
+    gap: 5px;
+  }
+}
+
 .period-caption {
   font-family: var(--font-mono);
   font-size: 10px;
