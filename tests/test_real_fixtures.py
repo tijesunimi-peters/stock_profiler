@@ -51,9 +51,13 @@ def test_aapl_income_statement_matches_real_filing():
     assert stmt.filed == "2025-10-31"
     assert stmt.accession == "0000320193-25-000079"
 
+    # Values are the filing's PRIMARY column (FY2025, 2024-09-29 -> 2025-09-27) -- the
+    # pre-2026-07-16 assertions here had captured the comparative-column bug (they were
+    # AAPL's FY2023 figures; see normalize/statements.py module docstring).
+    assert stmt.period_end == "2025-09-27"
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
-    assert by_concept["revenue"] == 383285000000
-    assert by_concept["net_income"] == 96995000000
+    assert by_concept["revenue"] == 416161000000
+    assert by_concept["net_income"] == 112010000000
     # Apple's recent 10-Ks net interest into "other income/expense" rather than tagging a
     # discrete interest expense line -- absent here is correct, not a mapping gap.
     assert "interest_expense" not in by_concept
@@ -69,9 +73,10 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
-    assert by_concept["revenue"] == 642637000000
-    assert by_concept["net_income"] == 15511000000
-    assert by_concept["interest_expense"] == 2259000000  # InterestExpenseDebt candidate
+    assert stmt.period_end == "2026-01-31"  # primary column, not a comparative
+    assert by_concept["revenue"] == 706413000000
+    assert by_concept["net_income"] == 21893000000
+    assert by_concept["interest_expense"] == 2318000000  # InterestExpenseDebt candidate
 
     # Walmart's 10-K doesn't tag a discrete gross-profit or aggregate operating-expenses
     # line (or R&D, which is genuinely not applicable to a retailer) -- expected absences,
@@ -93,11 +98,12 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert stmt.form == "10-K"
     assert stmt.accession == "0001628280-26-008131"
 
+    assert stmt.period_end == "2025-12-31"  # primary column, not a comparative
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
-    assert by_concept["net_income"] == 49552000000
+    assert by_concept["net_income"] == 57048000000
     # InterestExpenseOperating: the aggregate across JPM's deposit/repo/debt/trading-
-    # liability interest expense components (verified against the sum of those tags).
-    assert by_concept["interest_expense"] == 81321000000
+    # liability interest expense components.
+    assert by_concept["interest_expense"] == 97898000000
 
     # A bank's income statement doesn't have a cost-of-revenue/gross-profit/operating-
     # income structure at all (it reports net interest income + noninterest income/
@@ -120,20 +126,21 @@ def test_aapl_balance_sheet_and_cashflow_fully_covered():
 
     balance = build_statement(facts, 320193, "balance", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in balance.lines}
-    assert by_concept["cash_and_equivalents"] == 29943000000
-    assert by_concept["accounts_receivable"] == 33410000000
-    assert by_concept["inventory"] == 7286000000
-    assert by_concept["total_assets"] == 364980000000
-    assert by_concept["total_liabilities"] == 308030000000
-    assert by_concept["long_term_debt"] == 85750000000
-    assert by_concept["stockholders_equity"] == 50672000000
-    assert by_concept["shares_outstanding"] == 15116786000
+    assert balance.period_end == "2025-09-27"  # primary instant, not the comparative
+    assert by_concept["cash_and_equivalents"] == 35934000000
+    assert by_concept["accounts_receivable"] == 39777000000
+    assert by_concept["inventory"] == 5718000000
+    assert by_concept["total_assets"] == 359241000000
+    assert by_concept["total_liabilities"] == 285508000000
+    assert by_concept["long_term_debt"] == 78328000000
+    assert by_concept["stockholders_equity"] == 73733000000
+    assert by_concept["shares_outstanding"] == 14773260000
 
     cashflow = build_statement(facts, 320193, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
-    assert by_concept["cash_from_operations"] == 110543000000
-    assert by_concept["capital_expenditures"] == 10959000000
-    assert by_concept["depreciation_amortization"] == 11519000000
+    assert by_concept["cash_from_operations"] == 111482000000
+    assert by_concept["capital_expenditures"] == 12715000000
+    assert by_concept["depreciation_amortization"] == 11698000000
 
 
 def test_wmt_balance_sheet_has_retailer_shaped_gaps():
@@ -142,10 +149,11 @@ def test_wmt_balance_sheet_has_retailer_shaped_gaps():
 
     balance = build_statement(facts, 104169, "balance", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in balance.lines}
-    assert by_concept["cash_and_equivalents"] == 9037000000
-    assert by_concept["inventory"] == 56435000000
-    assert by_concept["total_assets"] == 252399000000
-    assert by_concept["stockholders_equity"] == 91013000000
+    assert balance.period_end == "2026-01-31"
+    assert by_concept["cash_and_equivalents"] == 10727000000
+    assert by_concept["inventory"] == 58851000000
+    assert by_concept["total_assets"] == 284668000000
+    assert by_concept["stockholders_equity"] == 99617000000
 
     # Walmart's 10-K doesn't tag a discrete aggregate "Liabilities" line (only the
     # combined LiabilitiesAndStockholdersEquity total) -- a real coverage gap with no
@@ -158,8 +166,8 @@ def test_wmt_balance_sheet_has_retailer_shaped_gaps():
 
     cashflow = build_statement(facts, 104169, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
-    assert by_concept["cash_from_operations"] == 35726000000
-    assert by_concept["capital_expenditures"] == 20606000000
+    assert by_concept["cash_from_operations"] == 41565000000
+    assert by_concept["capital_expenditures"] == 26642000000
 
 
 def test_jpm_bank_balance_sheet_has_structural_gaps():
@@ -168,12 +176,13 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
 
     balance = build_statement(facts, 19617, "balance", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in balance.lines}
-    assert by_concept["total_assets"] == 3875393000000
-    assert by_concept["total_liabilities"] == 3658056000000
-    assert by_concept["stockholders_equity"] == 327878000000
+    assert balance.period_end == "2025-12-31"
+    assert by_concept["total_assets"] == 4424900000000
+    assert by_concept["total_liabilities"] == 4062462000000
+    assert by_concept["stockholders_equity"] == 362438000000
     # JPM doesn't use the commercial CashAndCashEquivalentsAtCarryingValue tag at all --
     # it reports CashAndDueFromBanks instead, the bank-specific equivalent concept.
-    assert by_concept["cash_and_equivalents"] == 23372000000
+    assert by_concept["cash_and_equivalents"] == 21742000000
 
     # A bank's balance sheet isn't classified into current/noncurrent, and banks hold
     # loans/deposits rather than receivables/inventory -- these concepts genuinely don't
@@ -189,6 +198,6 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
 
     cashflow = build_statement(facts, 19617, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
-    assert by_concept["cash_from_operations"] == 12974000000
+    assert by_concept["cash_from_operations"] == -147782000000
     # Banks don't report a discrete capex line in XBRL the way commercial filers do.
     assert "capital_expenditures" not in by_concept

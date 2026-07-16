@@ -4,6 +4,23 @@ Given the flat RawFacts for a company, select the facts for a requested
 (fiscal_year, fiscal_period), then for each canonical concept on the statement pick the
 best available source tag (first candidate that has a value) and emit a StatementLine.
 
+THE COMPARATIVE-COLUMN TRAP (the bug class this module must defend against): in SEC
+companyfacts, a fact's `fy`/`fp` describe the FILING's fiscal period, not the fact's own
+duration. A FY2023 10-K tags all three of its income columns (FY2021, FY2022, FY2023)
+as fy=2023/fp=FY, and a Q3 10-Q tags both the discrete quarter and the 9-month YTD (and
+the prior-year comparatives) as fy/fp of the filing. Selecting facts by (fy, fp) alone
+therefore mixes several real-world periods. Found live 2026-07-16: statements served the
+*oldest comparative* column (AAPL "FY2023" returned FY2021's revenue), with the winner
+decided by dict insertion order.
+
+Defense: within the (fy, fp) facts we first find the filing's PRIMARY column — the
+latest `period_end` (durations) / `instant` (balance sheet) present — and build the
+statement only from facts in that column. Ties between durations sharing that end date
+(discrete quarter vs YTD) are broken by which span matches the requested fiscal period.
+A concept reported only in a comparative column is DROPPED, not borrowed: one statement
+never mixes periods (same honesty rule as the rest of the product — a missing line is a
+documented gap, a silently wrong-period line is a lie).
+
 Restatement handling: if the same concept+period appears in multiple filings, the fact
 with the latest `filed` date wins. We never drop the others upstream (they live in the
 store); this builder just chooses "current".
@@ -11,6 +28,7 @@ store); this builder just chooses "current".
 
 from __future__ import annotations
 
+import datetime as dt
 from collections import defaultdict
 
 from secfin.normalize.mapping import STATEMENT_CONCEPTS, candidate_tags, label_for_concept
@@ -27,9 +45,34 @@ def _period_key(fact: RawFact) -> tuple[int | None, str | None]:
     return (fact.fiscal_year, fact.fiscal_period)
 
 
-def _latest(a: RawFact, b: RawFact) -> RawFact:
-    """Pick the more recently filed fact (restatements win)."""
-    return b if (b.filed or "") > (a.filed or "") else a
+def _column_end(fact: RawFact) -> str:
+    """The date identifying which column of the filing a fact belongs to."""
+    return fact.period_end or fact.instant or ""
+
+
+def _span_matches(fact: RawFact, fiscal_period: FiscalPeriod) -> bool:
+    """Does a duration fact's span plausibly match the requested fiscal period?
+
+    Instants (and open-ended facts) trivially match. Bands are generous enough for
+    52/53-week fiscal calendars; this is a tie-break preference, not a filter.
+    """
+    if not (fact.period_start and fact.period_end):
+        return True
+    try:
+        days = (
+            dt.date.fromisoformat(fact.period_end) - dt.date.fromisoformat(fact.period_start)
+        ).days
+    except ValueError:
+        return True
+    if fiscal_period == "FY":
+        return 330 <= days <= 400
+    return 75 <= days <= 105  # a discrete quarter, not the cumulative YTD duration
+
+
+def _rank(fact: RawFact, fiscal_period: FiscalPeriod) -> tuple[bool, str]:
+    """Order facts within one filing column: span match first, then latest filed
+    (restatements/amendments win)."""
+    return (_span_matches(fact, fiscal_period), fact.filed or "")
 
 
 def build_statement(
@@ -40,14 +83,22 @@ def build_statement(
     fiscal_period: FiscalPeriod,
 ) -> Statement:
     """Assemble one canonical statement for the given company + period."""
-    # index best (latest-filed) fact per gaap_tag for this exact period
-    best_by_tag: dict[str, RawFact] = {}
     period = (fiscal_year, fiscal_period)
-    for f in facts:
-        if _period_key(f) != period:
+    in_period = [f for f in facts if _period_key(f) == period]
+
+    # Pass 1: identify the filing's primary column — the latest period_end/instant
+    # among this period's facts. Everything earlier is a comparative column re-tagged
+    # with the filing's fy/fp (see module docstring).
+    primary_end = max((_column_end(f) for f in in_period), default="")
+
+    # Pass 2: index the best fact per gaap_tag WITHIN the primary column only.
+    best_by_tag: dict[str, RawFact] = {}
+    for f in in_period:
+        if _column_end(f) != primary_end:
             continue
         existing = best_by_tag.get(f.gaap_tag)
-        best_by_tag[f.gaap_tag] = f if existing is None else _latest(existing, f)
+        if existing is None or _rank(f, fiscal_period) > _rank(existing, fiscal_period):
+            best_by_tag[f.gaap_tag] = f
 
     lines: list[StatementLine] = []
     meta: RawFact | None = None
