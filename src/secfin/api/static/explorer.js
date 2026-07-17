@@ -7,12 +7,19 @@
     ["income", "Income"],
     ["balance", "Balance"],
     ["cashflow", "Cash Flow"],
+    ["segments", "Segments · spike"],
   ];
   var STATEMENT_TITLES = {
     income: "Income Statement",
     balance: "Balance Sheet",
     cashflow: "Cash Flow Statement",
+    segments: "Revenue by Segment — Phase-3 spike",
   };
+  // Phase-3 dimensional spike (docs/SPIKE_DIMENSIONAL.md): a static extract for three
+  // companies, NOT an API surface. companyfacts carries no dimensional facts, so this
+  // view is fed by /static/spike_dimensional.json (SEC Financial Statement Data Sets).
+  var SPIKE_SYMBOLS = ["AAPL", "KO", "MA"];
+  var spikeData = null; // fetched once, cached for the session
 
   // Display-only row hierarchy, keyed by the canonical_concept the API already returns.
   // This does not duplicate the tag->concept mapping (that stays server-side in
@@ -225,6 +232,7 @@
   }
 
   function loadStatement() {
+    if (state.statement === "segments") { loadSpikeSegments(); return; }
     if (!state.symbol || !state.year || !state.period) return;
     state.view = "loading";
     state.revealed = {};
@@ -252,6 +260,31 @@
       syncUrl(true);
       render();
     });
+  }
+
+  function loadSpikeSegments() {
+    if (!state.symbol) return;
+    if (spikeData) {
+      state.view = "segments";
+      syncUrl(true);
+      render();
+      return;
+    }
+    state.view = "loading";
+    render();
+    fetch("/static/spike_dimensional.json")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        spikeData = d;
+        state.view = "segments";
+        syncUrl(true);
+        render();
+      })
+      .catch(function () {
+        state.view = "404";
+        state.error404 = { title: "Spike data unavailable", copy: "Could not load the static spike extract.", showChips: false };
+        render();
+      });
   }
 
   // ---------- interaction handlers ----------
@@ -430,7 +463,7 @@
   }
 
   function hideAllStates() {
-    ["stateLoading", "state404", "stateEmpty", "stateReady"].forEach(function (id) {
+    ["stateLoading", "state404", "stateEmpty", "stateReady", "stateSegments"].forEach(function (id) {
       qs(id).hidden = true;
     });
   }
@@ -568,8 +601,80 @@
     } else if (state.view === "ready") {
       qs("stateReady").hidden = false;
       renderReady();
+    } else if (state.view === "segments") {
+      qs("stateSegments").hidden = false;
+      renderSegments();
     }
     renderResolvedLabel();
+  }
+
+  // ---------- Phase-3 dimensional spike view ----------
+
+  function fmtB(v) {
+    var neg = v < 0, a = Math.abs(v);
+    var s = a >= 1e9 ? (a / 1e9).toFixed(2) + "B" : (a / 1e6).toFixed(1) + "M";
+    return (neg ? "($" : "$") + s + (neg ? ")" : "");
+  }
+
+  function renderSegments() {
+    var box = qs("stateSegments");
+    var sym = (state.symbol || "").toUpperCase();
+    var d = spikeData && spikeData[sym];
+    var banner =
+      '<div class="spike-banner"><span class="spike-tag">SPIKE</span> ' +
+      "Dimensional (segment) data is a Phase-3 spike — a one-off static extract from the " +
+      "SEC Financial Statement Data Sets for " + SPIKE_SYMBOLS.join(", ") +
+      " only. Not served by the API; the period picker does not apply. " +
+      "companyfacts (everything else on this page) carries no dimensional facts at all.</div>";
+    if (!d) {
+      box.innerHTML = banner +
+        '<div class="empty-body"><div class="empty-tag">No spike extract for ' + escapeHtml(sym || "this company") + "</div>" +
+        '<p class="empty-copy">This prototype covers ' + SPIKE_SYMBOLS.join(", ") + ". Pick one of them to see revenue by business segment, geography, and product.</p></div>";
+      return;
+    }
+    var viewNames = Object.keys(d.views);
+    if (!state.spikeAxis || viewNames.indexOf(state.spikeAxis) === -1) state.spikeAxis = viewNames[0];
+    var rows = d.views[state.spikeAxis];
+    var viewSum = rows.reduce(function (a, r) { return a + r.value; }, 0);
+    var maxVal = rows.reduce(function (a, r) { return Math.max(a, r.value); }, 0);
+    var sumsClean = d.consolidated_revenue &&
+      Math.abs(viewSum - d.consolidated_revenue) / d.consolidated_revenue < 0.01;
+
+    var toggle = '<div class="segmented spike-axis" role="tablist">' + viewNames.map(function (n) {
+      return '<button type="button" role="tab" class="segment-btn' + (n === state.spikeAxis ? " active" : "") +
+        '" data-axis="' + escapeHtml(n) + '">' + escapeHtml(n) + "</button>";
+    }).join("") + "</div>";
+
+    var head = '<div class="spike-head"><div><div class="company-name">' + escapeHtml(sym) + "</div>" +
+      '<div class="company-sub">Revenue by ' + escapeHtml(state.spikeAxis.toLowerCase()) + " · FY" + d.fiscal_year +
+      " (ended " + escapeHtml(d.period_end) + ") · source tag " + escapeHtml(d.revenue_tag) + "</div></div>" + toggle + "</div>";
+
+    var table = rows.map(function (r) {
+      var pct = maxVal ? Math.round(100 * r.value / maxVal) : 0;
+      var share = sumsClean ? '<span class="spike-share">' + (100 * r.value / viewSum).toFixed(1) + "%</span>" : "";
+      var yoy = "";
+      if (r.prior) {
+        var g = (r.value / r.prior - 1) * 100;
+        yoy = '<span class="spike-yoy ' + (g >= 0 ? "up" : "down") + '">' + (g >= 0 ? "+" : "") + g.toFixed(1) + "% yoy</span>";
+      }
+      return '<div class="spike-row">' +
+        '<span class="spike-member">' + escapeHtml(r.member) + "</span>" +
+        '<span class="spike-track"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="spike-value">' + fmtB(r.value) + "</span>" + share + yoy +
+        "</div>";
+    }).join("");
+
+    var footnote = sumsClean
+      ? '<p class="spike-footnote">Members sum to the consolidated revenue (' + fmtB(d.consolidated_revenue) + ") — shares shown against that total.</p>"
+      : '<p class="spike-footnote">Members on this axis mix reporting levels (rollups and their components appear as siblings — the presentation-hierarchy problem in the spike notes), so share-of-total is not shown.</p>';
+
+    box.innerHTML = banner + head + '<div class="spike-table">' + table + "</div>" + footnote;
+    box.querySelectorAll("[data-axis]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.spikeAxis = btn.getAttribute("data-axis");
+        renderSegments();
+      });
+    });
   }
 
   function render() {

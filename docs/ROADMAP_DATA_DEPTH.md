@@ -143,6 +143,15 @@ Operator decisions that supersede the per-tag framing of Phase 2's "what next":
 
 ## Phase 3 — Dimensional data (segments/geography) — SPIKE FIRST, then decide
 
+**Status (2026-07-16): SPIKE EXECUTED — see `docs/SPIKE_DIMENSIONAL.md`** (operator
+directed a hands-on variant: AAPL/KO/MA extract from the DERA Financial Statement Data
+Sets + a clearly-labeled prototype "Segments · spike" view on /explorer, fed by a
+static JSON, not the API). Headline: ~half of a 10-K's numeric facts are dimensional
+and invisible to companyfacts; values cross-check companyfacts exactly; the honest
+blockers are hierarchy mixing on one axis and reconciling-item filtering.
+Recommendation: source (a) if funded. **Productization remains UNDECIDED** — the
+operator decision below still gates it.
+
 What users will eventually ask for ("revenue by segment / by geography") **does not
 exist in our current source**: the companyfacts API carries only non-dimensional
 (consolidated) facts. Confirmed in the wild — do not promise segments until this

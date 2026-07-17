@@ -1,0 +1,187 @@
+{
+ "AAPL": {
+  "fiscal_year": 2025,
+  "period_end": "2025-09-30",
+  "revenue_tag": "RevenueFromContractWithCustomerExcludingAssessedTax",
+  "consolidated_revenue": 416161000000.0,
+  "source": "SEC Financial Statement Data Sets (DERA), 2025q4 + 2026q1",
+  "views": {
+   "Business segments": [
+    {
+     "member": "Americas",
+     "value": 178353000000.0,
+     "prior": 167045000000.0
+    },
+    {
+     "member": "Europe",
+     "value": 111032000000.0,
+     "prior": 101328000000.0
+    },
+    {
+     "member": "Greater China",
+     "value": 64377000000.0,
+     "prior": 66952000000.0
+    },
+    {
+     "member": "Rest Of Asia Pacific",
+     "value": 33696000000.0,
+     "prior": 30658000000.0
+    },
+    {
+     "member": "Japan",
+     "value": 28703000000.0,
+     "prior": 25052000000.0
+    }
+   ],
+   "Geography": [
+    {
+     "member": "Other countries",
+     "value": 199994000000.0,
+     "prior": 181887000000.0
+    },
+    {
+     "member": "United States",
+     "value": 151790000000.0,
+     "prior": 142196000000.0
+    },
+    {
+     "member": "China",
+     "value": 64377000000.0,
+     "prior": 66952000000.0
+    }
+   ],
+   "Products & services": [
+    {
+     "member": "Product",
+     "value": 307003000000.0,
+     "prior": 294866000000.0
+    },
+    {
+     "member": "iPhone",
+     "value": 209586000000.0,
+     "prior": 201183000000.0
+    },
+    {
+     "member": "Service",
+     "value": 109158000000.0,
+     "prior": 96169000000.0
+    },
+    {
+     "member": "Wearables, Home & Accessories",
+     "value": 35686000000.0,
+     "prior": 37005000000.0
+    },
+    {
+     "member": "Mac",
+     "value": 33708000000.0,
+     "prior": 29984000000.0
+    },
+    {
+     "member": "iPad",
+     "value": 28023000000.0,
+     "prior": 26694000000.0
+    }
+   ]
+  }
+ },
+ "KO": {
+  "fiscal_year": 2025,
+  "period_end": "2025-12-31",
+  "revenue_tag": "Revenues",
+  "consolidated_revenue": 47941000000.0,
+  "source": "SEC Financial Statement Data Sets (DERA), 2025q4 + 2026q1",
+  "views": {
+   "Business segments": [
+    {
+     "member": "North America",
+     "value": 19586000000.0,
+     "prior": 18869000000.0
+    },
+    {
+     "member": "Europe, Middle East & Africa",
+     "value": 11513000000.0,
+     "prior": 10958000000.0
+    },
+    {
+     "member": "Latin America",
+     "value": 6334000000.0,
+     "prior": 6471000000.0
+    },
+    {
+     "member": "Bottling Investments",
+     "value": 5735000000.0,
+     "prior": 6223000000.0
+    },
+    {
+     "member": "Asia Pacific",
+     "value": 5638000000.0,
+     "prior": 5594000000.0
+    }
+   ],
+   "Geography": [
+    {
+     "member": "Non-US",
+     "value": 28814000000.0,
+     "prior": 28699000000.0
+    },
+    {
+     "member": "United States",
+     "value": 19127000000.0,
+     "prior": 18362000000.0
+    }
+   ],
+   "Products & services": [
+    {
+     "member": "Concentrate Operations",
+     "value": 28462000000.0,
+     "prior": 27725000000.0
+    },
+    {
+     "member": "Finished Product Operations",
+     "value": 19479000000.0,
+     "prior": 19336000000.0
+    }
+   ]
+  }
+ },
+ "MA": {
+  "fiscal_year": 2025,
+  "period_end": "2025-12-31",
+  "revenue_tag": "Revenues",
+  "consolidated_revenue": 32791000000.0,
+  "source": "SEC Financial Statement Data Sets (DERA), 2025q4 + 2026q1",
+  "views": {
+   "Business segments": [
+    {
+     "member": "Payment solutions",
+     "value": 32791000000.0,
+     "prior": 28167000000.0
+    }
+   ],
+   "Geography": [
+    {
+     "member": "International markets",
+     "value": 18747000000.0,
+     "prior": 15792000000.0
+    },
+    {
+     "member": "Americas",
+     "value": 14044000000.0,
+     "prior": 12375000000.0
+    }
+   ],
+   "Products & services": [
+    {
+     "member": "Payment network",
+     "value": 19476000000.0,
+     "prior": 17335000000.0
+    },
+    {
+     "member": "Value-added services & solutions",
+     "value": 13315000000.0,
+     "prior": 10832000000.0
+    }
+   ]
+  }
+ }
+}
