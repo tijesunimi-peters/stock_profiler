@@ -1,7 +1,7 @@
 /* Company hub — /company/{symbol}. Fundamentals + Statements tabs over the v1 API, built from
  * the shared Profin components (app.js). Display-only maps (metric categories, formulas,
  * statement row emphasis) live here, keyed by the canonical concepts the API already returns —
- * they duplicate no server logic (same pattern as explorer.js's EMPH map).
+ * they duplicate no server logic.
  */
 (function () {
   "use strict";
@@ -48,21 +48,122 @@
     share_count: "Diluted weighted-average shares",
   };
 
-  var STMT_TITLES = { income: "Income Statement", balance: "Balance Sheet", cashflow: "Cash Flow Statement" };
+  var STMT_TITLES = {
+    income: "Income Statement",
+    balance: "Balance Sheet",
+    cashflow: "Cash Flow Statement",
+    segments: "Revenue by Segment — Phase-3 spike",
+  };
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Phase-3 dimensional spike (docs/SPIKE_DIMENSIONAL.md), merged in from the retired
+  // /explorer page: a static extract for three companies, NOT an API surface. companyfacts
+  // carries no dimensional facts, so this view is fed by /static/spike_dimensional.json
+  // (SEC Financial Statement Data Sets).
+  var SPIKE_SYMBOLS = ["AAPL", "KO", "MA"];
+  var spikeData = null; // fetched once, cached for the session
+
+  // Display-only row hierarchy for the statement view (from the retired /explorer), keyed
+  // by the canonical_concept the API already returns. This does not duplicate the
+  // tag->concept mapping (that stays server-side in normalize/mapping.py) — it only
+  // decides indentation/weight for concepts we already know.
+  var EMPH = {
+    // income
+    revenue: "line",
+    cost_of_revenue: "indent",
+    gross_profit: "sub",
+    research_and_development: "indent",
+    sga_expense: "indent",
+    operating_expenses: "indent",
+    operating_income: "sub",
+    interest_expense: "indent",
+    interest_income: "indent",
+    nonoperating_income_expense: "indent",
+    income_before_tax: "sub",
+    income_tax_expense: "indent",
+    current_income_tax_expense: "indent",
+    deferred_income_tax_expense: "indent",
+    effective_tax_rate: "indent",
+    net_income: "total",
+    net_income_noncontrolling: "indent",
+    comprehensive_income: "sub",
+    other_comprehensive_income: "indent",
+    eps_basic: "ps",
+    eps_diluted: "ps",
+    dividends_per_share: "ps",
+    amortization_of_intangibles: "indent",
+    goodwill_impairment: "indent",
+    asset_impairment: "indent",
+    operating_lease_cost: "indent",
+    // balance
+    cash_and_equivalents: "line",
+    cash_and_restricted_cash: "indent",
+    allowance_for_doubtful_accounts: "indent",
+    total_current_assets: "sub",
+    accumulated_depreciation: "indent",
+    ppe_net: "sub",
+    assets_noncurrent: "sub",
+    total_assets: "total",
+    total_current_liabilities: "sub",
+    liabilities_noncurrent: "sub",
+    total_liabilities: "sub",
+    long_term_debt: "indent",
+    common_stock_value: "indent",
+    preferred_stock_value: "indent",
+    additional_paid_in_capital: "indent",
+    retained_earnings: "indent",
+    accumulated_oci: "indent",
+    noncontrolling_interest: "indent",
+    stockholders_equity: "total",
+    liabilities_and_equity: "total",
+    shares_outstanding: "ps",
+    // cashflow
+    cash_from_operations: "sub",
+    cash_from_investing: "sub",
+    cash_from_financing: "sub",
+    capital_expenditures: "indent",
+    depreciation_amortization: "indent",
+    change_in_receivables: "indent",
+    change_in_inventories: "indent",
+    change_in_prepaid_expenses: "indent",
+    change_in_payables: "indent",
+    change_in_accrued_liabilities: "indent",
+    change_in_payables_and_accrued: "indent",
+    change_in_deferred_revenue: "indent",
+    acquisitions_net_of_cash: "indent",
+    proceeds_from_stock_issuance: "indent",
+    proceeds_from_long_term_debt: "indent",
+    repayments_of_debt: "indent",
+    effect_of_exchange_rate_on_cash: "indent",
+    change_in_cash: "total",
+  };
+  // Section starts (visual break above the row): per-share block on income,
+  // liabilities on balance, supplemental payments block on cashflow. The equity section
+  // has no single reliable key (AAPL reports no common_stock_value), so its break is
+  // resolved per-statement in statementView() — the first equity concept present.
+  var BREAK_BEFORE = {
+    eps_basic: true,
+    accounts_payable: true,
+    dividends_paid: true,
+    income_taxes_paid: true,
+  };
+  var EQUITY_CONCEPTS = [
+    "common_stock_value", "preferred_stock_value", "additional_paid_in_capital",
+    "retained_earnings", "accumulated_oci", "noncontrolling_interest", "stockholders_equity",
+  ];
 
   // ---------- state ----------
 
   var symbol = decodeURIComponent((location.pathname.split("/").filter(Boolean).pop() || "").trim());
   var state = {
     cik: null,
-    fyYears: [], // statement-layer FY years (for the Statements tab)
+    stmtPeriods: [], // statement-layer {year, period} keys (for the Statements tab, FY + quarters)
     fundPeriods: [], // {year, period, period_end} the metric engine can compute (Fundamentals)
     instPeriods: null, // 13F quarter-ends with holdings data (Institutional); null = not loaded yet
     tab: "fundamentals",
     statement: "income",
     fundValue: null, // "year|period" selected on Fundamentals
-    stmtValue: null, // "year|FY" selected on Statements
+    stmtValue: null, // "year|period" selected on Statements
     instValue: null, // quarter-end string selected on Institutional
   };
 
@@ -82,16 +183,19 @@
   // ---------- init ----------
 
   function init() {
-    $("footer").innerHTML = P.footer();
     $("masthead").innerHTML = P.masthead({
-      eyebrow: "Profin — SEC data, normalized",
       title: symbol ? symbol.toUpperCase() : "Company",
     });
-    P.mountSearch($("search"), {
-      onResolved: function (sym) { location.href = "/company/" + encodeURIComponent(sym); },
-      onNotFound: function (sym) { $("view").innerHTML = P.states.notFound({ copy: 'We don\'t carry "' + sym + '".' }); },
-      onError: function () { $("view").innerHTML = P.states.error({}); },
-    });
+    // Company lookup lives in the app shell's topbar search (script.js); the on-page
+    // #search mount is gone. Guard kept so an older shell with the div still works.
+    var searchEl = $("search");
+    if (searchEl) {
+      P.mountSearch(searchEl, {
+        onResolved: function (sym) { location.href = "/company/" + encodeURIComponent(sym); },
+        onNotFound: function (sym) { $("view").innerHTML = P.states.notFound({ copy: 'We don\'t carry "' + sym + '".' }); },
+        onError: function () { $("view").innerHTML = P.states.error({}); },
+      });
+    }
 
     if (!symbol) { $("view").innerHTML = P.states.empty({ title: "No company", copy: "Search for a ticker or CIK above." }); return; }
 
@@ -105,15 +209,18 @@
 
   function onResolved(data) {
     state.cik = data.cik;
-    // Statement-layer FY years (the axis /statements resolves on).
-    var fyYears = [];
-    (data.periods || []).forEach(function (p) { if (p.period === "FY" && fyYears.indexOf(p.year) === -1) fyYears.push(p.year); });
-    fyYears.sort(function (a, b) { return b - a; });
-    state.fyYears = fyYears;
-    state.stmtValue = fyYears.length ? fyYears[0] + "|FY" : null;
+    // Statement-layer (fy, fp) keys — the axis /statements resolves on. FY and quarters
+    // both (the retired /explorer's quarterly statement lookups live here now).
+    var PERIOD_ORDER = { FY: 1, Q4: 2, Q3: 3, Q2: 4, Q1: 5 };
+    state.stmtPeriods = (data.periods || []).slice().sort(function (a, b) {
+      return b.year - a.year || (PERIOD_ORDER[a.period] || 9) - (PERIOD_ORDER[b.period] || 9);
+    });
+    // Default to the latest FY (the complete-year statement), not the latest quarter.
+    var defStmt = state.stmtPeriods.filter(function (p) { return p.period === "FY"; })[0]
+      || state.stmtPeriods[0];
+    state.stmtValue = defStmt ? defStmt.year + "|" + defStmt.period : null;
 
     $("masthead").innerHTML = P.masthead({
-      eyebrow: "Profin — SEC data, normalized",
       title: symbol.toUpperCase(),
       meta: ["CIK " + data.cik, "as-of latest filing"],
     });
@@ -128,7 +235,7 @@
         var def = state.fundPeriods.filter(function (p) { return p.period === "FY"; })[0]
           || state.fundPeriods[0];
         state.fundValue = def ? def.year + "|" + def.period : null;
-        if (!state.fundPeriods.length && !state.fyYears.length) {
+        if (!state.fundPeriods.length && !state.stmtPeriods.length) {
           $("view").innerHTML = P.states.empty({ title: "No computable periods", copy: "Filings are on record but no complete period to compute from yet." });
           return;
         }
@@ -148,11 +255,20 @@
     );
   }
 
-  // Deep-link support: /company/{symbol}?tab=insider selects a tab on load (shareable URLs,
-  // and lets the e2e check target a tab directly).
+  // Deep-link support: /company/{symbol}?tab=insider selects a tab on load, and
+  // ?tab=statements&stmt=balance a statement type (shareable URLs, the e2e check, and the
+  // /explorer redirect's translated deep links).
   function applyTabFromUrl() {
-    var t = new URLSearchParams(location.search).get("tab");
+    var q = new URLSearchParams(location.search);
+    var t = q.get("tab");
     if (["fundamentals", "statements", "insider", "institutional", "beneficial"].indexOf(t) !== -1) state.tab = t;
+    var s = q.get("stmt");
+    if (["income", "balance", "cashflow", "segments"].indexOf(s) !== -1) {
+      state.tab = "statements";
+      state.statement = s;
+      var sBtn = document.querySelector('#stmt-types button[data-stmt="' + s + '"]');
+      if (sBtn) setOn("#stmt-types button", sBtn);
+    }
     var btn = document.querySelector('#tabs button[data-tab="' + state.tab + '"]');
     if (btn) setOn("#tabs button", btn);
     $("stmt-types").hidden = state.tab !== "statements";
@@ -191,8 +307,13 @@
         .join("");
       if (state.instValue) sel.value = state.instValue;
     } else {
-      $("period-label").textContent = "Fiscal year";
-      sel.innerHTML = state.fyYears.map(function (y) { return '<option value="' + y + '|FY">FY ' + y + "</option>"; }).join("");
+      $("period-label").textContent = "Period";
+      sel.innerHTML = state.stmtPeriods
+        .map(function (p) {
+          var label = p.period === "FY" ? "FY " + p.year : "FY" + p.year + " " + p.period;
+          return '<option value="' + p.year + "|" + p.period + '">' + P.esc(label) + "</option>";
+        })
+        .join("");
       if (state.stmtValue) sel.value = state.stmtValue;
     }
   }
@@ -215,7 +336,7 @@
     if (err.status === 404) {
       $("view").innerHTML = P.states.notFound({
         copy: 'We don\'t carry "' + symbol + '". Check the ticker, or try a raw CIK.',
-        recovery: [{ label: "Data Explorer ↗", href: "/explorer" }],
+        recovery: [{ label: "Try AAPL ↗", href: "/company/AAPL" }, { label: "Data coverage ↗", href: "/coverage" }],
       });
     } else {
       $("view").innerHTML = P.states.error({ copy: "Lookup failed (" + (err.status || "network") + ")." });
@@ -647,7 +768,7 @@
         if (err.status === 404) {
           $("view").innerHTML = P.states.notFound({
             copy: "No insider filings for " + symbol.toUpperCase() + ".",
-            recovery: [{ label: "Data Explorer ↗", href: "/explorer" }],
+            recovery: [{ label: "Data coverage ↗", href: "/coverage" }],
           });
         } else {
           $("view").innerHTML = P.states.error({ copy: "Couldn't load insider filings (" + (err.status || "network") + ")." });
@@ -771,31 +892,34 @@
     var sel = currentSel();
     var lbl = sel ? "FY" + sel.year + (sel.period === "FY" ? "" : " " + sel.period) : "";
     if (err.status === 404) {
-      return P.states.notFound({ copy: "No metrics for " + symbol.toUpperCase() + " " + lbl + ". Try another period.", recovery: [{ label: "Data Explorer ↗", href: "/explorer" }] });
+      return P.states.notFound({ copy: "No metrics for " + symbol.toUpperCase() + " " + lbl + ". Try another period." });
     }
     return P.states.error({ copy: "Couldn't compute metrics (" + (err.status || "network") + ")." });
   }
 
   function renderStatements() {
-    var sel = currentSel();
-    if (!sel) {
-      $("view").innerHTML = P.states.empty({ title: "No fiscal year", copy: "No complete fiscal year on record to show a statement for." });
-      return;
-    }
     $("legend").innerHTML = ""; // statements carry EXT badges, not status chips
     $("disclosure").innerHTML = P.disclosure(["financials_floor", "not_advice"]);
+    if (state.statement === "segments") { renderSpikeSegments(); return; }
+    var sel = currentSel();
+    if (!sel) {
+      $("view").innerHTML = P.states.empty({ title: "No period", copy: "No filed period on record to show a statement for." });
+      return;
+    }
+    var periodLabel = sel.period === "FY" ? "FY" + sel.year : "FY" + sel.year + " " + sel.period;
     $("view").innerHTML = P.states.loading({ title: "Loading statement" });
-    P.api("/companies/" + encodeURIComponent(symbol) + "/statements/" + state.statement + "?year=" + sel.year + "&period=FY").then(
+    P.api("/companies/" + encodeURIComponent(symbol) + "/statements/" + state.statement + "?year=" + sel.year + "&period=" + encodeURIComponent(sel.period)).then(
       function (stmt) {
         if (!stmt.lines || !stmt.lines.length) {
           $("view").innerHTML = P.states.empty({ title: "No mapped lines", copy: "A filing is on record for this period, but no fields mapped to this statement." });
           return;
         }
-        $("view").innerHTML = statementTable(stmt, sel.year);
+        $("view").innerHTML = statementView(stmt, periodLabel);
+        wireStatementView(stmt);
       },
       function (err) {
         if (err.status === 404) {
-          $("view").innerHTML = P.states.notFound({ copy: "No " + state.statement + " statement for FY" + sel.year + ".", recovery: [{ label: "Data Explorer ↗", href: "/explorer" }] });
+          $("view").innerHTML = P.states.notFound({ copy: "No " + state.statement + " statement for " + periodLabel + ". Try another period." });
         } else {
           $("view").innerHTML = P.states.error({});
         }
@@ -803,35 +927,247 @@
     );
   }
 
-  function fmtLineValue(line) {
-    var v = line.value, u = (line.unit || "").toLowerCase();
-    if (v === null || v === undefined) return "—";
-    if (u.indexOf("share") !== -1 && u.indexOf("/") !== -1) return P.fmt.perShare(v); // USD/shares
-    if (u.indexOf("share") !== -1) return P.fmt.shares(v); // share count
-    if (u === "pure" || u === "rate") return P.fmt.pct(v); // ratios, e.g. effective_tax_rate
-    return P.fmt.usd(v);
+  // ---------- statement view (the retired /explorer's presentation) ----------
+
+  // Four unit shapes, distinguished before formatting -- a bare share COUNT must not
+  // get $-formatting (pre-tranche bug: isShareUnit() treated "shares" and "USD/shares"
+  // identically, so weighted-average share counts rendered as dollars), and ratio
+  // units (effective_tax_rate is "pure") are neither dollars nor shares.
+  function unitKind(unit) {
+    var u = typeof unit === "string" ? unit.toLowerCase() : "";
+    if (u.indexOf("share") !== -1 && u.indexOf("/") !== -1) return "pershare"; // USD/shares
+    if (u.indexOf("share") !== -1) return "count";
+    if (u === "pure" || u === "rate") return "ratio";
+    return "usd";
   }
 
-  function statementTable(stmt, year) {
-    var rows = stmt.lines.map(function (l) {
-      var badge = l.is_extension
-        ? '<span class="badge badge-ext">EXT</span>'
-        : '<span class="badge badge-gaap">US-GAAP</span>';
-      return (
-        "<tr><td class=\"stmt-label\">" + P.esc(l.label) + "</td>" +
-        '<td class="amt stmt-amt">' + P.esc(fmtLineValue(l)) + "</td>" +
-        '<td class="stmt-tag">' + P.esc(l.source_tag) + " " + badge + "</td></tr>"
-      );
+  function abbrevNumber(a) {
+    if (a >= 1e12) return (a / 1e12).toFixed(2) + "T";
+    if (a >= 1e9) return (a / 1e9).toFixed(1) + "B";
+    if (a >= 1e6) return (a / 1e6).toFixed(1) + "M";
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
+    return String(a);
+  }
+
+  function fmtAbbrev(v, kind) {
+    var neg = v < 0, a = Math.abs(v);
+    if (kind === "pershare") return (neg ? "($" : "$") + a.toFixed(2) + (neg ? ")" : "");
+    if (kind === "count") return (neg ? "(" : "") + abbrevNumber(a) + (neg ? ")" : "");
+    if (kind === "ratio") return (v * 100).toFixed(1) + "%";
+    var s = abbrevNumber(a);
+    return neg ? "($" + s + ")" : "$" + s;
+  }
+
+  function fmtExact(v, kind) {
+    var neg = v < 0, a = Math.abs(v);
+    if (kind === "pershare") return "$" + v.toFixed(2) + " /sh";
+    if (kind === "count") return (neg ? "(" : "") + a.toLocaleString("en-US") + (neg ? ")" : "");
+    if (kind === "ratio") return String(v);
+    return (neg ? "($" : "$") + a.toLocaleString("en-US") + (neg ? ")" : "");
+  }
+
+  var UNIT_LABEL = { pershare: "per sh", count: "shares", ratio: "ratio", usd: "USD" };
+
+  function statementView(stmt, periodLabel) {
+    // Duration statements (income/cashflow) show start → end; instant ones (balance
+    // sheet) have no period_start — show just the as-of date, not a dangling "— →".
+    var range = stmt.period_start
+      ? stmt.period_start + " → " + (stmt.period_end || "—")
+      : stmt.period_end || "—";
+    var metaGrid = [
+      ["FORM", stmt.form],
+      ["FILED", stmt.filed],
+      [stmt.period_start ? "PERIOD" : "AS OF", range],
+      ["ACCESSION", stmt.accession],
+    ].map(function (pair) {
+      return '<div><span class="field-label">' + pair[0] + "</span>" + P.esc(pair[1] || "—") + "</div>";
     }).join("");
-    var caption =
-      "as-restated · " + P.esc(STMT_TITLES[state.statement]) + " · FY" + year +
-      (stmt.form ? " · " + P.esc(stmt.form) : "") + (stmt.filed ? " · filed " + P.esc(stmt.filed) : "") +
-      (stmt.accession ? " · " + P.esc(stmt.accession) : "");
+
+    // The equity-section break: the first equity concept this filer actually reports.
+    var equityStart = null;
+    if (state.statement === "balance") {
+      for (var i = 0; i < stmt.lines.length && !equityStart; i++) {
+        if (EQUITY_CONCEPTS.indexOf(stmt.lines[i].canonical_concept) !== -1) {
+          equityStart = stmt.lines[i].canonical_concept;
+        }
+      }
+    }
+
+    var normalRows = "", auditRows = "";
+    stmt.lines.forEach(function (l) {
+      var emph = EMPH[l.canonical_concept] || "line";
+      var kind = unitKind(l.unit);
+      var hasVal = l.value !== null && l.value !== undefined;
+      var abbrev = hasVal ? fmtAbbrev(l.value, kind) : "—";
+      var isBreak = BREAK_BEFORE[l.canonical_concept] || l.canonical_concept === equityStart;
+      var rowCls = "emph-" + emph + (isBreak ? " row-break" : "");
+
+      normalRows +=
+        '<div class="data-row ' + rowCls + '">' +
+        '<span class="row-label">' + P.esc(l.label) + "</span>" +
+        '<span class="row-value-wrap">' +
+        '<button type="button" class="row-value"' +
+        (hasVal
+          ? ' data-abbrev="' + P.esc(abbrev) + '" data-exact="' + P.esc(fmtExact(l.value, kind)) + '"'
+          : "") +
+        ">" + P.esc(abbrev) + "</button>" +
+        '<span class="row-unit">' + UNIT_LABEL[kind] + "</span>" +
+        "</span></div>";
+
+      auditRows +=
+        '<div class="audit-row ' + rowCls + '">' +
+        '<span class="audit-tag-group">' +
+        (l.is_extension
+          ? '<span class="badge badge-ext">EXT</span>'
+          : '<span class="badge badge-gaap">US-GAAP</span>') +
+        "<code>" + P.esc(l.source_tag) + "</code></span>" +
+        '<span class="audit-arrow">→</span>' +
+        '<span class="audit-result-group">' +
+        '<span class="row-label">' + P.esc(l.label) + "</span>" +
+        '<span class="row-value">' + P.esc(abbrev) + "</span>" +
+        "</span></div>";
+    });
+
     return (
-      '<table class="stmt-table"><thead><tr><th>Line</th><th class="amt">Amount</th><th>Source tag</th></tr></thead>' +
-      "<tbody>" + rows + "</tbody></table>" +
-      '<p class="stmt-caption">' + caption + "</p>"
+      '<div class="filing-header">' +
+      "<div>" +
+      '<div class="filing-title">' + P.esc(STMT_TITLES[state.statement]) + "</div>" +
+      '<div class="filing-sub">' + P.esc(periodLabel) + " · as-restated · CIK " + P.esc(String(stmt.cik)) + "</div>" +
+      "</div>" +
+      '<div class="filing-meta-grid">' + metaGrid + "</div>" +
+      "</div>" +
+      '<div class="stmt-bar">' +
+      '<div class="row-count">' + stmt.lines.length + " concepts mapped</div>" +
+      '<div class="stmt-bar-actions">' +
+      '<span class="stmt-bar-caption">raw XBRL tag → clean field</span>' +
+      '<button class="toggle-btn" id="stmt-json-btn" type="button" aria-pressed="false">{ } View raw JSON</button>' +
+      '<button class="toggle-btn" id="stmt-audit-btn" type="button" aria-pressed="false">○ Show your work</button>' +
+      "</div></div>" +
+      '<div class="table-card">' +
+      '<div id="stmt-normal">' +
+      '<div class="table-head"><span>Concept</span><span>Value · click to reveal exact</span></div>' +
+      normalRows +
+      "</div>" +
+      '<div id="stmt-audit" hidden>' +
+      '<div class="table-head table-head-audit"><span>Raw XBRL tag (SEC)</span><span></span><span>Profin schema</span></div>' +
+      auditRows +
+      "</div></div>" +
+      '<pre class="raw-json" id="stmt-json" hidden></pre>' +
+      '<p class="caveat">Sourced from SEC EDGAR filings — subject to normal filing lag (a 10-K posts ~45–90 days after period end). Values are raw USD unless noted; display figures are rounded, exact reported figures on click.</p>'
     );
+  }
+
+  function wireStatementView(stmt) {
+    // Raw JSON: the retired /explorer's developer affordance — the exact response the
+    // public statements endpoint served for the table on screen.
+    var jsonBtn = $("stmt-json-btn"), pre = $("stmt-json");
+    jsonBtn.addEventListener("click", function () {
+      var show = pre.hidden;
+      if (show && !pre.textContent) pre.textContent = JSON.stringify(stmt, null, 2);
+      pre.hidden = !show;
+      jsonBtn.setAttribute("aria-pressed", String(show));
+      jsonBtn.textContent = (show ? "●" : "{ }") + " View raw JSON";
+    });
+
+    // "Show your work": swap the clean table for the raw-tag → clean-field audit rows.
+    var auditBtn = $("stmt-audit-btn");
+    auditBtn.addEventListener("click", function () {
+      var showAudit = $("stmt-audit").hidden;
+      $("stmt-audit").hidden = !showAudit;
+      $("stmt-normal").hidden = showAudit;
+      auditBtn.setAttribute("aria-pressed", String(showAudit));
+      auditBtn.textContent = (showAudit ? "●" : "○") + " Show your work";
+    });
+
+    // Click a display value to toggle the exact reported figure (never fabricated
+    // precision — the exact string comes from the same fact).
+    $("stmt-normal").addEventListener("click", function (e) {
+      var btn = e.target.closest(".row-value");
+      if (!btn || !btn.hasAttribute("data-exact")) return;
+      var revealed = btn.classList.toggle("revealed");
+      btn.textContent = btn.getAttribute(revealed ? "data-exact" : "data-abbrev");
+    });
+  }
+
+  // ---------- Phase-3 dimensional spike view (merged from the retired /explorer) ----------
+
+  function fmtB(v) {
+    var neg = v < 0, a = Math.abs(v);
+    var s = a >= 1e9 ? (a / 1e9).toFixed(2) + "B" : (a / 1e6).toFixed(1) + "M";
+    return (neg ? "($" : "$") + s + (neg ? ")" : "");
+  }
+
+  function renderSpikeSegments() {
+    if (spikeData) { renderSpikeView(); return; }
+    $("view").innerHTML = P.states.loading({ title: "Loading spike extract" });
+    fetch("/static/spike_dimensional.json")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { spikeData = d; renderSpikeView(); })
+      .catch(function () {
+        $("view").innerHTML = P.states.error({ copy: "Could not load the static spike extract." });
+      });
+  }
+
+  function renderSpikeView() {
+    var sym = symbol.toUpperCase();
+    var d = spikeData && spikeData[sym];
+    var banner =
+      '<div class="spike-banner"><span class="spike-tag">SPIKE</span> ' +
+      "Dimensional (segment) data is a Phase-3 spike — a one-off static extract from the " +
+      "SEC Financial Statement Data Sets for " + SPIKE_SYMBOLS.join(", ") +
+      " only. Not served by the API; the period picker does not apply. " +
+      "companyfacts (everything else on this page) carries no dimensional facts at all.</div>";
+    if (!d) {
+      $("view").innerHTML = '<div class="state">' + banner +
+        '<div class="state-title">No spike extract for ' + P.esc(sym) + "</div>" +
+        '<p class="state-copy">This prototype covers ' + SPIKE_SYMBOLS.join(", ") +
+        ". Open one of them to see revenue by business segment, geography, and product.</p></div>";
+      return;
+    }
+    var viewNames = Object.keys(d.views);
+    if (!state.spikeAxis || viewNames.indexOf(state.spikeAxis) === -1) state.spikeAxis = viewNames[0];
+    var rows = d.views[state.spikeAxis];
+    var viewSum = rows.reduce(function (a, r) { return a + r.value; }, 0);
+    var maxVal = rows.reduce(function (a, r) { return Math.max(a, r.value); }, 0);
+    var sumsClean = d.consolidated_revenue &&
+      Math.abs(viewSum - d.consolidated_revenue) / d.consolidated_revenue < 0.01;
+
+    var toggle = '<div class="segmented spike-axis" role="tablist">' + viewNames.map(function (n) {
+      return '<button type="button" role="tab"' + (n === state.spikeAxis ? ' class="on"' : "") +
+        ' data-axis="' + P.esc(n) + '">' + P.esc(n) + "</button>";
+    }).join("") + "</div>";
+
+    var head = '<div class="spike-head"><div><div class="spike-title">' + P.esc(sym) + "</div>" +
+      '<div class="spike-sub">Revenue by ' + P.esc(state.spikeAxis.toLowerCase()) + " · FY" + d.fiscal_year +
+      " (ended " + P.esc(d.period_end) + ") · source tag " + P.esc(d.revenue_tag) + "</div></div>" + toggle + "</div>";
+
+    var table = rows.map(function (r) {
+      var pct = maxVal ? Math.round(100 * r.value / maxVal) : 0;
+      var share = sumsClean ? '<span class="spike-share">' + (100 * r.value / viewSum).toFixed(1) + "%</span>" : "";
+      var yoy = "";
+      if (r.prior) {
+        var g = (r.value / r.prior - 1) * 100;
+        yoy = '<span class="spike-yoy ' + (g >= 0 ? "up" : "down") + '">' + (g >= 0 ? "+" : "") + g.toFixed(1) + "% yoy</span>";
+      }
+      return '<div class="spike-row">' +
+        '<span class="spike-member">' + P.esc(r.member) + "</span>" +
+        '<span class="spike-track"><i style="width:' + pct + '%"></i></span>' +
+        '<span class="spike-value">' + fmtB(r.value) + "</span>" + share + yoy +
+        "</div>";
+    }).join("");
+
+    var footnote = sumsClean
+      ? '<p class="spike-footnote">Members sum to the consolidated revenue (' + fmtB(d.consolidated_revenue) + ") — shares shown against that total.</p>"
+      : '<p class="spike-footnote">Members on this axis mix reporting levels (rollups and their components appear as siblings — the presentation-hierarchy problem in the spike notes), so share-of-total is not shown.</p>';
+
+    $("view").innerHTML = '<div class="state spike-card">' + banner + head +
+      '<div class="spike-table">' + table + "</div>" + footnote + "</div>";
+    $("view").querySelectorAll("[data-axis]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.spikeAxis = btn.getAttribute("data-axis");
+        renderSpikeView();
+      });
+    });
   }
 
   init();

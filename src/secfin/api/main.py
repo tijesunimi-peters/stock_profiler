@@ -12,10 +12,11 @@ from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from secfin.api.admin_routes import admin_router
@@ -241,8 +242,15 @@ async def landing_page() -> FileResponse:
 
 
 @app.get("/explorer", include_in_schema=False)
-async def data_explorer() -> FileResponse:
-    return FileResponse(STATIC_DIR / "explorer.html")
+async def data_explorer(symbol: str = "AAPL", statement: str = "income") -> RedirectResponse:
+    # The Data Explorer merged into the company hub's Statements tab (2026-07-17, see
+    # docs/ROADMAP_UI.md). Old deep links (?symbol=&statement=) translate so nothing
+    # bookmarked or linked from the marketing pages breaks.
+    if statement not in ("income", "balance", "cashflow", "segments"):
+        statement = "income"
+    return RedirectResponse(
+        f"/company/{quote(symbol.upper())}?tab=statements&stmt={statement}", status_code=301
+    )
 
 
 @app.get("/guide", include_in_schema=False)

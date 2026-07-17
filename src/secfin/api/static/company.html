@@ -12,37 +12,13 @@
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/company.css">
 </head>
-<body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="/" class="logo" aria-label="Profin home">
-        <span class="logo-mark"><span class="logo-dot"></span></span>
-        <span class="logo-word">Profin</span>
-      </a>
-      <div class="nav-links">
-        <a href="/compare">Compare</a>
-        <a href="/screen">Screen</a>
-        <a href="/coverage">Coverage</a>
-        <a href="/docs">Docs</a>
-        <a href="/explorer">Data Explorer</a>
-        <a href="/docs" class="pill">API Reference</a>
-      </div>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-    <div class="nav-mobile" id="navMobile">
-      <a href="/compare">Compare</a>
-      <a href="/screen">Screen</a>
-      <a href="/coverage">Coverage</a>
-      <a href="/docs">Docs</a>
-      <a href="/explorer">Data Explorer</a>
-      <a href="/docs" class="pill">API Reference</a>
-    </div>
-  </nav>
+<body class="app has-ctx" data-shell="company">
+  <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
+  <div class="app-scrim" id="appScrim"></div>
+  <div class="app-main">
+  <header class="app-topbar" id="appTopbar"></header>
   <main class="page">
     <div id="masthead"></div>
-    <div class="co-search" id="search"></div>
 
     <div class="controls" id="controls" hidden>
       <div class="controls-left">
@@ -57,6 +33,7 @@
           <button data-stmt="income" class="on">Income</button>
           <button data-stmt="balance">Balance</button>
           <button data-stmt="cashflow">Cash Flow</button>
+          <button data-stmt="segments">Segments · spike</button>
         </div>
       </div>
       <div class="controls-right" id="period-control">
@@ -66,16 +43,31 @@
     </div>
 
     <div id="legend"></div>
-    <div id="view" style="margin-top:18px"></div>
+    <div id="view"></div>
     <div id="disclosure"></div>
   </main>
-  <div id="footer"></div>
 
-  <!-- Vendored chart stack (STYLE_GUIDE §6): d3 must load before the Plot UMD build. -->
+  <!-- Same link set/markup as Profin.footer(), kept STATIC (not JS-rendered) on purpose:
+       /explorer now redirects here, and tests/test_static_pages.py asserts the raw HTML
+       carries the /disclaimer and support links (guardrail: reachable without JS).
+       Keep in sync with app.js. -->
+  <footer class="app-footer" id="footer">
+    <a href="/company/AAPL">Company hub ↗</a>
+    <a href="/coverage">Data coverage ↗</a>
+    <a href="/docs">API reference ↗</a>
+    <a href="/methodology">Methodology ↗</a>
+    <a href="/disclaimer">Data, not investment advice ↗</a>
+    <a href="https://github.com/clearyfi/support/issues">Support ↗</a>
+    <span class="tagline">Profin · public SEC data, cleaned &amp; queryable</span>
+  </footer>
+  </div>
+
+  <!-- Vendored chart stack (STYLE_GUIDE §6): d3 must load before the Plot UMD build.
+       suggest.js loads before script.js so the shell's topbar search gets autocomplete. -->
   <script src="/static/vendor/d3.min.js"></script>
   <script src="/static/vendor/plot.umd.min.js"></script>
-  <script src="/static/script.js"></script>
   <script src="/static/suggest.js"></script>
+  <script src="/static/script.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/company.js"></script>
 </body>

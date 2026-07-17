@@ -123,7 +123,7 @@ statement = resp.json()
   </div>
 
   <p class="guide-step-label">3. Two endpoints need no key at all</p>
-  <p class="body-text"><code>/companies/{symbol}/statements/{statement}</code> and <code>/companies/{symbol}/periods</code> are public -- they power the <a href="/explorer">Data Explorer</a> directly from browser JS. They're rate-limited per-IP instead of per-key.</p>
+  <p class="body-text"><code>/companies/{symbol}/statements/{statement}</code> and <code>/companies/{symbol}/periods</code> are public -- they power the <a href="/company/AAPL?tab=statements">company hub's Statements tab</a> directly from browser JS. They're rate-limited per-IP instead of per-key.</p>
 </section>
 
 <section class="section guide-section" id="auth">

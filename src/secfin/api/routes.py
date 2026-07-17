@@ -78,8 +78,8 @@ from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
-# own served pages (`/explorer`, `/company/{symbol}`, static/explorer.js + company.js)
-# call directly from browser JS belongs on `public_router` -- `GET .../statements/{statement}`,
+# own served pages (`/company/{symbol}` and friends, static/company.js) call directly
+# from browser JS belongs on `public_router` -- `GET .../statements/{statement}`,
 # `GET .../periods`, `GET .../metrics`, `GET .../metric-periods`, and
 # `GET .../insider-trades` below (IP rate-limited via `limit_anonymous_traffic` instead).
 # Everything else lives on `router`, which api/main.py includes with
