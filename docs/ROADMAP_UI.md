@@ -26,8 +26,9 @@ the API already returns, including the status/basis/reason each value carries.
 ## Current state (built & served)
 
 - **Landing** — `/` (`static/index.html`)
-- **Data Explorer** — `/explorer` (`static/explorer.html`): raw-XBRL-tag → clean-field audit,
-  statement lookup, loading/404/empty states. The most complete reference for the design system.
+- **Company hub** — `/company/{symbol}` (`static/company.html`): the reference implementation.
+  Absorbed the Data Explorer 2026-07-17 (`/explorer` now 301-redirects to the hub's
+  Statements tab, translating old `?symbol=&statement=` deep links).
 - **API docs** — `/docs` (auto Swagger). Not a portal; a public docs site is M3 (see backend
   `docs/ROADMAP.md`).
 
@@ -374,6 +375,68 @@ deep 14-position Berkshire fixture (option row, PRN row, new/added/reduced/exite
 - [x] **Caption dedup** — the standing "reported 13F long positions only" line renders
       once per page (top of the manager page / top of the Institutional tab); each chart
       caption keeps only its chart-specific caveats.
+
+---
+
+## App-shell modernization pass (2026-07-16) — **DONE**
+
+The data pages moved from the marketing top-nav + centered column to a dashboard **app
+shell**: fixed left sidebar (grouped links, active-section highlight), sticky topbar with
+the global ticker/CIK search (`⌘K` / `Ctrl-K` / `/` focuses it; suggest.js autocomplete),
+off-canvas drawer below 1024px. Same palette, same two families — the pass is layout/UX
+only. Details and the page skeleton live in `STYLE_GUIDE.md` §4–§5.
+
+- Shell markup renders from `static/script.js` into `#appSide`/`#appTopbar` (one source of
+  truth; pages carry empty mounts + `data-shell`). Marketing/prose pages keep the old `.nav`.
+- Sticky layers: topbar (`--topbar-h`) → per-page `.controls` context bar (`--ctx-h`,
+  `body.has-ctx`, ≥1100px) → `.stmt-table th` header rows (kept in normal flow inside
+  `.matrix-scroll` wrappers, where page-level sticky can't work).
+- The redundant on-page `#search` mounts on company/manager were removed (topbar covers
+  them); Compare's "Add a company" search stays (it adds columns, not navigation).
+- Converted: company, explorer, compare, screen, manager, coverage, components. Verified
+  via the headless e2e profile (12 pages, 0 errors) + a 390px drawer check.
+
+**Shell convergence cleanup (2026-07-17)** — the Explorer's bespoke markup/CSS folded into
+the shared system: `main.explorer-wrap` (~900px) → the standard `main.page` (1440px, now the
+one content column on every data page); the `.explorer-hero` block (incl. the
+`.explorer-eyebrow`) → the shared `.masthead` markup (the eyebrow was then dropped from
+EVERY shell page's masthead — compare/screen/coverage/company/manager/components too — the
+sidebar already brands the page; `Profin.masthead()` now renders one only if passed); `.explorer-footer`
+→ the shared `.app-footer` (kept static, not JS-rendered: `tests/test_static_pages.py`
+asserts the raw HTML carries the /disclaimer + support links); explorer.css dropped its
+duplicated tokens/keyframes/segmented-control rules in favor of app.css (explorer.html now
+loads app.css; segment buttons use the shared `.segmented button` + `.on` convention).
+Also: manager's empty `.controls-left` spacer removed (CSS handles a right-only controls
+bar) and the repeated inline `margin-top` on `#view` moved into company.css.
+
+---
+
+## Explorer → company hub merge (2026-07-17) — **DONE**
+
+The standalone Data Explorer page was retired and its capabilities folded into the company
+hub's **Statements** tab, which now renders the explorer's full statement presentation
+(replacing the hub's old plain 3-column table):
+
+- **The explorer's statement view**: filing header (statement title, period, as-restated,
+  CIK + FORM/FILED/PERIOD/ACCESSION meta grid) → toolbar strip → ledger rows with the EMPH
+  display hierarchy (indents, subtotals, heavy-rule totals, per-share block breaks), a unit
+  column, and **click-to-reveal exact reported figures**; plus the **"Show your work" audit
+  mode** (raw XBRL tag → clean field rows, US-GAAP/EXT badges) and the honesty caveat line.
+- **Quarterly statement periods**: the Statements period selector now offers every filed
+  `(fy, fp)` key from `/periods` (was FY-only), defaulting to the latest FY.
+- **Raw JSON toggle**: a `{ } View raw JSON` toggle shows the exact response the public
+  statements endpoint served — the explorer's developer-facing value prop.
+- **Segments spike**: the Phase-3 dimensional spike view is a fourth statement type
+  ("Segments · spike"), still fed by `/static/spike_dimensional.json`, banner and caveats
+  intact.
+- **Deep links**: `?tab=statements&stmt=income|balance|cashflow|segments` on the hub;
+  `/explorer?symbol=&statement=` 301-redirects into that form (main.py), so marketing-page
+  links and bookmarks keep working.
+- `explorer.html`/`explorer.js`/`explorer.css` deleted; surviving styles (statements toolbar,
+  raw JSON, spike view) moved to `company.css`. The sidebar's "Data Explorer" entry became
+  "Company hub" (`/company/AAPL`); footers and recovery chips updated. company.html now
+  carries the static footer (the raw-HTML disclaimer/support-link guardrail moved with the
+  redirect target).
 
 ---
 

@@ -180,7 +180,8 @@ src/secfin/
     routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
                                #   insider, 13D/G, 13F manager + issuer-centric,
                                #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
-    static/                    # server-rendered UI: index, company hub, data explorer,
+    static/                    # server-rendered UI: index, company hub (absorbed the data
+                               #   explorer, /explorer redirects there),
                                #   coverage/guide pages (see docs/ROADMAP_UI.md)
 scripts/                       # committed, reusable one-off scripts (benchmarks, load tests)
 tests/

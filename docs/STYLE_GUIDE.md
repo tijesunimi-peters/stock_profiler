@@ -1,14 +1,15 @@
 # Profin UI — Style Guide (READ BEFORE BUILDING NEW PAGES)
 
-This is the canonical style reference for every Profin data-facing page (Data Explorer,
-Company hub / Fundamentals, Statements, Data coverage, and anything new). **Read this in full
+This is the canonical style reference for every Profin data-facing page (Company hub /
+Fundamentals, Statements, Compare, Screen, Data coverage, and anything new). **Read this in full
 before writing a new page.** It exists so a new screen looks like it was always part of the
 product — same paper, same rules, same numeric treatment, same honesty conventions.
 
-**The Data Explorer (`/explorer`) is the reference implementation, and every new data page is a
-child of it.** New pages load the same base stylesheet (`/static/style.css`), the same top nav,
-and the shared data-component layer (`/static/app.css` + `/static/app.js`), then add only what's
-specific to them. When in doubt, open the Explorer and match it.
+**The company hub (`/company/{symbol}`) is the reference implementation, and every new data
+page is a child of it.** (It absorbed the original reference, the Data Explorer, on 2026-07-17 —
+`/explorer` now redirects to the hub's Statements tab.) New pages load the same base stylesheet
+(`/static/style.css`) and the shared data-component layer (`/static/app.css` + `/static/app.js`),
+then add only what's specific to them. When in doubt, open the company hub and match it.
 
 The aesthetic is a **warm "paper terminal"** system: soft off-white paper, a single terracotta
 accent, IBM Plex Mono for anything machine-ish (data, tags, metadata, API paths), Hanken Grotesk
@@ -64,7 +65,7 @@ introduce new hues. Reference them as CSS variables; never hard-code hexes in a 
 | Accent ink | `--accent-ink` | `#8A5A2F` | Accent text on wash, open-provenance label |
 | Accent wash | `--accent-wash` | `#F3E4D5` | Active pill fill, revealed-value highlight |
 
-### Audit badges (data provenance — from `app.css`/`explorer.css`)
+### Audit badges (data provenance — from `app.css`)
 | Token | Var | Hex | Use |
 |---|---|---|---|
 | US-GAAP | `--gaap-color` / `--gaap-bg` / `--gaap-border` | `#3D6A8A` / `#E4EDF2` / `#CDDCE4` | US-GAAP source-tag badge |
@@ -111,9 +112,11 @@ growth deltas.
 
 ## 3. Layout & spacing
 
-- **Top nav on every page** (§5) — the shared `.nav` from `style.css`. Fixed furniture; don't
-  redesign per page.
-- **Centered single column** under the nav: `.page` (max-width ~1040px), padding `12px 32px 72px`.
+- **App shell on every data page** (§5) — fixed left sidebar + sticky topbar, rendered by
+  `static/script.js` into `#appSide`/`#appTopbar`. Fixed furniture; don't redesign per page.
+  Marketing/prose pages (`/`, `/guide`, legal) keep the older static `.nav` instead.
+- **Content column inside the shell**: `.page` (max-width 1440px), padding `12px 32px 72px`
+  — the same column on every data page.
 - Section rhythm: ~34px before a section header. Card grids use `gap:16px`
   (`repeat(auto-fill, minmax(240px, 1fr))`).
 - **Always flex/grid + `gap`** for any group of siblings (chips, cards, meta rows). Never rely on
@@ -126,12 +129,20 @@ growth deltas.
 ## 4. Signature treatments (the things that make it "Profin")
 
 1. **Warm paper background** — `--bg-page` (`#F6F3EE`), flat (no dotted grid).
-2. **Shared top nav** — logo (ink square + terracotta dot + "Profin") on the left, text links +
-   an `API Reference` pill on the right, hamburger + `.nav-mobile` on small screens (wired by
-   `static/script.js`). Copy the markup from `explorer.html` / any child page verbatim.
-3. **Masthead** — mono terracotta eyebrow ("Profin — SEC …, normalized") → Hanken 800 title →
-   right-aligned mono meta caption → a single `1px solid --border-tint-rule` **rule** → optional
-   intro paragraph. (This is the Explorer's `.explorer-hero`; `Profin.masthead()` emits the same.)
+2. **App shell** — a slim fixed **left sidebar** (logo, grouped links: Data → Company hub /
+   Compare / Screen / Coverage; Reference → Docs & guide / Methodology / API Reference;
+   a "Data, not investment advice" foot) and a sticky **topbar** holding the global
+   ticker/CIK search (`⌘K` / `Ctrl-K` / `/` focuses it) plus an `API Reference` pill.
+   Both are rendered by `static/script.js` — pages carry only the empty mounts (§5), so
+   the link set lives in exactly one place. Below 1024px the sidebar becomes an
+   off-canvas drawer behind a hamburger in the topbar. The active section's link gets
+   `.current` (accent-wash pill) via `<body data-shell="...">`.
+   (Marketing/prose pages keep the older static `.nav` markup with its own hamburger.)
+3. **Masthead** — Hanken 800 title → right-aligned mono meta caption → a single
+   `1px solid --border-tint-rule` **rule** → optional intro paragraph. `Profin.masthead()`
+   emits it; the Explorer carries the same `.masthead` markup statically. App-shell pages
+   carry **no eyebrow** (the sidebar already brands the page; dropped everywhere 2026-07-17
+   for consistency) — `Profin.masthead()` renders one only if explicitly passed.
 4. **Soft drop shadow** (§1) on cards/panels — never a hard offset, never `blur:0`.
 5. **Section headers** — mono number (`01`, accent) + Hanken 800 name + a `2px solid --ink`
    underline.
@@ -144,15 +155,33 @@ growth deltas.
 
 ## 5. Standard page shell (copy this skeleton)
 
-Every data page opens with the shared nav + a masthead and closes with a footer. New pages load,
-in order: Google Fonts → `style.css` → `app.css` → their own page CSS; and `script.js` →
-`app.js` → their page JS.
+Every data page lives inside the app shell and closes with a footer. New pages load, in
+order: Google Fonts → `style.css` → `app.css` → their own page CSS; and `suggest.js` →
+`script.js` → `app.js` → their page JS (`suggest.js` before `script.js` so the topbar
+search gets autocomplete).
 
-- **Nav:** the shared `.nav` block (see `explorer.html`). Mark the current section's link
-  `class="current"` where one applies.
-- **Masthead:** `Profin.masthead({ eyebrow, title, meta, lede })` — matches the Explorer hero.
+```html
+<body class="app has-ctx" data-shell="screen">   <!-- has-ctx only with a .controls bar -->
+  <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
+  <div class="app-scrim" id="appScrim"></div>
+  <div class="app-main">
+  <header class="app-topbar" id="appTopbar"></header>
+  <main class="page">…masthead / controls / legend / view / disclosure…</main>
+  <div id="footer"></div>
+  </div>
+```
+
+- **Shell:** `script.js` fills `#appSide`/`#appTopbar`. `data-shell` names the sidebar link
+  to mark `.current` (`company` / `compare` / `screen` / `coverage`; the manager
+  page uses `""` — no section is current, the masthead carries the context).
+- **Sticky context:** `body.has-ctx` reserves `--ctx-h` so the page's `.controls` bar
+  sticks under the topbar (≥1100px) and `.stmt-table th` header rows stick below both.
+  Table headers inside a horizontal-scroll wrapper (`.matrix-scroll`) stay in flow —
+  page-level sticky cannot work inside an overflow box.
+- **Masthead:** `Profin.masthead({ eyebrow, title, meta, lede })` — compacted inside the
+  shell (27px title via `body.app` overrides in `style.css`).
 - **Footer:** `Profin.footer()` → `.app-footer`: a thin top rule, mono accent links to real
-  routes (`/explorer`, `/coverage`, `/docs`, each with `↗`), and a muted tagline "Profin ·
+  routes (`/company/AAPL`, `/coverage`, `/docs`, each with `↗`), and a muted tagline "Profin ·
   public SEC data, cleaned & queryable".
 
 Links: accent color, mono. Resolve every href to a real destination — never leave placeholders.
@@ -176,8 +205,10 @@ Links: accent color, mono. Resolve every href to a real destination — never le
 - **States** — `Profin.states.loading` (pulsing accent dot + shimmer bars + cold-path note) /
   `empty` (calm "filing on record, no mapped fields") / `notFound` (mono `HTTP 404` in
   `--ext-color` + recovery chips) / `error`.
-- **Global search** — `Profin.mountSearch()`: ticker-or-CIK input that resolves and routes to the
-  company hub.
+- **Global search** — lives in the shell's topbar (script.js; `⌘K` / `Ctrl-K` / `/` focuses
+  it) and navigates to the company hub, which handles resolution/404 itself.
+  `Profin.mountSearch()` remains for in-page flows that need resolve callbacks (Compare's
+  "Add a company", the components demo).
 - **Plot charts (Phase 5, 13F portfolio viz)** — `Profin.*` builders backed by **vendored
   Observable Plot** (`/static/vendor/d3.min.js` + `/static/vendor/plot.umd.min.js`, load d3
   first; exposes `window.Plot`). Pages never call `Plot.plot()` directly — every chart is a
@@ -284,13 +315,13 @@ These are the reason the product exists. A page that violates them is broken.
 
 ## 11. Reference implementations
 
-- **`static/explorer.html` (`/explorer`)** — the **parent**: query flow, loading/404/empty
-  states, raw-XBRL→clean audit. The most complete reference; new pages descend from it.
+- **`static/company.html` (`/company/{symbol}`)** — the **parent**: the company hub —
+  Fundamentals (metric cards), Statements (FY + quarterly periods, source-tag audit column,
+  raw-JSON toggle, segments spike), Insider, Institutional, 13D/G; loading/404/empty states.
+  The most complete reference; new pages descend from it. (`/explorer` merged in 2026-07-17.)
 - **`static/components.html` (`/components`)** — the shared-component kitchen sink (`Profin.*`):
   masthead, status legend, metric cards, provenance, disclosure, states, search.
-- **`static/company.html` (`/company/{symbol}`)** — the company hub: Fundamentals (metric cards)
-  + Statements tabs, period selector (annual + quarterly), status system, provenance.
 - **`static/coverage.html` (`/coverage`)** — CUSIP resolution rate + coverage boundaries.
 
-New pages are built the same way: load `style.css` + `app.css`, reuse the nav and `Profin.*`
+New pages are built the same way: load `style.css` + `app.css`, reuse the shell and `Profin.*`
 builders, and — above all — keep the honesty conventions.
