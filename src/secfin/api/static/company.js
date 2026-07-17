@@ -808,6 +808,7 @@
     if (v === null || v === undefined) return "—";
     if (u.indexOf("share") !== -1 && u.indexOf("/") !== -1) return P.fmt.perShare(v); // USD/shares
     if (u.indexOf("share") !== -1) return P.fmt.shares(v); // share count
+    if (u === "pure" || u === "rate") return P.fmt.pct(v); // ratios, e.g. effective_tax_rate
     return P.fmt.usd(v);
   }
 

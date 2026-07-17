@@ -17,6 +17,8 @@ const PAGES = process.env.PAGES
     })
   : [
       ["company", "/company/AAPL"],
+      ["explorer", "/explorer?symbol=AAPL&statement=balance"],
+      ["explorer-income", "/explorer?symbol=AAPL&statement=income"],
       ["trend", "/company/AAPL?trend=net_margin"],
       ["institutional", "/company/AAPL?tab=institutional"],
       ["manager", "/manager/1067983"],

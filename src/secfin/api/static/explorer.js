@@ -18,6 +18,7 @@
   // This does not duplicate the tag->concept mapping (that stays server-side in
   // normalize/mapping.py) — it only decides indentation/weight for concepts we already know.
   var EMPH = {
+    // income
     revenue: "line",
     cost_of_revenue: "indent",
     gross_profit: "sub",
@@ -26,25 +27,75 @@
     operating_expenses: "indent",
     operating_income: "sub",
     interest_expense: "indent",
+    interest_income: "indent",
+    nonoperating_income_expense: "indent",
     income_before_tax: "sub",
     income_tax_expense: "indent",
+    current_income_tax_expense: "indent",
+    deferred_income_tax_expense: "indent",
+    effective_tax_rate: "indent",
     net_income: "total",
+    net_income_noncontrolling: "indent",
+    comprehensive_income: "sub",
+    other_comprehensive_income: "indent",
     eps_basic: "ps",
     eps_diluted: "ps",
+    dividends_per_share: "ps",
+    amortization_of_intangibles: "indent",
+    goodwill_impairment: "indent",
+    asset_impairment: "indent",
+    operating_lease_cost: "indent",
+    // balance
     cash_and_equivalents: "line",
+    cash_and_restricted_cash: "indent",
+    allowance_for_doubtful_accounts: "indent",
     total_current_assets: "sub",
+    accumulated_depreciation: "indent",
+    ppe_net: "sub",
+    assets_noncurrent: "sub",
     total_assets: "total",
     total_current_liabilities: "sub",
+    liabilities_noncurrent: "sub",
     total_liabilities: "sub",
     long_term_debt: "indent",
+    common_stock_value: "indent",
+    preferred_stock_value: "indent",
+    additional_paid_in_capital: "indent",
+    retained_earnings: "indent",
+    accumulated_oci: "indent",
+    noncontrolling_interest: "indent",
     stockholders_equity: "total",
+    liabilities_and_equity: "total",
+    shares_outstanding: "ps",
+    // cashflow
     cash_from_operations: "sub",
     cash_from_investing: "sub",
     cash_from_financing: "sub",
     capital_expenditures: "indent",
     depreciation_amortization: "indent",
+    change_in_receivables: "indent",
+    change_in_inventories: "indent",
+    change_in_prepaid_expenses: "indent",
+    change_in_payables: "indent",
+    change_in_accrued_liabilities: "indent",
+    change_in_payables_and_accrued: "indent",
+    change_in_deferred_revenue: "indent",
+    acquisitions_net_of_cash: "indent",
+    proceeds_from_stock_issuance: "indent",
+    proceeds_from_long_term_debt: "indent",
+    repayments_of_debt: "indent",
+    effect_of_exchange_rate_on_cash: "indent",
+    change_in_cash: "total",
   };
-  var BREAK_BEFORE = { eps_basic: true, total_current_liabilities: true };
+  // Section starts (visual break above the row): per-share block on income,
+  // liabilities then equity on balance, supplemental payments block on cashflow.
+  var BREAK_BEFORE = {
+    eps_basic: true,
+    accounts_payable: true,
+    common_stock_value: true,
+    dividends_paid: true,
+    income_taxes_paid: true,
+  };
 
   var state = {
     symbol: null,
@@ -67,25 +118,40 @@
 
   // ---------- formatting ----------
 
-  function isShareUnit(unit) {
-    return typeof unit === "string" && unit.toLowerCase().indexOf("share") !== -1;
+  // Four unit shapes, distinguished before formatting -- a bare share COUNT must not
+  // get $-formatting (pre-tranche bug: isShareUnit() treated "shares" and "USD/shares"
+  // identically, so weighted-average share counts rendered as dollars), and ratio
+  // units (effective_tax_rate is "pure") are neither dollars nor shares.
+  function unitKind(unit) {
+    var u = typeof unit === "string" ? unit.toLowerCase() : "";
+    if (u.indexOf("share") !== -1 && u.indexOf("/") !== -1) return "pershare"; // USD/shares
+    if (u.indexOf("share") !== -1) return "count";
+    if (u === "pure" || u === "rate") return "ratio";
+    return "usd";
   }
 
-  function fmtAbbrev(v, shares) {
+  function abbrevNumber(a) {
+    if (a >= 1e12) return (a / 1e12).toFixed(2) + "T";
+    if (a >= 1e9) return (a / 1e9).toFixed(1) + "B";
+    if (a >= 1e6) return (a / 1e6).toFixed(1) + "M";
+    if (a >= 1e3) return (a / 1e3).toFixed(1) + "K";
+    return String(a);
+  }
+
+  function fmtAbbrev(v, kind) {
     var neg = v < 0, a = Math.abs(v);
-    if (shares) return (neg ? "($" : "$") + a.toFixed(2) + (neg ? ")" : "");
-    var s;
-    if (a >= 1e12) s = (a / 1e12).toFixed(2) + "T";
-    else if (a >= 1e9) s = (a / 1e9).toFixed(1) + "B";
-    else if (a >= 1e6) s = (a / 1e6).toFixed(1) + "M";
-    else if (a >= 1e3) s = (a / 1e3).toFixed(1) + "K";
-    else s = String(a);
+    if (kind === "pershare") return (neg ? "($" : "$") + a.toFixed(2) + (neg ? ")" : "");
+    if (kind === "count") return (neg ? "(" : "") + abbrevNumber(a) + (neg ? ")" : "");
+    if (kind === "ratio") return (v * 100).toFixed(1) + "%";
+    var s = abbrevNumber(a);
     return neg ? "($" + s + ")" : "$" + s;
   }
 
-  function fmtExact(v, shares) {
+  function fmtExact(v, kind) {
     var neg = v < 0, a = Math.abs(v);
-    if (shares) return "$" + v.toFixed(2) + " /sh";
+    if (kind === "pershare") return "$" + v.toFixed(2) + " /sh";
+    if (kind === "count") return (neg ? "(" : "") + a.toLocaleString("en-US") + (neg ? ")" : "");
+    if (kind === "ratio") return String(v);
     return (neg ? "($" : "$") + a.toLocaleString("en-US") + (neg ? ")" : "");
   }
 
@@ -437,9 +503,9 @@
 
     r.lines.forEach(function (line) {
       var emph = EMPH[line.canonical_concept] || "line";
-      var shares = isShareUnit(line.unit);
+      var kind = unitKind(line.unit);
       var revealedFlag = !!state.revealed[line.canonical_concept];
-      var valueText = revealedFlag ? fmtExact(line.value, shares) : fmtAbbrev(line.value, shares);
+      var valueText = revealedFlag ? fmtExact(line.value, kind) : fmtAbbrev(line.value, kind);
 
       var normalRow = el("div", "data-row emph-" + emph);
       if (BREAK_BEFORE[line.canonical_concept]) normalRow.classList.add("row-break");
@@ -452,7 +518,11 @@
       valSpan.addEventListener("click", (function (concept) {
         return function () { onRevealToggle(concept); };
       })(line.canonical_concept));
-      var unitSpan = el("span", "row-unit", shares ? "per sh" : "USD");
+      var unitSpan = el(
+        "span",
+        "row-unit",
+        { pershare: "per sh", count: "shares", ratio: "ratio", usd: "USD" }[kind]
+      );
       valWrap.appendChild(valSpan);
       valWrap.appendChild(unitSpan);
       normalRow.appendChild(labelSpan);
@@ -470,7 +540,7 @@
       var arrow = el("div", "audit-arrow", "→");
       var resultGroup = el("div", "audit-result-group");
       var auditLabel = el("span", "row-label", escapeHtml(line.label));
-      var auditValue = el("span", "row-value", escapeHtml(fmtAbbrev(line.value, shares)));
+      var auditValue = el("span", "row-value", escapeHtml(fmtAbbrev(line.value, kind)));
       resultGroup.appendChild(auditLabel);
       resultGroup.appendChild(auditValue);
       auditRow.appendChild(badgeGroup);
