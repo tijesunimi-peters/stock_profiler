@@ -111,7 +111,6 @@
       : ["Filter — companies matching all thresholds", "frames data, calendar-quarter aligned"];
     meta.unshift((state.period === "FY" ? "FY " : state.period + " ") + state.year);
     $("masthead").innerHTML = P.masthead({
-      eyebrow: "Profin — SEC data, normalized",
       title: "Screen companies",
       meta: meta,
     });

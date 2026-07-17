@@ -1,6 +1,6 @@
 /* Profin shared front-end module for DATA pages (window.Profin).
  *
- * Vanilla, no build step (same as script.js/explorer.js) -- exposes reusable shell + component
+ * Vanilla, no build step (same as script.js) -- exposes reusable shell + component
  * builders and API helpers so every data page (Company Fundamentals, Comparison, ownership,
  * ...) renders the same paper, the same status vocabulary (STYLE_GUIDE §7), and the same
  * provenance/honesty affordances (§8/§9) without copy-pasting markup.
@@ -67,7 +67,7 @@
   var MINUS = "−"; // U+2212 minus glyph for deltas (§2)
 
   // Ratios reported as us "ratio" split by convention into percentages vs multiples. This is a
-  // DISPLAY-ONLY hint keyed by metric name (same spirit as explorer.js's EMPH map) -- the API
+  // DISPLAY-ONLY hint keyed by metric name (display-only, duplicates no server logic) -- the API
   // just returns unit="ratio" for both; it does not duplicate any server logic.
   var PERCENT_METRICS = {
     gross_margin: 1, operating_margin: 1, net_margin: 1, roa: 1, roe: 1, roic: 1,
@@ -152,10 +152,12 @@
       metaHtml = '<div class="masthead-meta">' + lines.map(esc).join("<br>") + "</div>";
     }
     var lede = opts.lede ? '<p class="lede">' + esc(opts.lede) + "</p>" : "";
+    // Eyebrow is optional (STYLE_GUIDE §4.3): omit it and the title leads the masthead.
+    var eyebrow = opts.eyebrow ? '<div class="eyebrow">' + esc(opts.eyebrow) + "</div>" : "";
     return (
       '<header class="masthead">' +
       '<div class="masthead-top"><div>' +
-      '<div class="eyebrow">' + esc(opts.eyebrow || "Profin — SEC data, normalized") + "</div>" +
+      eyebrow +
       "<h1>" + esc(opts.title || "") + "</h1></div>" +
       metaHtml +
       "</div>" +
@@ -168,7 +170,7 @@
   function footer() {
     return (
       '<footer class="app-footer">' +
-      '<a href="/explorer">Data Explorer ↗</a>' +
+      '<a href="/company/AAPL">Company hub ↗</a>' +
       '<a href="/coverage">Data coverage ↗</a>' +
       '<a href="/docs">API reference ↗</a>' +
       '<a href="/methodology">Methodology ↗</a>' +

@@ -1,5 +1,7 @@
 /* Company hub layout (/company/{symbol}) — layered on style.css + app.css. Structural only;
- * all colors come from the shared warm tokens (the page is a child of /explorer).
+ * all colors come from the shared warm tokens. Also absorbed the retired /explorer page's
+ * surviving styles (statements toolbar, raw JSON, dimensional-spike view) — see the
+ * merge note in docs/ROADMAP_UI.md (2026-07-17).
  */
 
 /* ---------- company header ---------- */
@@ -24,8 +26,33 @@
   flex-wrap: wrap;
   margin: 24px 0 20px;
 }
+
+/* App shell: the context bar sticks under the topbar wherever it fits on one line
+ * (the same >=1100px breakpoint that reserves --ctx-h in style.css). Opaque paper
+ * background + z-index above the sticky table headers, so anything tucked under it
+ * (the -6px seam allowance on th) is covered rather than peeking through. */
+@media (min-width: 1100px) {
+  body.has-ctx .controls {
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 30;
+    min-height: var(--ctx-h);
+    box-sizing: border-box;
+    flex-wrap: nowrap;
+    margin: 18px 0 20px;
+    padding: 11px 0;
+    background: var(--bg-page);
+    border-bottom: 1px solid var(--border-tint-rule);
+  }
+}
 .controls-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .controls-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* A controls bar with no left group (manager) keeps its selector on the right without
+ * needing an empty .controls-left spacer element. */
+.controls > .controls-right:first-child { margin-left: auto; }
+
+/* Every page mounts its main content into #view below the controls/legend row. */
+#view { margin-top: 18px; }
 
 .period-label {
   font-family: var(--font-mono);
@@ -64,13 +91,16 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- statement table ---------- */
 
+/* border-collapse: separate (not collapse) + per-corner radii instead of overflow:hidden —
+ * both are required for the sticky header row: collapsed borders detach from a sticky th,
+ * and an overflow:hidden table would become the th's containing scroll box. */
 .stmt-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 14px;
-  overflow: hidden;
   box-shadow: var(--shadow-soft);
 }
 .stmt-table th {
@@ -83,7 +113,20 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   padding: 11px 16px;
   background: var(--bg-tint);
   border-bottom: 2px solid var(--ink);
+  /* Stick under topbar + context bar; the -6px seam allowance hides sub-pixel gaps
+   * under the opaque layer above (topbar z60 / controls z30 > th z5). */
+  position: sticky;
+  top: calc(var(--topbar-h, 0px) + var(--ctx-h, 0px) - 6px);
+  z-index: 5;
 }
+/* Inside a horizontal-scroll wrapper (compare/screen matrices) the wrapper — not the page —
+ * becomes the sticky container, which pins the header INSIDE the table instead of to the
+ * viewport. Page-level sticky can't work there; keep those headers in normal flow. */
+.matrix-scroll .stmt-table th { position: static; }
+.stmt-table th:first-child { border-top-left-radius: 13px; }
+.stmt-table th:last-child { border-top-right-radius: 13px; }
+.stmt-table tr:last-child td:first-child { border-bottom-left-radius: 13px; }
+.stmt-table tr:last-child td:last-child { border-bottom-right-radius: 13px; }
 .stmt-table th.amt, .stmt-table td.amt { text-align: right; }
 .stmt-table td {
   padding: 9px 16px;
@@ -235,3 +278,319 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 .standing-caveat-mount { margin: 2px 0 18px; }
 .standing-caveat-mount:empty { display: none; margin: 0; }
 .standing-caveat { margin: 0; }
+
+/* ---------- statement view (the retired /explorer's presentation, 2026-07-17) ----------
+ *
+ * One card in three stacked bands sharing a border: filing header (rounded top) ->
+ * toolbar strip -> row list (rounded bottom). Two row modes: the clean ledger rows
+ * (emphasis hierarchy, click-to-reveal exact values) and the "show your work" audit rows
+ * (raw XBRL tag -> clean field). */
+
+.filing-header {
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  background: var(--bg-tint);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.filing-title { font-weight: 800; font-size: 19px; letter-spacing: -0.01em; }
+
+.filing-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.05em;
+  margin-top: 3px;
+}
+
+.filing-meta-grid {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink-body);
+  text-align: right;
+}
+.filing-meta-grid .field-label { color: var(--mono-muted); display: block; }
+
+.stmt-bar {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-bottom: none;
+  background: var(--bg-badge);
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.row-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+
+.stmt-bar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.stmt-bar-caption {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+}
+
+.table-card {
+  border: 1px solid var(--border);
+  border-radius: 0 0 14px 14px;
+  background: var(--bg-card);
+  padding: 6px 20px 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.table-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding: 10px 4px 8px;
+  border-bottom: 2px solid var(--ink);
+  display: flex;
+  justify-content: space-between;
+  /* Stick under topbar + context bar while the row list scrolls (opaque card fill so
+   * rows pass beneath; -6px seam allowance tucks under the layer above; z30 > z5). */
+  position: sticky;
+  top: calc(var(--topbar-h, 0px) + var(--ctx-h, 0px) - 6px);
+  z-index: 5;
+  background: var(--bg-card);
+}
+
+.table-head-audit {
+  display: grid;
+  grid-template-columns: 1fr 26px 1fr;
+  gap: 10px;
+}
+
+/* rows: normal mode */
+
+.data-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+
+.data-row .row-label { font-size: 15px; color: var(--ink); line-height: 1.2; }
+
+.row-value-wrap { display: flex; align-items: baseline; gap: 12px; }
+
+.data-row .row-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  border: none;
+  border-bottom: 1px dotted var(--border-strong);
+  padding: 0 0 1px;
+  background: none;
+}
+
+.data-row .row-unit {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  min-width: 46px;
+  text-align: right;
+}
+
+.data-row.emph-indent .row-label { padding-left: 22px; font-size: 13.5px; color: var(--ink-soft); }
+.data-row.emph-indent .row-value { font-weight: 450; font-size: 13.5px; color: var(--ink-soft); }
+
+.data-row.emph-sub {
+  border-top: 1px solid var(--border-tint-rule);
+  margin-top: 2px;
+}
+.data-row.emph-sub .row-label,
+.data-row.emph-sub .row-value { font-weight: 650; }
+.data-row.emph-sub .row-value { font-size: 15px; }
+
+.data-row.emph-total {
+  border-top: 2px solid var(--ink);
+  border-bottom: none;
+  padding: 11px 4px 5px;
+  margin-top: 2px;
+}
+.data-row.emph-total .row-label { font-weight: 750; font-size: 16px; }
+.data-row.emph-total .row-value {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent);
+}
+
+.data-row.emph-ps .row-label { padding-left: 22px; font-size: 13px; color: var(--ink-soft); }
+.data-row.emph-ps .row-value { font-size: 13px; }
+
+.data-row.row-break { margin-top: 18px; }
+.data-row.row-break.emph-ps { border-top: 1px dashed var(--border-tint-rule); padding-top: 12px; }
+
+.data-row .row-value.revealed {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent);
+  background: var(--accent-wash);
+  padding: 0 4px 1px;
+}
+
+/* rows: audit mode (source badges reuse app.css's .badge-gaap/.badge-ext) */
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 1fr 26px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+
+.audit-tag-group { display: flex; align-items: center; gap: 7px; min-width: 0; }
+
+.audit-tag-group code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  word-break: break-all;
+  line-height: 1.35;
+}
+
+.audit-arrow {
+  text-align: center;
+  color: var(--ext-color);
+  font-family: var(--font-mono);
+  font-size: 15px;
+}
+
+.audit-result-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.audit-result-group .row-label { font-size: 14px; }
+.audit-result-group .row-value {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.audit-row.emph-total .row-label { font-weight: 750; }
+.audit-row.emph-total .row-value { font-weight: 700; color: var(--accent-ink); }
+.audit-row.emph-sub .row-label,
+.audit-row.emph-sub .row-value { font-weight: 650; }
+
+.caveat {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--mono-muted);
+  margin: 16px 0 0;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .filing-meta-grid { text-align: left; gap: 14px 22px; }
+}
+
+.toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  padding: 6px 11px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--ink);
+  cursor: pointer;
+}
+.toggle-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.raw-json {
+  margin: 16px 0 0;
+  padding: 16px 18px;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ---------- Phase-3 dimensional spike view (merged from the retired /explorer) ---------- */
+
+.spike-card { padding: 22px 26px; }
+.spike-banner {
+  font-size: 12.5px; color: var(--ink-soft); border: 1px dashed var(--border-strong);
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; line-height: 1.55;
+}
+.spike-tag {
+  display: inline-block; font-family: var(--font-mono); font-size: 10.5px;
+  font-weight: 600; letter-spacing: 0.08em; color: #fff; background: var(--accent);
+  border-radius: 4px; padding: 1px 7px; margin-right: 8px;
+}
+.spike-head {
+  display: flex; flex-wrap: wrap; gap: 14px; justify-content: space-between;
+  align-items: flex-end; margin-bottom: 14px;
+}
+.spike-title { font-weight: 800; font-size: 19px; letter-spacing: -0.01em; }
+.spike-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.05em;
+  margin-top: 3px;
+}
+.spike-axis { flex-shrink: 0; }
+.spike-table { border-top: 1px solid var(--border-strong); }
+.spike-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 2px; border-bottom: 1px solid var(--border);
+}
+.spike-member { flex: 0 0 240px; font-size: 14px; color: var(--ink); }
+.spike-track {
+  flex: 1 1 160px; height: 8px; border-radius: 4px; background: var(--bg-tint); overflow: hidden;
+}
+.spike-track i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.spike-value {
+  flex: 0 0 92px; text-align: right; font-family: var(--font-mono);
+  font-size: 13.5px; font-weight: 600; color: var(--ink);
+}
+.spike-share { flex: 0 0 56px; text-align: right; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.spike-yoy { flex: 0 0 96px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.spike-yoy.up { color: #3d7a4a; }
+.spike-yoy.down { color: #a04a35; }
+.spike-footnote { font-size: 12px; color: var(--mono-muted); margin: 12px 0 0; }
+@media (max-width: 720px) {
+  .spike-member { flex-basis: 130px; }
+  .spike-yoy, .spike-share { display: none; }
+}

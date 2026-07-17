@@ -12,40 +12,15 @@
   <link rel="stylesheet" href="/static/app.css">
   <link rel="stylesheet" href="/static/company.css">
 </head>
-<body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="/" class="logo" aria-label="Profin home">
-        <span class="logo-mark"><span class="logo-dot"></span></span>
-        <span class="logo-word">Profin</span>
-      </a>
-      <div class="nav-links">
-        <a href="/compare">Compare</a>
-        <a href="/screen">Screen</a>
-        <a href="/coverage">Coverage</a>
-        <a href="/docs">Docs</a>
-        <a href="/explorer">Data Explorer</a>
-        <a href="/docs" class="pill">API Reference</a>
-      </div>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-    <div class="nav-mobile" id="navMobile">
-      <a href="/compare">Compare</a>
-      <a href="/screen">Screen</a>
-      <a href="/coverage">Coverage</a>
-      <a href="/docs">Docs</a>
-      <a href="/explorer">Data Explorer</a>
-      <a href="/docs" class="pill">API Reference</a>
-    </div>
-  </nav>
+<body class="app has-ctx" data-shell="">
+  <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
+  <div class="app-scrim" id="appScrim"></div>
+  <div class="app-main">
+  <header class="app-topbar" id="appTopbar"></header>
   <main class="page">
     <div id="masthead"></div>
-    <div class="co-search" id="search"></div>
 
     <div class="controls" id="controls" hidden>
-      <div class="controls-left"></div>
       <div class="controls-right" id="period-control">
         <span class="period-label" id="period-label">Quarter (13F)</span>
         <select class="period-select" id="period-select"></select>
@@ -77,12 +52,14 @@
     <div id="disclosure"></div>
   </main>
   <div id="footer"></div>
+  </div>
 
-  <!-- Vendored chart stack (STYLE_GUIDE §6): d3 must load before the Plot UMD build. -->
+  <!-- Vendored chart stack (STYLE_GUIDE §6): d3 must load before the Plot UMD build.
+       suggest.js loads before script.js so the shell's topbar search gets autocomplete. -->
   <script src="/static/vendor/d3.min.js"></script>
   <script src="/static/vendor/plot.umd.min.js"></script>
-  <script src="/static/script.js"></script>
   <script src="/static/suggest.js"></script>
+  <script src="/static/script.js"></script>
   <script src="/static/app.js"></script>
   <script src="/static/manager.js"></script>
 </body>

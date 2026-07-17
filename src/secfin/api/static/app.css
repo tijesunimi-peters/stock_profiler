@@ -1,11 +1,11 @@
 /* Profin data-page components (window.Profin builders).
  *
- * The metrics/ownership/coverage pages are CHILDREN OF /explorer: they load style.css first
- * (shared tokens, nav, fonts) and this file layers on the data-specific components. Everything
- * here uses the shipped warm palette — paper #f6f3ee, terracotta --accent, rounded corners,
- * soft shadows — so a new page looks like the Data Explorer. See docs/STYLE_GUIDE.md.
+ * Every data page loads style.css first (shared tokens, shell, fonts) and this file layers on
+ * the data-specific components. Everything here uses the shipped warm palette — paper #f6f3ee,
+ * terracotta --accent, rounded corners, soft shadows — so a new page looks like it was always
+ * part of Profin. See docs/STYLE_GUIDE.md.
  *
- * Tokens come from style.css; only the few the Explorer added (audit badges, wash tints) plus a
+ * Tokens come from style.css; only the data-specific few (audit badges, wash tints) plus a
  * shared soft-shadow are declared here.
  */
 
@@ -51,10 +51,11 @@
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--accent);
+  margin-bottom: 6px;
 }
 
 .masthead h1 {
-  margin: 6px 0 0;
+  margin: 0;
   font-weight: 800;
   font-size: 36px;
   line-height: 1.05;
@@ -409,6 +410,11 @@
 .app-footer a:hover { color: var(--accent-hover); }
 .app-footer .tagline { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); margin-left: auto; }
 
+/* Inside the app shell the footer spans the content column (not the old centered 1040px)
+ * and pins to the bottom of short pages (.app-main is a flex column). */
+body.app #footer { margin-top: auto; }
+body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26px; }
+
 /* ---------- Plot charts (Phase 5, vendored Observable Plot — STYLE_GUIDE §6) ----------
  *
  * Every Profin.* Plot builder (divergingBars today; more land alongside it) returns a DOM node
@@ -583,6 +589,9 @@
 
 @media (max-width: 640px) {
   .page { padding: 12px 20px 56px; }
+  /* Tab strips wider than a phone viewport scroll sideways instead of clipping. */
+  .segmented { max-width: 100%; overflow-x: auto; }
+  .segmented button { flex: 0 0 auto; }
   .masthead h1 { font-size: 28px; }
   .masthead-meta { text-align: left; }
   .card-grid { grid-template-columns: 1fr; }

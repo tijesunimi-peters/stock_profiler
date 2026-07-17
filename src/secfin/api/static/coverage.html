@@ -11,34 +11,11 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
-  <nav class="nav">
-    <div class="nav-inner">
-      <a href="/" class="logo" aria-label="Profin home">
-        <span class="logo-mark"><span class="logo-dot"></span></span>
-        <span class="logo-word">Profin</span>
-      </a>
-      <div class="nav-links">
-        <a href="/compare">Compare</a>
-        <a href="/screen">Screen</a>
-        <a href="/coverage" class="current">Coverage</a>
-        <a href="/docs">Docs</a>
-        <a href="/explorer">Data Explorer</a>
-        <a href="/docs" class="pill">API Reference</a>
-      </div>
-      <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false" aria-controls="navMobile">
-        <span></span><span></span><span></span>
-      </button>
-    </div>
-    <div class="nav-mobile" id="navMobile">
-      <a href="/compare">Compare</a>
-      <a href="/screen">Screen</a>
-      <a href="/coverage" class="current">Coverage</a>
-      <a href="/docs">Docs</a>
-      <a href="/explorer">Data Explorer</a>
-      <a href="/docs" class="pill">API Reference</a>
-    </div>
-  </nav>
+<body class="app" data-shell="coverage">
+  <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
+  <div class="app-scrim" id="appScrim"></div>
+  <div class="app-main">
+  <header class="app-topbar" id="appTopbar"></header>
   <main class="page">
     <div id="masthead"></div>
 
@@ -53,7 +30,9 @@
     <div id="floors"></div>
   </main>
   <div id="footer"></div>
+  </div>
 
+  <script src="/static/suggest.js"></script>
   <script src="/static/script.js"></script>
   <script src="/static/app.js"></script>
   <script>
@@ -63,7 +42,6 @@
 
       $("footer").innerHTML = P.footer();
       $("masthead").innerHTML = P.masthead({
-        eyebrow: "Profin — SEC data, normalized",
         title: "Data coverage & quality",
         meta: ["Live coverage metrics", "not a per-company view"],
         lede: "What we carry, and how completely — surfaced as first-class metrics rather than hidden in footnotes.",

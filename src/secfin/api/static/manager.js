@@ -21,7 +21,6 @@
 
   function setMasthead() {
     $("masthead").innerHTML = P.masthead({
-      eyebrow: "Profin — 13F manager profile",
       title: state.name || "Manager CIK " + cik,
       meta: ["CIK " + cik, "13F holdings — quarter-end snapshot"],
     });
@@ -56,11 +55,16 @@
   function init() {
     $("footer").innerHTML = P.footer();
     setMasthead();
-    P.mountSearch($("search"), {
-      onResolved: function (sym) { location.href = "/company/" + encodeURIComponent(sym); },
-      onNotFound: function (sym) { $("view").innerHTML = P.states.notFound({ copy: 'We don\'t carry "' + sym + '".' }); },
-      onError: function () { $("view").innerHTML = P.states.error({}); },
-    });
+    // Company lookup lives in the app shell's topbar search (script.js); the on-page
+    // #search mount is gone. Guard kept so an older shell with the div still works.
+    var searchEl = $("search");
+    if (searchEl) {
+      P.mountSearch(searchEl, {
+        onResolved: function (sym) { location.href = "/company/" + encodeURIComponent(sym); },
+        onNotFound: function (sym) { $("view").innerHTML = P.states.notFound({ copy: 'We don\'t carry "' + sym + '".' }); },
+        onError: function () { $("view").innerHTML = P.states.error({}); },
+      });
+    }
 
     if (!cik || !/^\d+$/.test(cik)) {
       $("view").innerHTML = P.states.empty({ title: "No manager", copy: "A numeric 13F filer CIK is required in the URL, e.g. /manager/1067983." });

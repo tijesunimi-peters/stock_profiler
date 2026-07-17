@@ -128,7 +128,6 @@
       : ["Point-in-time — as-of each filing, not real-time"];
     if (state.view !== "trajectories" && state.year) meta.unshift("FY " + state.year);
     $("masthead").innerHTML = P.masthead({
-      eyebrow: "Profin — SEC data, normalized",
       title: "Compare companies",
       meta: meta,
     });
@@ -190,7 +189,7 @@
         $("controls").hidden = false;
         $("view").innerHTML = P.states.notFound({
           copy: "None of the requested companies resolved. Check the tickers or CIKs.",
-          recovery: [{ label: "Data Explorer ↗", href: "/explorer" }],
+          recovery: [{ label: "Try AAPL ↗", href: "/company/AAPL" }],
         });
         return;
       }

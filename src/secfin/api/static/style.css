@@ -704,6 +704,247 @@ h2 {
   .cta-row .btn { text-align: center; }
 }
 
+/* ---------- app shell (data pages: sidebar + topbar) ----------
+ *
+ * Data-facing pages (/explorer, /company, /compare, /screen, /coverage, /manager,
+ * /components) opt in with <body class="app" data-shell="<current>">. script.js renders
+ * the sidebar + topbar markup into #appSide / #appTopbar (single source of truth for the
+ * link set). Marketing/prose pages (/, /guide, legal) keep the .nav above — don't mix.
+ *
+ * Sticky math: --topbar-h is the fixed topbar height; pages with a persistent context
+ * bar (.controls) also set body.has-ctx, which reserves --ctx-h. Sticky table headers
+ * offset by both, tucked 6px under the layer above so sub-pixel wrap never shows a seam.
+ */
+
+body.app {
+  --topbar-h: 56px;
+  --ctx-h: 0px;
+  --side-w: 224px;
+  display: flex;
+}
+
+.app-side {
+  width: var(--side-w);
+  flex: 0 0 var(--side-w);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 18px 12px 16px;
+  background: var(--bg-page);
+  border-right: 1px solid var(--border);
+  z-index: 70;
+}
+.app-side .logo { padding: 2px 10px 0; }
+
+.side-group { display: flex; flex-direction: column; gap: 2px; }
+.side-group-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--mono-muted);
+  padding: 0 10px;
+  margin-bottom: 6px;
+}
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+.side-link:hover { background: var(--bg-badge); color: var(--ink); }
+.side-link.current {
+  background: var(--accent-wash, #f3e4d5);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.side-link .side-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
+
+.app-side-foot {
+  margin-top: auto;
+  padding: 12px 10px 0;
+  border-top: 1px solid var(--border-tint-rule);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.app-side-foot a {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+.app-side-foot a:hover { color: var(--ink); }
+.app-side-foot .side-tagline {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  height: var(--topbar-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 28px;
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+
+.topbar-menu {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.topbar-menu span {
+  display: block;
+  height: 2px;
+  margin: 0 7px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+.topbar-logo { display: none; }
+
+.topbar-search {
+  position: relative;
+  flex: 1;
+  max-width: 420px;
+}
+.topbar-search input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 52px 8px 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--ink);
+}
+.topbar-search input:focus { outline: none; border-color: var(--accent); }
+.topbar-search input::placeholder { color: var(--mono-muted); }
+.topbar-kbd {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 2px 6px;
+  pointer-events: none;
+  background: var(--bg-page);
+}
+
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.topbar-right a.pill {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  border: 1px solid var(--border-strong);
+  padding: 7px 13px;
+  border-radius: 8px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.topbar-right a.pill:hover { background: var(--bg-badge); }
+
+.app-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgba(28, 26, 22, 0.28);
+}
+
+/* Compact context: data pages don't need the 36px marketing masthead. */
+body.app .masthead h1 { font-size: 27px; }
+body.app .rule-double { margin-top: 12px; }
+body.app .lede { font-size: 14.5px; }
+
+/* Context bar height is only reserved where .controls reliably fits one line; below
+ * this width the bar wraps and simply scrolls away (no sticky), so --ctx-h stays 0. */
+@media (min-width: 1100px) {
+  body.app.has-ctx { --ctx-h: 58px; }
+}
+
+/* keyboard focus (shell is keyboard-first: ⌘K / “/” jump to search) */
+.side-link:focus-visible,
+.topbar-menu:focus-visible,
+.topbar-right a.pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* off-canvas drawer below 1024px */
+@media (max-width: 1023px) {
+  .app-side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    box-shadow: none;
+  }
+  body.app.side-open .app-side {
+    transform: translateX(0);
+    box-shadow: 24px 0 60px -30px rgba(40, 30, 15, 0.45);
+  }
+  body.app.side-open .app-scrim { display: block; }
+  .topbar-menu { display: flex; }
+  .topbar-logo { display: flex; }
+  .app-topbar { padding: 0 20px; gap: 12px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .app-side { transition: transform 0.18s ease; }
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-right { display: none; }
+  .topbar-kbd { display: none; }
+}
+
 /* ---------- company autocomplete (suggest.js, shared across pages) ---------- */
 .suggest-menu {
   position: absolute;
