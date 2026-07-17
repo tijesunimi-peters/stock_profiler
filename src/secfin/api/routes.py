@@ -306,6 +306,42 @@ async def _manager_snapshot(
     return snapshot
 
 
+class CompanySuggestion(BaseModel):
+    ticker: str
+    cik: int
+    name: str | None
+
+
+class CompanySuggestResponse(BaseModel):
+    query: str
+    suggestions: list[CompanySuggestion]
+
+
+@public_router.get(
+    "/companies/suggest",
+    response_model=CompanySuggestResponse,
+    tags=["Financials"],
+    summary="Autocomplete a partial ticker, company name, or CIK",
+)
+async def suggest_companies(
+    q: str = Query(..., min_length=1, max_length=40),
+    limit: int = Query(default=8, ge=1, le=20),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CompanySuggestResponse:
+    """Typeahead for the UI's company inputs (and anyone else's): matches exact ticker
+    first, then ticker prefixes, then company-name substrings (a digits query also
+    matches CIK prefixes), from the same cached SEC ticker map that /companies/{symbol}
+    resolution uses. Public: our own pages call it per keystroke (debounced client-side,
+    IP rate-limited server-side like the other public endpoints).
+    """
+    async with SECClient() as client:
+        suggestions = await ticker_cache.suggest(client, q, limit)
+    return CompanySuggestResponse(
+        query=q,
+        suggestions=[CompanySuggestion(**s) for s in suggestions],
+    )
+
+
 @public_router.get(
     "/companies/{symbol}/statements/{statement}",
     response_model=Statement,

@@ -45,6 +45,18 @@ const PAGES = process.env.PAGES
     try {
       await page.goto(url, { waitUntil: "networkidle0", timeout: 30000 });
       await new Promise((r) => setTimeout(r, 1500)); // let async renders settle
+      if (name === "explorer") {
+        // Exercise the company autocomplete (suggest.js): clear the input, type a
+        // partial name, and give the debounce + /v1/companies/suggest round trip a
+        // moment -- the screenshot then captures the open dropdown, and any JS error
+        // in the widget fails the check like any other page error.
+        await page.focus("#tickerInput");
+        await page.keyboard.down("Control");
+        await page.keyboard.press("KeyA");
+        await page.keyboard.up("Control");
+        await page.type("#tickerInput", "micro", { delay: 40 });
+        await new Promise((r) => setTimeout(r, 900));
+      }
       await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });
       console.log(`[${name}] rendered "${await page.title()}" (${url}), errors=${errs.length}`);
       errs.forEach((e) => console.log("    " + e));

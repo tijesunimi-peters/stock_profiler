@@ -72,3 +72,34 @@ class TickerCache:
     async def resolve_name(self, client: SECClient, cik: int) -> str | None:
         await self._ensure_fresh(client)
         return self._names.get(cik)
+
+    async def suggest(self, client: SECClient, query: str, limit: int = 8) -> list[dict]:
+        """Autocomplete candidates for a partial ticker / company name / CIK.
+
+        Ranking: exact ticker, then ticker prefix, then company-name substring (a
+        digits-only query also matches CIK prefixes at name-substring rank). Ties break
+        alphabetically by ticker. Pure in-memory scan of the cached map (~10k entries)
+        -- no SEC call beyond the cache's normal refresh.
+        """
+        await self._ensure_fresh(client)
+        q = query.strip().upper()
+        if not q:
+            return []
+        ranked: list[tuple[int, str, int]] = []
+        for ticker, cik in self._map.items():
+            if ticker == q:
+                rank = 0
+            elif ticker.startswith(q):
+                rank = 1
+            elif q in (self._names.get(cik) or "").upper():
+                rank = 2
+            elif q.isdigit() and str(cik).startswith(q):
+                rank = 2
+            else:
+                continue
+            ranked.append((rank, ticker, cik))
+        ranked.sort()
+        return [
+            {"ticker": t, "cik": c, "name": self._names.get(c)}
+            for _, t, c in ranked[:limit]
+        ]

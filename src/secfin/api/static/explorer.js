@@ -586,6 +586,13 @@
     qs("tickerInput").addEventListener("keydown", function (e) {
       if (e.key === "Enter") onTickerSubmit();
     });
+    // Autocomplete (shared suggest.js; its capture-phase keydown consumes Enter when a
+    // row is highlighted, so the plain-Enter lookup above still works for typed text).
+    if (window.ProfinSuggest) {
+      window.ProfinSuggest.attach(qs("tickerInput"), {
+        onPick: function () { onTickerSubmit(); },
+      });
+    }
     qs("auditToggleBtn").addEventListener("click", onAuditToggle);
     qs("jsonToggleBtn").addEventListener("click", onJsonToggle);
 

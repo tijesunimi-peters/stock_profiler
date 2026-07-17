@@ -1001,6 +1001,15 @@
       'autocomplete="off" spellcheck="false"><button type="submit" class="btn-inverse">Look up</button></form>';
     var form = el.querySelector("form");
     var input = el.querySelector("input");
+    // Autocomplete (suggest.js, loaded before app.js on pages that mount a search):
+    // picking a row fills the input and submits through the same resolve path below.
+    if (window.ProfinSuggest) {
+      window.ProfinSuggest.attach(input, {
+        onPick: function () {
+          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        },
+      });
+    }
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var symbol = input.value.trim();

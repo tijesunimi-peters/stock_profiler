@@ -211,3 +211,33 @@ def test_usage_endpoint_requires_a_key_and_reflects_recorded_requests(tmp_path, 
         # The /usage call itself also counts (it's on the gated router), so by the time
         # its own response is built, today's count already includes 2 requests.
         assert body["usage_by_day"][-1]["request_count"] == 2
+
+
+class _FakeSuggestCache:
+    async def suggest(self, client, query, limit=8):
+        if query.upper().startswith("AAP"):
+            return [{"ticker": "AAPL", "cik": 320193, "name": "Apple Inc."}]
+        return []
+
+
+def test_suggest_endpoint_is_public_and_returns_suggestions(tmp_path, monkeypatch):
+    # The autocomplete endpoint backs per-keystroke browser calls from our own pages,
+    # so it lives on public_router (no key) -- and never needs a network call in this
+    # test because the cache dependency is swapped for a fake. The anon IP limit is
+    # raised because three burst requests from the TestClient would otherwise 429
+    # (which is the public gating working, just not what this test is about).
+    monkeypatch.setattr(settings, "secfin_anon_rate_limit_per_sec", 1000.0)
+    with _client(tmp_path, monkeypatch) as client:
+        from secfin.api.main import app
+
+        app.state.ticker_cache = _FakeSuggestCache()
+        ok = client.get("/v1/companies/suggest?q=aap")
+        empty = client.get("/v1/companies/suggest?q=zzz")
+        missing = client.get("/v1/companies/suggest")
+    assert ok.status_code == 200
+    assert ok.json() == {
+        "query": "aap",
+        "suggestions": [{"ticker": "AAPL", "cik": 320193, "name": "Apple Inc."}],
+    }
+    assert empty.json() == {"query": "zzz", "suggestions": []}
+    assert missing.status_code == 422  # q is required
