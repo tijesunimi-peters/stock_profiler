@@ -170,7 +170,7 @@ def test_signals_ignore_gap_points_no_interpolation():
 def test_history_route_returns_series_and_signals(tmp_path, monkeypatch):
     db = str(tmp_path / "test.db")
     monkeypatch.setattr(settings, "secfin_db_path", db)
-    monkeypatch.setattr(settings, "sec_user_agent", "profin-test test@example.com")
+    monkeypatch.setattr(settings, "sec_user_agent", "clearyfi-test test@example.com")
     repo = SQLiteRawFactRepository(db)
     repo.upsert_raw_facts(_load("aapl_companyfacts.json", 320193))
     repo.close()

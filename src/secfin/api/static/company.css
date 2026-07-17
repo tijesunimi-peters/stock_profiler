@@ -242,9 +242,9 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 .trend-signal-value { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
 .trend-signal-reason { color: var(--ink-soft); font-size: 11px; }
 
-/* ---------- Phase 5.4 + polish pass: portfolio value over time (Profin.valueLineChart) and its
- * sibling position-count strip (Profin.positionCountChart), both vendored Plot wrapped in the
- * shared Profin.chartCard() chrome (STYLE_GUIDE §6) -- .plot-chart / .plot-chart-body already
+/* ---------- Phase 5.4 + polish pass: portfolio value over time (ClearyFi.valueLineChart) and its
+ * sibling position-count strip (ClearyFi.positionCountChart), both vendored Plot wrapped in the
+ * shared ClearyFi.chartCard() chrome (STYLE_GUIDE §6) -- .plot-chart / .plot-chart-body already
  * cover the card + horizontally-scrollable SVG container in app.css. These rules cover only
  * what's chart-specific: mount spacing/collapse and the single-quarter fallback display (shared
  * by both charts).
@@ -269,7 +269,7 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   color: var(--mono-muted);
 }
 
-/* ---------- Phase 5 polish: ingestion coverage strip (Profin.ingestionCoverageStrip) ---------- */
+/* ---------- Phase 5 polish: ingestion coverage strip (ClearyFi.ingestionCoverageStrip) ---------- */
 .coverage-strip-mount { margin: 4px 0 4px; }
 .coverage-strip-mount:empty { display: none; margin: 0; }
 .coverage-strip .plot-chart-body svg { display: block; }

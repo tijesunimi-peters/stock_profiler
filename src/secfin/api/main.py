@@ -158,7 +158,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Profin API",
+    title="ClearyFi API",
     version="0.1.0",
     description=_OPENAPI_DESCRIPTION,
     openapi_tags=_OPENAPI_TAGS,

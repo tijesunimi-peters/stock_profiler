@@ -52,7 +52,7 @@ Everything below is **not built yet** unless noted.
 ## Phase 0 — Shared shell & components (prerequisite) — **DONE**
 
 Build once, reuse on every page. Shipped as `static/app.css` + `static/app.js`
-(`window.Profin` builders) and a kitchen-sink reference at **`/components`**
+(`window.ClearyFi` builders) and a kitchen-sink reference at **`/components`**
 (`static/components.html`) — the reference the other pages build against, and a manual test
 surface.
 
@@ -63,26 +63,26 @@ earlier call to build a separate ink-blue "ledger" system; `STYLE_GUIDE.md` was 
 Explorer canon to match.)* The status vocabulary still reads distinctly because it's keyed on
 glyph + label + border, not color alone — APPROX uses the redder `--ext-*` flag family.
 
-- [x] **Page shell** — `Profin.masthead()` (eyebrow + h1 + as-of caption + double rule) and
-      `Profin.footer()`; tokens, type scale, dotted-paper background, hard shadows in `app.css`.
-- [x] **Global search / ticker resolver** — `Profin.mountSearch()` resolves ticker-or-CIK live
+- [x] **Page shell** — `ClearyFi.masthead()` (eyebrow + h1 + as-of caption + double rule) and
+      `ClearyFi.footer()`; tokens, type scale, dotted-paper background, hard shadows in `app.css`.
+- [x] **Global search / ticker resolver** — `ClearyFi.mountSearch()` resolves ticker-or-CIK live
       via `/companies/{symbol}/periods`; Phase 1 passes an `onResolved` that navigates to the hub.
-- [x] **Status legend + chip** (§7) — `Profin.statusChip()` / `statusLegend()`, OK/APPROX/N/A/N/M
+- [x] **Status legend + chip** (§7) — `ClearyFi.statusChip()` / `statusLegend()`, OK/APPROX/N/A/N/M
       by glyph + label + border (never color alone).
-- [x] **Provenance "show your work"** (§8) — `Profin.provenance()` + built into `metricCard()`
+- [x] **Provenance "show your work"** (§8) — `ClearyFi.provenance()` + built into `metricCard()`
       (formula, basis, restatement basis, as-of, why-flagged); closed by default.
-- [x] **Disclosure block** (§9) — `Profin.disclosure()` with reusable coverage copy pulled to
+- [x] **Disclosure block** (§9) — `ClearyFi.disclosure()` with reusable coverage copy pulled to
       match `DATA_MODEL.md` (XBRL floor, 13D/G floor, 13F caveats, not-investment-advice).
-- [x] **Shared states** — `Profin.states.loading/empty/notFound/error` (cold-path note, distinct
+- [x] **Shared states** — `ClearyFi.states.loading/empty/notFound/error` (cold-path note, distinct
       empty-vs-404).
-- [x] **Metric card** — `Profin.metricCard(mv)` renders a `MetricValue` end to end (Phase 1 ready).
+- [x] **Metric card** — `ClearyFi.metricCard(mv)` renders a `MetricValue` end to end (Phase 1 ready).
 
 ## Phase 1 — Company core (backend ready; highest leverage) — **DONE**
 
 The payoff of the normalized data, all backed by shipped endpoints. Delivered as
 `static/company.{html,css,js}` (the hub, served at `/company/{symbol}`, hosting the
 Fundamentals + Statements tabs) and `static/coverage.html` (served at `/coverage`), built from
-the Phase 0 `Profin` components. The global search now navigates to the hub.
+the Phase 0 `ClearyFi` components. The global search now navigates to the hub.
 
 - [x] **Company hub / profile** — tabbed shell at `/company/{symbol}`: ticker-chip header,
       search, FY period selector (from `/periods`), Fundamentals + Statements tabs. Resolves the
@@ -90,7 +90,7 @@ the Phase 0 `Profin` components. The global search now navigates to the hub.
       them.)
 - [x] **Company Fundamentals** — metric cards grouped by category (display-only category +
       formula maps in `company.js`), status legend, provenance, disclosure. Consumes
-      **`/companies/{symbol}/metrics?year=&period=`**; each card renders via `Profin.metricCard`
+      **`/companies/{symbol}/metrics?year=&period=`**; each card renders via `ClearyFi.metricCard`
       with status/basis/reason/as-of — no invented precision. **FY cards carry an intra-year
       quarterly sparkline** (`MetricValue.trend` = the metric at each quarter of the fiscal year;
       flows are TTM-by-quarter so the last point = the annual value; na/nm quarters break the line,
@@ -154,7 +154,7 @@ future institutional/manager) render keyless from the browser, while curl/SDK ca
 before the API is truly monetized. `/usage` is exempt from the bypass (an account endpoint has no
 identity without a key). The bypass also resolves the 2/sec anon-limit 429 for browser page loads.
 **Regression fixed:** `cusip-resolution-stats` → `public_router` so `/coverage` works keyless.
-The `Profin` key helpers (`getKey/setKey/mountNeedsKey`) remain as a dormant fallback (unused
+The `ClearyFi` key helpers (`getKey/setKey/mountNeedsKey`) remain as a dormant fallback (unused
 while pages are ungated).
 
 - [x] **Beneficial ownership (13D/13G)** — shipped (see above).
@@ -180,13 +180,13 @@ profile, 13D/G) are shipped and headless-verified.
       via a new **Compare** nav link across the site. Verified headless (zero console errors).
 - [x] **Metric trend / history** — shipped in two parts:
       - *Company hub* — each Fundamentals metric card has an expandable **Trend** panel
-        (`Profin.trendChart`, `app.js`) that lazily loads
+        (`ClearyFi.trendChart`, `app.js`) that lazily loads
         **`GET /v1/companies/{symbol}/metrics/{metric}/history?frequency=annual`** and renders a
         self-scaling multi-year line (gap-breaking, never interpolated; min/max + year axis
         labels; as-restated caption — R9) plus the Tier-2 **signals** (expansion, cagr,
         acceleration, streak, distance-from-peak) as annotations. Deep-linkable via
         `?trend=<metric>`.
-      - *`/compare` trajectories* — a **Trajectories** view toggle (`Profin.trajectoryChart`,
+      - *`/compare` trajectories* — a **Trajectories** view toggle (`ClearyFi.trajectoryChart`,
         `app.js`) overlays the 2–3 selected companies' annual series for a chosen metric on **one
         shared calendar axis** (x = each point's `period_end`, so different fiscal-year-ends align
         — R10); series are told apart by **dash pattern + a legend** (one accent only, no second
@@ -212,7 +212,7 @@ Screening (`/screen`) and Peer rankings are shipped; remaining is the public doc
       (`?view=rank&concept=…` / `?year=&revenue_min=…`); reachable via a new **Screen** nav link.
       Verified headless (zero console errors).
 - [x] **Peer comparison & rankings** — shipped with Metrics Phase 2 (see `ROADMAP_METRICS.md`):
-      each company-hub Fundamentals metric card shows a **peer position bar** (`Profin.positionBar`)
+      each company-hub Fundamentals metric card shows a **peer position bar** (`ClearyFi.positionBar`)
       with "Nth pctile · k peers · SIC {group}" from **`GET /companies/{symbol}/peers`**, fetched
       alongside `/metrics` (best-effort — a peers miss never breaks the grid). Ranks exclude
       N/A/N/M rows; percentile is position, not a verdict (one accent, no good/bad color — §9.2).
@@ -241,8 +241,8 @@ compatible with the design system:
   `/static/vendor/plot.umd.min.js` (v0.6.17 — the UMD build requires the global `d3`,
   load order matters), exposing `window.Plot`. Data pages stay self-hosted; only the
   standalone infographic template keeps its CDN ESM import.
-- **Wrapped in `Profin` builders:** pages never call `Plot.plot()` directly — each chart
-  is a `Profin.*` builder in `app.js` that owns its Plot spec, style-guide styling (one
+- **Wrapped in `ClearyFi` builders:** pages never call `Plot.plot()` directly — each chart
+  is a `ClearyFi.*` builder in `app.js` that owns its Plot spec, style-guide styling (one
   terracotta accent, tint ramps, IBM Plex Mono numerals), and honesty captions, so 5.6
   reuse and the §6 inventory stay meaningful. Plot builders return a DOM node (Plot
   renders SVG elements), unlike the older string builders — callers append, not innerHTML.
@@ -274,17 +274,17 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
 
 ### Phase 5 tasks
 
-- [x] **5.1 Composition — top-N value bar list** — shipped: `Profin.compositionBars(holdings,
+- [x] **5.1 Composition — top-N value bar list** — shipped: `ClearyFi.compositionBars(holdings,
       opts)` (vendored Plot, DOM-node builder), mounted above the holdings table on
       `/manager/{cik}`. Top-10 by `value` share + "Other (n positions)"; single accent +
       rank-order tint ramp; same-name issuers disambiguated by CUSIP; `(PUT)`/`(CALL)`
       suffixes on option rows; "reported long positions only" caption; returns `null` (honest
       empty note) when no positive total. Verified headless (zero console errors).
-- [x] **5.2 Concentration stat tiles** — shipped: `Profin.statTiles(holdings, opts)` alongside
+- [x] **5.2 Concentration stat tiles** — shipped: `ClearyFi.statTiles(holdings, opts)` alongside
       5.1 — positions reported, top-1/5/10 share of reported value, reported total.
       Descriptive only; renders N/A tiles (never `0%`) when total reported value is absent;
       no Herfindahl by design. Verified headless.
-- [x] **5.3 Derived activity — diverging change bars** — shipped: `Profin.divergingBars(
+- [x] **5.3 Derived activity — diverging change bars** — shipped: `ClearyFi.divergingBars(
       activity, opts)`, mounted above the activity table. Signed share-change bars per CUSIP
       (reduced/exited left, new/added right), top ±10 by magnitude + overflow note; solid
       fill = opened/closed outright, lighter tint = resized (one hue, no green/red). DERIVED
@@ -292,7 +292,7 @@ used, lightness encodes nothing but rank-order legibility (never a judgment).
       shares-not-value, no SH/PRN summing). Note: `HoldingDelta` carries no `put_call` /
       `shares_or_principal`, so option labeling is a standing caption caveat, not per-bar.
       Verified headless.
-- [x] **5.4 Portfolio value over time** — shipped: `Profin.valueLineChart(points, opts)` in
+- [x] **5.4 Portfolio value over time** — shipped: `ClearyFi.valueLineChart(points, opts)` in
       its own mount above the quarter selector (fetched once via `/periods` +
       per-quarter `/holdings`, capped at the 8 most recent eligible quarters; a failed
       quarter is a gap, never a page error). Implements the DECIDED clip rule below
@@ -346,8 +346,8 @@ including its parallel execution plan and data-readiness gates.
 
 A review of the shipped charts against chart-form/anti-pattern references produced these
 items. All respect §9/§10; the builders are shared with the company hub's Institutional tab
-(5.6), so every fix lands on both pages. Foundation already in: `Profin.chartCard()` (the
-one shared `.plot-chart` chrome), `Profin.measuredWidth()` (container-measured widths, no
+(5.6), so every fix lands on both pages. Foundation already in: `ClearyFi.chartCard()` (the
+one shared `.plot-chart` chrome), `ClearyFi.measuredWidth()` (container-measured widths, no
 hardcoded 640/720), the single-fill + caption-dedup rules in `STYLE_GUIDE.md` §6, and a
 deep 14-position Berkshire fixture (option row, PRN row, new/added/reduced/exited spread).
 
@@ -401,7 +401,7 @@ the shared system: `main.explorer-wrap` (~900px) → the standard `main.page` (1
 one content column on every data page); the `.explorer-hero` block (incl. the
 `.explorer-eyebrow`) → the shared `.masthead` markup (the eyebrow was then dropped from
 EVERY shell page's masthead — compare/screen/coverage/company/manager/components too — the
-sidebar already brands the page; `Profin.masthead()` now renders one only if passed); `.explorer-footer`
+sidebar already brands the page; `ClearyFi.masthead()` now renders one only if passed); `.explorer-footer`
 → the shared `.app-footer` (kept static, not JS-rendered: `tests/test_static_pages.py`
 asserts the raw HTML carries the /disclaimer + support links); explorer.css dropped its
 duplicated tokens/keyframes/segmented-control rules in favor of app.css (explorer.html now

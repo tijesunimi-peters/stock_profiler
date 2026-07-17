@@ -49,7 +49,7 @@ body {
 
 a { color: inherit; }
 
-@keyframes profinBlink {
+@keyframes clearyfiBlink {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0; }
 }
@@ -341,7 +341,7 @@ h2 {
 .code-body .punct { color: var(--syntax-comment); }
 .code-body .cursor {
   color: var(--panel-fg);
-  animation: profinBlink 1.1s steps(1) infinite;
+  animation: clearyfiBlink 1.1s steps(1) infinite;
 }
 
 /* ---------- trust strip ---------- */

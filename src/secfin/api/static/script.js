@@ -35,9 +35,9 @@
     ];
 
     var logo =
-      '<a href="/" class="logo" aria-label="Profin home">' +
+      '<a href="/" class="logo" aria-label="ClearyFi home">' +
       '<span class="logo-mark"><span class="logo-dot"></span></span>' +
-      '<span class="logo-word">Profin</span></a>';
+      '<span class="logo-word">ClearyFi</span></a>';
 
     side.innerHTML =
       logo +
@@ -59,7 +59,7 @@
       }).join("") +
       '<div class="app-side-foot">' +
       '<a href="/disclaimer">Data, not investment advice</a>' +
-      '<span class="side-tagline">Profin · public SEC data, cleaned &amp; queryable</span>' +
+      '<span class="side-tagline">ClearyFi · public SEC data, cleaned &amp; queryable</span>' +
       "</div>";
 
     var isMac = /Mac|iP(hone|ad|od)/.test(navigator.platform || "");
@@ -84,7 +84,7 @@
       e.preventDefault();
       go(input.value);
     });
-    if (window.ProfinSuggest) window.ProfinSuggest.attach(input, { onPick: go });
+    if (window.ClearyFiSuggest) window.ClearyFiSuggest.attach(input, { onPick: go });
 
     document.addEventListener("keydown", function (e) {
       var t = e.target;

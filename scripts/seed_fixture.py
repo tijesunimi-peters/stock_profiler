@@ -38,7 +38,7 @@ from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 # A fixed demo API key so gated endpoints can be exercised offline / in the e2e profile.
 # NOT a real credential -- only ever created against a throwaway seeded DB.
-DEMO_API_KEY = "profin-demo-e2e-key"
+DEMO_API_KEY = "clearyfi-demo-e2e-key"
 
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 COMPANIES = [

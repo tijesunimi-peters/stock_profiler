@@ -43,7 +43,7 @@ services:
     image: python:3.11-slim
     working_dir: /app
     environment:
-      SEC_USER_AGENT: "${SEC_USER_AGENT:-profin-e2e e2e@example.com}"
+      SEC_USER_AGENT: "${SEC_USER_AGENT:-clearyfi-e2e e2e@example.com}"
       SECFIN_DB_PATH: "/app/data/e2e.db"
     volumes:
       - .:/app

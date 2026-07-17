@@ -1,7 +1,7 @@
 /* Shared company-autocomplete widget. Standalone on purpose (no app.js dependency) so
  * the explorer's bespoke input and app.js's mountSearch can both use it.
  *
- *   ProfinSuggest.attach(inputEl, { onPick: function (ticker, suggestion) {...} });
+ *   ClearyFiSuggest.attach(inputEl, { onPick: function (ticker, suggestion) {...} });
  *
  * Fetches GET /v1/companies/suggest?q= (public, IP rate-limited) with a 150ms
  * debounce. Keyboard: arrows move, Enter picks the highlighted row, Escape closes.
@@ -123,5 +123,5 @@
     input.addEventListener("blur", function () { setTimeout(close, 120); });
   }
 
-  window.ProfinSuggest = { attach: attach };
+  window.ClearyFiSuggest = { attach: attach };
 })();

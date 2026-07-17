@@ -1,11 +1,11 @@
 /* Manager (13F filer) profile — /manager/{cik}. One manager's holdings snapshot + DERIVED
- * activity + co-filer roster, over the v1 API, built from the shared Profin components
+ * activity + co-filer roster, over the v1 API, built from the shared ClearyFi components
  * (app.js). Sibling of the company hub's Institutional tab (issuer view); this is the
  * manager-centric view. Everything here renders what the API returns — no derived logic.
  */
 (function () {
   "use strict";
-  var P = window.Profin;
+  var P = window.ClearyFi;
   var $ = function (id) { return document.getElementById(id); };
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited", unchanged: "Unchanged" };
@@ -178,7 +178,7 @@
       P.statTiles(holdings, { totalNote: "Total of this snapshot's reported values" }) +
       '<div id="composition-chart-mount"></div>' +
       "</div>";
-    // The holdings table is paginated (Profin.paginatedTable) -- a real filer reports
+    // The holdings table is paginated (ClearyFi.paginatedTable) -- a real filer reports
     // thousands of positions. Rendered post-innerHTML into this mount, like the charts.
     return head + composition + '<div id="holdings-table-mount"></div>';
   }
@@ -250,7 +250,7 @@
     // fallback), then the dumbbell (prior->current % of reported book), then the paginated
     // detail table. That order goes headline -> "what changed" -> "where it sits in the whole
     // book" -> row-level detail. All mounts are filled post-innerHTML (the charts return Plot
-    // DOM nodes; the table is Profin.paginatedTable); left empty when there's nothing to show.
+    // DOM nodes; the table is ClearyFi.paginatedTable); left empty when there's nothing to show.
     var tiles = P.activitySummaryTiles(activity);
     return (
       head + tiles +
@@ -292,7 +292,7 @@
     }));
   }
 
-  // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's
+  // Appends the ClearyFi.divergingBars chart into #activity-chart-mount, once activitySection's
   // markup (including that placeholder) is in the DOM. No-ops when the placeholder is absent
   // (the "no prior-quarter comparison" empty state never renders it) or when divergingBars
   // returns null (nothing honest to chart -- e.g. every row was unchanged).
@@ -310,7 +310,7 @@
   }
 
   // Phase 5 polish pass, dumbbell chart: fetches the ONE extra request (the prior quarter's
-  // full holdings snapshot) beyond what render() already has, and mounts Profin.dumbbellChart.
+  // full holdings snapshot) beyond what render() already has, and mounts ClearyFi.dumbbellChart.
   // No-ops quietly (never an error state) when there's no prior quarter to compare against, or
   // when that fetch fails -- a missing dumbbell is a smaller loss than breaking the page over an
   // enhancement chart the table above it doesn't depend on.
@@ -355,7 +355,7 @@
     return '<details class="disclosure" style="margin-top:18px"><summary>13F caveats (always apply)</summary><ul>' + items + "</ul></details>";
   }
 
-  // ---------- Phase 5.4: total reported 13F value per quarter (Profin.valueLineChart) ----------
+  // ---------- Phase 5.4: total reported 13F value per quarter (ClearyFi.valueLineChart) ----------
   // Own top-level mount (#value-line, outside #view) so this never re-fetches when the quarter
   // selector changes -- fetched exactly once, right after /periods resolves.
 

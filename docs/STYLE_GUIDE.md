@@ -1,6 +1,6 @@
-# Profin UI — Style Guide (READ BEFORE BUILDING NEW PAGES)
+# ClearyFi UI — Style Guide (READ BEFORE BUILDING NEW PAGES)
 
-This is the canonical style reference for every Profin data-facing page (Company hub /
+This is the canonical style reference for every ClearyFi data-facing page (Company hub /
 Fundamentals, Statements, Compare, Screen, Data coverage, and anything new). **Read this in full
 before writing a new page.** It exists so a new screen looks like it was always part of the
 product — same paper, same rules, same numeric treatment, same honesty conventions.
@@ -126,7 +126,7 @@ growth deltas.
 
 ---
 
-## 4. Signature treatments (the things that make it "Profin")
+## 4. Signature treatments (the things that make it "ClearyFi")
 
 1. **Warm paper background** — `--bg-page` (`#F6F3EE`), flat (no dotted grid).
 2. **App shell** — a slim fixed **left sidebar** (logo, grouped links: Data → Company hub /
@@ -139,10 +139,10 @@ growth deltas.
    `.current` (accent-wash pill) via `<body data-shell="...">`.
    (Marketing/prose pages keep the older static `.nav` markup with its own hamburger.)
 3. **Masthead** — Hanken 800 title → right-aligned mono meta caption → a single
-   `1px solid --border-tint-rule` **rule** → optional intro paragraph. `Profin.masthead()`
+   `1px solid --border-tint-rule` **rule** → optional intro paragraph. `ClearyFi.masthead()`
    emits it; the Explorer carries the same `.masthead` markup statically. App-shell pages
    carry **no eyebrow** (the sidebar already brands the page; dropped everywhere 2026-07-17
-   for consistency) — `Profin.masthead()` renders one only if explicitly passed.
+   for consistency) — `ClearyFi.masthead()` renders one only if explicitly passed.
 4. **Soft drop shadow** (§1) on cards/panels — never a hard offset, never `blur:0`.
 5. **Section headers** — mono number (`01`, accent) + Hanken 800 name + a `2px solid --ink`
    underline.
@@ -178,10 +178,10 @@ search gets autocomplete).
   sticks under the topbar (≥1100px) and `.stmt-table th` header rows stick below both.
   Table headers inside a horizontal-scroll wrapper (`.matrix-scroll`) stay in flow —
   page-level sticky cannot work inside an overflow box.
-- **Masthead:** `Profin.masthead({ eyebrow, title, meta, lede })` — compacted inside the
+- **Masthead:** `ClearyFi.masthead({ eyebrow, title, meta, lede })` — compacted inside the
   shell (27px title via `body.app` overrides in `style.css`).
-- **Footer:** `Profin.footer()` → `.app-footer`: a thin top rule, mono accent links to real
-  routes (`/company/AAPL`, `/coverage`, `/docs`, each with `↗`), and a muted tagline "Profin ·
+- **Footer:** `ClearyFi.footer()` → `.app-footer`: a thin top rule, mono accent links to real
+  routes (`/company/AAPL`, `/coverage`, `/docs`, each with `↗`), and a muted tagline "ClearyFi ·
   public SEC data, cleaned & queryable".
 
 Links: accent color, mono. Resolve every href to a real destination — never leave placeholders.
@@ -190,8 +190,8 @@ Links: accent color, mono. Resolve every href to a real destination — never le
 
 ## 6. Components inventory (reuse, don't reinvent — all in `app.js`/`app.css`)
 
-- **Status chip / marker** — `Profin.statusChip()` / §7. Present on every metric and derived value.
-- **Metric card** — `Profin.metricCard(mv)`: name + status chip header; big mono value + basis
+- **Status chip / marker** — `ClearyFi.statusChip()` / §7. Present on every metric and derived value.
+- **Metric card** — `ClearyFi.metricCard(mv)`: name + status chip header; big mono value + basis
   tag; optional inline caveat note (left `--ext-border` rule); built-in "Show your work"
   provenance. `--bg-card` + soft shadow; N/A cards drop the shadow and use `--bg-tint`.
 - **Statement table** — `.stmt-table`: mono tabular amounts, `source_tag` + a US-GAAP/EXT badge
@@ -199,26 +199,26 @@ Links: accent color, mono. Resolve every href to a real destination — never le
 - **Ticker chip** — mono, `--ink` fill, `--bg-page` text, 7px radius. The company identity token.
 - **Sparkline** *(when trend lands)* — inline SVG polyline, `--accent` 1.5px stroke, self-scaling,
   last point marked. Hidden (with a mono "no series" note) when the value is N/A or N/M.
-- **Provenance / "Show your work"** — `Profin.provenance()` / §8.
-- **Disclosure / data-notes** — `Profin.disclosure()`: dashed `--border-strong` container,
+- **Provenance / "Show your work"** — `ClearyFi.provenance()` / §8.
+- **Disclosure / data-notes** — `ClearyFi.disclosure()`: dashed `--border-strong` container,
   `+`/`−` toggle, honesty copy pulled to match `docs/DATA_MODEL.md`.
-- **States** — `Profin.states.loading` (pulsing accent dot + shimmer bars + cold-path note) /
+- **States** — `ClearyFi.states.loading` (pulsing accent dot + shimmer bars + cold-path note) /
   `empty` (calm "filing on record, no mapped fields") / `notFound` (mono `HTTP 404` in
   `--ext-color` + recovery chips) / `error`.
 - **Global search** — lives in the shell's topbar (script.js; `⌘K` / `Ctrl-K` / `/` focuses
   it) and navigates to the company hub, which handles resolution/404 itself.
-  `Profin.mountSearch()` remains for in-page flows that need resolve callbacks (Compare's
+  `ClearyFi.mountSearch()` remains for in-page flows that need resolve callbacks (Compare's
   "Add a company", the components demo).
-- **Plot charts (Phase 5, 13F portfolio viz)** — `Profin.*` builders backed by **vendored
+- **Plot charts (Phase 5, 13F portfolio viz)** — `ClearyFi.*` builders backed by **vendored
   Observable Plot** (`/static/vendor/d3.min.js` + `/static/vendor/plot.umd.min.js`, load d3
   first; exposes `window.Plot`). Pages never call `Plot.plot()` directly — every chart is a
-  `Profin` builder that owns its Plot spec, the tokens (one terracotta accent, IBM Plex Mono
+  `ClearyFi` builder that owns its Plot spec, the tokens (one terracotta accent, IBM Plex Mono
   numerals) and its honesty caption. Plot builders return a **DOM node** (callers append it),
   unlike the older string builders. The hand-rolled `sparkline`/`trendChart`/
   `trajectoryChart`/`positionBar` stay as they are — not migrated. Shared chrome + sizing:
   every Plot chart wraps itself in `chartCard()` (`.plot-chart`: eyebrow title, scrollable
   body, caption/note) — one visual dialect per page — and takes `opts.width` from its mount
-  site via `Profin.measuredWidth(container, fallback)`, never a hardcoded pixel width.
+  site via `ClearyFi.measuredWidth(container, fallback)`, never a hardcoded pixel width.
   **Ranked bars take one fill** — bar length already encodes the value, so a
   darker-where-bigger lightness ramp double-encodes it; use *emphasis* (accent one mark,
   mute the rest) when one mark is the point. Tint still distinguishes mark *kinds* (e.g.
@@ -248,7 +248,7 @@ Rules:
 - **APPROX still shows the value** with the `≈` marker — the number is useful, the caveat rides
   alongside it (e.g. the R5 debt-split undercount).
 - Solid border = N/A (hard structural), dashed border = N/M (soft judgment). Keep that distinction.
-- A legend (`Profin.statusLegend()`) explaining all four appears near the top of any page that
+- A legend (`ClearyFi.statusLegend()`) explaining all four appears near the top of any page that
   shows metrics.
 
 These map 1:1 onto the API: `MetricValue.status` is exactly `ok | approximate | na | nm`.
@@ -257,8 +257,8 @@ These map 1:1 onto the API: `MetricValue.status` is exactly `ok | approximate | 
 
 ## 8. Provenance / "Show your work" (mandatory for derived numbers)
 
-Any computed/derived figure must explain itself via progressive disclosure. `Profin.metricCard`
-builds this in; `Profin.provenance()` is the standalone builder. A closed-by-default "Show your
+Any computed/derived figure must explain itself via progressive disclosure. `ClearyFi.metricCard`
+builds this in; `ClearyFi.provenance()` is the standalone builder. A closed-by-default "Show your
 work" toggle (mono, accent, `+`/`−`) reveals:
 - **Formula** — mono, plain-language (`Net income ÷ Revenue`).
 - **Basis** — TTM vs as-of; **restatement basis** (as-restated / as-originally-reported); the
@@ -290,7 +290,7 @@ These are the reason the product exists. A page that violates them is broken.
 5. **Approximations are honest, not buried.** If we show it, we flag it, and we explain why.
 6. **Coverage limits are surfaced.** Empty ≠ "nothing filed" — carry the coverage-floor notes
    (XBRL ~2009→2012; 13D/G structured-XML ~mid-2025; 13F long-only / ~45-day lag) via
-   `Profin.disclosure()`.
+   `ClearyFi.disclosure()`.
 7. **Data is as-of the latest filing — not real-time.** State it in the masthead/meta.
 8. **Nothing here is investment advice.** The disclosure block says so plainly.
 
@@ -303,13 +303,13 @@ These are the reason the product exists. A page that violates them is broken.
 - Rendering a missing/inapplicable value as `0`, `—`, blank, or a guess.
 - Dropping the status chip, the basis tag, or the provenance affordance on a derived number.
 - Emoji or decorative icons. Generated graphics are data-driven charts only — the hand-rolled
-  SVG builders and the vendored-Plot `Profin` builders (§6) — never decoration; keep them
+  SVG builders and the vendored-Plot `ClearyFi` builders (§6) — never decoration; keep them
   literal, and never CDN-load a chart library on a data page.
 - Inter/Roboto/Arial substitutes for the two chosen families.
 - Inline-block whitespace layout instead of flex/grid `gap`.
 - Placeholder links. Every href resolves to a real route.
 - Re-declaring tokens in a page instead of using the `style.css`/`app.css` variables, or
-  re-implementing the nav/masthead/components instead of reusing `Profin.*`.
+  re-implementing the nav/masthead/components instead of reusing `ClearyFi.*`.
 
 ---
 
@@ -319,9 +319,9 @@ These are the reason the product exists. A page that violates them is broken.
   Fundamentals (metric cards), Statements (FY + quarterly periods, source-tag audit column,
   raw-JSON toggle, segments spike), Insider, Institutional, 13D/G; loading/404/empty states.
   The most complete reference; new pages descend from it. (`/explorer` merged in 2026-07-17.)
-- **`static/components.html` (`/components`)** — the shared-component kitchen sink (`Profin.*`):
+- **`static/components.html` (`/components`)** — the shared-component kitchen sink (`ClearyFi.*`):
   masthead, status legend, metric cards, provenance, disclosure, states, search.
 - **`static/coverage.html` (`/coverage`)** — CUSIP resolution rate + coverage boundaries.
 
-New pages are built the same way: load `style.css` + `app.css`, reuse the shell and `Profin.*`
+New pages are built the same way: load `style.css` + `app.css`, reuse the shell and `ClearyFi.*`
 builders, and — above all — keep the honesty conventions.

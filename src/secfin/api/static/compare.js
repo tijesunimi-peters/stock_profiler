@@ -1,12 +1,12 @@
 /* Company comparison — /compare?symbols=AAPL,MSFT,JPM&year=2024. A 2–3 company metric matrix
- * over the v1 /metrics endpoint, built from the shared Profin components (app.js). Point-in-time
+ * over the v1 /metrics endpoint, built from the shared ClearyFi components (app.js). Point-in-time
  * only (the calendar-axis trajectory overlay is the blocked Metrics Phase 1b item). Honesty
  * rules (STYLE_GUIDE §9): fiscal-calendar misalignment is surfaced per column, flags ride every
  * cell, and there is NO good/bad coloring and NO "winner". Display-only maps mirror company.js.
  */
 (function () {
   "use strict";
-  var P = window.Profin;
+  var P = window.ClearyFi;
   var $ = function (id) { return document.getElementById(id); };
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var MAX = 3; // R10 / roadmap: compare at most 3 companies

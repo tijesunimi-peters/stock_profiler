@@ -12,7 +12,7 @@ Compliance check at the bottom.
 
 ## Name
 
-Profin
+ClearyFi
 
 ## Tagline (max ~60 chars)
 
@@ -30,7 +30,7 @@ implies trading or investing tooling; this is data infrastructure).
 
 SEC filings are public and free. Actually *using* them isn't -- every company tags the
 same financial concept differently, restates history without warning, and sometimes
-invents its own tags entirely. Profin does that normalization once, so you get one
+invents its own tags entirely. ClearyFi does that normalization once, so you get one
 consistent JSON schema (`revenue`, `net_income`, `operating_cash_flow`, ...) across
 every company and every year, with the original source tag kept on every field for
 audit.

@@ -1,4 +1,4 @@
-// Headless render check for the Profin data pages, run inside the puppeteer Docker image
+// Headless render check for the ClearyFi data pages, run inside the puppeteer Docker image
 // (see docker-compose.yml's `e2e` profile). Loads each page in real Chromium, fails on any
 // console/page/request error, and writes a full-height screenshot per page for eyeballing.
 //

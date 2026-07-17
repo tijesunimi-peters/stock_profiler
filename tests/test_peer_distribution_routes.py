@@ -23,7 +23,7 @@ _BROWSER = {"Sec-Fetch-Site": "same-origin"}
 def _configure(tmp_path, monkeypatch) -> str:
     db = str(tmp_path / "test.db")
     monkeypatch.setattr(settings, "secfin_db_path", db)
-    monkeypatch.setattr(settings, "sec_user_agent", "profin-test test@example.com")
+    monkeypatch.setattr(settings, "sec_user_agent", "clearyfi-test test@example.com")
     return db
 
 

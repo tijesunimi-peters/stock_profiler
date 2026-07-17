@@ -1,4 +1,4 @@
-/* Profin shared front-end module for DATA pages (window.Profin).
+/* ClearyFi shared front-end module for DATA pages (window.ClearyFi).
  *
  * Vanilla, no build step (same as script.js) -- exposes reusable shell + component
  * builders and API helpers so every data page (Company Fundamentals, Comparison, ownership,
@@ -13,7 +13,7 @@
   "use strict";
 
   var API_BASE = "/v1";
-  var KEY_STORAGE = "profin_api_key";
+  var KEY_STORAGE = "clearyfi_api_key";
 
   // ---------- API key (gated endpoints; public ones work without one) ----------
 
@@ -176,7 +176,7 @@
       '<a href="/methodology">Methodology ↗</a>' +
       '<a href="/disclaimer">Data, not investment advice ↗</a>' +
       '<a href="https://github.com/clearyfi/support/issues">Support ↗</a>' +
-      '<span class="tagline">Profin · public SEC data, cleaned &amp; queryable</span>' +
+      '<span class="tagline">ClearyFi · public SEC data, cleaned &amp; queryable</span>' +
       "</footer>"
     );
   }
@@ -1005,8 +1005,8 @@
     var input = el.querySelector("input");
     // Autocomplete (suggest.js, loaded before app.js on pages that mount a search):
     // picking a row fills the input and submits through the same resolve path below.
-    if (window.ProfinSuggest) {
-      window.ProfinSuggest.attach(input, {
+    if (window.ClearyFiSuggest) {
+      window.ClearyFiSuggest.attach(input, {
         onPick: function () {
           form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
         },
@@ -1055,7 +1055,7 @@
   // ---------- Plot charts (Phase 5, manager/issuer portfolio viz) ----------
   //
   // Observable Plot is vendored (d3 then the Plot UMD build, see manager.html) and exposes
-  // window.Plot. Every chart here is a Profin.* builder that owns its own Plot spec, styling,
+  // window.Plot. Every chart here is a ClearyFi.* builder that owns its own Plot spec, styling,
   // and honesty caption, and RETURNS A DOM NODE (Plot renders SVG elements) -- callers append
   // it; pages never call Plot.plot() directly (STYLE_GUIDE §6/§10). The hand-rolled
   // sparkline/trendChart/trajectoryChart/positionBar above stay string builders -- not migrated.
@@ -1136,7 +1136,7 @@
   // keyed by (manager_cik, cusip) either way, so the same cusip-suffix disambiguation logic
   // applies to repeated manager names too). `tipLabelKey`/`title` rename the tooltip channel and
   // chart title to match (default "Issuer"/"Derived activity"). `width` is the mount site's
-  // measured width (`Profin.measuredWidth(el, 640)`) -- never a hardcoded pixel width.
+  // measured width (`ClearyFi.measuredWidth(el, 640)`) -- never a hardcoded pixel width.
   //
   // Note on option/instrument labeling: HoldingDelta (normalize/schema.py) does NOT carry
   // put_call or shares_or_principal -- those live only on the raw InstitutionalHolding rows
@@ -1645,7 +1645,7 @@
   }
 
   // The standing "reported 13F long positions only" line now renders ONCE at the top of the
-  // manager page (STYLE_GUIDE §6 caption-dedup rule -- Profin.standingCaveat / manager.js's
+  // manager page (STYLE_GUIDE §6 caption-dedup rule -- ClearyFi.standingCaveat / manager.js's
   // renderStandingCaveat). Charts below keep only what's specific to them.
   var STANDING_CAVEAT_TEXT =
     "All figures on this page are reported 13F long positions only — not AUM or the " +
@@ -1657,7 +1657,7 @@
   // unit-convention rule (ROADMAP_UI.md 5.4: clip, don't normalize -- the SEC's `value`
   // convention changed thousands->whole-dollars ~2023 with no reliable per-filer boundary, so a
   // wrong guess would misstate the total by 3 orders of magnitude). opts.width should come from
-  // Profin.measuredWidth(mountEl, fallback) -- never a hardcoded pixel width (STYLE_GUIDE §6).
+  // ClearyFi.measuredWidth(mountEl, fallback) -- never a hardcoded pixel width (STYLE_GUIDE §6).
   // Returns a DOM node, or null when there is truly nothing to show (no eligible quarters and
   // none excluded either).
   function valueLineChart(points, opts) {
@@ -1968,7 +1968,7 @@
     return root;
   }
 
-  window.Profin = {
+  window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
     getKey: getKey,

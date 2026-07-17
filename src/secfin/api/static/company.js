@@ -1,11 +1,11 @@
 /* Company hub — /company/{symbol}. Fundamentals + Statements tabs over the v1 API, built from
- * the shared Profin components (app.js). Display-only maps (metric categories, formulas,
+ * the shared ClearyFi components (app.js). Display-only maps (metric categories, formulas,
  * statement row emphasis) live here, keyed by the canonical concepts the API already returns —
  * they duplicate no server logic.
  */
 (function () {
   "use strict";
-  var P = window.Profin;
+  var P = window.ClearyFi;
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------- display-only maps ----------
@@ -563,7 +563,7 @@
       }) +
       '<div id="holders-chart-mount"></div>' +
       "</div>";
-    // The holders detail table is paginated (Profin.paginatedTable) -- a widely-held issuer
+    // The holders detail table is paginated (ClearyFi.paginatedTable) -- a widely-held issuer
     // can have hundreds of reporting filers. Rendered post-innerHTML into this mount, like
     // the charts (same pattern as manager.js).
     return (
@@ -643,7 +643,7 @@
     // then the dumbbell (prior->current % of this issuer's total reported 13F value across
     // ingested filers), then the paginated detail table -- same order/reasoning as the manager
     // page. All mounts are filled post-innerHTML (the charts return Plot DOM nodes; the table
-    // is Profin.paginatedTable); left empty when there's honestly nothing to show.
+    // is ClearyFi.paginatedTable); left empty when there's honestly nothing to show.
     var tiles = P.activitySummaryTiles(activity);
     return (
       head + tiles +
@@ -683,7 +683,7 @@
     }));
   }
 
-  // Appends the Profin.divergingBars chart into #activity-chart-mount, once activitySection's
+  // Appends the ClearyFi.divergingBars chart into #activity-chart-mount, once activitySection's
   // markup (including that placeholder) is in the DOM. No-ops when the placeholder is absent
   // (the "no prior-quarter comparison" empty state never renders it) or when divergingBars
   // returns null (nothing honest to chart -- e.g. every row was unchanged). Rows are per
@@ -1049,7 +1049,7 @@
       normalRows +
       "</div>" +
       '<div id="stmt-audit" hidden>' +
-      '<div class="table-head table-head-audit"><span>Raw XBRL tag (SEC)</span><span></span><span>Profin schema</span></div>' +
+      '<div class="table-head table-head-audit"><span>Raw XBRL tag (SEC)</span><span></span><span>ClearyFi schema</span></div>' +
       auditRows +
       "</div></div>" +
       '<pre class="raw-json" id="stmt-json" hidden></pre>' +

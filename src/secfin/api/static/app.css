@@ -1,9 +1,9 @@
-/* Profin data-page components (window.Profin builders).
+/* ClearyFi data-page components (window.ClearyFi builders).
  *
  * Every data page loads style.css first (shared tokens, shell, fonts) and this file layers on
  * the data-specific components. Everything here uses the shipped warm palette — paper #f6f3ee,
  * terracotta --accent, rounded corners, soft shadows — so a new page looks like it was always
- * part of Profin. See docs/STYLE_GUIDE.md.
+ * part of ClearyFi. See docs/STYLE_GUIDE.md.
  *
  * Tokens come from style.css; only the data-specific few (audit badges, wash tints) plus a
  * shared soft-shadow are declared here.
@@ -372,18 +372,18 @@
   border-radius: 50%;
   background: var(--accent);
   margin-right: 8px;
-  animation: profinPulse 1s ease-in-out infinite;
+  animation: clearyfiPulse 1s ease-in-out infinite;
 }
-@keyframes profinPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes clearyfiPulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .shimmer {
   height: 12px;
   border-radius: 4px;
   background: linear-gradient(90deg, var(--border-strong) 0, var(--bg-card) 200px, var(--border-strong) 400px);
   background-size: 600px;
-  animation: profinShimmer 1.1s linear infinite;
+  animation: clearyfiShimmer 1.1s linear infinite;
   margin-top: 12px;
 }
-@keyframes profinShimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+@keyframes clearyfiShimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
 .cold-note { margin-top: 14px; font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
 
 .http-code { font-family: var(--font-mono); font-weight: 600; letter-spacing: 0.08em; color: var(--ext-color); }
@@ -417,7 +417,7 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
 
 /* ---------- Plot charts (Phase 5, vendored Observable Plot — STYLE_GUIDE §6) ----------
  *
- * Every Profin.* Plot builder (divergingBars today; more land alongside it) returns a DOM node
+ * Every ClearyFi.* Plot builder (divergingBars today; more land alongside it) returns a DOM node
  * wrapped the same way: a mono eyebrow title, a horizontally-scrollable body holding Plot's own
  * SVG, and an honesty caption. Card chrome matches .trend-chart's (bg-tint, soft border, rounded)
  * so a chart never looks like a foreign widget dropped onto the page.
@@ -561,7 +561,7 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
   flex: 0 0 auto;
 }
 
-/* ---------- paginated table (client-side pager, Profin.paginatedTable) ---------- */
+/* ---------- paginated table (client-side pager, ClearyFi.paginatedTable) ---------- */
 
 .table-pager {
   display: flex;

@@ -1,12 +1,12 @@
 /* Cross-company screening — /screen. A thin client over the M4 endpoints:
  *   Filter mode → GET /v1/screen (companies matching min/max thresholds, AND across concepts)
  *   Rank mode   → GET /v1/concepts/{concept} (one concept, ranked)
- * Built from the shared Profin components. Frames data is calendar-quarter aligned; the always-
+ * Built from the shared ClearyFi components. Frames data is calendar-quarter aligned; the always-
  * present `caveats` are rendered verbatim. Descriptive only — no good/bad coloring, no winner.
  */
 (function () {
   "use strict";
-  var P = window.Profin;
+  var P = window.ClearyFi;
   var $ = function (id) { return document.getElementById(id); };
 
   // The six screenable concepts (normalize/screening.SCREENABLE_CONCEPTS), all USD.

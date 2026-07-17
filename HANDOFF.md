@@ -1,4 +1,4 @@
-# Handoff — SEC Financial Data API (Profin)
+# Handoff — SEC Financial Data API (ClearyFi)
 
 Context dump for picking up this project cold. Read `CLAUDE.md` first (repo working
 agreement, architecture, conventions, guardrails) — this file is the "what's actually
@@ -8,7 +8,7 @@ been done and what's next" layer on top of it.
 
 A pipeline + API that ingests structured SEC XBRL data, normalizes it into one canonical
 schema, and serves it as JSON — a low-cost subscription alternative to enterprise
-financial-data vendors. Marketing name: **Profin**. Scope is deliberately "Track 1"
+financial-data vendors. Marketing name: **ClearyFi**. Scope is deliberately "Track 1"
 (structured numeric data) only — income statement, balance sheet, cash flow, insider
 trades, institutional (13F) ownership. No free-text/MD&A parsing, no LLM summarization
 (see `CLAUDE.md` guardrails — flag rather than build if a task drifts there).
@@ -49,8 +49,8 @@ trades, institutional (13F) ownership. No free-text/MD&A parsing, no LLM summari
 ## What just happened this session: landing page
 
 User supplied a design handoff zip (`~/Downloads/SEC Financial Data API.zip` →
-`design_handoff_profin_landing/README.md` + a hifi `.dc.html` prototype) for a
-**Profin marketing landing page**. Built and verified:
+`design_handoff_clearyfi_landing/README.md` + a hifi `.dc.html` prototype) for a
+**ClearyFi marketing landing page**. Built and verified:
 
 - `src/secfin/api/static/index.html`, `style.css`, `script.js` — static HTML/CSS/vanilla-JS
   recreation of the design (warm-paper palette, Hanken Grotesk + IBM Plex Mono, hero code
