@@ -87,15 +87,15 @@ async def test_unknown_ticker_404s():
 
 
 async def test_unmapped_tag_round_trips_with_full_fidelity():
-    # ContractWithCustomerLiability (TOTAL deferred revenue) is deliberately unmapped --
-    # only its Current variant became a canonical concept (deferred_revenue_current).
-    # This endpoint is exactly how that number stays reachable.
-    assert concept_for_tag("ContractWithCustomerLiability") is None
+    # CommonStockSharesIssued (a balance-sheet parenthetical) is deliberately unmapped:
+    # single-tag non-face elements stay tag-level per the cluster-driven decision
+    # (ROADMAP_DATA_DEPTH Phase 2b). This endpoint is how such numbers stay reachable.
+    assert concept_for_tag("CommonStockSharesIssued") is None
 
     resp = await _call(
         _aapl_repo(),
         symbol="AAPL",  # ticker path, via the fake cache
-        tag=["ContractWithCustomerLiability"],
+        tag=["CommonStockSharesIssued"],
         year=2025,
         period="FY",
     )
@@ -107,14 +107,14 @@ async def test_unmapped_tag_round_trips_with_full_fidelity():
     # Deterministic order: sorted by date, so comparative (2024-09-28) precedes primary.
     comparative, primary = resp.facts
     assert comparative.instant == "2024-09-28"
-    assert comparative.value == 12800000000
+    assert comparative.value == 15116786000
     assert comparative.frame == "CY2024Q3I"  # SEC frame string passes through untouched
     assert primary.instant == "2025-09-27"
-    assert primary.value == 13700000000
+    assert primary.value == 14773260000
     for row in (comparative, primary):
         assert row.taxonomy == "us-gaap"
-        assert row.gaap_tag == "ContractWithCustomerLiability"
-        assert row.unit == "USD"
+        assert row.gaap_tag == "CommonStockSharesIssued"
+        assert row.unit == "shares"
         # Source-faithful flattening: an instant fact carries period_end == instant
         # (sec/companyfacts.py sets instant from `end` when there's no `start`) --
         # served as stored, not tidied.

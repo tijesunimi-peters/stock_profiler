@@ -44,7 +44,7 @@ def test_aapl_income_statement_matches_real_filing():
     # (income + balance + cashflow), not just this statement's -- so these totals moved
     # when balance-sheet/cashflow concepts were added to mapping.py, even though this test
     # only exercises the income statement. See test_..._balance_and_cashflow below.
-    assert coverage_report(period_facts) == {"unmapped": 296, "mapped": 129}
+    assert coverage_report(period_facts) == {"unmapped": 242, "mapped": 183}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -69,6 +69,16 @@ def test_aapl_income_statement_matches_real_filing():
     dps = next(line for line in stmt.lines if line.canonical_concept == "dividends_per_share")
     assert dps.value == 1.02
     assert dps.unit == "USD/shares"
+
+    # Tranche 1 (cluster-driven, 2026-07-16). The strongest check is the filing's own
+    # arithmetic: net income + OCI must equal comprehensive income EXACTLY.
+    assert by_concept["other_comprehensive_income"] == 1601000000
+    assert (
+        by_concept["net_income"] + by_concept["other_comprehensive_income"]
+        == by_concept["comprehensive_income"]
+    )
+    assert by_concept["nonoperating_income_expense"] == -321000000
+    assert by_concept["effective_tax_rate"] == 0.156  # unit "pure", not USD
 
 
 def test_aapl_quarterly_sbc_serves_the_discrete_quarter_not_the_ytd():
@@ -98,7 +108,7 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert latest_fy == (2026, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 394, "mapped": 124}
+    assert coverage_report(period_facts) == {"unmapped": 315, "mapped": 203}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -117,6 +127,20 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert sbc.value == 3603000000
     assert sbc.source_tag == "AllocatedShareBasedCompensationExpense"
 
+    # Tranche 1: WMT is the filer that tags BOTH other-comprehensive-income variants
+    # with different values (bare tag 1.009B includes NCI) -- the parent-attributable
+    # first candidate must win, mirroring comprehensive_income above.
+    oci = next(
+        line for line in stmt.lines if line.canonical_concept == "other_comprehensive_income"
+    )
+    assert oci.value == 835000000
+    assert oci.source_tag == "OtherComprehensiveIncomeLossNetOfTaxPortionAttributableToParent"
+    assert by_concept["interest_income"] == 368000000
+    assert by_concept["net_income_noncontrolling"] == 377000000
+    assert by_concept["current_income_tax_expense"] == 4922000000
+    assert by_concept["deferred_income_tax_expense"] == 2277000000
+    assert by_concept["operating_lease_cost"] == 2434000000
+
     # Walmart's 10-K doesn't tag a discrete gross-profit or aggregate operating-expenses
     # line (or R&D, which is genuinely not applicable to a retailer) -- expected absences,
     # not a "wrong tag" bug. build_statement already skips these rather than emitting a
@@ -131,7 +155,7 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 921, "mapped": 82}
+    assert coverage_report(period_facts) == {"unmapped": 872, "mapped": 131}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -153,6 +177,17 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     sbc = next(line for line in stmt.lines if line.canonical_concept == "share_based_compensation")
     assert sbc.value == 3614000000
     assert sbc.source_tag == "ShareBasedCompensation"
+
+    # Tranche 1: same net-income + OCI = comprehensive-income identity as AAPL.
+    assert by_concept["other_comprehensive_income"] == 8166000000
+    assert (
+        by_concept["net_income"] + by_concept["other_comprehensive_income"]
+        == by_concept["comprehensive_income"]
+    )
+    assert by_concept["interest_income"] == 28032000000
+    assert by_concept["effective_tax_rate"] == 0.214
+    assert by_concept["amortization_of_intangibles"] == 292000000
+    assert by_concept["operating_lease_cost"] == 2388000000
 
     # A bank's income statement doesn't have a cost-of-revenue/gross-profit/operating-
     # income structure at all (it reports net interest income + noninterest income/
@@ -201,6 +236,21 @@ def test_aapl_balance_sheet_and_cashflow_fully_covered():
     for concept in ("goodwill", "intangible_assets"):
         assert concept not in by_concept
 
+    # Tranche 1: the filing's own arithmetic identities are the verification --
+    # gross - accumulated depreciation = net PP&E, current + noncurrent assets = total,
+    # and the balance sheet balances (L+E = assets), all EXACT.
+    assert by_concept["ppe_gross"] == 125848000000
+    assert by_concept["accumulated_depreciation"] == 76014000000
+    assert by_concept["ppe_gross"] - by_concept["accumulated_depreciation"] == by_concept["ppe_net"]
+    assert by_concept["assets_noncurrent"] == 211284000000
+    assert by_concept["total_current_assets"] + by_concept["assets_noncurrent"] == by_concept["total_assets"]
+    assert by_concept["liabilities_and_equity"] == by_concept["total_assets"]
+    assert by_concept["deferred_revenue"] == 13700000000  # the TOTAL, beside _current
+    assert by_concept["operating_lease_liabilities_current"] == 1579000000
+    assert by_concept["operating_lease_liabilities_noncurrent"] == 10911000000
+    assert by_concept["finance_lease_liabilities"] == 1230000000
+    assert by_concept["accumulated_oci"] == -5571000000
+
     cashflow = build_statement(facts, 320193, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
     assert by_concept["cash_from_operations"] == 111482000000
@@ -216,6 +266,15 @@ def test_aapl_balance_sheet_and_cashflow_fully_covered():
     assert by_concept["change_in_receivables"] == 6682000000
     assert by_concept["change_in_payables"] == 902000000
     assert by_concept["change_in_inventories"] == -1400000000
+
+    # Tranche 1 cash-flow concepts. repayments_of_debt comes via the LTD-only subset
+    # fallback -- AAPL repays commercial paper under a separate untagged-aggregate line,
+    # the documented debt_current-class undercount caveat in action.
+    assert by_concept["change_in_cash"] == 5991000000
+    assert by_concept["proceeds_from_long_term_debt"] == 4481000000
+    repay = next(line for line in cashflow.lines if line.canonical_concept == "repayments_of_debt")
+    assert repay.value == 10932000000
+    assert repay.source_tag == "RepaymentsOfLongTermDebt"
 
 
 def test_wmt_balance_sheet_has_retailer_shaped_gaps():
@@ -245,6 +304,28 @@ def test_wmt_balance_sheet_has_retailer_shaped_gaps():
     assert by_concept["accounts_payable"] == 63061000000
     assert by_concept["retained_earnings"] == 104774000000
     assert by_concept["operating_lease_liabilities"] == 15572000000
+
+    # Tranche 1: the equity components sum EXACTLY to parent stockholders' equity
+    # (common stock + APIC + retained earnings + AOCI), with NCI as its own line --
+    # the filing's own arithmetic verifying four new concepts at once. prepaid comes
+    # via the combined prepaid+other-assets fallback (WMT doesn't tag the narrow line).
+    assert by_concept["common_stock_value"] == 797000000
+    assert by_concept["additional_paid_in_capital"] == 6816000000
+    assert by_concept["accumulated_oci"] == -12770000000
+    assert (
+        by_concept["common_stock_value"]
+        + by_concept["additional_paid_in_capital"]
+        + by_concept["retained_earnings"]
+        + by_concept["accumulated_oci"]
+        == by_concept["stockholders_equity"]
+    )
+    assert by_concept["noncontrolling_interest"] == 6270000000
+    assert by_concept["ppe_gross"] - by_concept["accumulated_depreciation"] == by_concept["ppe_net"]
+    assert by_concept["liabilities_and_equity"] == by_concept["total_assets"]
+    assert by_concept["accrued_liabilities"] == 31187000000
+    prepaid = next(line for line in balance.lines if line.canonical_concept == "prepaid_expenses")
+    assert prepaid.value == 4124000000
+    assert prepaid.source_tag == "PrepaidExpenseAndOtherAssetsCurrent"
     # Retailer-shaped absences: no contract-liability (deferred revenue) or marketable-
     # securities tags at all. intangible_assets is deliberately absent too -- WMT tags
     # only the indefinite-lived piece, which we don't serve as if it were the whole
@@ -277,6 +358,13 @@ def test_wmt_balance_sheet_has_retailer_shaped_gaps():
     assert by_concept["change_in_payables"] == 1611000000
     assert by_concept["change_in_inventories"] == 1443000000
     assert by_tag["change_in_inventories"] == "IncreaseDecreaseInRetailRelatedInventories"
+
+    # Tranche 1 cash-flow concepts.
+    assert by_concept["change_in_accrued_liabilities"] == 1607000000
+    assert by_concept["acquisitions_net_of_cash"] == 53000000
+    assert by_concept["interest_paid"] == 2793000000
+    assert by_concept["effect_of_exchange_rate_on_cash"] == 123000000
+    assert by_concept["change_in_cash"] == 1785000000
 
 
 def test_jpm_bank_balance_sheet_has_structural_gaps():
@@ -329,6 +417,23 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
     ):
         assert concept not in by_concept
 
+    # Tranche 1: even a bank's balance sheet balances -- and APIC comes via the
+    # common-stock-scoped fallback (JPM doesn't tag the bare AdditionalPaidInCapital).
+    assert by_concept["liabilities_and_equity"] == by_concept["total_assets"]
+    assert by_concept["cash_and_restricted_cash"] == 343338000000
+    assert by_concept["operating_lease_right_of_use_asset"] == 8901000000
+    assert by_concept["common_stock_value"] == 4105000000
+    apic = next(
+        line for line in balance.lines if line.canonical_concept == "additional_paid_in_capital"
+    )
+    assert apic.value == 91114000000
+    assert apic.source_tag == "AdditionalPaidInCapitalCommonStock"
+    assert by_concept["accumulated_oci"] == -4290000000
+    # Banks have no classified current/noncurrent sections -- the new classified
+    # concepts stay absent for the same structural reason as the tier-2 ones above.
+    for concept in ("prepaid_expenses", "accrued_liabilities", "other_assets_current"):
+        assert concept not in by_concept
+
     cashflow = build_statement(facts, 19617, "cashflow", *latest_fy)
     by_concept = {line.canonical_concept: line.value for line in cashflow.lines}
     assert by_concept["cash_from_operations"] == -147782000000
@@ -344,3 +449,8 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
     assert by_concept["income_taxes_paid"] == 5309000000
     for concept in ("change_in_receivables", "change_in_payables", "change_in_inventories"):
         assert concept not in by_concept
+
+    # Tranche 1: interest_paid (net) sits plausibly beside the accrual
+    # interest_expense (97.898B) asserted on the income statement above.
+    assert by_concept["interest_paid"] == 96436000000
+    assert by_concept["change_in_cash"] == -125979000000

@@ -133,6 +133,13 @@ Operator decisions that supersede the per-tag framing of Phase 2's "what next":
   ingested filers — worked from `docs/tag_glossary.jsonl` (meanings, not tag names),
   verified per-concept, shipped in tranches. Single-tag non-face elements stay
   tag-level. Est. ~80–120 new concepts from the current store.
+  **Tranche 1 SHIPPED (2026-07-16):** 46 new concepts + 10 candidate extensions (95
+  concepts total, 143 tags mapped), every multi-tag cluster verified store-wide for
+  coexistence conflicts; one cluster REJECTED by that verification (the
+  Depreciation/DepreciationAndAmortization family — see DATA_MODEL.md's tranche-1
+  worked example, including the other exclusions). Remaining ≥25%-coverage unmapped
+  tags are mostly footnote decomposition (SBC option detail, maturity schedules, tax
+  reconciliation) — deliberately tag-level; further tranches demand-driven.
 
 ## Phase 3 — Dimensional data (segments/geography) — SPIKE FIRST, then decide
 

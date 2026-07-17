@@ -138,10 +138,16 @@ def test_aapl_fixture_full_view():
     rev = by_tag["RevenueFromContractWithCustomerExcludingAssessedTax"]
     assert rev.value == 416161000000
     assert rev.canonical_concept == "revenue"
-    # ...and an unmapped tag (total deferred revenue) is served right alongside it.
+    # ...total deferred revenue cross-links to the tranche-1 concept it now feeds...
     total_dr = by_tag["ContractWithCustomerLiability"]
     assert total_dr.value == 13700000000
-    assert total_dr.canonical_concept is None
+    assert total_dr.canonical_concept == "deferred_revenue"
+    # ...and a genuinely unmapped tag (a parenthetical share count -- single-tag
+    # non-face elements stay tag-level by design) is served right alongside.
+    issued = by_tag["CommonStockSharesIssued"]
+    assert issued.value == 14773260000
+    assert issued.unit == "shares"
+    assert issued.canonical_concept is None
     # Every non-dei row sits in the primary column -- no comparative leakage anywhere.
     assert all(
         (r.period_end or r.instant) == "2025-09-27"

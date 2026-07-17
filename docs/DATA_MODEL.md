@@ -208,6 +208,60 @@ flagged):**
   balance sheet — the intangibles line reappears in FY2026 10-Qs only). Absent is
   correct, not a regression.
 
+**Worked example, cluster-driven tranche 1 (2026-07-16, ROADMAP_DATA_DEPTH Phase 2b):**
+46 new concepts + 10 candidate extensions, curated from `docs/tag_glossary.jsonl` by
+MEANING (FASB definitions), each cluster verified store-wide before inclusion: for every
+proposed multi-tag concept we measured, across all fully-ingested filers' latest FY, how
+often candidate tags coexist in one filer's primary column with materially different
+values. Zero-or-explained conflicts ⇒ genuine variants; systematic conflicts ⇒ different
+quantities, rejected.
+
+- *Extensions to existing concepts:* `eps_basic`/`eps_diluted` and
+  `shares_basic`/`shares_diluted` gained the combined `...BasicAndDiluted` tags (what
+  small filers tag INSTEAD of separate lines; both concepts serving the same value there
+  is what "basic and diluted" means); `cash_from_*` gained the `ContinuingOperations`
+  variants (aggregate first — they only differ when discontinued ops exist);
+  `income_taxes_paid` gained gross `IncomeTaxesPaid`; `deferred_revenue_current` gained
+  legacy `DeferredRevenueCurrent`; `cash_and_equivalents` gained bare `Cash` as a
+  last-resort fallback (many small filers' entire cash line; narrower where both exist —
+  5/65 filers — which is why it's last).
+- *New income concepts:* interest_income, nonoperating_income_expense (aggregate first,
+  component fallback), net_income_noncontrolling, other_comprehensive_income (**note the
+  tag asymmetry:** for OCI the bare tag is including-NCI and the parent share is the
+  suffixed variant — the reverse of comprehensive_income; verified against WMT),
+  current/deferred_income_tax_expense, effective_tax_rate (unit `pure`),
+  amortization_of_intangibles, goodwill_impairment, asset_impairment,
+  operating_lease_cost (operating-scoped variants only; aggregate `LeaseCost` excluded).
+- *New balance concepts:* prepaid_expenses, allowance_for_doubtful_accounts,
+  other_assets_current/noncurrent, assets_noncurrent, operating_lease_right_of_use_asset,
+  ppe_gross, accumulated_depreciation, cash_and_restricted_cash, accrued_liabilities,
+  accounts_payable_and_accrued_liabilities (the combined line as its OWN precisely-named
+  concept — never blended into accounts_payable or accrued_liabilities),
+  other_liabilities_current/noncurrent, liabilities_noncurrent, deferred_revenue (the
+  TOTAL, completing the current-portion decision), operating_lease_liabilities_current/
+  noncurrent (the split as precisely-scoped concepts beside the total),
+  finance_lease_liabilities (total only), common/preferred_stock_value,
+  additional_paid_in_capital, accumulated_oci, noncontrolling_interest,
+  liabilities_and_equity (notably the only aggregate WMT tags — its missing
+  total_liabilities stays a gap, but users can now derive).
+- *New cash-flow concepts:* interest_paid (net first, gross fallback),
+  acquisitions_net_of_cash, proceeds_from_stock_issuance, proceeds_from_long_term_debt,
+  repayments_of_debt (aggregate first, LTD-only subset fallback),
+  effect_of_exchange_rate_on_cash and change_in_cash (modern ASU-2016-18 tags first,
+  legacy fallbacks; the Excluding-FX variant is a different quantity, not a candidate),
+  and four more working-capital deltas: change_in_prepaid_expenses,
+  change_in_accrued_liabilities, change_in_payables_and_accrued (combined-line twin),
+  change_in_deferred_revenue.
+- **Rejected by verification (don't re-add without deeper research):** extending
+  `depreciation_amortization` with `Depreciation` / `DepreciationAndAmortization` —
+  24/53 filers tag them alongside the existing candidates with materially different
+  values *in inconsistent directions* (one filer's `DepreciationAndAmortization` is 48×
+  its `DepreciationDepletionAndAmortization`), so they are not ordered variants of one
+  quantity. Also excluded: `OtherAccruedLiabilitiesCurrent` (a residual among itemized
+  accruals, not the aggregate), `LeaseCost` (folds finance-lease cost into an
+  operating-lease concept), proceeds-from-debt aggregation across instrument types (no
+  true aggregate tag; pick-one would undercount too sharply).
+
 - **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) — now
   ingested** (was previously dead in practice). The ingest path fetches `dei` alongside
   `us-gaap` via `sec/companyfacts.INGEST_TAXONOMIES = ("us-gaap", "dei")` and the
