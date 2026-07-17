@@ -15,7 +15,8 @@ Checks, in order:
   5. A rapid burst of requests on the fresh key against a cheap gated endpoint
      (/v1/usage) -> at least one 429 (free tier is 5 req/s -- auth/tiers.py)
   6. GET  /docs                                                 -> 200 (Swagger UI)
-  7. GET  /, /explorer, /guide, /coverage                       -> 200 (static pages)
+  7. GET  /explorer                                             -> 301 to the company hub
+  8. GET  /, /company/AAPL, /guide, /coverage                   -> 200 (static pages)
 
 Exit code 0 if every check passes, 1 otherwise. Prints one PASS/FAIL line per check so
 a human (or a cron/CI wrapper) can scan it quickly.
@@ -48,7 +49,7 @@ import httpx
 
 UNKNOWN_TICKER = "ZZZZNOTATICKER"
 GATED_CHECK_SYMBOL = "AAPL"
-STATIC_PAGES = ["/", "/explorer", "/guide", "/coverage"]
+STATIC_PAGES = ["/", "/company/AAPL", "/guide", "/coverage"]
 
 
 class Result:
@@ -166,6 +167,20 @@ def check_docs(client: httpx.Client) -> Result:
     return r.failed(f"status={resp.status_code}")
 
 
+def check_explorer_redirect(client: httpx.Client) -> Result:
+    # The Data Explorer merged into the company hub (2026-07-17): /explorer must
+    # 301 old deep links into /company/{symbol}?tab=statements&stmt=... form.
+    r = Result("GET /explorer -> 301 to the company hub")
+    try:
+        resp = client.get("/explorer", params={"symbol": "AAPL", "statement": "balance"})
+    except httpx.HTTPError as e:
+        return r.failed(f"request error: {e}")
+    loc = resp.headers.get("location", "")
+    if resp.status_code == 301 and loc.startswith("/company/AAPL"):
+        return r.passed()
+    return r.failed(f"status={resp.status_code} location={loc!r}")
+
+
 def check_static_pages(client: httpx.Client) -> list[Result]:
     results = []
     for path in STATIC_PAGES:
@@ -225,6 +240,7 @@ def main(argv: list[str] | None = None) -> int:
 
         results.append(check_unknown_ticker_404(client))
         results.append(check_docs(client))
+        results.append(check_explorer_redirect(client))
         results.extend(check_static_pages(client))
 
     print()
