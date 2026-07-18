@@ -7,14 +7,21 @@ standalone infographic template is the only page that still imports Plot from a 
 |---|---|---|---|
 | `d3.min.js` | `d3` | 7.9.0 | ISC |
 | `plot.umd.min.js` | `@observablehq/plot` | 0.6.17 | ISC |
-| `us-states.geojson` | US state boundaries (50 + DC + PR), from US Census TIGER via PublicaMundi/MappingAPI | — | Public domain (US Census) |
+| `us-states.geojson` | US state boundaries (50 + DC), from **us-atlas** `states-10m` (US Census TIGER, topology-validated TopoJSON) | us-atlas@3 | Public domain (US Census) |
 
-`us-states.geojson` is a `FeatureCollection`; each feature carries only
-`properties.name` (full state name) — the extraneous `density` field the upstream file
-ships was stripped. It's fetched same-origin at chart-build time by
-`ClearyFi.holderGeographyChart` and rendered with Plot's built-in `albers-usa`
-projection (which draws the 50 states + DC; territories like PR fall outside the drawn
-area, consistent with `normalize/geography.py` bucketing them as "other").
+`us-states.geojson` is a `FeatureCollection` of 50 states + DC; each feature carries only
+`properties.name` (full state name), which `ClearyFi.holderGeographyChart` joins on. It's
+fetched same-origin at chart-build time and rendered with Plot's built-in `albers-usa`
+projection.
+
+**Why us-atlas (not a hand-rolled states file):** TopoJSON stores shared borders as arcs, so
+it is topology-validated — degenerate/zero-area rings can't slip in. An earlier
+PublicaMundi-derived file had a malformed Virginia ring (4 collinear points) that
+`albers-usa` projected across the entire map as a solid fill; TopoJSON eliminates that class
+of bug. Regenerated from `us-atlas@3` via `topojson-client` (feature extraction) +
+`topojson-simplify` and 3-decimal coordinate rounding to keep the assets small, then
+validated: every feature projects to a sane bounding box, no degenerate rings, all 51 names
+matching `STATE_CODE_TO_NAME`.
 
 Load order matters: the Plot UMD build does **not** bundle d3 — it reads the global
 `d3`, so `d3.min.js` must be included first. Together they expose `window.Plot`.

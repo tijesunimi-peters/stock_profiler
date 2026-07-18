@@ -2252,14 +2252,20 @@
           // Single-hue sequential scheme (randomized, warm), NOT diverging -- count is a
           // magnitude, never a good/bad verdict (STYLE_GUIDE §9.2 holds even under the palette
           // override). Zero-filer states are drawn neutral by the base layer below.
+          //
+          // SQRT, not linear: real filer counts are heavily right-skewed (a few financial-center
+          // states dwarf the rest -- e.g. AAPL 2026-Q1: NY ~835 vs median ~89, and ~half the
+          // states below 10% of the max), so a linear ramp crushes most states into the palest
+          // band and they read as indistinguishable. A sqrt scale spreads the low/mid range so
+          // states are actually differentiable, while staying a monotonic magnitude encoding.
           color: {
-            type: "linear", scheme: pickSequentialScheme(), domain: [0, maxCount || 1],
+            type: "sqrt", scheme: pickSequentialScheme(), domain: [0, maxCount || 1],
             legend: true, label: "Filers headquartered",
           },
           marks: [
-            // Base layer: every state neutral, so a zero-filer state is visibly empty, not a
-            // faint accent (which would read as "a few filers").
-            window.Plot.geo(features, { fill: cssVar("--bg-tint", "#efe9de"), stroke: cssVar("--border-strong", "#d8d1c4"), strokeWidth: 0.5 }),
+            // Base layer: state OUTLINES only (fill:none) -- a no-filer state shows as paper
+            // with just its border, never a solid fill. Filled states come from the top layer.
+            window.Plot.geo(features, { fill: "none", stroke: cssVar("--border-strong", "#d8d1c4"), strokeWidth: 0.5 }),
             // Top layer: only states with filers, colored by count through the scale above.
             window.Plot.geo(withFilers, {
               fill: function (d) { return countByName[d.properties.name]; },
