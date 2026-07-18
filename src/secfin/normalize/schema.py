@@ -194,6 +194,13 @@ class HoldingsSnapshot(BaseModel):
     # Roster of co-filing managers from the cover page (empty if this manager filed
     # alone). See InstitutionalHolding.other_managers for per-holding attribution.
     other_managers: list[OtherManager13F] = Field(default_factory=list)
+    # The filing manager's reported business `stateOrCountry` code from the cover page,
+    # stored raw (a US state code, or a country code for a foreign filer; None when the
+    # cover page didn't carry it, e.g. a pre-location-column cached snapshot). This is the
+    # management entity's registered business address -- NOT capital origin, NOT the
+    # issuer's location. Classification (US state / foreign / unknown) happens at the
+    # serve/UI edge via normalize.US_STATE_CODES. See sec/institutional.py.
+    filing_manager_location: str | None = None
 
 
 class HoldingDelta(BaseModel):
@@ -287,6 +294,11 @@ class IssuerHolder(BaseModel):
     shares: float | None = None
     value: float | None = None
     other_managers: list[int] = Field(default_factory=list)
+    # The holding manager's reported business `stateOrCountry` (raw, from the snapshot's
+    # cover page -- see HoldingsSnapshot.filing_manager_location). Carried onto the
+    # issuer-centric row so the holder-geography endpoint can bucket holders by location.
+    # None for holders whose snapshot predates the location column (an honest "unknown").
+    location: str | None = None
 
 
 # --- Fundamental metrics (normalize/metrics.py) ------------------------------------

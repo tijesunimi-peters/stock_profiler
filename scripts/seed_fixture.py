@@ -164,17 +164,19 @@ def _seed_beneficial(db_path: str) -> None:
 # Plausible but NOT real positions.
 _HOLDINGS_QUARTERS = ["2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31"]  # newest last;
 # the views default to newest, and it's unchanged from before this series was extended.
-# (manager_cik, name, {quarter: AAPL shares}); the second (Ally) line is a fixed smaller position.
+# (manager_cik, name, location, {quarter: AAPL shares}); the second (Ally) line is a fixed
+# smaller position. `location` is the filer's real HQ stateOrCountry code (Omaha NE / Malvern
+# PA / Boston MA), so the demo holder-geography choropleth colors real states.
 _HOLDINGS_MANAGERS = [
-    (1067983, "BERKSHIRE HATHAWAY INC", {
+    (1067983, "BERKSHIRE HATHAWAY INC", "NE", {
         "2025-06-30": 320_000_000, "2025-09-30": 310_000_000,
         "2025-12-31": 300_000_000, "2026-03-31": 280_000_000,
     }),
-    (102909, "VANGUARD GROUP INC", {
+    (102909, "VANGUARD GROUP INC", "PA", {
         "2025-06-30": 1_180_000_000, "2025-09-30": 1_210_000_000,
         "2025-12-31": 1_250_000_000, "2026-03-31": 1_310_000_000,
     }),
-    (93751, "STATE STREET CORP", {
+    (93751, "STATE STREET CORP", "MA", {
         "2025-06-30": 540_000_000, "2025-09-30": 565_000_000,
         "2025-12-31": 590_000_000, "2026-03-31": 640_000_000,
     }),
@@ -222,7 +224,7 @@ def _seed_holdings(db_path: str) -> None:
     repo = SQLiteHoldingsSnapshotRepository(db_path)
     seeded = 0
     try:
-        for i, (mcik, name, aapl_by_q) in enumerate(_HOLDINGS_MANAGERS):
+        for i, (mcik, name, location, aapl_by_q) in enumerate(_HOLDINGS_MANAGERS):
             ally_shares = float(5_000_000 + i * 1_000_000)
             for qi, quarter in enumerate(_HOLDINGS_QUARTERS):
                 aapl_shares = float(aapl_by_q[quarter])
@@ -275,10 +277,49 @@ def _seed_holdings(db_path: str) -> None:
                         is_amendment=False,
                         holdings=holdings,
                         other_managers=other,
+                        filing_manager_location=location,
                     )
                 )
                 seeded += 1
         print(f"seeded 13F holdings: {seeded} snapshots across {len(_HOLDINGS_MANAGERS)} managers")
+    finally:
+        repo.close()
+
+
+# A second issuer (JPM -- which HAS companyfacts, so its company page renders cleanly) held by
+# one manager with NO reported location. This is the DEFAULT state for real 13F data before a
+# location backfill runs, and it's the regression guard for the holder-geography EMPTY STATE
+# (docs/delivery/institutional-tab-viz/4-qa.md round 3): with by_state empty, the choropleth must
+# show an honest "no locations to map yet" note + tallies, never a blank all-neutral US map.
+_JPM_CUSIP = "46625H100"
+_JPM_CIK = 19617
+
+
+def _seed_nolocation_holdings(db_path: str) -> None:
+    repo = SQLiteHoldingsSnapshotRepository(db_path)
+    try:
+        for qi, quarter in enumerate(("2025-12-31", "2026-03-31")):
+            shares = float(2_000_000 + qi * 250_000)
+            repo.upsert_snapshot(
+                HoldingsSnapshot(
+                    manager_cik=71,
+                    manager_name="NORTHLESS CAPITAL PARTNERS",
+                    report_period=quarter,
+                    filed=quarter,
+                    accession=f"0000000071-26-00000{qi}",
+                    is_amendment=False,
+                    filing_manager_location=None,  # the real default: no address ingested yet
+                    holdings=[
+                        InstitutionalHolding(
+                            cusip=_JPM_CUSIP,
+                            issuer_name="JPMORGAN CHASE & CO",
+                            shares=shares,
+                            value=shares * 200.0,
+                        )
+                    ],
+                )
+            )
+        print("seeded no-location 13F holder (JPM) for the geography empty-state guard")
     finally:
         repo.close()
 
@@ -376,6 +417,7 @@ def main() -> None:
     cusip = SQLiteCusipMapRepository(db_path)
     try:
         cusip.record_resolved("037833100", 320193, "APPLE INC")
+        cusip.record_resolved(_JPM_CUSIP, _JPM_CIK, "JPMORGAN CHASE & CO")
         cusip.record_unresolved("02005N100", "ALLY FINL INC")
     finally:
         cusip.close()
@@ -383,6 +425,7 @@ def main() -> None:
     _seed_insider(db_path)
     _seed_beneficial(db_path)
     _seed_holdings(db_path)
+    _seed_nolocation_holdings(db_path)
     _seed_sic(db_path)
     _seed_peer_ranks(db_path)
     _seed_api_key(db_path)

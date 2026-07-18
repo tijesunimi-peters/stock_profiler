@@ -139,6 +139,8 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    geography.py               # US_STATE_CODES + classify_location: bucket a 13F filer's raw
+                               #   stateOrCountry (state/other/unknown) for the holder choropleth
     screening.py                # SCREENABLE_CONCEPTS + frames<->RawFact reconciliation (M4)
     metrics.py                  # fundamental metrics over RawFact history -> MetricValue
                                #   (period_end-anchored, TTM/as-of, status+reason; R1-R8)
@@ -178,7 +180,8 @@ src/secfin/
   api/
     main.py                    # FastAPI app + wiring + upstream-SEC-error handlers
     routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
-                               #   insider, 13D/G, 13F manager + issuer-centric,
+                               #   insider, 13D/G, 13F manager + issuer-centric (holders,
+                               #   activity, holdings-series, holder-geography),
                                #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
     static/                    # server-rendered UI: index, company hub (absorbed the data
                                #   explorer, /explorer redirects there),

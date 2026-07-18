@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS holdings_snapshots (
     filed TEXT,
     accession TEXT NOT NULL DEFAULT '',
     is_amendment INTEGER NOT NULL DEFAULT 0,
+    -- The filing manager's reported business stateOrCountry (raw code). NULL for snapshots
+    -- ingested before this column existed -- surfaced as an honest "Location unknown"
+    -- bucket by the holder-geography endpoint, not backfilled here. See the migration in
+    -- __init__ and sec/institutional.parse_filing_manager_location.
+    filing_manager_location TEXT,
     PRIMARY KEY (manager_cik, report_period)
 );
 
@@ -65,13 +70,15 @@ CREATE TABLE IF NOT EXISTS holdings_other_managers (
 
 _UPSERT_SNAPSHOT_SQL = """
 INSERT INTO holdings_snapshots (
-    manager_cik, report_period, manager_name, filed, accession, is_amendment
-) VALUES (?, ?, ?, ?, ?, ?)
+    manager_cik, report_period, manager_name, filed, accession, is_amendment,
+    filing_manager_location
+) VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (manager_cik, report_period) DO UPDATE SET
     manager_name = excluded.manager_name,
     filed = excluded.filed,
     accession = excluded.accession,
-    is_amendment = excluded.is_amendment
+    is_amendment = excluded.is_amendment,
+    filing_manager_location = excluded.filing_manager_location
 """
 
 _INSERT_HOLDING_SQL = """
@@ -106,6 +113,19 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Idempotently bring an existing DB up to the current schema. SQLite's
+        `CREATE TABLE IF NOT EXISTS` never alters an existing table, so a column added
+        after a DB was first created has to be `ALTER TABLE ... ADD COLUMN`'d in here.
+        Guarded on `PRAGMA table_info` so a re-open (or a brand-new DB that already has
+        the column from `_SCHEMA`) is a no-op."""
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(holdings_snapshots)")}
+        if "filing_manager_location" not in cols:
+            self._conn.execute(
+                "ALTER TABLE holdings_snapshots ADD COLUMN filing_manager_location TEXT"
+            )
 
     def upsert_snapshot(self, snapshot: HoldingsSnapshot) -> None:
         self._conn.execute("BEGIN")
@@ -119,6 +139,7 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
                     snapshot.filed,
                     snapshot.accession or "",
                     1 if snapshot.is_amendment else 0,
+                    snapshot.filing_manager_location,
                 ),
             )
             # Replacing an existing snapshot's holdings wholesale (rather than
@@ -174,14 +195,14 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
 
     def get_snapshot(self, manager_cik: int, report_period: str) -> HoldingsSnapshot | None:
         cur = self._conn.execute(
-            "SELECT manager_name, filed, accession, is_amendment FROM holdings_snapshots "
-            "WHERE manager_cik = ? AND report_period = ?",
+            "SELECT manager_name, filed, accession, is_amendment, filing_manager_location "
+            "FROM holdings_snapshots WHERE manager_cik = ? AND report_period = ?",
             (manager_cik, report_period),
         )
         row = cur.fetchone()
         if row is None:
             return None
-        manager_name, filed, accession, is_amendment = row
+        manager_name, filed, accession, is_amendment, filing_manager_location = row
 
         cur = self._conn.execute(
             "SELECT cusip, issuer_name, title_of_class, value, shares, shares_or_principal, "
@@ -215,6 +236,7 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             is_amendment=bool(is_amendment),
             holdings=holdings,
             other_managers=other_managers,
+            filing_manager_location=filing_manager_location,
         )
 
     def cached_accession(self, manager_cik: int, report_period: str) -> str | None:
@@ -252,7 +274,7 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         placeholders = ",".join("?" for _ in cusips)
         cur = self._conn.execute(
             f"SELECT h.manager_cik, hs.manager_name, h.cusip, h.issuer_name, h.shares, "
-            f"h.value, h.other_managers "
+            f"h.value, h.other_managers, hs.filing_manager_location "
             f"FROM holdings h "
             f"JOIN holdings_snapshots hs "
             f"  ON h.manager_cik = hs.manager_cik AND h.report_period = hs.report_period "
@@ -269,9 +291,10 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
                 shares=shares,
                 value=value,
                 other_managers=_split_refs(other_managers),
+                location=location,
             )
-            for manager_cik, manager_name, cusip, issuer_name, shares, value, other_managers
-            in cur.fetchall()
+            for manager_cik, manager_name, cusip, issuer_name, shares, value, other_managers,
+            location in cur.fetchall()
         ]
 
     def close(self) -> None:

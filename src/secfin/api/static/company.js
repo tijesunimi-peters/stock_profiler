@@ -507,6 +507,8 @@
         // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
         mountHoldersChart(holders);
         mountHoldersTable(holders);
+        mountHoldingsSeries();
+        mountHolderGeography(period);
         mountActivityChart(period, fromPeriod, activity);
         mountDumbbellChart(period, fromPeriod, holders);
         mountInstActivityTable(period, fromPeriod, activity);
@@ -533,7 +535,28 @@
   function institutionalView(period, holders, activity, caveats) {
     return (
       institutionalStandingCaveat() +
-      holdersSection(period, holders) + activitySection(activity) + caveatsBlock(caveats)
+      holdersSection(period, holders) +
+      holdingsSeriesSection() + holderGeographySection() +
+      activitySection(activity) + caveatsBlock(caveats)
+    );
+  }
+
+  // Phase 1 institutional viz: (1) reported shares stacked over recent quarters (accumulation),
+  // (2) a choropleth of where the filers holding this issuer are headquartered. Both are
+  // placeholders here; the Plot nodes mount post-innerHTML (STYLE_GUIDE §6), and each fetches
+  // its own data so a failure degrades to an empty note without breaking the tab -- the same
+  // self-fetching pattern as mountDumbbellChart.
+  function holdingsSeriesSection() {
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">Reported shares over recent quarters</h3>' +
+      '<div id="holdings-series-mount"></div>'
+    );
+  }
+
+  function holderGeographySection() {
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">Where the filers holding this company are based</h3>' +
+      '<div id="holder-geography-mount"></div>'
     );
   }
 
@@ -627,6 +650,58 @@
         copy: "These holders carry no usable value field, so composition can't be shown as a share of value.",
       });
     }
+  }
+
+  // Accumulation chart: reported shares per filer stacked over the recent ingested quarters
+  // (issuer axis, GET /institutional-holdings-series). Period-independent (spans quarters), so
+  // it doesn't take the selected `period`. Skips silently on failure (enhancement, not
+  // critical path); shows an honest "not enough quarters" note when there's <2 quarters to
+  // chart rather than a misleading one-bar "trend".
+  function mountHoldingsSeries() {
+    var mount = $("holdings-series-mount");
+    if (!mount) return;
+    P.api("/companies/" + encodeURIComponent(symbol) + "/institutional-holdings-series").then(
+      function (res) {
+        var node = P.holdingsSeriesChart(res.series || [], res.periods || [], {
+          width: P.measuredWidth(mount, 720),
+        });
+        if (node) {
+          mount.appendChild(node);
+        } else {
+          mount.innerHTML = P.states.empty({
+            title: "Not enough quarters to chart",
+            copy: "Fewer than two 13F quarters are ingested for this issuer, so there's no " +
+              "multi-quarter accumulation to show yet. Read as coverage, not zero ownership.",
+          });
+        }
+      },
+      function () { /* enhancement chart -- skip on failure, never break the tab */ }
+    );
+  }
+
+  // Choropleth of where the filers holding this issuer are HEADQUARTERED (GET
+  // /institutional-holder-geography for the selected quarter). Skips silently on failure.
+  function mountHolderGeography(period) {
+    var mount = $("holder-geography-mount");
+    if (!mount) return;
+    P.api(
+      "/companies/" + encodeURIComponent(symbol) +
+      "/institutional-holder-geography?period=" + encodeURIComponent(period)
+    ).then(
+      function (res) {
+        var node = P.holderGeographyChart(res, { width: P.measuredWidth(mount, 720) });
+        if (node) {
+          mount.appendChild(node);
+        } else {
+          mount.innerHTML = P.states.empty({
+            title: "No holder locations for this quarter",
+            copy: "No manager reported holding this issuer for the selected quarter, so there " +
+              "are no filer locations to map.",
+          });
+        }
+      },
+      function () { /* enhancement chart -- skip on failure, never break the tab */ }
+    );
   }
 
   function activitySection(activity) {

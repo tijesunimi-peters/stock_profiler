@@ -470,6 +470,29 @@
     };
   }
 
+  // Chart color palettes: hand the choice to Observable Plot's built-in schemes, picked at
+  // RANDOM once per page load (operator decision 2026-07-18 -- STYLE_GUIDE §6/§10 updated to
+  // match). Memoized at module scope so a series keeps its color across the tab's re-renders
+  // within a session (color follows the entity, never repainted on a filter change); a page
+  // reload reshuffles to a different complementary palette. Categorical schemes for multi-series
+  // identity; single-hue sequential schemes (never diverging -- magnitude, not a good/bad
+  // verdict) for count choropleths.
+  var CATEGORICAL_SCHEMES = ["observable10", "tableau10", "category10", "set2", "dark2", "paired"];
+  var SEQUENTIAL_SCHEMES = ["oranges", "reds", "ylorbr"];
+  var _catScheme = null, _seqScheme = null;
+  function pickCategoricalScheme() {
+    if (_catScheme === null) {
+      _catScheme = CATEGORICAL_SCHEMES[Math.floor(Math.random() * CATEGORICAL_SCHEMES.length)];
+    }
+    return _catScheme;
+  }
+  function pickSequentialScheme() {
+    if (_seqScheme === null) {
+      _seqScheme = SEQUENTIAL_SCHEMES[Math.floor(Math.random() * SEQUENTIAL_SCHEMES.length)];
+    }
+    return _seqScheme;
+  }
+
   // Interpolate between two "#rrggbb" colors at t in [0,1] -- used ONLY to fade the single
   // accent by rank order; never introduces a second hue or a judgment color.
   function mixHex(a, b, t) {
@@ -1968,6 +1991,300 @@
     return root;
   }
 
+  // ---------- Phase 1 institutional-viz: accumulation series + holder choropleth ----------
+  //
+  // Same chrome as the Phase-5 Plot family above (vendored Plot only, chartCard() wrapper,
+  // honesty caption, width from measuredWidth() at the mount) -- but these two are the
+  // sanctioned exception to the single-accent rule (operator decision 2026-07-18, STYLE_GUIDE
+  // §6/§10): the stacked series uses a randomized multi-hue CATEGORICAL scheme (distinct filers
+  // = distinct identities), and the choropleth a randomized single-hue SEQUENTIAL scheme
+  // (magnitude, never diverging/verdict). See pickCategoricalScheme / pickSequentialScheme.
+
+  // A 13F quarter-end ISO date -> a compact axis tick, e.g. "2024-06-30" -> "2024 Q2".
+  function quarterTick(iso) {
+    if (!iso) return "";
+    var parts = String(iso).split("-");
+    var q = { "03": "Q1", "06": "Q2", "09": "Q3", "12": "Q4" }[parts[1]] || parts[1];
+    return parts[0] + " " + q;
+  }
+
+  // Accumulation chart: reported quarter-end SHARES held per filer, stacked over recent
+  // quarters. `series`: [{manager_cik, manager_name, cusip, issuer_name, points:[{period,
+  // shares, value}]}] exactly as GET /companies/{symbol}/institutional-holdings-series returns
+  // it; `periods`: that endpoint's newest-first quarter axis. Shares (not value) because the
+  // 13F value unit changed thousands->whole-dollars ~2023 -- shares are the unit-stable series
+  // (same reasoning as dumbbellChart's ratio and valueLineChart's exclusion). Top-N filers by
+  // their newest reported shares are drawn individually; the rest pool into "Other". A filer
+  // absent in a quarter simply has NO segment there (an honest gap: not reported/ingested that
+  // quarter, never a zero-height "exited" bar). Returns a DOM node, or null when there's
+  // nothing to chart OR fewer than two quarters (a lone bar isn't an accumulation trend -- the
+  // caller shows a "not enough quarters" empty state instead). opts: { topN (7), width }.
+  function holdingsSeriesChart(series, periods, opts) {
+    if (!window.Plot) return null;
+    opts = opts || {};
+    var width = opts.width || 720;
+    // top-N default 7 so top-7 + "Other" = 8 stacked series, which is <= the SMALLEST
+    // categorical scheme (dark2/set2 have 8 colors); a d3 ordinal scale with more entries than
+    // scheme colors would recycle and repaint two series the same hue. Raising topN past 7
+    // needs schemes with more colors (observable10/tableau10/category10 = 10, paired = 12).
+    var topN = opts.topN || 7;
+    series = (series || []).filter(function (s) {
+      return (s.points || []).some(function (p) { return typeof p.shares === "number" && p.shares > 0; });
+    });
+    periods = (periods || []).slice();
+    if (!series.length || periods.length < 2) return null;
+
+    var periodsAsc = periods.slice().sort(); // ISO dates sort lexicographically = chronological
+    var t = plotTokens();
+
+    function newestShares(s) {
+      var best = 0, bestPeriod = null;
+      (s.points || []).forEach(function (p) {
+        if (typeof p.shares !== "number") return;
+        if (bestPeriod === null || p.period > bestPeriod) { bestPeriod = p.period; best = p.shares; }
+      });
+      return best;
+    }
+    var ranked = series.slice().sort(function (a, b) { return newestShares(b) - newestShares(a); });
+    var top = ranked.slice(0, topN);
+    var rest = ranked.slice(topN);
+
+    // Disambiguate two share-classes of the same manager (or same-named managers) by cusip,
+    // same rule as compositionBars/diff_holders -- never silently pool distinct instruments.
+    var nameCounts = {};
+    top.forEach(function (s) {
+      var nm = s.manager_name || ("CIK " + s.manager_cik);
+      nameCounts[nm] = (nameCounts[nm] || 0) + 1;
+    });
+    function seriesLabel(s) {
+      var nm = s.manager_name || ("CIK " + s.manager_cik);
+      return nameCounts[nm] > 1 ? nm + " (" + s.cusip + ")" : nm;
+    }
+
+    var OTHER = "Other filers";
+    var rows = [];
+    top.forEach(function (s) {
+      var label = seriesLabel(s);
+      (s.points || []).forEach(function (p) {
+        if (typeof p.shares === "number" && p.shares > 0) {
+          rows.push({ period: quarterTick(p.period), label: label, shares: p.shares });
+        }
+      });
+    });
+    if (rest.length) {
+      var otherByPeriod = {};
+      rest.forEach(function (s) {
+        (s.points || []).forEach(function (p) {
+          if (typeof p.shares === "number" && p.shares > 0) {
+            otherByPeriod[p.period] = (otherByPeriod[p.period] || 0) + p.shares;
+          }
+        });
+      });
+      Object.keys(otherByPeriod).forEach(function (period) {
+        rows.push({ period: quarterTick(period), label: OTHER, shares: otherByPeriod[period] });
+      });
+    }
+    if (!rows.length) return null;
+
+    // Stack/legend order: top filers by newest shares, "Other" pinned last. Colors come from a
+    // randomized Observable Plot categorical scheme (pickCategoricalScheme) -- distinct hues per
+    // filer (identity, not magnitude). A 1px surface-colored stroke separates stacked segments
+    // (dataviz spacer rule), so adjacent fills never bleed together.
+    var domain = top.map(seriesLabel);
+    if (rest.length) domain.push(OTHER);
+    var segStroke = cssVar("--bg-card", "#fdfbf7");
+
+    var plot = window.Plot.plot({
+      width: width,
+      height: Math.max(240, Math.min(420, width * 0.5)),
+      marginLeft: 64,
+      marginTop: 12,
+      marginBottom: 34,
+      style: { background: "transparent", fontFamily: t.fontMono, fontSize: 10.5, color: t.inkSoft, overflow: "visible" },
+      x: { domain: periodsAsc.map(quarterTick), label: null, tickSize: 0 },
+      y: { grid: true, label: "Reported shares", labelAnchor: "top", tickFormat: shares },
+      color: { domain: domain, scheme: pickCategoricalScheme(), legend: true },
+      marks: [
+        window.Plot.barY(rows, {
+          x: "period", y: "shares", fill: "label", order: domain,
+          stroke: segStroke, strokeWidth: 1,
+          channels: { Filer: "label", Shares: "shares" },
+          tip: { format: { x: true, y: false, fill: false, Filer: true, Shares: function (v) { return shares(v); } } },
+        }),
+        window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.6 }),
+      ],
+    });
+
+    var card = chartCard("Reported shares held over recent quarters");
+    card.body.appendChild(plot);
+    card.caption(
+      "Reported quarter-end SHARES held by the top " + top.length + " filer" +
+      (top.length === 1 ? "" : "s") + " each quarter" + (rest.length ? ", others pooled" : "") +
+      ". Shares, not dollar value — the 13F value unit changed (thousands → whole dollars, " +
+      "~2023), so shares are the unit-stable cross-quarter series. A filer with no segment in a " +
+      "quarter was not reported/ingested that quarter — NOT a confirmed exit; a shorter total " +
+      "bar can reflect un-ingested filers, not only real reductions. Quarter-over-quarter change " +
+      "is a DERIVED inference, never reported trades."
+    );
+    return card.root;
+  }
+
+  // US-states GeoJSON is vendored (static/vendor/us-states.geojson) and fetched same-origin,
+  // ONCE, then memoized -- never a CDN/chart-lib load (STYLE_GUIDE §10). Plot's built-in
+  // "albers-usa" projection draws the 50 states + DC (territories fall outside it, matching
+  // normalize/geography.py's "other" bucket).
+  var _usStatesGeo = null;
+  function loadUsStates() {
+    if (_usStatesGeo) return Promise.resolve(_usStatesGeo);
+    return fetch("/static/vendor/us-states.geojson", { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("geojson " + r.status); return r.json(); })
+      .then(function (g) { _usStatesGeo = g; return g; });
+  }
+
+  // 2-letter code -> the full state name the vendored GeoJSON joins on (properties.name).
+  var STATE_CODE_TO_NAME = {
+    AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+    CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+    HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas",
+    KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland", MA: "Massachusetts",
+    MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri", MT: "Montana",
+    NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico",
+    NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio", OK: "Oklahoma",
+    OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+    SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+    VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+    DC: "District of Columbia",
+  };
+
+  // Choropleth of where the 13F filers holding a company are HEADQUARTERED. `geo`:
+  // { by_state:[{state, filer_count, value}], outside_states:{filer_count, value},
+  // unknown:{filer_count, value} } from GET /companies/{symbol}/institutional-holder-geography.
+  // Color intensity = filer count per state (randomized single-hue sequential scheme -- a
+  // magnitude/position, never a good/bad verdict). Zero-filer states render neutral (NOT the
+  // scheme's low end), so "no filers" reads distinctly from "few filers". The off-map
+  // (foreign/territory) and unknown tallies always render as
+  // chips beside the map -- never dropped. When NO holder has a mappable US-state address (the
+  // default until a location backfill runs), it shows an honest empty state + tallies instead of
+  // a blank all-neutral map. Returns a DOM node (fills the map async once the geojson resolves),
+  // or null only when there is nothing at all to show. opts: { width }.
+  function holderGeographyChart(geo, opts) {
+    if (!window.Plot) return null;
+    opts = opts || {};
+    var width = opts.width || 720;
+    geo = geo || {};
+    var byState = geo.by_state || [];
+    var outside = geo.outside_states || { filer_count: 0, value: 0 };
+    var unknown = geo.unknown || { filer_count: 0, value: 0 };
+    if (!byState.length && !outside.filer_count && !unknown.filer_count) return null;
+
+    var countByName = {};
+    var maxCount = 0;
+    byState.forEach(function (s) {
+      var name = STATE_CODE_TO_NAME[s.state];
+      if (name) { countByName[name] = s.filer_count; maxCount = Math.max(maxCount, s.filer_count); }
+    });
+
+    var card = chartCard("Where the 13F filers holding this company are based");
+
+    // Off-map + unknown tallies -- always shown so foreign/territory/unknown filers are never
+    // silently dropped (an honest coverage statement, not a zero). Shared by the map state and
+    // the no-mappable-location empty state below.
+    function tallyChipsHtml() {
+      return (
+        '<div class="geo-tallies">' +
+        '<span class="geo-tally"><span class="geo-tally-label">Outside the 50 states &amp; DC</span>' +
+        '<span class="geo-tally-value">' + esc(String(outside.filer_count)) + " filer" +
+        (outside.filer_count === 1 ? "" : "s") + "</span></span>" +
+        '<span class="geo-tally"><span class="geo-tally-label">Location unknown</span>' +
+        '<span class="geo-tally-value">' + esc(String(unknown.filer_count)) + " filer" +
+        (unknown.filer_count === 1 ? "" : "s") + "</span></span>" +
+        "</div>"
+      );
+    }
+
+    // No holder has a mappable US-state address -- the DEFAULT until a location backfill runs
+    // (existing snapshots have no location column populated), or an all-foreign/unknown holder
+    // set. An all-neutral US map reads as "nothing showing", so render an honest coverage note +
+    // the tallies instead of the choropleth (STYLE_GUIDE §7/§9: an empty state, never a broken
+    // partial chart; and no meaningless 0-only color legend).
+    if (!byState.length) {
+      card.body.insertAdjacentHTML(
+        "beforeend",
+        states.empty({
+          title: "No filer locations to map yet",
+          copy: "None of this quarter's filers has a reported US-state business address on " +
+            "record yet — location tracking was added recently and shows only after a re-ingest. " +
+            "Read as coverage, not as filers with no location.",
+        }) + tallyChipsHtml()
+      );
+      card.caption(
+        "Location is the reported BUSINESS ADDRESS of each 13F filer — where the filing manager " +
+        "is registered, NOT where its capital originates and NOT the company's own location. " +
+        "Filers outside the 50 states & DC, or with no address on record, are counted above and " +
+        "never dropped."
+      );
+      return card.root;
+    }
+
+    var mapMount = document.createElement("div");
+    card.body.appendChild(mapMount);
+    card.body.insertAdjacentHTML("beforeend", tallyChipsHtml());
+
+    card.caption(
+      "Reported BUSINESS ADDRESS of the 13F filers holding this company — where the filing " +
+      "manager is registered, NOT where its capital originates and NOT the company's own " +
+      "location. Color intensity is the number of filers headquartered in each state; states " +
+      "with no reporting filer are left neutral. Filers based outside the 50 states & DC " +
+      "(foreign or a US territory) and those whose filing predates location tracking are counted " +
+      "in the chips above, never on the map and never dropped."
+    );
+
+    var t = plotTokens();
+    loadUsStates().then(
+      function (states) {
+        var features = (states.features || []);
+        var withFilers = features.filter(function (f) { return countByName[f.properties.name] != null; });
+        mapMount.innerHTML = "";
+        mapMount.appendChild(window.Plot.plot({
+          width: width,
+          projection: "albers-usa",
+          style: { background: "transparent", fontFamily: t.fontMono, fontSize: 10 },
+          // Single-hue sequential scheme (randomized, warm), NOT diverging -- count is a
+          // magnitude, never a good/bad verdict (STYLE_GUIDE §9.2 holds even under the palette
+          // override). Zero-filer states are drawn neutral by the base layer below.
+          color: {
+            type: "linear", scheme: pickSequentialScheme(), domain: [0, maxCount || 1],
+            legend: true, label: "Filers headquartered",
+          },
+          marks: [
+            // Base layer: every state neutral, so a zero-filer state is visibly empty, not a
+            // faint accent (which would read as "a few filers").
+            window.Plot.geo(features, { fill: cssVar("--bg-tint", "#efe9de"), stroke: cssVar("--border-strong", "#d8d1c4"), strokeWidth: 0.5 }),
+            // Top layer: only states with filers, colored by count through the scale above.
+            window.Plot.geo(withFilers, {
+              fill: function (d) { return countByName[d.properties.name]; },
+              stroke: cssVar("--bg-card", "#fdfbf7"), strokeWidth: 0.5,
+              channels: { State: function (d) { return d.properties.name; }, Filers: function (d) { return countByName[d.properties.name]; } },
+              tip: { format: { fill: false, State: true, Filers: true } },
+            }),
+          ],
+        }));
+      },
+      function () {
+        mapMount.innerHTML = "";
+        mapMount.appendChild(states_errorNote());
+      }
+    );
+    return card.root;
+
+    function states_errorNote() {
+      var p = document.createElement("p");
+      p.className = "plot-chart-note";
+      p.textContent = "Map boundaries couldn't be loaded; the filer tallies above still apply.";
+      return p;
+    }
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -1993,6 +2310,8 @@
     divergingBars: divergingBars,
     activitySummaryTiles: activitySummaryTiles,
     dumbbellChart: dumbbellChart,
+    holdingsSeriesChart: holdingsSeriesChart,
+    holderGeographyChart: holderGeographyChart,
     valueLineChart: valueLineChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,

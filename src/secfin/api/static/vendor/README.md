@@ -7,6 +7,14 @@ standalone infographic template is the only page that still imports Plot from a 
 |---|---|---|---|
 | `d3.min.js` | `d3` | 7.9.0 | ISC |
 | `plot.umd.min.js` | `@observablehq/plot` | 0.6.17 | ISC |
+| `us-states.geojson` | US state boundaries (50 + DC + PR), from US Census TIGER via PublicaMundi/MappingAPI | — | Public domain (US Census) |
+
+`us-states.geojson` is a `FeatureCollection`; each feature carries only
+`properties.name` (full state name) — the extraneous `density` field the upstream file
+ships was stripped. It's fetched same-origin at chart-build time by
+`ClearyFi.holderGeographyChart` and rendered with Plot's built-in `albers-usa`
+projection (which draws the 50 states + DC; territories like PR fall outside the drawn
+area, consistent with `normalize/geography.py` bucketing them as "other").
 
 Load order matters: the Plot UMD build does **not** bundle d3 — it reads the global
 `d3`, so `d3.min.js` must be included first. Together they expose `window.Plot`.

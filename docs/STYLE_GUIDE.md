@@ -223,6 +223,15 @@ Links: accent color, mono. Resolve every href to a real destination — never le
   darker-where-bigger lightness ramp double-encodes it; use *emphasis* (accent one mark,
   mute the rest) when one mark is the point. Tint still distinguishes mark *kinds* (e.g.
   solid = opened/closed outright vs lighter = resized) — kind is identity, not magnitude.
+  **Multi-series categorical charts use a color palette** (operator decision 2026-07-18):
+  a chart whose marks are *distinct entities* (e.g. each 13F filer in the stacked
+  shares-over-quarters chart) hands color to a **randomized Observable Plot categorical
+  scheme** — `ClearyFi.pickCategoricalScheme()`, memoized per page load so a series keeps its
+  color across re-renders (color follows the entity) and a reload reshuffles. This is the one
+  sanctioned exception to "one terracotta accent": it applies **only** to categorical identity,
+  never to encode magnitude or a verdict. **Magnitude stays single-hue** — the holder
+  choropleth uses a randomized *single-hue sequential* scheme (`pickSequentialScheme()`), never
+  diverging or green/red, because §9.2 (color is never a good/bad verdict) still holds.
   **Captions dedupe:** a standing caveat (e.g. "reported 13F long positions only") renders
   once per page, prominently; each chart's caption carries only what is specific to that
   chart. Repeating the same line under every chart trains readers to skip captions.
@@ -298,7 +307,10 @@ These are the reason the product exists. A page that violates them is broken.
 
 ## 10. Anti-patterns (do NOT do these)
 
-- New colors/hues, or a second accent. One terracotta accent; the ext family is for caveats only.
+- New colors/hues, or a second accent — **except** a multi-series *categorical* chart, which may
+  use a randomized Observable Plot categorical scheme for entity identity (§6, operator decision
+  2026-07-18). Everywhere else: one terracotta accent; the ext family is for caveats only;
+  magnitude stays single-hue; never a good/bad color.
 - Color-coding metrics green/red for good/bad, or ranking companies overall.
 - Rendering a missing/inapplicable value as `0`, `—`, blank, or a guess.
 - Dropping the status chip, the basis tag, or the provenance affordance on a derived number.

@@ -25,6 +25,7 @@ from secfin.sec.institutional import (
     fetch_beneficial_ownership,
     fetch_beneficial_ownership_with_filings,
     parse_cover_page_xml,
+    parse_filing_manager_location,
     parse_info_table_xml,
     parse_schedule_13dg_xml,
     recent_13f_filings,
@@ -156,6 +157,19 @@ def test_parse_cover_page_xml_real_berkshire_2026_roster():
     # sequenceNumber 4, referenced by the info table's ALLY FINL / ALPHABET rows above.
     buffett = next(m for m in roster if m.sequence_number == 4)
     assert buffett.name == "Buffett Warren E"
+
+
+def test_parse_filing_manager_location_reads_real_berkshire_state():
+    # Real cover page: filingManager/address/stateOrCountry = "NE" (Omaha, Nebraska).
+    # Returned as the raw code, no classification done in the sec/ layer.
+    assert parse_filing_manager_location(_read_bytes("brk13f_2026q1_coverpage.xml")) == "NE"
+
+
+def test_parse_filing_manager_location_is_none_when_absent():
+    # A cover page with no filingManager/address block (older filings) yields None, not
+    # an error -- the holder-geography endpoint buckets that as "unknown".
+    xml = b"<edgarSubmission><formData><coverPage></coverPage></formData></edgarSubmission>"
+    assert parse_filing_manager_location(xml) is None
 
 
 def test_parse_cover_page_xml_dedupes_a_reused_sequence_number():

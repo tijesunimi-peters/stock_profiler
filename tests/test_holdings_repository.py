@@ -6,6 +6,8 @@ report_period) rather than per accession, and why resolved CUSIP->CIK is never p
 
 from __future__ import annotations
 
+import sqlite3
+
 from secfin.normalize.schema import HoldingsSnapshot, InstitutionalHolding, OtherManager13F
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 
@@ -156,6 +158,77 @@ def test_joint_filer_roster_and_per_holding_attribution_round_trip():
     assert by_cusip["02079K107"] == [2, 4, 11]
     assert by_cusip["037833100"] == []  # filing manager alone had discretion
     repo.close()
+
+
+def test_filing_manager_location_round_trips():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31", filing_manager_location="NE"))
+
+    fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
+    assert fetched.filing_manager_location == "NE"
+    repo.close()
+
+
+def test_filing_manager_location_defaults_to_none():
+    # A snapshot without a parsed location (older cover page) stays None -- surfaced as an
+    # honest "unknown" bucket downstream, never assumed domestic.
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31"))
+
+    assert repo.get_snapshot(MANAGER_CIK, "2026-03-31").filing_manager_location is None
+    repo.close()
+
+
+def test_holders_of_carries_filing_manager_location():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    other_cik = 1364742  # BlackRock, no location parsed (older snapshot)
+    repo.upsert_snapshot(_snapshot("2026-03-31", filing_manager_location="NE"))
+    repo.upsert_snapshot(
+        _snapshot(
+            "2026-03-31",
+            manager_cik=other_cik,
+            manager_name="BLACKROCK",
+            holdings=[
+                InstitutionalHolding(cusip="037833100", issuer_name="APPLE INC", shares=1)
+            ],
+        )
+    )
+
+    by_manager = {h.manager_cik: h.location for h in repo.holders_of(["037833100"], "2026-03-31")}
+    assert by_manager[MANAGER_CIK] == "NE"
+    assert by_manager[other_cik] is None  # honest unknown, not a guessed state
+    repo.close()
+
+
+def test_migrates_a_pre_location_column_database(tmp_path):
+    # A DB created before filing_manager_location existed must gain the column on open
+    # (CREATE TABLE IF NOT EXISTS never alters an existing table), with old rows reading
+    # back as location=None -- never a crash, never a fabricated location.
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE holdings_snapshots (
+            manager_cik INTEGER NOT NULL, report_period TEXT NOT NULL, manager_name TEXT,
+            filed TEXT, accession TEXT NOT NULL DEFAULT '', is_amendment INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (manager_cik, report_period)
+        );
+        INSERT INTO holdings_snapshots (manager_cik, report_period, manager_name)
+            VALUES (1067983, '2026-03-31', 'BERKSHIRE HATHAWAY INC');
+        """
+    )
+    conn.close()
+
+    repo = SQLiteHoldingsSnapshotRepository(db)  # runs the guarded ALTER migration
+    fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
+    assert fetched is not None
+    assert fetched.filing_manager_location is None
+    # A fresh write on the migrated DB round-trips the new column, and re-opening is a no-op.
+    repo.upsert_snapshot(_snapshot("2026-06-30", filing_manager_location="CA"))
+    repo.close()
+    repo2 = SQLiteHoldingsSnapshotRepository(db)
+    assert repo2.get_snapshot(MANAGER_CIK, "2026-06-30").filing_manager_location == "CA"
+    repo2.close()
 
 
 def test_cached_accession_is_none_on_cache_miss():

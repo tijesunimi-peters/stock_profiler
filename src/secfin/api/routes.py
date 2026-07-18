@@ -23,6 +23,7 @@ from secfin.auth.usage import usage_summary
 from secfin.config import settings
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
+from secfin.normalize.geography import classify_location
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.metrics import (
     METRIC_KEYS,
@@ -116,6 +117,28 @@ _13F_CAVEATS = [
 _ISSUER_CENTRIC_CAVEATS = _13F_CAVEATS + [
     "An empty holder list does not confirm zero institutional ownership -- it may mean "
     "this quarter hasn't been ingested yet for any manager holding this issuer.",
+]
+
+# Holder-geography (choropleth) caveats: the location is the FILER's registered business
+# address, not where its capital originates and not the issuer's location; and it is only
+# known for snapshots ingested after the location column landed (older ones bucket to
+# "unknown"). See normalize/geography.py and sec/institutional.parse_filing_manager_location.
+_HOLDER_GEOGRAPHY_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "Location is the 13F filer's reported business address -- NOT where its capital "
+    "originates, and NOT the company's own location.",
+    "Managers whose snapshot predates location tracking are counted under 'unknown', "
+    "never dropped and never assumed domestic.",
+]
+
+# Holdings-series caveats: the series plots REPORTED quarter-end shares (not value -- the
+# 13F value unit changed from thousands to whole dollars ~2023, so a share series is the
+# unit-stable one to compare across quarters); a quarter with no bar for a holder means that
+# holder wasn't reported/ingested that quarter, not that they exited.
+_HOLDINGS_SERIES_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "Series values are reported shares, not dollar value -- the 13F value unit changed "
+    "(thousands -> whole dollars, ~2023), so shares are the unit-stable cross-quarter series.",
+    "A quarter with no data for a holder means it was not reported/ingested that quarter, "
+    "not that the holder exited -- quarter-over-quarter change is a DERIVED inference.",
 ]
 
 # Beneficial ownership (13D/13G) coverage floor -- see docs/DATA_MODEL.md's "Coverage
@@ -1169,6 +1192,175 @@ async def get_institutional_periods(
         "cusips": cusips,
         "periods": holdings_repo.issuer_periods(cusips),
         "caveats": _ISSUER_CENTRIC_CAVEATS,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-holdings-series",
+    tags=["Institutional Ownership"],
+    summary="Reported 13F shares held per manager over recent quarters (issuer axis)",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "periods": ["2024-06-30", "2024-03-31"],
+                        "caveats": _HOLDINGS_SERIES_CAVEATS,
+                        "series": [
+                            {
+                                "manager_cik": 1067983,
+                                "manager_name": "Berkshire Hathaway Inc",
+                                "cusip": "037833100",
+                                "issuer_name": "Apple Inc.",
+                                "points": [
+                                    {"period": "2024-06-30", "shares": 300_000_000,
+                                     "value": 71_400_000_000},
+                                    {"period": "2024-03-31", "shares": 320_000_000,
+                                     "value": 68_000_000_000},
+                                ],
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
+async def get_institutional_holdings_series(
+    symbol: str,
+    quarters: int = Query(8, ge=1, le=20, description="How many recent ingested quarters"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """Reported quarter-end shares held by each manager in this issuer, across the most
+    recent `quarters` ingested quarters -- the time axis the accumulation chart stacks.
+
+    Pure composition of the same issuer-centric point reads the tab already uses
+    (`issuer_periods` + `holders_of`, both live indexed lookups) -- no new store query, no
+    DuckDB. A manager absent in a quarter simply has no point for it (an honest gap: not
+    reported/ingested, not a zero position). These are REPORTED snapshots; the period-over-
+    period change a reader infers from them is DERIVED -- see `caveats`.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    periods = holdings_repo.issuer_periods(cusips)[:quarters]
+    # Assemble per-(manager, cusip) point series. Keyed the same way flows.diff_holders keys
+    # its diff -- (manager_cik, cusip) -- so a multi-class issuer's classes stay distinct.
+    series: dict[tuple[int, str], dict] = {}
+    for period in periods:
+        for h in holdings_repo.holders_of(cusips, period):
+            key = (h.manager_cik, h.cusip)
+            entry = series.get(key)
+            if entry is None:
+                entry = {
+                    "manager_cik": h.manager_cik,
+                    "manager_name": h.manager_name,
+                    "cusip": h.cusip,
+                    "issuer_name": h.issuer_name,
+                    "points": [],
+                }
+                series[key] = entry
+            entry["points"].append({"period": period, "shares": h.shares, "value": h.value})
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "periods": periods,
+        "caveats": _HOLDINGS_SERIES_CAVEATS,
+        "series": list(series.values()),
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-holder-geography",
+    tags=["Institutional Ownership"],
+    summary="Where the 13F filers holding a company are headquartered (issuer axis)",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "period": "2024-06-30",
+                        "caveats": _HOLDER_GEOGRAPHY_CAVEATS,
+                        "by_state": [
+                            {"state": "NE", "filer_count": 1, "value": 71_400_000_000}
+                        ],
+                        "outside_states": {"filer_count": 0, "value": 0.0},
+                        "unknown": {"filer_count": 0, "value": 0.0},
+                    }
+                }
+            }
+        }
+    },
+)
+async def get_institutional_holder_geography(
+    symbol: str,
+    period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """The 13F filers holding this issuer as of `period`, bucketed by their reported
+    business address -- the choropleth's data.
+
+    `by_state` counts distinct filers (and sums their reported value) per US state/DC code;
+    `outside_states` aggregates any non-state code (foreign OR a US territory `albers-usa`
+    can't draw); `unknown` aggregates filers whose snapshot predates location tracking.
+    Nothing is dropped. IMPORTANT (see `caveats`): the location is the filer's registered
+    BUSINESS ADDRESS -- not where its capital originates, not the company's location.
+
+    A small Python aggregation over one issuer's holders (`holders_of`, a live indexed
+    point read) -- never a DuckDB cross-manager scan (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    holders = holdings_repo.holders_of(cusips, period)
+    # Per-state: distinct filers (a manager can hold >1 class -> >1 row, but is one filer)
+    # plus a value sum across all their rows for this issuer. Off-map / unknown buckets the
+    # same way. `value` is summed only where reported (never invented from a None).
+    by_state: dict[str, dict] = {}
+    outside_managers: set[int] = set()
+    outside_value = 0.0
+    unknown_managers: set[int] = set()
+    unknown_value = 0.0
+    for h in holders:
+        bucket = classify_location(h.location)
+        val = h.value if isinstance(h.value, (int, float)) and h.value > 0 else 0.0
+        if bucket == "state":
+            code = h.location.strip().upper()
+            state = by_state.setdefault(code, {"state": code, "_managers": set(), "value": 0.0})
+            state["_managers"].add(h.manager_cik)
+            state["value"] += val
+        elif bucket == "other":
+            outside_managers.add(h.manager_cik)
+            outside_value += val
+        else:
+            unknown_managers.add(h.manager_cik)
+            unknown_value += val
+
+    by_state_out = sorted(
+        (
+            {"state": s["state"], "filer_count": len(s["_managers"]), "value": s["value"]}
+            for s in by_state.values()
+        ),
+        key=lambda s: (-s["filer_count"], s["state"]),
+    )
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "caveats": _HOLDER_GEOGRAPHY_CAVEATS,
+        "by_state": by_state_out,
+        "outside_states": {"filer_count": len(outside_managers), "value": outside_value},
+        "unknown": {"filer_count": len(unknown_managers), "value": unknown_value},
     }
 
 

@@ -610,6 +610,37 @@ quarter hasn't been ingested for any manager yet." `_ISSUER_CENTRIC_CAVEATS`
 (`api/routes.py`) carries this alongside the existing derived-not-reported / long-only /
 45-day-lag caveats on every response.
 
+### API: issuer-centric visualization endpoints (Phase 1)
+
+Two more issuer-centric endpoints back the Institutional tab's accumulation chart and holder
+choropleth. Both are pure compositions of the same live `holders_of` / `issuer_periods` point
+reads above — **no DuckDB, no cross-manager scan** (guardrail 6).
+
+- `GET /v1/companies/{symbol}/institutional-holdings-series?quarters=` returns, per
+  `(manager_cik, cusip)`, the reported quarter-end **shares** held across the most recent
+  `quarters` ingested quarters (`_HOLDINGS_SERIES_CAVEATS`). **Shares, not value:** the 13F
+  `value` unit changed from thousands to whole dollars ~2023, so a share series is the
+  unit-stable one to compare across quarters (same reasoning as the dumbbell's within-quarter
+  ratio). A manager absent in a quarter simply has no point for it — an honest gap (not
+  reported/ingested), never a zero implying an exit. The quarter-over-quarter change a reader
+  infers is DERIVED, never reported trades.
+- `GET /v1/companies/{symbol}/institutional-holder-geography?period=` buckets the holders of a
+  quarter by their **filing manager's reported business address** (`_HOLDER_GEOGRAPHY_CAVEATS`):
+  `by_state` (distinct filer count + summed value per US state/DC code), `outside_states` (any
+  non-state code — foreign OR a US territory the `albers-usa` map can't draw), and `unknown`
+  (filers whose snapshot predates location tracking). **Nothing is dropped.**
+
+**`filing_manager_location` — new, stored raw.** `sec/institutional.parse_filing_manager_location`
+reads the filing manager's `stateOrCountry` off the 13F cover page (a document already fetched
+for the co-filer roster) and stores it verbatim on `HoldingsSnapshot`
+(`holdings_snapshots.filing_manager_location`, added via a guarded `ALTER TABLE` migration — old
+rows read back `None` = an honest "unknown", never assumed domestic). Classification into
+state / other / unknown happens at the serve/UI edge in `normalize/geography.py`
+(`US_STATE_CODES`, `classify_location`), keeping the `sec/` client free of business logic.
+**Honesty:** this code is the management entity's *registered business address* — NOT where its
+capital originates and NOT the issuer's location. The choropleth is titled and captioned to say
+exactly that; it is never framed as "clusters of capital."
+
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —

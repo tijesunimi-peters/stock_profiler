@@ -459,6 +459,39 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
   color: var(--mono-muted);
 }
 
+/* Off-map / unknown filer tallies beside the holder choropleth (Phase 1 institutional viz).
+   Foreign/territory and location-unknown filers are never on the map, so they're surfaced
+   here as chips rather than silently dropped. */
+.geo-tallies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 2px 0;
+}
+.geo-tally {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.geo-tally-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+}
+.geo-tally-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+
 /* ---------- composition chart + concentration stat tiles (Phase 5.1/5.2) ---------- */
 
 .composition-block {

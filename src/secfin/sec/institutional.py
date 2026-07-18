@@ -303,6 +303,24 @@ def parse_cover_page_xml(xml_bytes: bytes) -> list[OtherManager13F]:
     return roster
 
 
+def parse_filing_manager_location(xml_bytes: bytes) -> str | None:
+    """Parse the filing manager's reported business `stateOrCountry` from a 13F cover page.
+
+    Pure and network-free (same design as `parse_cover_page_xml`, which reads the co-filer
+    roster off the same document). Returns the raw code exactly as reported -- a US state
+    code (e.g. "NE") for a domestic filer, a country code for a foreign one -- with NO
+    classification done here: "US state vs. foreign vs. unknown" is derived at the
+    serve/UI edge (normalize/`US_STATE_CODES`), keeping this client free of business logic.
+    Returns None when the block is absent (older filings, or a parse that doesn't reach it).
+
+    HONESTY: this is the management entity's registered business address, NOT where the
+    capital originates and NOT the issuer's location -- callers must label it as such.
+    """
+    root = ET.fromstring(xml_bytes)
+    _strip_namespaces(root)
+    return _clean(root.findtext("formData/coverPage/filingManager/address/stateOrCountry"))
+
+
 def _mmddyyyy_to_iso(s: str | None) -> str | None:
     """Schedule 13D/G XML dates are MM/DD/YYYY; the rest of this app uses ISO YYYY-MM-DD."""
     if not s:
@@ -438,6 +456,7 @@ async def fetch_13f_snapshot_for_filing(
         is_amendment=filing["form"].endswith("/A"),
         holdings=parse_info_table_xml(info_bytes),
         other_managers=parse_cover_page_xml(cover_bytes),
+        filing_manager_location=parse_filing_manager_location(cover_bytes),
     )
 
 
