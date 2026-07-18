@@ -231,6 +231,39 @@ def test_migrates_a_pre_location_column_database(tmp_path):
     repo2.close()
 
 
+def test_snapshots_missing_location_lists_only_null_locations():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31", accession="A-1"))  # no location
+    repo.upsert_snapshot(
+        _snapshot("2026-03-31", manager_cik=222, accession="A-2", filing_manager_location="NE")
+    )
+
+    missing = repo.snapshots_missing_location("2026-03-31")
+    assert missing == [(MANAGER_CIK, "A-1")]  # only the location-less one, with its accession
+    repo.close()
+
+
+def test_snapshots_missing_location_excludes_empty_accession():
+    # A snapshot with no accession can't have its cover page located, so it's not a candidate.
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31", accession=""))
+    assert repo.snapshots_missing_location("2026-03-31") == []
+    repo.close()
+
+
+def test_set_filing_manager_location_updates_in_place_without_touching_holdings():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(_snapshot("2026-03-31"))  # location NULL, one AAPL holding
+
+    repo.set_filing_manager_location(MANAGER_CIK, "2026-03-31", "CA")
+
+    fetched = repo.get_snapshot(MANAGER_CIK, "2026-03-31")
+    assert fetched.filing_manager_location == "CA"
+    assert len(fetched.holdings) == 1  # holdings untouched by the location-only update
+    assert repo.snapshots_missing_location("2026-03-31") == []  # no longer a candidate
+    repo.close()
+
+
 def test_cached_accession_is_none_on_cache_miss():
     repo = SQLiteHoldingsSnapshotRepository(":memory:")
     assert repo.cached_accession(MANAGER_CIK, "2026-03-31") is None

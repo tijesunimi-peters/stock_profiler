@@ -175,6 +175,8 @@ src/secfin/
     frames_backfill.py          # bulk-ingest frames data for cross-company screening (M4)
     institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
     insider_backfill.py        # bulk-seed the insider-trades cache (M3 ownership cache-warming)
+    location_backfill.py       # backfill filing_manager_location onto cached 13F snapshots
+                               #   (cover-page-only fetch; for the holder-geography choropleth)
     sic_backfill.py            # backfill cik->SIC into company_profiles (Metrics Phase 2)
     metrics_backfill.py        # materialize per-company metrics into metric_values (Phase 2)
   api/
@@ -267,6 +269,11 @@ python -m secfin.ingest.incremental
 # bulk-ingest one quarter's 13F filings (offline candidate discovery from submissions.zip,
 # seeds the same HoldingsSnapshotRepository the manager endpoints read from)
 python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD
+
+# backfill filing_manager_location onto already-cached 13F snapshots (cover-page-only fetch;
+# the bulk institutional_backfill skips already-cached accessions, so it can't do this).
+# Powers the holder-geography choropleth. --period is repeatable.
+python -m secfin.ingest.location_backfill --period 2026-03-31 --period 2026-06-30
 
 # analytical extra (DuckDB, batch/analytical jobs only — never the live API)
 pip install -e ".[analytical]"

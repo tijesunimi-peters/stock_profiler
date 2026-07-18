@@ -107,5 +107,28 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
+        """`(manager_cik, accession)` for every cached snapshot in `report_period` that has no
+        `filing_manager_location` yet -- the work list for `ingest/location_backfill.py`.
+
+        Snapshots ingested before the location column existed come back here (location NULL);
+        the backfill fetches each one's cover page, parses `stateOrCountry`, and writes it via
+        `set_filing_manager_location`. Rows with no accession (can't locate the cover page) are
+        excluded. Newest-cached order is not guaranteed and does not matter -- each is
+        independent.
+        """
+
+    @abstractmethod
+    def set_filing_manager_location(
+        self, manager_cik: int, report_period: str, location: str
+    ) -> None:
+        """Set the raw `filing_manager_location` for one already-cached (manager, quarter).
+
+        A targeted single-column UPDATE -- unlike `upsert_snapshot`, it does NOT touch the
+        holdings rows (the location backfill re-parses only the cover page, never the info
+        table). No-op if that (manager, quarter) isn't cached.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

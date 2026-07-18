@@ -297,5 +297,22 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             location in cur.fetchall()
         ]
 
+    def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
+        cur = self._conn.execute(
+            "SELECT manager_cik, accession FROM holdings_snapshots "
+            "WHERE report_period = ? AND filing_manager_location IS NULL AND accession != ''",
+            (report_period,),
+        )
+        return [(row[0], row[1]) for row in cur.fetchall()]
+
+    def set_filing_manager_location(
+        self, manager_cik: int, report_period: str, location: str
+    ) -> None:
+        self._conn.execute(
+            "UPDATE holdings_snapshots SET filing_manager_location = ? "
+            "WHERE manager_cik = ? AND report_period = ?",
+            (location, manager_cik, report_period),
+        )
+
     def close(self) -> None:
         self._conn.close()
