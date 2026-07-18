@@ -11,6 +11,43 @@ Product Manager  →  Principal Architect  →  Senior Engineer  →  QA Tester 
  /product-manager    /principal-architect    /senior-engineer    /qa-tester    /devops-engineer
 ```
 
+## How to use it
+
+You are the conductor. The roles do **not** auto-advance — you invoke each one when you're
+satisfied with the previous handoff, so every stage boundary is a review checkpoint you control.
+
+1. **Reset, then start.** `/clear` (new task) or `/compact` (keep a related thread), then
+   `/product-manager <your request>`. Only this first step needs the reset.
+2. **Advance one role at a time.** When a stage hands off, invoke the next slash command —
+   `/principal-architect`, then `/senior-engineer`, then `/qa-tester`, then `/devops-engineer`.
+   You don't need to re-explain the task; the context carries forward within the task.
+3. **Don't `/clear` between roles** — only at the top of a task. Downstream roles need the
+   accumulated context to read the prior stage's handoff.
+4. **Let the gates hold.** The PM/architect will stop and flag anything out of Track‑1 scope;
+   the DevOps role will present a deploy plan and wait for your explicit "yes, deploy."
+5. **QA fails backward.** A failing QA report returns the work to `/senior-engineer` — re-run
+   that role to fix, then `/qa-tester` again. It never advances broken work to DevOps.
+
+### Worked example
+
+```
+/clear
+/product-manager  let managers on the institutional tab be filtered by minimum % ownership
+      → brief + acceptance criteria; asks whether the threshold is a preset or free input
+/principal-architect
+      → plan: frontend-only filter on holderOwnershipPanels, no API change
+/senior-engineer
+      → implements on a branch; pytest + e2e green; self-verified
+/qa-tester
+      → checks each criterion, screenshots, PASS → "ready to deploy"
+/devops-engineer
+      → shows the deploy plan, waits …  you reply "yes, deploy"  → deploys + verify_deployment.py
+```
+
+You can also stop after any stage (e.g. run only `/product-manager` and `/principal-architect`
+to produce a spec + design without building), or invoke a single role directly for a one-off —
+the sequence is the default, not a cage.
+
 ## Starting a task: reset context first
 
 **Every task begins by clearing or compacting context, then invoking the Product Manager.**
