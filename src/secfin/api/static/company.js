@@ -505,15 +505,12 @@
         $("view").innerHTML = institutionalView(period, holders, activity, caveats);
         // Plot builders return DOM nodes (not HTML strings) -- mount them into the placeholder
         // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
-        mountHoldersChart(holders);
         mountHoldersTable(holders);
         mountHoldingsSeries();
         mountHolderGeography(period);
         mountConviction(period);
         mountCoHolding(period);
         mountActivityTrend(period);
-        mountActivityChart(period, fromPeriod, activity);
-        mountDumbbellChart(period, fromPeriod, holders);
         mountInstActivityTable(period, fromPeriod, activity);
       },
       function (err) {
@@ -548,7 +545,7 @@
   // (2) a choropleth of where the filers holding this issuer are headquartered. Both are
   // placeholders here; the Plot nodes mount post-innerHTML (STYLE_GUIDE §6), and each fetches
   // its own data so a failure degrades to an empty note without breaking the tab -- the same
-  // self-fetching pattern as mountDumbbellChart.
+  // self-fetching pattern as mountHolderGeography.
   function holdingsSeriesSection() {
     return (
       '<h3 class="metric-group-title" style="margin-top:26px">Reported shares over recent quarters</h3>' +
@@ -599,22 +596,18 @@
       return "<h3 class=\"metric-group-title\">Holders as of " + P.esc(quarterLabel(period)) + "</h3>" +
         P.states.empty({ title: "No holders for this quarter", copy: "No manager reported holding this issuer for the selected quarter." });
     }
-    // Phase 5.6: reuse of the manager page's composition builders on the issuer side --
-    // "who holds this stock," ranked by reported value, plus the same concentration stat
-    // tiles reframed for an issuer (holder count / top-1/5/10 share of REPORTED 13F value
-    // across ingested filers, never % of shares outstanding or all institutional owners).
-    // statTiles is a plain HTML string; the ranked-bar chart is a Plot DOM node mounted into
-    // #holders-chart-mount by mountHoldersChart() once this markup lands in the page.
-    // The "share of reported 13F value... not shares outstanding... not all institutional
-    // owners" precision framing renders once, above, via institutionalStandingCaveat() -- not
-    // repeated here (Phase 5 polish: caption dedup).
+    // The same concentration stat tiles reframed for an issuer (holder count / top-1/5/10 share
+    // of REPORTED 13F value across ingested filers, never % of shares outstanding or all
+    // institutional owners). statTiles is a plain HTML string. The "share of reported 13F
+    // value... not shares outstanding... not all institutional owners" precision framing renders
+    // once, above, via institutionalStandingCaveat() -- not repeated here (Phase 5 polish: caption
+    // dedup).
     var composition =
       '<div class="composition-block">' +
       P.statTiles(holders, {
         rowLabel: "Holders reported",
         totalNote: "Reported 13F value across all ingested filers for this issuer",
       }) +
-      '<div id="holders-chart-mount"></div>' +
       "</div>";
     // The holders detail table is paginated (ClearyFi.paginatedTable) -- a widely-held issuer
     // can have hundreds of reporting filers. Rendered post-innerHTML into this mount, like
@@ -648,38 +641,6 @@
       captionHtml: "Reported 13F positions across all ingested managers · quarter-end " +
         "snapshot, not real-time · long positions in 13(f) securities only.",
     }));
-  }
-
-  // Appends the Plot-backed composition chart into the placeholder holdersSection() just
-  // rendered (Plot returns a DOM node, not a string -- STYLE_GUIDE §6). Skips quietly when
-  // there are no holders at all (holdersSection already showed its own empty state and
-  // rendered no placeholder), and shows the standard honest empty-state note, instead of a
-  // divide-by-zero chart, when nothing here carries a positive reported value.
-  function mountHoldersChart(holders) {
-    var mount = $("holders-chart-mount");
-    if (!mount) return;
-    // No captionLead here (Phase 5 polish: caption dedup) -- the "share of reported 13F
-    // value... not shares outstanding... not all institutional owners" framing already renders
-    // once at the top of the tab via institutionalStandingCaveat(); this chart's own caption
-    // carries only its chart-specific mechanics.
-    var node = P.compositionBars(holders, {
-      topN: 10,
-      labelField: "manager_name",
-      unknownLabel: "Unknown manager",
-      rowNoun: { singular: "holder", plural: "holders" },
-      linkField: "manager_cik",
-      linkBase: "/manager/",
-      captionLead: "",
-      width: P.measuredWidth(mount, 640),
-    });
-    if (node) {
-      mount.appendChild(node);
-    } else {
-      mount.innerHTML = P.states.empty({
-        title: "No reported value to chart",
-        copy: "These holders carry no usable value field, so composition can't be shown as a share of value.",
-      });
-    }
   }
 
   // Accumulation chart: reported shares per filer stacked over the recent ingested quarters
@@ -854,17 +815,11 @@
           "has nothing to compare to. This is a DERIVED view, never reported trades.",
       });
     }
-    // Phase 5 polish pass reuse (issuer-centric twin of manager.js's wiring): summary tiles
-    // first (headline counts), then the diverging-bars chart (or its <3-changed-rows sentence),
-    // then the dumbbell (prior->current % of this issuer's total reported 13F value across
-    // ingested filers), then the paginated detail table -- same order/reasoning as the manager
-    // page. All mounts are filled post-innerHTML (the charts return Plot DOM nodes; the table
-    // is ClearyFi.paginatedTable); left empty when there's honestly nothing to show.
+    // Summary tiles (headline counts), then the paginated detail table. The table is filled
+    // post-innerHTML (ClearyFi.paginatedTable); left empty when there's honestly nothing to show.
     var tiles = P.activitySummaryTiles(activity);
     return (
       head + tiles +
-      '<div id="activity-chart-mount"></div>' +
-      '<div id="activity-dumbbell-mount"></div>' +
       '<div id="inst-activity-table-mount"></div>'
     );
   }
@@ -897,58 +852,6 @@
         P.esc(quarterLabel(period)) + " 13F snapshots — never reported trades. Positions that " +
         "opened/closed appear as New/Exited.",
     }));
-  }
-
-  // Appends the ClearyFi.divergingBars chart into #activity-chart-mount, once activitySection's
-  // markup (including that placeholder) is in the DOM. No-ops when the placeholder is absent
-  // (the "no prior-quarter comparison" empty state never renders it) or when divergingBars
-  // returns null (nothing honest to chart -- e.g. every row was unchanged). Rows are per
-  // manager here (the issuer-centric twin of the manager page's per-issuer bars), so the chart
-  // is labeled/tooltipped by manager instead of by issuer.
-  function mountActivityChart(period, fromPeriod, activity) {
-    var mount = $("activity-chart-mount");
-    if (!mount) return;
-    var node = P.divergingBars(activity, {
-      fromLabel: quarterLabel(fromPeriod),
-      toLabel: quarterLabel(period),
-      fromPeriod: fromPeriod,
-      toPeriod: period,
-      labelField: "manager_name",
-      tipLabelKey: "Manager",
-      title: "Derived holder activity",
-      width: P.measuredWidth(mount, 640),
-    });
-    if (node) mount.appendChild(node);
-  }
-
-  // Phase 5 polish pass, dumbbell chart (issuer-centric twin of manager.js's): the prior
-  // quarter's holders ARE cleanly available here -- `/companies/{symbol}/institutional-holders`
-  // takes the same `period=` query param manager.js's `/managers/{cik}/holdings` does, so
-  // fetching it for `fromPeriod` is the same one-extra-request pattern, just against the
-  // issuer-centric endpoint instead of the manager-centric one. Rows are matched between
-  // quarters by (manager_cik, cusip) -- normalize/flows.diff_holders' own key -- not cusip
-  // alone, since two different managers holding the same issuer share a cusip. No-ops quietly
-  // (never an error state) when there's no prior quarter, or when the fetch fails.
-  function mountDumbbellChart(period, fromPeriod, currentHolders) {
-    var mount = $("activity-dumbbell-mount");
-    if (!mount || !fromPeriod) return;
-    var base = "/companies/" + encodeURIComponent(symbol);
-    P.api(base + "/institutional-holders?period=" + encodeURIComponent(fromPeriod)).then(
-      function (res) {
-        var node = P.dumbbellChart(currentHolders, res.holders || [], {
-          fromLabel: quarterLabel(fromPeriod),
-          toLabel: quarterLabel(period),
-          width: P.measuredWidth(mount, 640),
-          labelField: "manager_name",
-          idField: ["manager_cik", "cusip"],
-          unknownLabel: "Unknown manager",
-          rowNoun: { singular: "holder", plural: "holders" },
-          title: "Prior → current holder allocation",
-        });
-        if (node) mount.appendChild(node);
-      },
-      function () { /* prior-quarter fetch failed -- skip the dumbbell, never break the page */ }
-    );
   }
 
   // Signed share delta with the U+2212 minus glyph (§2), e.g. "+2.0M" / "−1.5M".
