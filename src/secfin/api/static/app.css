@@ -232,6 +232,21 @@
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--mono-muted);
+  /* the basis is a caption of the value above it -- pull it up out of the card's 10px flex
+     gap so the number + its "TTM"/"AS-OF" label read as one tightly-coupled unit */
+  margin-top: -5px;
+}
+
+/* Bottom-pinned actions zone: margin-top:auto drops it to the card floor so the disclosure
+   links line up across every card in a row, and a hairline separates the value/insight zone
+   above from the audit affordances below (fixed internal zones, less ragged whitespace). */
+.metric-actions {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-tint-rule);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .metric-note {
@@ -257,7 +272,7 @@
 
 /* ---------- provenance / "show your work" ---------- */
 
-.provenance { margin-top: 2px; }
+.provenance { margin-top: 0; } /* spacing owned by .metric-actions gap */
 .provenance summary {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -621,12 +636,26 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
 /* ---------- responsive ---------- */
 
 @media (max-width: 640px) {
-  .page { padding: 12px 20px 56px; }
-  /* Tab strips wider than a phone viewport scroll sideways instead of clipping. */
-  .segmented { max-width: 100%; overflow-x: auto; }
+  /* max-width:100% caps .page (a flex item of the column-flex .app-main) at the viewport
+     instead of letting it grow to its min-content, so the bounded width cascades down and the
+     tab strip below scrolls within it rather than dragging the whole page wider than the screen.
+     (min-width:0 alone is only a floor and doesn't stop the cross-axis min-content growth.) */
+  .page { padding: 12px 20px 56px; min-width: 0; max-width: 100%; }
+  /* Tab strips wider than a phone viewport scroll sideways instead of clipping. The
+     min-width:0 is load-bearing: as flex items, the strip and its wrapper default to
+     min-width:auto and won't shrink below their content width, so without this the
+     overflow-x never engages and the strip drags the whole page wider than the viewport. */
+  .controls-left, .controls-right { min-width: 0; max-width: 100%; }
+  .segmented { max-width: 100%; min-width: 0; overflow-x: auto; }
   .segmented button { flex: 0 0 auto; }
   .masthead h1 { font-size: 28px; }
   .masthead-meta { text-align: left; }
   .card-grid { grid-template-columns: 1fr; }
   .app-footer .tagline { margin-left: 0; }
+  /* Wide paginated tables scroll inside their own box on phones instead of pushing the whole page
+     sideways (project floor: tables scroll in an overflow-x:auto container). The sticky header goes
+     static here -- a page-level sticky can't work inside a scroll box, and a 10-row page hardly
+     needs one. Scoped to mobile so desktop keeps its viewport-sticky headers. */
+  .paged-table { overflow-x: auto; }
+  .paged-table .stmt-table th { position: static; }
 }

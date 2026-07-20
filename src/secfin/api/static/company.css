@@ -147,7 +147,7 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- peer position bar (Phase 2) ---------- */
 
-.peer-rank { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.peer-rank { display: flex; align-items: center; gap: 8px; } /* spacing owned by .metric-card gap */
 .pos-bar {
   position: relative;
   flex: 1;
@@ -170,7 +170,7 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 
 /* ---------- expandable metric trend (Phase 1b) ---------- */
 
-.trend-panel { margin-top: 8px; }
+.trend-panel { margin-top: 0; } /* spacing owned by .metric-actions gap */
 .trend-panel summary {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -564,6 +564,49 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   line-height: 1.55;
 }
 
+/* Analytical 2-up grid for the statement chart views (dashboard review #3): a supporting pair
+   sits side by side under the primary chart instead of every panel stretching full-width. The
+   cells stretch to equal height, chart cards drop their stacking margin (the grid gap owns it),
+   and the grid collapses to one column on narrow screens where a half-column would be too tight. */
+.stmt-chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 4px 0 22px;
+}
+.stmt-chart-cell { min-width: 0; }
+.stmt-chart-cell .plot-chart { margin: 0; height: 100%; }
+@media (max-width: 760px) {
+  .stmt-chart-grid { grid-template-columns: 1fr; }
+}
+
+/* Institutional sub-view strip (dashboard review #3): sits directly under the main tab bar,
+   like the Statements Income/Balance/Cash Flow strip, splitting the tab's eight panels into
+   Holders / Geography / Activity. The first heading in a group already carries its own top
+   margin, so the strip only needs bottom separation. */
+.inst-subtabs { margin: 0 0 20px; }
+/* The section builders set margin-top:26px inline (spacing they need when stacked); a group's
+   first heading shouldn't carry that under the strip, and only !important beats the inline rule. */
+.inst-group > .metric-group-title:first-child { margin-top: 0 !important; }
+
+/* 2-up chart grid inside a Holders/Activity sub-view: the self-fetching charts mount into the
+   placeholder divs in these cells, so each cell sizes its chart to the half column it occupies.
+   Cells top-align (the charts differ in natural height), and a lone odd chart (e.g. the third of
+   three in Holders) spans the full width instead of leaving a ragged empty half. */
+.inst-chart-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  margin: 8px 0 22px;
+}
+.inst-cell { min-width: 0; }
+.inst-cell .plot-chart { margin: 0; }
+.inst-chart-grid > .inst-cell:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (max-width: 760px) {
+  .inst-chart-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 640px) {
   .filing-meta-grid { text-align: left; gap: 14px 22px; }
 }
@@ -653,4 +696,89 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 @media (max-width: 720px) {
   .spike-member { flex-basis: 130px; }
   .spike-yoy, .spike-share { display: none; }
+}
+
+/* ============================================================================
+   Dashboard prototype (#1): "At a glance" hero band + "On this page" section rail.
+   Adds a glanceable summary above the fundamentals grid and turns the sidebar's
+   empty lower half into a scroll-tracking table of contents for the grid.
+   ============================================================================ */
+
+/* Anchor offset so a section-nav jump clears the sticky topbar (56px) + controls bar. */
+.metric-group { scroll-margin-top: 116px; }
+
+.glance { margin: 4px 0 26px; }
+.glance-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--mono-muted);
+  margin: 0 2px 10px;
+}
+.glance-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 12px;
+}
+.glance-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  padding: 15px 17px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.glance-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mono-muted);
+}
+.glance-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.glance-tile.drained .glance-value { color: var(--mono-muted); font-size: 24px; }
+.glance-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mono-muted);
+}
+.glance-dot { font-size: 10px; line-height: 1; }
+.glance-ok { color: var(--ink-soft); }
+.glance-approximate { color: var(--ext-color); }
+.glance-na, .glance-nm { color: var(--mono-muted); }
+
+/* "On this page" rail: injected into the shared app sidebar, styled as a secondary,
+   sub-level nav beneath the primary link groups (script.js owns the primary set). */
+.section-nav { padding-top: 16px; border-top: 1px solid var(--border-tint-rule); }
+.section-link {
+  padding: 5px 10px;
+  border-radius: 0;
+  border-left: 2px solid transparent;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.section-link:hover { background: transparent; color: var(--ink); }
+.section-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  background: transparent;
 }

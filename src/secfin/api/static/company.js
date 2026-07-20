@@ -19,6 +19,22 @@
     ["Per-share", ["eps_basic", "eps_diluted", "book_value_per_share", "fcf_per_share", "share_count"]],
   ];
 
+  // "At a glance" hero band (dashboard prototype): a handful of headline metrics that answer
+  // "how is this company doing?" in one row, spanning profitability / growth / returns / cash /
+  // liquidity. Rendered from the same metric objects as the grid, so an N/A stays honestly N/A.
+  var GLANCE = [
+    ["net_margin", "Net margin"],
+    ["revenue_growth_yoy", "Revenue growth"],
+    ["roe", "Return on equity"],
+    ["fcf", "Free cash flow"],
+    ["current_ratio", "Current ratio"],
+  ];
+
+  // Stable DOM id for a category section (masthead anchor + section-nav target).
+  function sectionId(name) {
+    return "sec-" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
   var FORMULAS = {
     gross_margin: "Gross profit ÷ Revenue",
     operating_margin: "Operating income ÷ Revenue",
@@ -165,6 +181,7 @@
     fundValue: null, // "year|period" selected on Fundamentals
     stmtValue: null, // "year|period" selected on Statements
     instValue: null, // quarter-end string selected on Institutional
+    instGroup: "holders", // Institutional sub-view: "holders" | "geography" | "activity"
     stmtMode: "table", // income + balance sheet: "table" | "chart" (audit-first default)
     vizCache: {}, // "statement|year|period" -> viz response (lazy). Series: "statement|series".
   };
@@ -372,6 +389,7 @@
   var NON_PERIOD_TABS = ["insider", "beneficial"]; // tabs bounded by a filing limit, not a period
 
   function render() {
+    clearSectionNav(); // the "On this page" rail belongs to the fundamentals grid only
     if (state.tab === "fundamentals") renderFundamentals();
     else if (state.tab === "statements") renderStatements();
     else if (state.tab === "insider") renderInsider();
@@ -507,13 +525,39 @@
         $("view").innerHTML = institutionalView(period, holders, activity, caveats);
         // Plot builders return DOM nodes (not HTML strings) -- mount them into the placeholder
         // divs institutionalView()'s markup just landed, same pattern as manager.js's render().
-        mountHoldersTable(holders);
-        mountHoldingsSeries();
-        mountHolderGeography(period);
-        mountConviction(period);
-        mountCoHolding(period);
-        mountActivityTrend(period);
-        mountInstActivityTable(period, fromPeriod, activity);
+        // Mounting is lazy per sub-group: a group's charts render the first time it's shown, so
+        // the initial paint is cheap and no chart measures its width inside a hidden container.
+        var mounted = {};
+        function mountGroup(group) {
+          if (mounted[group]) return;
+          mounted[group] = true;
+          if (group === "holders") {
+            mountHoldersTable(holders);
+            mountHoldingsSeries();
+            mountConviction(period);
+            mountCoHolding(period);
+          } else if (group === "geography") {
+            mountHolderGeography(period);
+          } else if (group === "activity") {
+            mountActivityTrend(period);
+            mountInstActivityTable(period, fromPeriod, activity);
+          }
+        }
+        function showInstGroup(group) {
+          state.instGroup = group;
+          document.querySelectorAll("#view .inst-group").forEach(function (el) {
+            el.hidden = el.getAttribute("data-inst-group") !== group;
+          });
+          setOn("#inst-subtabs button", document.querySelector('#inst-subtabs button[data-inst-group="' + group + '"]'));
+          mountGroup(group);
+        }
+        var strip = $("inst-subtabs");
+        if (strip) strip.addEventListener("click", function (e) {
+          var btn = e.target.closest("button[data-inst-group]");
+          if (btn) showInstGroup(btn.getAttribute("data-inst-group"));
+        });
+        // Preserve the sub-view across period changes (re-render keeps you on the same question).
+        showInstGroup(state.instGroup || "holders");
       },
       function (err) {
         if (err.status === 401) P.mountNeedsKey($("view"), renderInstitutional);
@@ -534,24 +578,119 @@
     );
   }
 
-  function institutionalView(period, holders, activity, caveats) {
+  // Institutional sub-views (dashboard review #3): the tab's eight panels were one long scroll,
+  // so they're grouped into three questions -- who holds it (Holders), where they're based
+  // (Geography), and what they're doing (Activity) -- behind a sub-strip like the Statements
+  // tab's Income/Balance/Cash Flow. Charts mount lazily per group (see renderInstitutionalData),
+  // both to keep the initial view cheap and so a chart never measures its width while hidden.
+  var INST_GROUPS = [
+    ["holders", "Holders"],
+    ["geography", "Geography"],
+    ["activity", "Activity"],
+  ];
+
+  function instSubtabs() {
+    var active = state.instGroup || "holders";
     return (
-      institutionalStandingCaveat() +
-      holdersSection(period, holders) +
-      holdingsSeriesSection() + holderGeographySection() + convictionSection() +
-      coHoldingSection() + activityTrendSection() + activitySection(activity) + caveatsBlock(caveats)
+      '<div class="segmented inst-subtabs" id="inst-subtabs" role="tablist" aria-label="Institutional views">' +
+      INST_GROUPS.map(function (g) {
+        return '<button data-inst-group="' + g[0] + '"' + (g[0] === active ? ' class="on"' : "") +
+          ' role="tab">' + P.esc(g[1]) + "</button>";
+      }).join("") +
+      "</div>"
     );
   }
 
-  // Phase 1 institutional viz: (1) reported shares stacked over recent quarters (accumulation),
-  // (2) a choropleth of where the filers holding this issuer are headquartered. Both are
-  // placeholders here; the Plot nodes mount post-innerHTML (STYLE_GUIDE §6), and each fetches
-  // its own data so a failure degrades to an empty note without breaking the tab -- the same
-  // self-fetching pattern as mountHolderGeography.
-  function holdingsSeriesSection() {
+  function institutionalView(period, holders, activity, caveats) {
+    // Groups render up front (all hidden); showGroup() reveals the active one after innerHTML, so
+    // there's no flash of all three and JS stays the single source of which view is visible.
+    // Within a group the charts sit in a 2-up grid (.inst-chart-grid); each chart card carries its
+    // own title, so the redundant per-section headings are dropped and the sub-tab label leads.
     return (
-      '<h3 class="metric-group-title" style="margin-top:26px">Reported shares over recent quarters</h3>' +
-      '<div id="holdings-series-mount"></div>'
+      instSubtabs() +
+      institutionalStandingCaveat() +
+      // Holders: snapshot tiles up top, the ownership charts 2-up, the detail table at the bottom.
+      '<section class="inst-group" data-inst-group="holders" hidden>' +
+        holdersSummary(period, holders) +
+        // shares-trend + the co-holding network pair up top; the treemap fills the full-width odd
+        // row better than the (sparse) network would, and sits right above the holders table it
+        // visualizes. (The odd last cell spans both columns -- see .inst-chart-grid CSS.)
+        '<div class="inst-chart-grid">' +
+          '<div class="inst-cell"><div id="holdings-series-mount"></div></div>' +
+          '<div class="inst-cell"><div id="coholding-mount"></div></div>' +
+          '<div class="inst-cell"><div id="conviction-mount"></div></div>' +
+        "</div>" +
+        (holders.length ? holdersTable() : "") +
+      "</section>" +
+      // Geography: single full-width choropleth.
+      '<section class="inst-group" data-inst-group="geography" hidden>' +
+        holderGeographySection() +
+      "</section>" +
+      // Activity: the New/Added/Reduced summary cards up top, the two trend charts 2-up, then the
+      // filer-by-filer detail table at the bottom.
+      '<section class="inst-group" data-inst-group="activity" hidden>' +
+        activitySummaryBlock(activity) +
+        '<h3 class="metric-group-title" style="margin-top:26px">How holders have been building or trimming this position</h3>' +
+        '<div class="inst-chart-grid">' +
+          '<div class="inst-cell"><div id="activity-mix-mount"></div></div>' +
+          '<div class="inst-cell"><div id="activity-flow-mount"></div></div>' +
+        "</div>" +
+        activityTableBlock(activity) +
+      "</section>" +
+      caveatsBlock(caveats)
+    );
+  }
+
+  // Holders sub-view blocks. The snapshot tiles head the view; the paginated detail table sits at
+  // the bottom (below the ownership charts). The charts themselves are mounted into placeholder
+  // divs post-innerHTML (STYLE_GUIDE §6), each self-fetching so a failure degrades to an empty
+  // note without breaking the tab -- same pattern as mountHolderGeography.
+  function holdersSummary(period, holders) {
+    var head = '<h3 class="metric-group-title">Holders as of ' + P.esc(quarterLabel(period)) + "</h3>";
+    if (!holders.length) {
+      return head + P.states.empty({
+        title: "No holders for this quarter",
+        copy: "No manager reported holding this issuer for the selected quarter.",
+      });
+    }
+    // Concentration tiles reframed for an issuer (holder count / top-1/5/10 share of REPORTED 13F
+    // value across ingested filers, never % of shares outstanding). The precision framing renders
+    // once above via institutionalStandingCaveat() -- not repeated here (Phase 5 caption dedup).
+    return head + '<div class="composition-block">' + P.statTiles(holders, {
+      rowLabel: "Holders reported",
+      totalNote: "Reported 13F value across all ingested filers for this issuer",
+    }) + "</div>";
+  }
+
+  function holdersTable() {
+    // Paginated (ClearyFi.paginatedTable) -- a widely-held issuer can have hundreds of filers.
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">All reported holders</h3>' +
+      '<div id="holders-table-mount"></div>'
+    );
+  }
+
+  // Activity sub-view blocks. The New/Added/Reduced summary cards lead the view; the filer-by-filer
+  // detail table follows the trend charts. Both need a single-quarter diff, so when no prior quarter
+  // is ingested the summary block shows the honest empty state and the table block is omitted (the
+  // trend charts between them are period-independent and still render).
+  function activitySummaryBlock(activity) {
+    var head = '<h3 class="metric-group-title">Derived activity vs. prior quarter</h3>';
+    if (!activity.length) {
+      return head + P.states.empty({
+        title: "No prior-quarter comparison",
+        copy: "No prior 13F quarter is ingested to diff against — the earliest ingested quarter " +
+          "has nothing to compare to. This is a DERIVED view, never reported trades.",
+      });
+    }
+    return head + P.activitySummaryTiles(activity);
+  }
+
+  function activityTableBlock(activity) {
+    if (!activity.length) return ""; // the empty state already rendered in activitySummaryBlock
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">Filer-by-filer changes</h3>' +
+      '<div id="inst-activity-table-mount"></div>'
     );
   }
 
@@ -562,63 +701,8 @@
     );
   }
 
-  function convictionSection() {
-    return (
-      '<h3 class="metric-group-title" style="margin-top:26px">Which 13F filers hold the most of this company</h3>' +
-      '<div id="conviction-mount"></div>'
-    );
-  }
-
-  function coHoldingSection() {
-    return (
-      '<h3 class="metric-group-title" style="margin-top:26px">Which holders run similar portfolios</h3>' +
-      '<div id="coholding-mount"></div>'
-    );
-  }
-
-  // Derived holder-activity TREND (issuer axis, GET /institutional-activity-series). Period-
-  // independent (spans the recent quarters like the accumulation chart), so it lives in its own
-  // section OUTSIDE the period-reactive activitySection below -- it must render even when the
-  // selected period has no single-quarter comparison. Two mounts: the activity-mix stacked bar
-  // over recent quarters, then the latest-quarter inflows-vs-outflows flow.
-  function activityTrendSection() {
-    return (
-      '<h3 class="metric-group-title" style="margin-top:26px">How holders have been building or trimming this position</h3>' +
-      '<div id="activity-mix-mount"></div>' +
-      '<div id="activity-flow-mount"></div>'
-    );
-  }
-
   function managerLink(cik, name) {
     return '<a href="/manager/' + encodeURIComponent(cik) + '">' + P.esc(name || "CIK " + cik) + "</a>";
-  }
-
-  function holdersSection(period, holders) {
-    if (!holders.length) {
-      return "<h3 class=\"metric-group-title\">Holders as of " + P.esc(quarterLabel(period)) + "</h3>" +
-        P.states.empty({ title: "No holders for this quarter", copy: "No manager reported holding this issuer for the selected quarter." });
-    }
-    // The same concentration stat tiles reframed for an issuer (holder count / top-1/5/10 share
-    // of REPORTED 13F value across ingested filers, never % of shares outstanding or all
-    // institutional owners). statTiles is a plain HTML string. The "share of reported 13F
-    // value... not shares outstanding... not all institutional owners" precision framing renders
-    // once, above, via institutionalStandingCaveat() -- not repeated here (Phase 5 polish: caption
-    // dedup).
-    var composition =
-      '<div class="composition-block">' +
-      P.statTiles(holders, {
-        rowLabel: "Holders reported",
-        totalNote: "Reported 13F value across all ingested filers for this issuer",
-      }) +
-      "</div>";
-    // The holders detail table is paginated (ClearyFi.paginatedTable) -- a widely-held issuer
-    // can have hundreds of reporting filers. Rendered post-innerHTML into this mount, like
-    // the charts (same pattern as manager.js).
-    return (
-      '<h3 class="metric-group-title">Holders as of ' + P.esc(quarterLabel(period)) + "</h3>" +
-      composition +
-      '<div id="holders-table-mount"></div>'
-    );
   }
 
   // Renders the paginated holders detail table (10 rows/page; the tiles/chart above always
@@ -808,24 +892,6 @@
     );
   }
 
-  function activitySection(activity) {
-    var head = '<h3 class="metric-group-title" style="margin-top:26px">Derived activity vs. prior quarter</h3>';
-    if (!activity.length) {
-      return head + P.states.empty({
-        title: "No prior-quarter comparison",
-        copy: "No prior 13F quarter is ingested to diff against — the earliest ingested quarter " +
-          "has nothing to compare to. This is a DERIVED view, never reported trades.",
-      });
-    }
-    // Summary tiles (headline counts), then the paginated detail table. The table is filled
-    // post-innerHTML (ClearyFi.paginatedTable); left empty when there's honestly nothing to show.
-    var tiles = P.activitySummaryTiles(activity);
-    return (
-      head + tiles +
-      '<div id="inst-activity-table-mount"></div>'
-    );
-  }
-
   // Renders the paginated derived-activity detail table (10 rows/page; the tiles/charts above
   // always summarize ALL rows, so paging never changes what the numbers mean).
   function mountInstActivityTable(period, fromPeriod, activity) {
@@ -949,16 +1015,20 @@
         (res[0].metrics || []).forEach(function (m) { by[m.metric] = m; });
         var peerBy = {};
         (res[1].peers || []).forEach(function (p) { peerBy[p.metric] = p; });
+        var rendered = []; // categories that actually produced cards -> section-nav targets
         var html = CATEGORIES.map(function (cat) {
           var cards = cat[1]
             .filter(function (k) { return by[k]; })
             .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k], trend: true, peer: peerBy[k] }); })
             .join("");
           if (!cards) return "";
-          return '<section class="metric-group"><h3 class="metric-group-title">' + P.esc(cat[0]) +
+          var id = sectionId(cat[0]);
+          rendered.push({ id: id, label: cat[0] });
+          return '<section class="metric-group" id="' + id + '"><h3 class="metric-group-title">' + P.esc(cat[0]) +
             '</h3><div class="card-grid">' + cards + "</div></section>";
         }).join("");
-        $("view").innerHTML = banner + peerNote(res[1]) + (html || P.states.empty({}));
+        $("view").innerHTML = glanceBand(by) + banner + peerNote(res[1]) + (html || P.states.empty({}));
+        buildSectionNav(rendered);
         wireTrendPanels();
       },
       function (err) { $("view").innerHTML = metricsError(err); }
@@ -971,6 +1041,84 @@
     return '<p class="stmt-caption" style="margin:0 0 14px">Peer bars show each metric\'s percentile ' +
       "within its " + P.esc(peers.peer_basis || "SIC") + " peer group — position among peers, not a " +
       "good/bad verdict (for some metrics a higher value is not “better”). Ranks exclude N/A peers.</p>";
+  }
+
+  // "At a glance" hero band: the GLANCE metrics as prominent stat tiles above the full grid,
+  // giving a 5-second read before the exhaustive card grid. Reuses the .stat-tile visual
+  // vocabulary; each tile carries the same status glyph + basis as its card, so honesty is
+  // preserved (an N/A metric shows N/A here too). Skipped entirely if none resolve.
+  function glanceBand(by) {
+    var tiles = GLANCE.map(function (g) {
+      var mv = by[g[0]];
+      if (!mv) return "";
+      var f = P.fmtMetric(mv);
+      var st = P.STATUS[mv.status] || P.STATUS.ok;
+      var basis = mv.basis === "TTM" ? "TTM" : "As-of";
+      return (
+        '<div class="glance-tile' + (f.drained ? " drained" : "") + '">' +
+        '<span class="glance-label">' + P.esc(g[1]) + "</span>" +
+        '<span class="glance-value">' + P.esc(f.text) + "</span>" +
+        '<span class="glance-foot"><span class="glance-dot glance-' + mv.status + '">' + st.glyph + "</span>" +
+        P.esc(basis) + "</span></div>"
+      );
+    }).join("");
+    if (!/glance-tile/.test(tiles)) return "";
+    return (
+      '<section class="glance">' +
+      '<div class="glance-eyebrow">At a glance</div>' +
+      '<div class="glance-tiles">' + tiles + "</div></section>"
+    );
+  }
+
+  // ---------- "On this page" section rail (dashboard prototype) ----------
+  //
+  // Turns the otherwise-empty lower half of the app sidebar into a scroll-tracking table of
+  // contents for the fundamentals grid: one link per rendered category, with the section nearest
+  // the top of the viewport highlighted. Injected into the shared shell sidebar (owned by
+  // script.js) rather than a second on-page rail, and torn down on any tab switch.
+  var sectionObserver = null;
+
+  function clearSectionNav() {
+    if (sectionObserver) { sectionObserver.disconnect(); sectionObserver = null; }
+    var nav = document.getElementById("sectionNav");
+    if (nav) nav.remove();
+  }
+
+  function buildSectionNav(cats) {
+    clearSectionNav();
+    var side = document.getElementById("appSide");
+    if (!side || !cats.length) return;
+    var foot = side.querySelector(".app-side-foot");
+    var nav = document.createElement("nav");
+    nav.id = "sectionNav";
+    nav.className = "side-group section-nav";
+    nav.setAttribute("aria-label", "On this page");
+    nav.innerHTML =
+      '<div class="side-group-label">On this page</div>' +
+      cats.map(function (c) {
+        return '<a class="side-link section-link" href="#' + c.id + '">' + P.esc(c.label) + "</a>";
+      }).join("");
+    // Sit above the pinned footer (which uses margin-top:auto), below the primary nav groups.
+    if (foot) side.insertBefore(nav, foot); else side.appendChild(nav);
+
+    // Scroll-spy: highlight the section whose heading is nearest the top of the viewport.
+    var links = {};
+    nav.querySelectorAll(".section-link").forEach(function (a) {
+      links[a.getAttribute("href").slice(1)] = a;
+    });
+    var visible = {};
+    sectionObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { visible[en.target.id] = en.isIntersecting; });
+      var order = cats.map(function (c) { return c.id; });
+      var active = order.filter(function (id) { return visible[id]; })[0] || null;
+      order.forEach(function (id) {
+        if (links[id]) links[id].classList.toggle("active", id === active);
+      });
+    }, { rootMargin: "-96px 0px -55% 0px", threshold: 0 });
+    cats.forEach(function (c) {
+      var el = document.getElementById(c.id);
+      if (el) sectionObserver.observe(el);
+    });
   }
 
   // Expandable multi-year trend per metric card (Phase 1b). Lazy: the fuller chart +
@@ -1177,10 +1325,16 @@
       '<p class="caveat">Sourced from SEC EDGAR filings — subject to normal filing lag (a 10-K posts ~45–90 days after period end). Values are raw USD unless noted; display figures are rounded, exact reported figures on click.</p>'
     );
 
-    // The income statement and the balance sheet get a chart view (income: waterfall bridge +
-    // common-size; balance: capital-structure trend + working-capital bridge + balance matrix).
-    // Cash flow & segments keep the table-only view untouched.
-    if (state.statement !== "income" && state.statement !== "balance") return tableInner;
+    // The income statement, balance sheet and cash-flow statement get a chart view (income:
+    // waterfall bridge + common-size; balance: capital-structure trend + working-capital bridge +
+    // balance matrix; cashflow: cash bridge + FCF breakdown + earnings quality). Segments keep the
+    // table-only view untouched.
+    if (
+      state.statement !== "income" &&
+      state.statement !== "balance" &&
+      state.statement !== "cashflow"
+    )
+      return tableInner;
 
     var tableHidden = state.stmtMode === "chart" ? " hidden" : "";
     var chartHidden = state.stmtMode === "chart" ? "" : " hidden";
@@ -1225,7 +1379,12 @@
       btn.textContent = btn.getAttribute(revealed ? "data-exact" : "data-abbrev");
     });
 
-    if (state.statement === "income" || state.statement === "balance") wireStmtViewToggle(stmt);
+    if (
+      state.statement === "income" ||
+      state.statement === "balance" ||
+      state.statement === "cashflow"
+    )
+      wireStmtViewToggle(stmt);
   }
 
   // Table/Chart segmented toggle for the income statement and balance sheet. Chart mode lazily
@@ -1255,6 +1414,7 @@
     var wrap = $("stmt-chart-wrap");
     if (!wrap) return;
     if (state.statement === "balance") { renderBalanceCharts(wrap, stmt); return; }
+    if (state.statement === "cashflow") { renderCashflowCharts(wrap, stmt); return; }
     // Cache key includes the statement so income/balance never collide on the same (year, period).
     var key = state.statement + "|" + stmt.fiscal_year + "|" + stmt.fiscal_period;
     var cached = state.vizCache[key];
@@ -1306,17 +1466,88 @@
     );
   }
 
-  function paintBalanceCharts(wrap, viz, series) {
+  // Analytical grid layout for the statement chart views (dashboard review #3): instead of a
+  // single column of full-width panels, lay charts out in rows where a two-item row becomes a
+  // measured 2-up grid -- the primary/wide chart gets the full width, the supporting pair sits
+  // side by side. Each `row` is an array of builder fns (width -> chartCard node); a 1-fn row is
+  // full width, a 2-fn row splits. The 2-up grid collapses back to one column on narrow screens
+  // (CSS), and we re-measure each cell so the Plot SVGs are sized to the column they land in.
+  function chartRows(wrap, rows, caveats) {
     wrap.innerHTML = "";
     var w = P.measuredWidth(wrap, 640);
-    // Brief priority order: trend (#2) -> working-capital (#4) -> matrix (#1).
-    wrap.appendChild(P.capitalStructureTrend(series, { width: w }));
-    wrap.appendChild(P.workingCapitalBridge(viz.working_capital, { width: w }));
-    wrap.appendChild(P.balanceMatrix(viz.matrix, { width: w }));
+    rows.forEach(function (row) {
+      if (row.length === 1) {
+        wrap.appendChild(row[0](w));
+        return;
+      }
+      var grid = document.createElement("div");
+      grid.className = "stmt-chart-grid";
+      wrap.appendChild(grid);
+      var cells = row.map(function () {
+        var c = document.createElement("div");
+        c.className = "stmt-chart-cell";
+        grid.appendChild(c);
+        return c;
+      });
+      // Measure a cell after it's in the DOM so a collapsed (one-column) grid sizes charts to the
+      // full width, and a split grid sizes them to the half-column they actually occupy.
+      var colW = P.measuredWidth(cells[0], Math.floor((w - 16) / 2));
+      row.forEach(function (fn, i) { cells[i].appendChild(fn(colW)); });
+    });
     var cav = document.createElement("p");
     cav.className = "caveat";
-    cav.textContent = (viz.caveats || []).join(" ");
+    cav.textContent = (caveats || []).join(" ");
     wrap.appendChild(cav);
+  }
+
+  function paintBalanceCharts(wrap, viz, series) {
+    // Full-width stack, not a 2-up grid: each balance chart needs the width -- the working-capital
+    // diverging bar has left-edge category labels that collide with its value labels at a half
+    // column, and the matrix is a wide two-column table. (2-up suits the compact cash-flow pair;
+    // it doesn't suit these.) Brief priority order: trend (#2) -> working-capital (#4) -> matrix (#1).
+    chartRows(wrap, [
+      [function (w) { return P.capitalStructureTrend(series, { width: w }); }],
+      [function (w) { return P.workingCapitalBridge(viz.working_capital, { width: w }); }],
+      [function (w) { return P.balanceMatrix(viz.matrix, { width: w }); }],
+    ], viz.caveats);
+  }
+
+  // Cash-flow chart mode: the single-period cash BRIDGE (#1) + the multi-period FCF breakdown (#2)
+  // and earnings-quality combo (#3). Like the balance charts, the bridge is per (year, period) and
+  // the series is period-independent, so we fetch two things and paint once both resolve. The
+  // single-period viz is cached per (statement, year, period); the series is cached once per
+  // statement (keyed "cashflow|series"), so income/balance/cashflow never collide.
+  function renderCashflowCharts(wrap, stmt) {
+    var vizKey = "cashflow|" + stmt.fiscal_year + "|" + stmt.fiscal_period;
+    var seriesKey = "cashflow|series";
+    var viz = state.vizCache[vizKey], series = state.vizCache[seriesKey];
+    if (viz && series) { paintCashflowCharts(wrap, viz, series); return; }
+    wrap.innerHTML = P.states.loading({ title: "Loading charts" });
+    var base = "/companies/" + encodeURIComponent(symbol) + "/statements/cashflow/";
+    var pViz = viz ? Promise.resolve(viz) : P.api(
+      base + "viz?year=" + stmt.fiscal_year + "&period=" + encodeURIComponent(stmt.fiscal_period)
+    );
+    var pSeries = series ? Promise.resolve(series) : P.api(base + "viz-series?period=FY");
+    Promise.all([pViz, pSeries]).then(
+      function (r) {
+        state.vizCache[vizKey] = r[0];
+        state.vizCache[seriesKey] = r[1];
+        if (state.stmtMode === "chart") paintCashflowCharts(wrap, r[0], r[1]);
+      },
+      function (err) { wrap.innerHTML = P.states.error({ copy: "Couldn't load charts (" + (err.status || "network") + ")." }); }
+    );
+  }
+
+  function paintCashflowCharts(wrap, viz, series) {
+    // The cash bridge (#1) leads full-width; the FCF breakdown (#2) and earnings-quality (#3)
+    // combos pair side by side beneath it rather than stretching across the whole page.
+    chartRows(wrap, [
+      [function (w) { return P.cashFlowBridge(viz.bridge, { width: w }); }],
+      [
+        function (w) { return P.fcfBreakdown(series, { width: w }); },
+        function (w) { return P.earningsQuality(series, { width: w }); },
+      ],
+    ], viz.caveats);
   }
 
   // ---------- Phase-3 dimensional spike view (merged from the retired /explorer) ----------

@@ -925,6 +925,12 @@
       ? '<details class="trend-panel" data-metric="' + esc(mv.metric) +
         '"><summary>Trend</summary><div class="trend-body"></div></details>'
       : "";
+    // The two disclosures ("show your work" + trend) live in a bottom-pinned actions zone so
+    // they align across every card in a row regardless of how much insight (peer bar/spark/note)
+    // sits above -- kept visible, not hover-hidden, since "show your work" is a trust affordance.
+    var actions = (prov || trendPanel)
+      ? '<div class="metric-actions">' + prov + trendPanel + "</div>"
+      : "";
     return (
       '<article class="metric-card' + (isNa ? " na" : "") + '">' +
       '<div class="metric-head"><span class="metric-name">' + esc(mv.label) + "</span>" + statusChip(mv.status) + "</div>" +
@@ -933,8 +939,7 @@
       peer +
       spark +
       note +
-      prov +
-      trendPanel +
+      actions +
       "</article>"
     );
   }
@@ -3307,6 +3312,404 @@
     return card.root;
   }
 
+  // ---------- cash-flow visualizations (cash bridge + FCF breakdown + earnings quality) ----------
+  //
+  // All three consume the cash-flow viz endpoints (normalize/viz.py): the single-period bridge from
+  // GET .../statements/cashflow/viz, the multi-period FCF + earnings-quality data from
+  // GET .../statements/cashflow/viz-series. The server owns EVERY honesty decision -- the section
+  // walk, the single "Other / unreconciled" residual, the cash-basis match, FCF = OCF−CapEx (or
+  // N/A), the OCF/NI conversion + its nm/na degrade -- so these are thin renderers: they draw
+  // exactly what the JSON says and never re-derive a sign, a total, or a ratio, and never render a
+  // missing value as 0. Single terracotta accent + ink, NO green/red (§10): direction is encoded by
+  // where a bar FLOATS, not by hue.
+
+  // Short axis-tick labels for the cash bridge sections (residual/anchors carry no concept).
+  var CASHFLOW_SHORT_LABEL = {
+    cash_from_operations: "Operating", cash_from_investing: "Investing",
+    cash_from_financing: "Financing", effect_of_exchange_rate_on_cash: "FX Effect",
+  };
+  // The derived anchor/residual steps carry a full label but no concept; compress the long ones
+  // for the (rotated) axis tick only -- the FULL label always stays in the tooltip.
+  var CASHFLOW_ANCHOR_SHORT = {
+    "Beginning Cash": "Beginning", "Ending Cash": "Ending",
+    "Beginning (relative)": "Beginning", "Net change (relative)": "Net change",
+    "Other / unreconciled": "Other",
+  };
+  function cashflowShortLabel(concept, fullLabel) {
+    if (!concept) return CASHFLOW_ANCHOR_SHORT[fullLabel] || fullLabel || "";
+    return CASHFLOW_SHORT_LABEL[concept] || fullLabel || concept;
+  }
+
+  // The cash bridge: a floating-bar walk Beginning → CFO → CFI → CFF → FX → Ending. `bridge` is the
+  // response's `bridge` (CashFlowBridge): { available, unavailable_reason, steps[], absolute,
+  // beginning_cash, ending_cash, reported_change, cash_basis, basis_note }. The step ORDER is the
+  // walk; anchors (kind="anchor") are solid ink columns, section flows (kind="flow") are floating
+  // accent bars whose vertical span is the running-total move, and the single residual
+  // (kind="residual", "Other / unreconciled") is a floating accent-WASH + dashed bar, computed-not-
+  // reported. When absolute=false the walk is 0-anchored (relative) and the server labels the
+  // bookend anchors "Beginning (relative)" / "Net change (relative)". Returns a chartCard node, or
+  // an honest unavailable card when the reported net change is missing.
+  function cashFlowBridge(bridge, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Cash bridge (Beginning → operating/investing/financing → Ending)");
+
+    if (!bridge || bridge.available === false) {
+      var reason = (bridge && bridge.unavailable_reason) ||
+        "This period doesn't report the net change in cash needed to draw a bridge.";
+      var pu = document.createElement("p");
+      pu.className = "state-copy";
+      pu.style.margin = "0";
+      pu.textContent = "Cash bridge unavailable — " + reason;
+      card.body.appendChild(pu);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var steps = bridge.steps || [];
+    // Explicit floating extents so the renderer never re-derives sign: anchors sit on 0..running,
+    // flows/residuals span from the prior running total to this one (Plot orders the band itself).
+    var prev = 0;
+    var rows = steps.map(function (s, i) {
+      var y2 = s.kind === "anchor" ? 0 : prev;   // the "from" edge
+      var y1 = s.running_total;                  // the "to" edge
+      prev = s.running_total;
+      return {
+        key: i + "·" + s.label,
+        label: s.label,
+        concept: s.canonical_concept,
+        kind: s.kind,
+        y1: y1, y2: y2,
+        value: s.value,
+        isResidual: s.kind === "residual",
+        isAnchor: s.kind === "anchor",
+        sourceText: s.source_tag || "—",
+        deltaText: s.kind === "anchor"
+          ? usd(s.running_total)
+          : (s.direction === "down" ? MINUS : "+") + usd(s.value).replace(/^\(|\)$/g, ""),
+        levelText: usd(s.running_total),
+      };
+    });
+
+    var order = rows.map(function (r) { return r.key; });
+    var anchors = rows.filter(function (r) { return r.isAnchor; });
+    var flows = rows.filter(function (r) { return !r.isAnchor && !r.isResidual; });
+    var residuals = rows.filter(function (r) { return r.isResidual; });
+
+    var vals = rows.reduce(function (acc, r) { acc.push(r.y1, r.y2); return acc; }, [0]);
+    var yMin = Math.min.apply(null, vals), yMax = Math.max.apply(null, vals);
+    var pad = (yMax - yMin) * 0.08 || 1;
+
+    var height = Math.max(240, opts.height || 300);
+    var marks = [window.Plot.gridY({ stroke: t.trackBorder, strokeOpacity: 0.5 })];
+    if (anchors.length) {
+      marks.push(window.Plot.barY(anchors, {
+        x: "key", y1: "y1", y2: "y2", fill: t.ink, fillOpacity: 0.82, rx: 2,
+        channels: { Step: "label", Level: "levelText" },
+        tip: { format: { x: false, y1: false, y2: false, Step: true, Level: true } },
+      }));
+    }
+    if (flows.length) {
+      marks.push(window.Plot.barY(flows, {
+        x: "key", y1: "y1", y2: "y2", fill: t.accent, rx: 2,
+        channels: { Section: "label", Change: "deltaText", "Running total": "levelText", Tag: "sourceText" },
+        tip: { format: { x: false, y1: false, y2: false, Section: true, Change: true, "Running total": true, Tag: true } },
+      }));
+    }
+    if (residuals.length) {
+      marks.push(window.Plot.barY(residuals, {
+        x: "key", y1: "y1", y2: "y2", fill: t.accentWash, stroke: t.accent, strokeWidth: 1.5,
+        strokeDasharray: "3,2", rx: 2,
+        channels: { Step: "label", Change: "deltaText", "Running total": "levelText" },
+        tip: { format: { x: false, y1: false, y2: false, Step: true, Change: true, "Running total": true } },
+      }));
+    }
+    marks.push(window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.65 }));
+    marks.push(window.Plot.text(rows, {
+      x: "key", y: function (d) { return Math.max(d.y1, d.y2); },
+      text: function (d) { return d.isAnchor ? d.levelText : d.deltaText; },
+      dy: -6, fontFamily: t.fontMono, fontSize: 9.5,
+      fill: function (d) { return d.isAnchor ? t.ink : t.inkSoft; },
+    }));
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 58, marginRight: 14, marginTop: 24, marginBottom: 72,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: {
+        domain: order, label: null, tickRotate: -32,
+        tickFormat: function (k) {
+          var r = rows[order.indexOf(k)];
+          return r ? cashflowShortLabel(r.concept, r.label) : k;
+        },
+      },
+      y: { domain: [Math.min(0, yMin) - pad, yMax + pad], label: "USD", tickFormat: usd, grid: false },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+
+    // Basis / relative-walk framing: state which cash basis Beginning/Ending sit on, or that the
+    // walk is relative because absolute levels weren't reported. Never invent a level.
+    var basisName = bridge.cash_basis === "cash_and_restricted_cash"
+      ? "cash including restricted cash"
+      : bridge.cash_basis === "cash_and_equivalents" ? "cash & equivalents" : null;
+    if (bridge.absolute) {
+      card.note(
+        "Beginning → Ending Cash on the basis matching the filer's reported net-change tag" +
+        (basisName ? " (" + basisName + ")" : "") + ". The bars sum the reported operating, " +
+        "investing, financing and FX sections to the reported net change."
+      );
+    } else {
+      card.note(
+        "Relative walk: this period doesn't report the beginning/ending cash levels on the " +
+        "matching basis, so the bars start at 0 and step by the reported operating, investing, " +
+        "financing and FX sections to the reported net change — absolute levels aren't invented."
+      );
+    }
+    if (residuals.length) {
+      card.note(
+        'Dashed "' + residuals[0].label + '" bar = the gap between the summed sections and the ' +
+        "reported net change in cash, shown explicitly. A large one usually signals a reporting/" +
+        "basis nuance, not a real economic bucket."
+      );
+    }
+    if (bridge.basis_note) card.note(bridge.basis_note);
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
+  // FCF breakdown: grouped columns per period (oldest→newest) — Operating Cash Flow, Capital
+  // Expenditures, Free Cash Flow (= OCF − CapEx). `series` is the CashFlowSeries response:
+  // { periods[]: { fiscal_year, operating_cash_flow, capital_expenditures, free_cash_flow, ... } }.
+  // A null field draws NO bar (a gap, never a 0 bar); a negative FCF extends below the zero line; a
+  // period whose FCF is null (e.g. a bank with no capex) shows an explicit "FCF N/A" marker naming
+  // that FCF couldn't be computed. Returns a chartCard node.
+  function fcfBreakdown(series, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Free cash flow (operating cash flow − capital expenditures)");
+
+    var periods = (series && series.periods) || [];
+    if (!periods.length) {
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = "Free cash flow unavailable — no periods to chart.";
+      card.body.appendChild(p0);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var OCF = "Operating", CAPEX = "CapEx", FCF = "Free cash flow";
+    var METRICS = [OCF, CAPEX, FCF];
+    var seriesRange = [t.ink, t.inkSoft, t.accent];
+    // Single band scale over composite period|metric keys (grouped bars WITHOUT faceting, so
+    // overlay/label marks share the one x scale). The middle metric (CapEx) key carries the
+    // period label so it sits over each group's centre.
+    function keyOf(fy, m) { return "FY" + fy + "|" + m; }
+    var order = [];
+    periods.forEach(function (p) { METRICS.forEach(function (m) { order.push(keyOf(p.fiscal_year, m)); }); });
+
+    var rows = [];        // one bar per PRESENT metric value only (null omitted, never a 0 bar)
+    var naMarks = [];     // periods where FCF couldn't be computed -> explicit "FCF N/A"
+    var periodLabels = [];
+    periods.forEach(function (p) {
+      var fy = p.fiscal_year, per = "FY" + fy;
+      function add(m, v) {
+        if (v !== null && v !== undefined) rows.push({ key: keyOf(fy, m), metric: m, v: v, period: per, valueText: usd(v) });
+      }
+      add(OCF, p.operating_cash_flow);
+      add(CAPEX, p.capital_expenditures);
+      if (p.free_cash_flow !== null && p.free_cash_flow !== undefined) add(FCF, p.free_cash_flow);
+      else naMarks.push({ key: keyOf(fy, FCF), period: per });
+      periodLabels.push({ key: keyOf(fy, CAPEX), period: per });
+    });
+
+    var vs = rows.map(function (r) { return r.v; }).concat([0]);
+    var yMin = Math.min.apply(null, vs), yMax = Math.max.apply(null, vs);
+    var pad = (yMax - yMin) * 0.12 || 1;
+    var yLo = Math.min(0, yMin) - pad, yHi = yMax + pad;
+    var height = Math.max(240, opts.height || 300);
+
+    var marks = [
+      window.Plot.gridY({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.barY(rows, {
+        x: "key", y: "v", fill: "metric", rx: 2,
+        channels: { Period: "period", Metric: "metric", Value: "valueText" },
+        tip: { format: { x: false, y: false, fill: false, Period: true, Metric: true, Value: true } },
+      }),
+      window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.7 }),
+      window.Plot.text(periodLabels, {
+        x: "key", y: yHi, text: "period", dy: 2, frameAnchor: "top",
+        fontFamily: t.fontMono, fontSize: 9.5, fill: t.inkSoft,
+      }),
+    ];
+    if (naMarks.length) {
+      marks.push(window.Plot.text(naMarks, {
+        x: "key", y: 0, text: function () { return "FCF N/A"; },
+        dy: -6, fontFamily: t.fontMono, fontSize: 9, fill: t.inkSoft, fillOpacity: 0.75,
+        channels: { Period: "period" }, tip: { format: { x: false, y: false, Period: true } },
+      }));
+    }
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 58, marginRight: 14, marginTop: 22, marginBottom: 16,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: order, axis: null },
+      y: { domain: [yLo, yHi], label: "USD", tickFormat: usd, grid: false },
+      color: { domain: METRICS, range: seriesRange, legend: true },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    card.note(
+      "Free cash flow = operating cash flow − capital expenditures (capex is the reported cash " +
+      "outflow). A negative FCF means capex exceeded operating cash (shown below the line, not " +
+      "clamped); a period we can't compute FCF for — e.g. a filer that doesn't tag capex — is " +
+      'marked "FCF N/A", never shown as 0.'
+    );
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
+  // Earnings quality: paired columns Net Income vs Operating Cash Flow per period (primary USD
+  // axis) + a cash-conversion LINE (OCF ÷ Net Income) on a secondary axis. `series` is the
+  // CashFlowSeries response. A null column is a gap (never 0). The conversion point is drawn only
+  // where conversion_status === "ok" (a suppressed point shows its reason on hover) — but an "ok"
+  // ratio that is NEGATIVE (negative OCF against positive NI) renders truthfully; it's a real
+  // earnings-quality signal, not "nm". Returns a chartCard node.
+  function earningsQuality(series, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Earnings quality (net income vs operating cash flow)");
+
+    var periods = (series && series.periods) || [];
+    if (!periods.length) {
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = "Earnings quality unavailable — no periods to chart.";
+      card.body.appendChild(p0);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var NI = "Net income", OCF = "Operating cash flow";
+    var METRICS = [NI, OCF];
+    function keyOf(fy, m) { return "FY" + fy + "|" + m; }
+    var order = [];
+    periods.forEach(function (p) { METRICS.forEach(function (m) { order.push(keyOf(p.fiscal_year, m)); }); });
+
+    var bars = [], periodLabels = [];
+    periods.forEach(function (p) {
+      var fy = p.fiscal_year, per = "FY" + fy;
+      if (p.net_income !== null && p.net_income !== undefined) {
+        bars.push({ key: keyOf(fy, NI), metric: NI, v: p.net_income, period: per, valueText: usd(p.net_income) });
+      }
+      if (p.operating_cash_flow !== null && p.operating_cash_flow !== undefined) {
+        bars.push({ key: keyOf(fy, OCF), metric: OCF, v: p.operating_cash_flow, period: per, valueText: usd(p.operating_cash_flow) });
+      }
+      periodLabels.push({ key: keyOf(fy, NI), period: per });
+    });
+
+    // Conversion points: only where the server marked the ratio meaningful ("ok"). Everything else
+    // (nm on NI<=0, na on a missing input) is a GAP labelled with its status, reason on hover --
+    // never plotted as 0. Anchored on the OCF (right) bar of each group so the line reads L→R.
+    var convOk = [], convGap = [];
+    periods.forEach(function (p) {
+      var fy = p.fiscal_year, per = "FY" + fy, k = keyOf(fy, OCF);
+      if (p.conversion_status === "ok" && p.cash_conversion !== null && p.cash_conversion !== undefined) {
+        convOk.push({ key: k, period: per, ratio: p.cash_conversion, ratioText: fmt.mult(p.cash_conversion) });
+      } else {
+        convGap.push({ key: k, period: per, reason: p.conversion_reason || "not meaningful", statusText: p.conversion_status });
+      }
+    });
+
+    var vs = bars.map(function (r) { return r.v; }).concat([0]);
+    var yMin = Math.min.apply(null, vs), yMax = Math.max.apply(null, vs);
+    var pad = (yMax - yMin) * 0.14 || 1;
+    var yLo = Math.min(0, yMin) - pad, yHi = yMax + pad;
+    // Secondary (ratio) axis: map the conversion range onto the USD range so the line overlays,
+    // then draw a real right-hand axis in ratio units. Always include 0 and 1 so the "1× line"
+    // (profit fully converting to cash) is a fixed reference.
+    var ratios = convOk.map(function (r) { return r.ratio; }).concat([0, 1]);
+    var rMin = Math.min.apply(null, ratios), rMax = Math.max.apply(null, ratios);
+    var rSpan = (rMax - rMin) || 1;
+    function ratioToY(r) { return yLo + ((r - rMin) / rSpan) * (yHi - yLo); }
+    var convOkY = convOk.map(function (r) { return { key: r.key, period: r.period, y: ratioToY(r.ratio), ratioText: r.ratioText }; });
+    var convGapY = convGap.map(function (g) { return { key: g.key, period: g.period, y: ratioToY(1), statusText: g.statusText, reason: g.reason }; });
+    // Secondary-axis ticks (ratio units) drawn on the right edge.
+    var rTicks = [rMin, (rMin + rMax) / 2, rMax].filter(function (v, i, a) { return a.indexOf(v) === i; });
+    var rTickRows = rTicks.map(function (r) { return { y: ratioToY(r), label: fmt.mult(r) }; });
+
+    var height = Math.max(260, opts.height || 320);
+    var marks = [
+      window.Plot.gridY({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.barY(bars, {
+        x: "key", y: "v", fill: "metric", rx: 2,
+        channels: { Period: "period", Metric: "metric", Value: "valueText" },
+        tip: { format: { x: false, y: false, fill: false, Period: true, Metric: true, Value: true } },
+      }),
+      window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.7 }),
+      // The 1× reference (profit fully converting to cash) on the secondary scale.
+      window.Plot.ruleY([ratioToY(1)], { stroke: t.accent, strokeOpacity: 0.35, strokeDasharray: "3,3" }),
+      window.Plot.text(periodLabels, {
+        x: "key", y: yHi, text: "period", dy: 2, frameAnchor: "top",
+        fontFamily: t.fontMono, fontSize: 9.5, fill: t.inkSoft,
+      }),
+      // Right-hand secondary axis: conversion ratio units.
+      window.Plot.text(rTickRows, {
+        x: order[order.length - 1], y: "y", text: "label", frameAnchor: "right", dx: 40,
+        fontFamily: t.fontMono, fontSize: 9, fill: t.accent,
+      }),
+    ];
+    if (convOkY.length > 1) {
+      marks.push(window.Plot.line(convOkY, { x: "key", y: "y", stroke: t.accent, strokeWidth: 1.5, curve: "catmull-rom" }));
+    }
+    if (convOkY.length) {
+      marks.push(window.Plot.dot(convOkY, {
+        x: "key", y: "y", fill: t.accent, r: 3.5,
+        channels: { Period: "period", "OCF ÷ Net income": "ratioText" },
+        tip: { format: { x: false, y: false, Period: true, "OCF ÷ Net income": true } },
+      }));
+      marks.push(window.Plot.text(convOkY, {
+        x: "key", y: "y", text: "ratioText", dy: -8, fontFamily: t.fontMono, fontSize: 9.5, fill: t.accent,
+      }));
+    }
+    if (convGapY.length) {
+      marks.push(window.Plot.text(convGapY, {
+        x: "key", y: "y", text: "statusText", dy: -8, fontFamily: t.fontMono, fontSize: 9, fill: t.inkSoft, fillOpacity: 0.75,
+        channels: { Period: "period", Why: "reason" }, tip: { format: { x: false, y: false, Period: true, Why: true } },
+      }));
+    }
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 58, marginRight: 52, marginTop: 22, marginBottom: 16,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: order, axis: null },
+      y: { domain: [yLo, yHi], label: "USD", tickFormat: usd, grid: false },
+      color: { domain: METRICS, range: [t.inkSoft, t.ink], legend: true },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    card.note(
+      "Bars: net income vs operating cash flow (left, USD). The accent line is cash conversion = " +
+      "operating cash flow ÷ net income (right axis, ×) — above the dashed 1× line means profit " +
+      "over-converts to cash; below it means reported profit isn't all turning into cash. Shown " +
+      '"nm" when net income ≤ 0 (the ratio isn\'t meaningful) and omitted where an input is ' +
+      "missing — never drawn as 0."
+    );
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -3316,6 +3719,7 @@
     mountNeedsKey: mountNeedsKey,
     esc: esc,
     fmt: fmt,
+    fmtMetric: fmtMetric,
     STATUS: STATUS,
     DISCLOSURES: DISCLOSURES,
     statusChip: statusChip,
@@ -3344,6 +3748,9 @@
     capitalStructureTrend: capitalStructureTrend,
     workingCapitalBridge: workingCapitalBridge,
     balanceMatrix: balanceMatrix,
+    cashFlowBridge: cashFlowBridge,
+    fcfBreakdown: fcfBreakdown,
+    earningsQuality: earningsQuality,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,

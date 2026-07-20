@@ -28,6 +28,10 @@ const PAGES = process.env.PAGES
       // AAPL (clean, negative working capital) and WMT (derives liabilities for the trend).
       ["statements-balance-chart", "/company/AAPL?tab=statements&stmt=balance"],
       ["statements-balance-chart-wmt", "/company/WMT?tab=statements&stmt=balance"],
+      // Cash-flow chart view (cash bridge + FCF breakdown + earnings quality): AAPL and WMT.
+      // Single-period fixtures -> the bridge renders the honest relative walk (absolute=false).
+      ["statements-cashflow-chart", "/company/AAPL?tab=statements&stmt=cashflow"],
+      ["statements-cashflow-chart-wmt", "/company/WMT?tab=statements&stmt=cashflow"],
       ["statements-segments", "/company/AAPL?tab=statements&stmt=segments"],
       ["trend", "/company/AAPL?trend=net_margin"],
       ["institutional", "/company/AAPL?tab=institutional"],
@@ -68,13 +72,25 @@ const PAGES = process.env.PAGES
         await page.click(".data-row .row-value[data-exact]");
         await new Promise((r) => setTimeout(r, 300));
       }
-      if (name.startsWith("statements-income-chart") || name.startsWith("statements-balance-chart")) {
+      if (
+        name.startsWith("statements-income-chart") ||
+        name.startsWith("statements-balance-chart") ||
+        name.startsWith("statements-cashflow-chart")
+      ) {
         // Flip the statement to the Chart view; wait for the lazy viz fetch + Plot render. The
         // screenshot captures the chart cards (income: waterfall + common-size; balance:
-        // capital-structure trend + working-capital bridge + matrix), and any JS error in the
-        // builders fails the check.
+        // capital-structure trend + working-capital bridge + matrix; cashflow: cash bridge +
+        // FCF breakdown + earnings quality), and any JS error in the builders fails the check.
         await page.click('.stmt-view-toggle [data-stmt-mode="chart"]');
         await new Promise((r) => setTimeout(r, 1800));
+      }
+      if (name === "institutional-nolocation") {
+        // The institutional tab groups its panels behind a Holders/Geography/Activity sub-strip
+        // (Holders is the default view). The holder-geography EMPTY STATE this case guards now
+        // lives under the Geography sub-tab, so click into it before the screenshot -- otherwise
+        // the regression guard would only ever render the Holders group and silently rot.
+        await page.click('#inst-subtabs button[data-inst-group="geography"]');
+        await new Promise((r) => setTimeout(r, 1200));
       }
       if (name === "company") {
         // Exercise the company autocomplete (suggest.js) via the shell's topbar search:
