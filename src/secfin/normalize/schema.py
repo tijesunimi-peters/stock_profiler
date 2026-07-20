@@ -312,6 +312,92 @@ class CapitalStructureSeries(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+class CashFlowBridgeStep(BaseModel):
+    """One step of the cash bridge (Beginning -> CFO -> CFI -> CFF -> FX -> residual -> Ending).
+
+    A derived presentation shape over the canonical cash-flow statement -- NOT a new
+    measurement. `value` is the magnitude drawn (>= 0); `direction`/`running_total` carry
+    the sign and position so the renderer never re-derives a sign. Anchors and flow steps
+    carry the provenance of the reported line behind them; a `residual` step ("Other /
+    unreconciled") is computed, so it has no source line, and the derived Beginning/Ending
+    anchors carry no single reported line either.
+    """
+
+    kind: Literal["anchor", "flow", "residual"]
+    canonical_concept: str | None = None  # None for residual + derived Beginning/Ending anchors
+    label: str
+    value: float | int  # magnitude drawn, >= 0
+    direction: Literal["base", "up", "down"]
+    running_total: float | int
+    unit: str
+    source_tag: str | None = None  # provenance for section flows; None for residual/anchors
+    is_extension: bool | None = None
+
+
+class CashFlowBridge(BaseModel):
+    """The single-period cash bridge. `absolute` = beginning/ending are real reported levels
+    on the basis matching the reported change_in_cash tag; when False the walk is 0-anchored
+    (relative) and begin/end levels are null (never fabricated). `cash_basis` names which
+    basis matched. `basis_note` is set only when the independently reported period-end cash
+    disagrees with beginning + reported change beyond tolerance -- surfaced, never rescaled."""
+
+    available: bool
+    unavailable_reason: str | None = None
+    steps: list[CashFlowBridgeStep] = Field(default_factory=list)
+    absolute: bool = False
+    beginning_cash: float | int | None = None
+    ending_cash: float | int | None = None
+    reported_change: float | int | None = None  # the reported change_in_cash value
+    cash_basis: str | None = None  # "cash_and_restricted_cash" | "cash_and_equivalents"
+    basis_note: str | None = None
+
+
+class CashFlowViz(BaseModel):
+    """Derived presentation view over one company's cash-flow statement for one period: the
+    cash bridge. See normalize/viz.py."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_start: str | None = None
+    period_end: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+    bridge: CashFlowBridge
+    caveats: list[str] = Field(default_factory=list)
+
+
+class CashFlowSeriesPeriod(BaseModel):
+    """One period of the FCF + earnings-quality series. Every monetary field is None when its
+    source line is absent (NEVER 0). `free_cash_flow` is None unless BOTH `operating_cash_flow`
+    and `capital_expenditures` are present. `cash_conversion` (OCF / Net Income) is None unless
+    `net_income` > 0 AND OCF present; `conversion_status` names why ("ok" | "nm" | "na")."""
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str | None = None
+    operating_cash_flow: float | int | None = None
+    capital_expenditures: float | int | None = None  # reported positive payment
+    free_cash_flow: float | int | None = None  # ocf - capex, else None
+    net_income: float | int | None = None  # from the income statement (cross-statement join)
+    cash_conversion: float | None = None  # ocf / net_income, else None
+    conversion_status: Literal["ok", "nm", "na"] = "na"
+    conversion_reason: str | None = None
+    unit: str = "USD"
+
+
+class CashFlowSeries(BaseModel):
+    """The FCF-breakdown + earnings-quality series: a company's operating cash flow, capex,
+    free cash flow, net income and cash-conversion ratio across recent periods, oldest->newest.
+    A missing input is carried as an explicit None (never 0). See normalize/viz.py."""
+
+    cik: int
+    fiscal_period: FiscalPeriod  # the period type of the series (FY for v1)
+    periods: list[CashFlowSeriesPeriod] = Field(default_factory=list)  # oldest -> newest
+    caveats: list[str] = Field(default_factory=list)
+
+
 class InsiderTransaction(BaseModel):
     """One insider transaction (from Forms 3/4/5). See sec/insider.py."""
 

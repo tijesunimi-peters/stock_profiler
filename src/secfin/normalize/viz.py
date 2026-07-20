@@ -35,6 +35,11 @@ from secfin.normalize.schema import (
     CapitalStructurePeriod,
     CapitalStructureSegment,
     CapitalStructureSeries,
+    CashFlowBridge,
+    CashFlowBridgeStep,
+    CashFlowSeries,
+    CashFlowSeriesPeriod,
+    CashFlowViz,
     CommonSize,
     CommonSizeLine,
     IncomeBridge,
@@ -729,4 +734,295 @@ def capital_structure_series(statements: list[Statement]) -> CapitalStructureSer
         fiscal_period=fp,
         periods=periods,
         caveats=BALANCE_VIZ_CAVEATS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cash-flow visualizations (Cash Bridge, FCF breakdown, Earnings-Quality combo).
+# Same honesty invariants as above: a null line stays null (never 0); the bridge's
+# ONLY balancer is one explicit, labeled "Other / unreconciled" residual (never a
+# silent plug); Beginning/Ending Cash are read on the basis MATCHING the reported
+# change_in_cash tag (mixing bases fabricates a residual); FCF = OCF - CapEx only
+# when both are present; the cash-conversion ratio degrades to "nm"/"na" (never 0)
+# when net income is <= 0 or an input is missing.
+# ---------------------------------------------------------------------------
+
+# The reported section subtotals the bridge walks, in statement order. Each adds its
+# as-reported (signed) value: CFI/CFF are typically negative, so they subtract naturally.
+_CASHFLOW_SECTIONS: list[tuple[str, int]] = [
+    ("cash_from_operations", +1),
+    ("cash_from_investing", +1),
+    ("cash_from_financing", +1),
+    ("effect_of_exchange_rate_on_cash", +1),
+]
+
+_CASHFLOW_RESIDUAL_LABEL = "Other / unreconciled"
+
+# Which cash *level* concept (a balance-sheet instant) reconciles the reported
+# change_in_cash tag the filer used. The modern ASU-2016-18 change tag includes
+# restricted cash, so it reconciles to cash_and_restricted_cash; the legacy tag is
+# equivalents-only. Reading the WRONG level would fabricate a beginning->ending gap.
+# (Keys are the two change_in_cash candidate tags in normalize/mapping.py.)
+_CHANGE_TAG_TO_BASIS: dict[str, str] = {
+    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect": "cash_and_restricted_cash",
+    "CashAndCashEquivalentsPeriodIncreaseDecrease": "cash_and_equivalents",
+}
+
+# Sub-dollar reconciliation noise between the read period-end level and beginning+change
+# is not a real basis discrepancy; the relative guard covers rounding on a large balance.
+_BASIS_REL_TOLERANCE = 0.005
+
+CASHFLOW_VIZ_CAVEATS: list[str] = [
+    "Sourced from SEC EDGAR filings -- subject to normal filing lag (a 10-K posts "
+    "~45-90 days after period end).",
+    "Derived presentation view: the same normalized values as /statements/cashflow "
+    "(and /statements/income for the earnings-quality view), re-shaped for "
+    "visualization. Not a new measurement.",
+    "Beginning/Ending Cash are drawn on the basis that matches the filer's reported "
+    "net-change-in-cash tag (cash including restricted, or cash & equivalents only). "
+    "When that period-end level isn't reported, the bridge shows a relative (0-anchored) "
+    "walk instead of inventing a level.",
+    "The bridge reconciles the reported operating/investing/financing/FX sections to the "
+    f'reported net change in cash; any gap is shown as one explicit "{_CASHFLOW_RESIDUAL_LABEL}" '
+    "step, not hidden. A large such step usually signals a reporting/basis nuance, not a "
+    "real economic bucket.",
+    "Free Cash Flow = Operating Cash Flow - Capital Expenditures (capex as the reported "
+    "outflow); shown N/A for a period missing either input (e.g. filers that don't tag capex).",
+    "Cash conversion = Operating Cash Flow / Net Income, shown \"nm\" (not meaningful) when "
+    "net income is <= 0 -- a non-positive denominator makes the ratio misleading.",
+]
+
+
+def _cash_on_basis(stmt: Statement | None, concept: str | None) -> float | None:
+    """Read one cash-level concept from a (balance) statement, or None when the statement
+    or concept is absent. Never 0 for a missing level -- absence stays absence."""
+    if stmt is None or concept is None:
+        return None
+    return _value(_lines_by_concept(stmt).get(concept))
+
+
+def _build_cashflow_bridge(
+    cf_stmt: Statement,
+    end_balance: Statement | None,
+    begin_balance: Statement | None,
+) -> CashFlowBridge:
+    by_concept = _lines_by_concept(cf_stmt)
+    change_line = by_concept.get("change_in_cash")
+
+    # Required anchor: the reported net change in cash (the reconciliation target).
+    if not _has_value(change_line):
+        return CashFlowBridge(
+            available=False,
+            unavailable_reason="No reported net change in cash for this period.",
+        )
+    reported_change = float(change_line.value)  # type: ignore[arg-type]
+    unit = change_line.unit  # type: ignore[union-attr]
+
+    present_sections = [
+        (concept, sign)
+        for concept, sign in _CASHFLOW_SECTIONS
+        if _has_value(by_concept.get(concept))
+    ]
+    if not present_sections:
+        return CashFlowBridge(
+            available=False,
+            unavailable_reason=(
+                "No reported operating/investing/financing cash sections for this period."
+            ),
+        )
+
+    # Basis: read Beginning/Ending Cash on the level matching the reported change tag.
+    basis_concept = _CHANGE_TAG_TO_BASIS.get(change_line.source_tag)  # type: ignore[union-attr]
+    ending_cash = _cash_on_basis(end_balance, basis_concept)
+    beginning_cash = _cash_on_basis(begin_balance, basis_concept)
+    absolute = (
+        basis_concept is not None and beginning_cash is not None and ending_cash is not None
+    )
+
+    steps: list[CashFlowBridgeStep] = []
+    running = beginning_cash if absolute else 0.0
+    steps.append(
+        CashFlowBridgeStep(
+            kind="anchor",
+            canonical_concept=None,
+            label="Beginning Cash" if absolute else "Beginning (relative)",
+            value=abs(running),
+            direction="base",
+            running_total=running,
+            unit=unit,
+        )
+    )
+
+    contribution_total = 0.0
+    for concept, sign in present_sections:
+        line = by_concept[concept]
+        signed = sign * float(line.value)  # type: ignore[arg-type]
+        contribution_total += signed
+        running += signed
+        steps.append(
+            CashFlowBridgeStep(
+                kind="flow",
+                canonical_concept=concept,
+                label=line.label,
+                value=abs(signed),
+                direction="up" if signed >= 0 else "down",
+                running_total=running,
+                unit=line.unit,
+                source_tag=line.source_tag,
+                is_extension=line.is_extension,
+            )
+        )
+
+    # The ONLY balancer: the gap between the summed sections and the reported net change.
+    residual = reported_change - contribution_total
+    if abs(residual) >= _RESIDUAL_EPSILON:
+        running += residual
+        steps.append(
+            CashFlowBridgeStep(
+                kind="residual",
+                canonical_concept=None,
+                label=_CASHFLOW_RESIDUAL_LABEL,
+                value=abs(residual),
+                direction="up" if residual >= 0 else "down",
+                running_total=running,
+                unit=unit,
+            )
+        )
+
+    # Snap onto the identity value (beginning + reported change, or the reported change in
+    # the relative walk) -- the residual already made this exact; this clears float dust.
+    ending_target = (beginning_cash + reported_change) if absolute else reported_change
+    running = ending_target
+    steps.append(
+        CashFlowBridgeStep(
+            kind="anchor",
+            canonical_concept=None,
+            label="Ending Cash" if absolute else "Net change (relative)",
+            value=abs(ending_target),
+            direction="base",
+            running_total=running,
+            unit=unit,
+        )
+    )
+
+    # Basis cross-check: the INDEPENDENTLY reported period-end level vs beginning+change.
+    # A disagreement is a reporting/basis nuance -- surfaced, never used to rescale.
+    basis_note = None
+    if absolute:
+        tolerance = max(_RESIDUAL_EPSILON, _BASIS_REL_TOLERANCE * abs(ending_cash))  # type: ignore[arg-type]
+        if abs(ending_cash - ending_target) > tolerance:  # type: ignore[operator]
+            basis_note = (
+                "The reported period-end cash level and (beginning + reported net change) "
+                "disagree on this basis -- shown as reported, not reconciled by rescaling."
+            )
+
+    return CashFlowBridge(
+        available=True,
+        steps=steps,
+        absolute=absolute,
+        beginning_cash=beginning_cash,
+        ending_cash=ending_cash,
+        reported_change=reported_change,
+        cash_basis=basis_concept,
+        basis_note=basis_note,
+    )
+
+
+def cashflow_viz(
+    cf_stmt: Statement,
+    end_balance: Statement | None = None,
+    begin_balance: Statement | None = None,
+) -> CashFlowViz:
+    """Derive the Cash Bridge from a cash-flow statement for one period.
+
+    `cf_stmt` must be a cash-flow statement (built via build_statement with
+    statement="cashflow"). `end_balance`/`begin_balance` are the balance sheets at this
+    period end and the prior period end (built from the same facts); they supply the
+    absolute Beginning/Ending Cash levels on the basis matching the reported change tag.
+    When either is absent the bridge falls back to a relative (0-anchored) walk rather than
+    fabricating a level. Pure (no I/O); carries the statement's period metadata + caveats.
+    """
+    return CashFlowViz(
+        cik=cf_stmt.cik,
+        fiscal_year=cf_stmt.fiscal_year,
+        fiscal_period=cf_stmt.fiscal_period,
+        period_start=cf_stmt.period_start,
+        period_end=cf_stmt.period_end,
+        form=cf_stmt.form,
+        filed=cf_stmt.filed,
+        accession=cf_stmt.accession,
+        bridge=_build_cashflow_bridge(cf_stmt, end_balance, begin_balance),
+        caveats=CASHFLOW_VIZ_CAVEATS,
+    )
+
+
+def _cashflow_series_period(
+    cf_stmt: Statement, income_stmt: Statement | None
+) -> CashFlowSeriesPeriod:
+    cfby = _lines_by_concept(cf_stmt)
+    ocf_line = cfby.get("cash_from_operations")
+    ocf = _value(ocf_line)
+    capex = _value(cfby.get("capital_expenditures"))
+
+    # FCF = OCF - CapEx, ONLY when both are present. A filer that doesn't tag capex (banks)
+    # gets FCF = None, never FCF = OCF (which would silently overstate free cash flow).
+    fcf = ocf - capex if (ocf is not None and capex is not None) else None
+
+    # Cross-statement join: net income comes from the income statement for the SAME fiscal
+    # key. A period present on one statement but not the other carries a None on the missing
+    # side -- never forward-filled or cross-matched to a different period.
+    ni = _value(_lines_by_concept(income_stmt).get("net_income")) if income_stmt else None
+
+    if ni is None or ocf is None:
+        missing = "net income" if ni is None else "operating cash flow"
+        conversion, status, reason = None, "na", f"No reported {missing} for this period."
+    elif ni <= 0:
+        conversion, status, reason = (
+            None,
+            "nm",
+            "Net income <= 0 -- OCF / net income is not meaningful.",
+        )
+    else:
+        conversion, status, reason = ocf / ni, "ok", None
+
+    unit = ocf_line.unit if ocf_line is not None else "USD"
+    return CashFlowSeriesPeriod(
+        fiscal_year=cf_stmt.fiscal_year,
+        fiscal_period=cf_stmt.fiscal_period,
+        period_end=cf_stmt.period_end,
+        operating_cash_flow=ocf_line.value if ocf_line is not None else None,
+        capital_expenditures=cfby.get("capital_expenditures").value  # type: ignore[union-attr]
+        if _has_value(cfby.get("capital_expenditures"))
+        else None,
+        free_cash_flow=fcf,
+        net_income=ni,
+        cash_conversion=conversion,
+        conversion_status=status,
+        conversion_reason=reason,
+        unit=unit,
+    )
+
+
+def cashflow_series(
+    cf_statements: list[Statement], income_statements: list[Statement]
+) -> CashFlowSeries:
+    """Derive the FCF-breakdown + earnings-quality series from a sequence of cash-flow
+    statements and the matching income statements (any order in; emitted oldest -> newest).
+
+    The two lists are joined per period on the fiscal key (fiscal_year, fiscal_period): each
+    cash-flow period is paired with the income statement of the same key for its net income.
+    A missing input on either side stays None (never 0). Pure (no I/O)."""
+    inc_by_key = {(s.fiscal_year, s.fiscal_period): s for s in income_statements}
+    ordered = sorted(cf_statements, key=lambda s: (s.period_end or "", s.fiscal_year))
+    periods = [
+        _cashflow_series_period(cf, inc_by_key.get((cf.fiscal_year, cf.fiscal_period)))
+        for cf in ordered
+    ]
+    cik = cf_statements[0].cik if cf_statements else 0
+    fp = cf_statements[0].fiscal_period if cf_statements else "FY"
+    return CashFlowSeries(
+        cik=cik,
+        fiscal_period=fp,
+        periods=periods,
+        caveats=CASHFLOW_VIZ_CAVEATS,
     )

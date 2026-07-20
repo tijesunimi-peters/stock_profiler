@@ -44,6 +44,8 @@ from secfin.normalize.schema import (
     BalanceSheetViz,
     BeneficialOwnership,
     CapitalStructureSeries,
+    CashFlowSeries,
+    CashFlowViz,
     CompanyMetrics,
     CompanyPeerDistribution,
     CompanyPeerRanks,
@@ -71,7 +73,13 @@ from secfin.normalize.statements import (
     build_normalized_view,
     build_statement,
 )
-from secfin.normalize.viz import balance_viz, capital_structure_series, income_viz
+from secfin.normalize.viz import (
+    balance_viz,
+    capital_structure_series,
+    cashflow_series,
+    cashflow_viz,
+    income_viz,
+)
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.sec.insider import fetch_insider_transactions_with_filings
@@ -567,6 +575,143 @@ async def get_capital_structure_series(
     statements = [build_statement(facts, cik, "balance", y, p) for (y, p) in selected]
     statements = [s for s in statements if s.lines or s.accession is not None]
     return capital_structure_series(statements)
+
+
+def _prior_period_balance(
+    facts: list[RawFact], cik: int, cf_stmt: Statement, period: FiscalPeriod
+) -> Statement | None:
+    """The balance sheet at the START of `cf_stmt`'s period -- i.e. this period's beginning
+    cash. The beginning-of-period cash level is the balance instant ending the day BEFORE
+    the cash-flow period_start (fiscal periods are contiguous, so a prior period_end is
+    period_start - 1 day). We match on that date with a small tolerance -- NOT on "prior
+    period of the same type", which would be wrong for a YTD quarterly cash flow whose start
+    is the fiscal-year start, not the prior quarter end. Falls back to the immediately-prior
+    same-type period only when no dated instant is close enough, else None (-> the bridge's
+    relative walk). Pure over the facts list (no I/O, no SQL)."""
+    periods = available_periods(facts)  # newest-first (year, period)
+
+    def _built(y: int, p: FiscalPeriod) -> Statement | None:
+        s = build_statement(facts, cik, "balance", y, p)
+        return s if (s.lines or s.accession is not None) else None
+
+    if cf_stmt.period_start:
+        try:
+            start = dt.date.fromisoformat(cf_stmt.period_start)
+        except ValueError:
+            start = None
+        if start is not None:
+            best: Statement | None = None
+            best_gap: int | None = None
+            for (y, p) in periods:
+                if (y, p) == (cf_stmt.fiscal_year, cf_stmt.fiscal_period):
+                    continue
+                cand = _built(y, p)
+                if cand is None or not cand.period_end:
+                    continue
+                try:
+                    end = dt.date.fromisoformat(cand.period_end)
+                except ValueError:
+                    continue
+                # A prior instant ending ~1 day before this period's start (allow a little
+                # fiscal-calendar drift). Positive gap = the balance ends before the CF start.
+                gap = (start - end).days
+                if end < start and -2 <= gap <= 7 and (best_gap is None or gap < best_gap):
+                    best, best_gap = cand, gap
+            if best is not None:
+                return best
+
+    # Fallback: the immediately-prior period of the requested type (no dated match found).
+    same_type = [(y, p) for (y, p) in periods if p == period]
+    try:
+        idx = same_type.index((cf_stmt.fiscal_year, cf_stmt.fiscal_period))
+    except ValueError:
+        return None
+    if idx + 1 >= len(same_type):
+        return None
+    py, pp = same_type[idx + 1]
+    return _built(py, pp)
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/cashflow/viz",
+    response_model=CashFlowViz,
+    tags=["Financials"],
+    summary="Cash bridge (Beginning -> CFO/CFI/CFF/FX -> Ending) view of a cash-flow statement",
+)
+async def get_cashflow_statement_viz(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CashFlowViz:
+    """Derived presentation view over one company's cash-flow statement for one period: the
+    **Cash Bridge** stepping Beginning Cash -> Operating -> Investing -> Financing -> FX ->
+    Ending Cash.
+
+    The numbers are the same normalized values as /statements/cashflow (and /statements/balance
+    for the Beginning/Ending Cash levels), re-shaped for visualization -- not a new measurement
+    (same cache-aside facts path, same build_statement). Uses the full-history facts because the
+    bridge needs the PRIOR period-end balance for Beginning Cash. A filing lacking the reported
+    net change in cash returns 200 with an explicit `available=false` state -- an honest "can't
+    chart this period", not an error. See the `caveats` field and normalize/viz.py.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+    cf_stmt = build_statement(facts, cik, "cashflow", year, period)
+    if not cf_stmt.lines and cf_stmt.accession is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No cashflow data found for {symbol} {period} {year}.",
+        )
+    end_balance = build_statement(facts, cik, "balance", year, period)
+    if not end_balance.lines and end_balance.accession is None:
+        end_balance = None
+    begin_balance = _prior_period_balance(facts, cik, cf_stmt, period)
+    return cashflow_viz(cf_stmt, end_balance, begin_balance)
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/cashflow/viz-series",
+    response_model=CashFlowSeries,
+    tags=["Financials"],
+    summary="FCF breakdown + earnings-quality series (OCF vs CapEx vs FCF; NI vs OCF + conversion)",
+)
+async def get_cashflow_series(
+    symbol: str,
+    period: FiscalPeriod = Query("FY", description="Period type for the series (FY for now)"),
+    limit: int = Query(
+        _CAPITAL_STRUCTURE_DEFAULT_LIMIT,
+        ge=1,
+        le=_CAPITAL_STRUCTURE_MAX_LIMIT,
+        description="How many recent periods to include (most recent first, drawn oldest->newest).",
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CashFlowSeries:
+    """The **FCF breakdown** (Operating Cash Flow vs Capital Expenditures vs Free Cash Flow) and
+    **Earnings-Quality** (Net Income vs Operating Cash Flow + the OCF/Net-Income conversion ratio)
+    series across one company's most recent `limit` periods of the given `period` type, drawn
+    oldest->newest.
+
+    Cross-statement: each period's net income comes from the income statement built from the same
+    facts (joined on the fiscal key). FCF is N/A for a period missing OCF or capex; the conversion
+    ratio is "nm" when net income <= 0 -- never coerced to 0. An empty series is a valid 200 (an
+    honest "nothing to chart"), not an error. See normalize/viz.py.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+    selected = [(y, p) for (y, p) in available_periods(facts) if p == period][:limit]
+    cf_statements = [build_statement(facts, cik, "cashflow", y, p) for (y, p) in selected]
+    income_statements = [build_statement(facts, cik, "income", y, p) for (y, p) in selected]
+    cf_statements = [s for s in cf_statements if s.lines or s.accession is not None]
+    return cashflow_series(cf_statements, income_statements)
 
 
 # Normalized tag-level view (public; ROADMAP_DATA_DEPTH "normalize without mapping",
