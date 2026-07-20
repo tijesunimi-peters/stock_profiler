@@ -112,8 +112,33 @@ precomputed tables through ordinary SQLite repos; endpoints are point lookups (r
       books" is descriptive output, not a recommendation)
 - [ ] C2 "Most widely held / most added / most exited this quarter" leaderboards
       (discovery page; adjacent to M4 screening — share its query path, don't fork one)
+      - [ ] C2a **Cluster buying** (explicit slice of "most added"): issuers ranked by the
+        number of **independent** managers that NEWLY entered (prior-quarter shares 0 → >0)
+        the same quarter — the strongest single 13F signal. A count of distinct new-entrant
+        managers per issuer, derived via `flows.diff_holders`/`summarize_activity` over the
+        whole-quarter inversion. Descriptive only (rule 3) — a count, never a "smart money"
+        score or crowding verdict; carries the standing derived-not-reported / long-only /
+        ~45-day-lag / ingested-filers-only caveats.
 - [ ] C3 Amendment diff view (original vs amended snapshot for one (manager, quarter) —
       the diff machinery exists in `normalize/flows.py`)
+- [ ] C4 **Sector rotation (market-wide)** — cross-manager, multi-quarter aggregate of the A1
+      SIC join: total reported value share (and filer count) by 2-digit SIC group per quarter
+      across ALL ingested managers, as a quarter-over-quarter series, to surface macro shifts
+      (e.g. growth → defensive). Distinct from A1 (one manager's book). Reuses the C-layer
+      `ATTACH` mechanism (rule 4) + the SIC join; the unresolved-CUSIP bucket is shown, never
+      redistributed (rule 5). **Descriptive only** (rule 3): a share-of-book / filer-count series
+      by sector, never a "rotation call" or allocation recommendation. Cross-quarter comparison
+      is **%-within-quarter or filer-count / shares** (unit-safe, rule 2) — never a cross-quarter
+      raw value delta. Gated by data depth like Phase B (needs several broadly-ingested quarters
+      to read as a trend, not a single point).
+- [ ] C5 **Under-the-radar discovery (low institutional breadth)** — issuers held by only a FEW
+      ingested 13F filers (low holder count), optionally with ≥1 newly-entering manager, as a
+      discovery list. **In-scope proxy ONLY — this is NOT a "small/mid-cap screen":** market cap
+      needs price × shares-outstanding, and price/market data is barred (Hard Limit #1). Frame it
+      strictly as "few reporting institutions hold this," and LEAD with the coverage caveat
+      (rule 5 spirit): low breadth is coverage-dependent (only ingested filers are counted), NOT a
+      confirmed absence of institutional interest. Descriptive count (rule 3) — no "hidden gem"
+      language.
 
 ---
 
