@@ -41,8 +41,9 @@ flaky failure — re-run to confirm flakiness before blaming the change.
 
 ## Handoff
 
-- **On failure**: hand *back* to the Senior Engineer with the failing criteria and repro — do
-  not advance.
+- **On failure**: hand *back* to the Senior Engineer that owns the defect —
+  `senior-backend-engineer` (API/data/logic) or `senior-frontend-engineer` (rendering/copy/layout)
+  — with the failing criteria and repro. Do not advance.
 - **On pass → DevOps Engineer**: end with a **Handoff** block (or
   `docs/delivery/<task-slug>/4-qa.md`): the verdict, the evidence, and an explicit "ready to
   deploy" or "blocked by X". A green QA report unlocks a deployment *request* — never the

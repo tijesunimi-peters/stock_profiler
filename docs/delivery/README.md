@@ -9,7 +9,15 @@ guardrails) — plus the role-specific docs its skill names.
 Product Manager  →  Principal Architect  →  Senior Engineer  →  QA Tester  →  DevOps Engineer
   brief               design / plan          code + tests        verified      deploy (gated)
  /product-manager    /principal-architect    /senior-engineer    /qa-tester    /devops-engineer
+                                              ├─ /senior-backend-engineer  (Python / API)
+                                              └─ /senior-frontend-engineer (static/ UI)
 ```
+
+Stage 3 (Senior Engineer) has **two sub-specialties**: `senior-backend-engineer` (`sec/`,
+`ingest/`, `normalize/`, `storage/`, `api/`) and `senior-frontend-engineer` (`api/static/`). Invoke
+the one the architecture plan calls for; for a full-stack feature, run backend first (endpoint +
+`pytest`), then frontend (consume it + e2e) **on the same branch**. `/senior-engineer` is the
+umbrella — read it to route, or invoke a sub-specialty directly when the side is obvious.
 
 ## How to use it
 
@@ -25,8 +33,9 @@ satisfied with the previous handoff, so every stage boundary is a review checkpo
    accumulated context to read the prior stage's handoff.
 4. **Let the gates hold.** The PM/architect will stop and flag anything out of Track‑1 scope;
    the DevOps role will present a deploy plan and wait for your explicit "yes, deploy."
-5. **QA fails backward.** A failing QA report returns the work to `/senior-engineer` — re-run
-   that role to fix, then `/qa-tester` again. It never advances broken work to DevOps.
+5. **QA fails backward.** A failing QA report returns the work to the Senior Engineer — the
+   `senior-backend-engineer` or `senior-frontend-engineer` that owns the defect — re-run that role
+   to fix, then `/qa-tester` again. It never advances broken work to DevOps.
 
 ### Worked example
 
@@ -36,8 +45,8 @@ satisfied with the previous handoff, so every stage boundary is a review checkpo
       → brief + acceptance criteria; asks whether the threshold is a preset or free input
 /principal-architect
       → plan: frontend-only filter on holderOwnershipPanels, no API change
-/senior-engineer
-      → implements on a branch; pytest + e2e green; self-verified
+/senior-frontend-engineer            (frontend-only → the frontend sub-specialty directly)
+      → implements on a branch; e2e green + screenshots eyeballed; self-verified
 /qa-tester
       → checks each criterion, screenshots, PASS → "ready to deploy"
 /devops-engineer
@@ -67,7 +76,7 @@ between them, or the handoff is lost.
 |---|------|-------|-------|-----------------|
 | 1 | Product Manager | `product-manager` | a request / idea | product brief: problem, users, scope, acceptance criteria, out-of-scope |
 | 2 | Principal Architect | `principal-architect` | the brief | technical design + ordered implementation plan |
-| 3 | Senior Engineer | `senior-engineer` | the plan | code + tests on a branch, self-verified |
+| 3 | Senior Engineer | `senior-engineer` → `senior-backend-engineer` / `senior-frontend-engineer` | the plan | code + tests on a branch, self-verified |
 | 4 | QA Tester | `qa-tester` | the branch + the brief | QA report: pass/fail per acceptance criterion + evidence |
 | 5 | DevOps Engineer | `devops-engineer` | a QA-passed change | deployment — **only after operator confirmation** |
 

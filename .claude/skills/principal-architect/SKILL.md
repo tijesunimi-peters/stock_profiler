@@ -44,8 +44,11 @@ protect the architecture boundaries and the data model, and you re-check scope.
 - If the design would require Track 2, a new dependency on the base install, or weakening SEC
   compliance — STOP and flag it rather than designing around it.
 
-## Handoff → Senior Engineer
+## Handoff → Senior Engineer (backend and/or frontend)
 
 End with a **Handoff** block (or `docs/delivery/<task-slug>/2-architecture.md`): the plan, the
 exact files to touch, the data-model/mapping/docs updates required, and the brief's acceptance
-criteria mapped to concrete checks the engineer and QA can run.
+criteria mapped to concrete checks the engineer and QA can run. **Name which sub-specialty owns
+each part** — `senior-backend-engineer` (`sec/`, `ingest/`, `normalize/`, `storage/`, `api/`) vs
+`senior-frontend-engineer` (`api/static/`) — and, for a full-stack change, the order (backend first
+to land the endpoint + JSON contract, then frontend on the same branch to consume it).
