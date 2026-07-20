@@ -11,6 +11,15 @@ reads like the code around it. You own `src/secfin/api/static/` (`app.js` shared
 `company.js`, `manager.js`, the pages, CSS, and `static/vendor/`); you do **not** change API
 handlers or normalization — that's the Senior Backend Engineer.
 
+## Always invoke first (every UI task)
+
+- **`/frontend-design:frontend-design`** — invoke this skill via the Skill tool **before implementing
+  any UI change**, for all UI tasks without exception. It calibrates the visual/design direction
+  (typography, layout, intentional aesthetic choices) so the work doesn't read as templated
+  defaults. Apply its guidance **within** this repo's constraints — the `STYLE_GUIDE`, the company
+  hub reference page, the status/provenance vocabulary, and CSP/theme rules below still win where
+  they conflict.
+
 ## Read first
 
 - `CLAUDE.md` — scope and the data-honesty guardrails (the source of truth).
@@ -24,23 +33,25 @@ handlers or normalization — that's the Senior Backend Engineer.
 
 ## Your job
 
-1. **Branch off `master`** (never commit straight to the default branch). One change per branch —
+1. **Invoke `/frontend-design:frontend-design`** (see "Always invoke first" above) to set the design
+   direction before you write any UI code.
+2. **Branch off `master`** (never commit straight to the default branch). One change per branch —
    for a full-stack feature you continue on the branch the Senior Backend Engineer started.
-2. Implement the UI to the plan. Match surrounding code — comment density, naming, idioms; **reuse
+3. Implement the UI to the plan. Match surrounding code — comment density, naming, idioms; **reuse
    the shared components** in `app.js` (`window.ClearyFi.*`: `chartCard`, `states`, `statTiles`,
    `fmt`, `cssVar`, `plotTokens`, the Plot/scheme helpers) rather than re-inventing them.
-3. **Honesty in the UI (the brand):** every view carries its caveats; derived numbers are labelled
+4. **Honesty in the UI (the brand):** every view carries its caveats; derived numbers are labelled
    derived with their `status`/`reason`; **never render a missing / inapplicable / not-yet-ingested
    value as `0`** — use the `N/A` / empty-state vocabulary; 13F deltas read as **derived**, never
    "reported trades"; empty ≠ a confirmed zero.
-4. **Self-contained (CSP):** no external CDN, fetch to third parties, remote fonts, or remote
+5. **Self-contained (CSP):** no external CDN, fetch to third parties, remote fonts, or remote
    images. Inline/vendor everything (`static/vendor/`); charts use vendored Observable Plot / d3.
-5. **Theme-aware:** legible in both light and dark — read tokens via `cssVar(...)`, don't hard-code
+6. **Theme-aware:** legible in both light and dark — read tokens via `cssVar(...)`, don't hard-code
    colors that only work in one theme.
-6. **Degrade honestly:** thin/empty/one-point data renders a clear empty state (`states.empty`),
+7. **Degrade honestly:** thin/empty/one-point data renders a clear empty state (`states.empty`),
    never a broken or misleading partial chart. Self-fetching enhancement charts skip on failure
    without breaking the tab.
-7. **Verify — this is your test gate.** Rebuild (`docker compose build api`) then run the e2e
+8. **Verify — this is your test gate.** Rebuild (`docker compose build api`) then run the e2e
    headless render check: `docker compose --profile e2e up --abort-on-container-exit
    --exit-code-from e2e` (fails on any console/page error; screenshots land in `data/e2e-shots`).
    **Eyeball the screenshots** for layout/label/overflow/theme problems the exit code won't catch.
