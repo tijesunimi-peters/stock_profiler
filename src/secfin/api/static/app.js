@@ -2768,6 +2768,264 @@
     }
   }
 
+  // ---------- income-statement visualizations (waterfall bridge + common-size) ----------
+  //
+  // Both consume GET /v1/companies/{symbol}/statements/income/viz (normalize/viz.py). The
+  // server owns ALL the honesty math -- the anchor-segmented bridge, the residual plug, the
+  // per-line percentages -- so these builders are thin renderers: they draw exactly what the
+  // JSON says and never re-derive a sign or a total. Single terracotta accent, no green/red
+  // (§10): the waterfall encodes up/down by where a bar FLOATS, not by hue.
+
+  // Short axis-tick labels for the income concepts, so 10-14 rotated waterfall ticks (and the
+  // common-size y-axis) stay legible without collision/clipping. The FULL label always stays in
+  // the tooltip -- this only compresses the on-axis text. Residual steps carry no concept.
+  var INCOME_SHORT_LABEL = {
+    revenue: "Revenue", cost_of_revenue: "Cost of Rev.", gross_profit: "Gross Profit",
+    research_and_development: "R&D", sga_expense: "SG&A", operating_expenses: "Op. Expenses",
+    operating_income: "Op. Income", interest_expense: "Interest Exp.", interest_income: "Interest Inc.",
+    nonoperating_income_expense: "Non-op.", income_before_tax: "Pre-tax", income_tax_expense: "Income Tax",
+    net_income: "Net Income", net_income_noncontrolling: "NCI", comprehensive_income: "Comp. Income",
+    other_comprehensive_income: "Other Comp.", share_based_compensation: "SBC",
+    amortization_of_intangibles: "Amort.", goodwill_impairment: "Goodwill Imp.",
+    asset_impairment: "Asset Imp.", operating_lease_cost: "Op. Lease",
+  };
+  function incomeShortLabel(concept, fullLabel) {
+    if (!concept) return "Other"; // residual step carries no concept -> "Other / unattributed"
+    // A real line always keeps a real label -- fall back to the API's label, never to "Other"
+    // (which would mislabel an unmapped-but-real concept as a residual).
+    return INCOME_SHORT_LABEL[concept] || fullLabel || concept;
+  }
+
+  // The revenue -> net income waterfall. `bridge` is the response's `bridge` object
+  // (IncomeBridge): { available, unavailable_reason, net_income, steps[] }, steps ordered
+  // top-to-bottom. Anchors (kind="anchor") are solid columns from 0 to their reported value;
+  // flows (kind="flow") are floating accent bars whose vertical span is the running-total move;
+  // a residual (kind="residual", "Other / unattributed") is a floating accent-WASH + dashed bar,
+  // styled as computed-not-reported. Returns a DOM node (chartCard chrome), or an honest
+  // unavailable card when a required anchor is missing -- never a partial bridge.
+  function incomeBridge(bridge, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Revenue → net income bridge");
+
+    if (!bridge || bridge.available === false) {
+      var reason = (bridge && bridge.unavailable_reason) ||
+        "This period doesn't report the subtotals needed to draw a bridge.";
+      var p = document.createElement("p");
+      p.className = "state-copy";
+      p.style.margin = "0";
+      p.textContent = "Bridge unavailable — " + reason;
+      card.body.appendChild(p);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var steps = bridge.steps || [];
+    // Explicit floating extents so the renderer never re-derives sign: anchors sit on 0..value,
+    // flows/residuals span from the prior running total to this one (Plot draws the band).
+    var prev = 0;
+    var rows = steps.map(function (s, i) {
+      var y2 = s.kind === "anchor" ? 0 : prev; // the "from" edge
+      var y1 = s.running_total; // the "to" edge (Plot orders y1<->y2 itself)
+      prev = s.running_total;
+      // A label unique per bar AND stably ordered: index-prefixed so two never collide, with a
+      // display label stripped back for the axis tick (see xTickFormat).
+      return {
+        key: i + "·" + s.label,
+        label: s.label,
+        concept: s.canonical_concept,
+        kind: s.kind,
+        direction: s.direction,
+        y1: y1,
+        y2: y2,
+        value: s.value,
+        running: s.running_total,
+        isResidual: s.kind === "residual",
+        isAnchor: s.kind === "anchor",
+        // signed delta for a flow/residual (what the bar MOVED); anchors show their level.
+        deltaText: s.kind === "anchor"
+          ? usd(s.running_total)
+          : (s.direction === "down" ? MINUS : "+") + usd(s.value).replace(/^\(|\)$/g, ""),
+        levelText: usd(s.running_total),
+      };
+    });
+
+    var order = rows.map(function (r) { return r.key; });
+    var anchors = rows.filter(function (r) { return r.isAnchor; });
+    var flows = rows.filter(function (r) { return !r.isAnchor && !r.isResidual; });
+    var residuals = rows.filter(function (r) { return r.isResidual; });
+
+    var vals = rows.reduce(function (acc, r) { acc.push(r.y1, r.y2); return acc; }, [0]);
+    var yMin = Math.min.apply(null, vals), yMax = Math.max.apply(null, vals);
+    var pad = (yMax - yMin) * 0.08 || 1;
+
+    var height = Math.max(240, opts.height || 300);
+    var marks = [
+      window.Plot.gridY({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+    ];
+    // Anchors: solid ink columns from 0 -- the reported "landmarks" a reader can trust.
+    if (anchors.length) {
+      marks.push(window.Plot.barY(anchors, {
+        x: "key", y1: "y1", y2: "y2", fill: t.ink, fillOpacity: 0.82, rx: 2,
+        channels: { Step: "label", Level: "levelText" }, tip: { format: { x: false, y1: false, y2: false, Step: true, Level: true } },
+      }));
+    }
+    // Flows: floating terracotta bars -- position (below vs above the running line) is the sign.
+    if (flows.length) {
+      marks.push(window.Plot.barY(flows, {
+        x: "key", y1: "y1", y2: "y2", fill: t.accent, rx: 2,
+        channels: { Step: "label", Change: "deltaText", "Running total": "levelText" },
+        tip: { format: { x: false, y1: false, y2: false, Step: true, Change: true, "Running total": true } },
+      }));
+    }
+    // Residual: accent-WASH + dashed outline, distinct in KIND (computed, not reported).
+    if (residuals.length) {
+      marks.push(window.Plot.barY(residuals, {
+        x: "key", y1: "y1", y2: "y2", fill: t.accentWash, stroke: t.accent, strokeWidth: 1.5,
+        strokeDasharray: "3,2", rx: 2,
+        channels: { Step: "label", Change: "deltaText", "Running total": "levelText" },
+        tip: { format: { x: false, y1: false, y2: false, Step: true, Change: true, "Running total": true } },
+      }));
+    }
+    marks.push(window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.65 }));
+    // On-bar value: the delta a flow moved / the level an anchor reached, above the bar's top.
+    marks.push(window.Plot.text(rows, {
+      x: "key", y: function (d) { return Math.max(d.y1, d.y2); },
+      text: function (d) { return d.isAnchor ? d.levelText : d.deltaText; },
+      dy: -6, fontFamily: t.fontMono, fontSize: 9.5,
+      fill: function (d) { return d.isAnchor ? t.ink : t.inkSoft; },
+    }));
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 58, marginRight: 14, marginTop: 24, marginBottom: 78,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: {
+        domain: order, label: null, tickRotate: -32,
+        tickFormat: function (k) {
+          var r = rows[order.indexOf(k)];
+          return r ? incomeShortLabel(r.concept, r.label) : k;
+        },
+      },
+      y: { domain: [Math.min(0, yMin) - pad, yMax + pad], label: "USD", tickFormat: usd, grid: false },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    if (residuals.length) {
+      card.note(
+        'Dashed "' + residuals[0].label + '" bar' + (residuals.length > 1 ? "s" : "") +
+        " = the gap between the reported subtotals and the line items we map, shown explicitly " +
+        "rather than hidden. A large one usually means a reporting line we haven't mapped yet."
+      );
+    }
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
+  // 100% common-size: every income line as a share of revenue, as a SMALL-MULTIPLE of horizontal
+  // bars (one per line), NOT a single stacked 100% bar. Deliberate: the response's lines are
+  // independent ratios that include BOTH aggregates and their parts (e.g. operating_expenses AND
+  // R&D + SG&A), so stacking them would double-count past 100%. `common` is the response's
+  // `common_size` object: { available, unavailable_reason, revenue, lines[] }. A line with a null
+  // value renders as an explicit "N/A" row (never a 0% bar -- AC-9). Negatives extend left of 0.
+  function commonSizeChart(common, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Common-size (% of revenue)");
+
+    if (!common || common.available === false) {
+      var reason = (common && common.unavailable_reason) || "No revenue base to divide by.";
+      var p = document.createElement("p");
+      p.className = "state-copy";
+      p.style.margin = "0";
+      p.textContent = "Common-size unavailable — " + reason;
+      card.body.appendChild(p);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var lines = common.lines || [];
+    var order = lines.map(function (l) { return l.canonical_concept; });
+    // Display label per concept (Title Case from the API's label), kept in statement order.
+    var labelOf = {};
+    lines.forEach(function (l) { labelOf[l.canonical_concept] = l.label; });
+
+    var bars = lines
+      .filter(function (l) { return l.pct_of_revenue !== null && l.pct_of_revenue !== undefined; })
+      .map(function (l) {
+        return {
+          concept: l.canonical_concept, label: l.label,
+          pct: l.pct_of_revenue * 100,
+          pctText: fmt.pct(l.pct_of_revenue),
+          valueText: l.value === null || l.value === undefined ? "N/A" : usd(l.value),
+        };
+      });
+    // Null-value lines: shown as an explicit N/A marker at 0, never a bar (honesty: a missing
+    // line is a documented gap, not 0% of revenue).
+    var naRows = lines
+      .filter(function (l) { return l.value === null || l.value === undefined; })
+      .map(function (l) { return { concept: l.canonical_concept, label: l.label }; });
+
+    var maxPct = bars.reduce(function (m, b) { return Math.max(m, b.pct); }, 100);
+    var minPct = bars.reduce(function (m, b) { return Math.min(m, b.pct); }, 0);
+    var rowH = 24;
+    var height = Math.max(120, lines.length * rowH + 44);
+
+    var marks = [
+      window.Plot.gridX({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.barX(bars, {
+        x: "pct", y: "concept", fill: t.accent, rx: 2,
+        channels: { Line: "label", "% of revenue": "pctText", Value: "valueText" },
+        tip: { format: { x: false, y: false, Line: true, "% of revenue": true, Value: true } },
+      }),
+      window.Plot.ruleX([0], { stroke: t.ink, strokeOpacity: 0.7 }),
+    ];
+    // On-bar percent, on the far side of the bar's end. Split by sign into two marks with
+    // CONSTANT textAnchor/dx -- Plot treats those as mark-level constants, not per-datum
+    // channels, so a function there stringifies to NaN (same trap divergingBars documents).
+    var posBars = bars.filter(function (b) { return b.pct >= 0; });
+    var negBars = bars.filter(function (b) { return b.pct < 0; });
+    if (posBars.length) {
+      marks.push(window.Plot.text(posBars, {
+        x: "pct", y: "concept", text: "pctText", textAnchor: "start", dx: 5,
+        fontFamily: t.fontMono, fontSize: 9.5, fill: t.inkSoft,
+      }));
+    }
+    if (negBars.length) {
+      marks.push(window.Plot.text(negBars, {
+        x: "pct", y: "concept", text: "pctText", textAnchor: "end", dx: -5,
+        fontFamily: t.fontMono, fontSize: 9.5, fill: t.inkSoft,
+      }));
+    }
+    if (naRows.length) {
+      marks.push(window.Plot.text(naRows, {
+        x: 0, y: "concept", text: function () { return "N/A"; },
+        textAnchor: "start", dx: 5, fontFamily: t.fontMono, fontSize: 9.5, fillOpacity: 0.55, fill: t.inkSoft,
+      }));
+    }
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 104, marginRight: 58, marginTop: 8, marginBottom: 30,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: [Math.min(0, minPct) * 1.05, maxPct * 1.12], label: "% of revenue", tickFormat: function (v) { return v + "%"; }, grid: false },
+      y: { domain: order, label: null, tickFormat: function (c) { return incomeShortLabel(c, labelOf[c]); } },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    card.note(
+      "Each bar is one line ÷ revenue — INDEPENDENT ratios, not a stack: the list mixes subtotals " +
+      "(gross profit, operating income) with their own components, so the bars deliberately don't " +
+      "sum to 100%. N/A = a line this filing didn't report (never shown as 0%)."
+    );
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -2800,6 +3058,8 @@
     convictionHeatmap: convictionHeatmap,
     coHoldingNetwork: coHoldingNetwork,
     valueLineChart: valueLineChart,
+    incomeBridge: incomeBridge,
+    commonSizeChart: commonSizeChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,
