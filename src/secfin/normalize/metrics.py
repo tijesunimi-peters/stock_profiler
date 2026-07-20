@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date
+from typing import NamedTuple
 
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.schema import (
@@ -612,6 +613,26 @@ def _asset_turnover(ctx: _Ctx) -> MetricValue:
     return _ttm_over_avg(ctx, "asset_turnover", "Asset Turnover", "revenue", "total_assets")
 
 
+def _equity_multiplier(ctx: _Ctx) -> MetricValue:
+    """Average assets / average equity -- the leverage leg of DuPont.
+
+    Deliberately averaged/averaged (not period-end) so the per-company DuPont identity closes on
+    the *existing* bases: net_margin (TTM NI / TTM Rev) x asset_turnover (TTM Rev / avg Assets) x
+    equity_multiplier (avg Assets / avg Equity) = TTM NI / avg Equity = roe. `approximate` when
+    either average had to fall back to the ending balance (no prior-period balance)."""
+    label, unit, basis = "Equity Multiplier", "ratio", "TTM"
+    assets, a_exact = ctx.avg("total_assets")
+    equity, e_exact = ctx.avg("stockholders_equity")
+    if assets is None or equity is None:
+        return ctx.na("equity_multiplier", label, unit, basis, "assets or equity not reported")
+    if abs(equity) < _NEAR_ZERO:
+        return ctx.na("equity_multiplier", label, unit, basis, "equity is zero/near-zero")
+    value = assets / equity
+    if not (a_exact and e_exact):
+        return ctx.approx("equity_multiplier", label, value, unit, basis, _INEXACT_AVG_REASON)
+    return ctx.ok("equity_multiplier", label, value, unit, basis)
+
+
 def _inventory_turnover(ctx: _Ctx) -> MetricValue:
     return _ttm_over_avg(
         ctx, "inventory_turnover", "Inventory Turnover", "cost_of_revenue", "inventory"
@@ -732,6 +753,7 @@ _METRICS = [
     ("fcf_margin", _fcf_margin),
     ("accruals", _accruals),
     ("asset_turnover", _asset_turnover),
+    ("equity_multiplier", _equity_multiplier),
     ("inventory_turnover", _inventory_turnover),
     ("dso", _dso),
     ("eps_basic", _eps_basic),
@@ -786,6 +808,53 @@ def compute_metrics(
         fiscal_year=fiscal_year,
         fiscal_period=fiscal_period,
         metrics=[fn(ctx) for _, fn in _METRICS],
+    )
+
+
+class DupontComponents(NamedTuple):
+    """The four DuPont dollar inputs for one company + period, on the same bases the per-company
+    metrics use. The raw ingredients the sector-aggregate batch sums per SIC group."""
+
+    net_income: float  # TTM net income
+    revenue: float  # TTM revenue
+    avg_assets: float  # average total assets over the TTM window
+    avg_equity: float  # average stockholders' equity over the TTM window
+    period_end: str
+    approximate: bool  # an average fell back to the ending balance (no prior-period balance)
+
+
+def dupont_components(
+    facts: list[RawFact], cik: int, fiscal_year: int, fiscal_period: FiscalPeriod
+) -> DupontComponents | None:
+    """The DuPont inputs for one company + period, or None when the company can't enter the
+    sector aggregate for that period.
+
+    Returns None unless ALL of net income, revenue, average assets, and average equity are present
+    and no denominator is degenerate -- the shared-membership rule (AC-6): a company missing any
+    leg is excluded from the aggregate, never zero-filled, so the asset-weighted aggregate
+    (SigmaNI/SigmaRev x SigmaRev/SigmaAssets x SigmaAssets/SigmaEquity) telescopes cleanly to
+    SigmaNI/SigmaEquity over one consistent company set. Reuses the metric engine's own anchor
+    resolution and TTM/average accessors -- no logic duplication."""
+    index = _index_concepts(facts)
+    anchor = _resolve_anchor(index, fiscal_year, fiscal_period)
+    if anchor is None:
+        return None
+    ctx = _Ctx(index, facts, anchor)
+    ni = ctx.ttm("net_income")
+    rev = ctx.ttm("revenue")
+    assets, a_exact = ctx.avg("total_assets")
+    equity, e_exact = ctx.avg("stockholders_equity")
+    if ni is None or rev is None or assets is None or equity is None:
+        return None
+    if abs(rev) < _NEAR_ZERO or abs(assets) < _NEAR_ZERO or abs(equity) < _NEAR_ZERO:
+        return None
+    return DupontComponents(
+        net_income=ni,
+        revenue=rev,
+        avg_assets=assets,
+        avg_equity=equity,
+        period_end=anchor.end,
+        approximate=not (a_exact and e_exact),
     )
 
 

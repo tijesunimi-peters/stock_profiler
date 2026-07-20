@@ -467,6 +467,54 @@ def _seed_peer_ranks(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed sector-aggregate DuPont rows for the demo /sectors overview. Written DIRECTLY (not
+# via the DuckDB analytical batch) so the offline/e2e profile -- base install, no `analytical`
+# extra -- can render the sector grid + DuPont tree + trend. The real pipeline
+# (ingest/dupont_backfill + analytical/sector_dupont over a hydrated volume) is exercised
+# separately. Rows are built with `aggregate_row` from synthetic sums, so the DuPont identity
+# (roe == net_margin x asset_turnover x equity_multiplier) holds exactly, like real data. Shapes
+# are plausible: banks thin-turnover/high-leverage, building materials leverage-heavy, etc. The
+# "28" chemicals series deliberately SKIPS FY2023 so the trend line's coverage-gap break renders.
+_SECTOR_DEMO = [
+    # (group, net_margin, asset_turnover, equity_multiplier, base peer_count)
+    ("35", 0.14, 0.85, 2.3, 26),
+    ("60", 0.22, 0.06, 11.0, 40),
+    ("28", 0.18, 0.62, 1.9, 22),
+    ("73", 0.11, 0.78, 2.6, 55),
+    ("52", 0.05, 1.90, 4.0, 12),
+]
+_SECTOR_YEARS = [2021, 2022, 2023, 2024, 2025]
+
+
+def _seed_sector_dupont(db_path: str) -> None:
+    from secfin.analytical.sector_dupont import aggregate_row
+    from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRepository
+
+    repo = SQLiteSectorDupontRepository(db_path)
+    rows = []
+    for group, nm, at, em, base_n in _SECTOR_DEMO:
+        for year in _SECTOR_YEARS:
+            if group == "28" and year == 2023:
+                continue  # coverage gap -> the trend line breaks here, never a 0 point
+            drift = 1.0 + 0.03 * (year - 2023)  # a gentle year-over-year margin drift
+            s_eq = 1_000.0
+            s_assets = em * s_eq
+            s_rev = at * s_assets
+            s_ni = (nm * drift) * s_rev
+            row = aggregate_row(
+                group, year, "FY", f"{year}-12-31", base_n + (year - 2021),
+                s_ni, s_rev, s_assets, s_eq,
+            )
+            if row is not None:
+                rows.append(row)
+    try:
+        repo.clear()
+        repo.bulk_upsert(rows)
+        print(f"seeded sector DuPont: {len(rows)} rows across {len(_SECTOR_DEMO)} sectors")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -515,6 +563,7 @@ def main() -> None:
     _seed_coholding(db_path)
     _seed_sic(db_path)
     _seed_peer_ranks(db_path)
+    _seed_sector_dupont(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

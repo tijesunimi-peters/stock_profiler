@@ -3710,6 +3710,60 @@
     return card.root;
   }
 
+  // ---------- sector DuPont trend (Sector Analytics D1) ----------
+  //
+  // A single-series line of a sector's ASSET-WEIGHTED aggregate ROE across fiscal years, for the
+  // sector-overview expansion. `points` is [{year, value}] over a contiguous year window (the
+  // caller densifies + range-slices); `value` is null for a fiscal year with no aggregate on
+  // record, so the line BREAKS there (a coverage gap, never interpolated, never 0). ROE only:
+  // the three DuPont drivers live on different scales, so mixing them on one axis would mislead —
+  // the decomposition tree carries the drivers instead. Returns a chartCard root.
+  function sectorDupontTrend(points, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Aggregate ROE over time");
+    var present = (points || []).filter(function (p) { return p.value !== null && p.value !== undefined; });
+    if (present.length < 2) {
+      var only = present[0];
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = only
+        ? "Only one fiscal year is on record in this range — not enough to draw a trend."
+        : "No aggregate on record for this range.";
+      card.body.appendChild(p0);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    var t = plotTokens();
+    var plotNode = window.Plot.plot({
+      width: width,
+      height: 170,
+      marginLeft: 44,
+      marginRight: 18,
+      marginTop: 24,
+      marginBottom: 28,
+      style: { fontFamily: t.fontMono, fontSize: 10.5, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { type: "point", tickFormat: function (y) { return "FY" + y; }, label: null },
+      y: { grid: true, nice: true, label: null, tickFormat: function (v) { return fmt.pct(v); } },
+      marks: [
+        window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.55 }),
+        // Line breaks wherever `value` is null (a coverage-gap year) — never interpolated.
+        window.Plot.lineY(points, { x: "year", y: "value", stroke: t.accent, strokeWidth: 1.75, curve: "linear" }),
+        window.Plot.dot(present, { x: "year", y: "value", r: 3.5, fill: t.accent, stroke: cssVar("--bg-card", "#fff"), strokeWidth: 1.5 }),
+        window.Plot.dot(present, {
+          x: "year", y: "value", r: 9, fill: "transparent",
+          channels: { year: function (d) { return "FY" + d.year; }, roe: "value" },
+          tip: { format: { x: false, y: false, year: true, roe: function (v) { return fmt.pct(v); } } },
+        }),
+      ],
+    });
+    card.body.appendChild(plotNode);
+    var hasGap = points.some(function (p) { return p.value === null || p.value === undefined; });
+    if (hasGap) card.caption("A break in the line is a fiscal year with no sector aggregate on record — a coverage gap, not zero.");
+    return card.root;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -3751,6 +3805,7 @@
     cashFlowBridge: cashFlowBridge,
     fcfBreakdown: fcfBreakdown,
     earningsQuality: earningsQuality,
+    sectorDupontTrend: sectorDupontTrend,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,

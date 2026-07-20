@@ -60,6 +60,9 @@ from secfin.normalize.schema import (
     PeerDistribution,
     PeerRank,
     RawFact,
+    SectorDupont,
+    SectorList,
+    SectorSeries,
     Statement,
     StatementType,
 )
@@ -68,6 +71,7 @@ from secfin.normalize.screening import (
     frame_period_for_concept,
     resolve_concept_values,
 )
+from secfin.normalize.sic import sic2_label
 from secfin.normalize.statements import (
     available_periods,
     build_normalized_view,
@@ -95,6 +99,7 @@ from secfin.storage.metric_distribution_repository import MetricDistributionRepo
 from secfin.storage.metric_rank_repository import MetricRankRepository
 from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
+from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
 # own served pages (`/company/{symbol}` and friends, static/company.js) call directly
@@ -272,6 +277,10 @@ def get_metric_value_repo(request: Request) -> MetricValueRepository:
 
 def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
     return request.app.state.company_profile_repo
+
+
+def get_sector_dupont_repo(request: Request) -> SectorDupontRepository:
+    return request.app.state.sector_dupont_repo
 
 
 def get_cusip_repo(request: Request) -> CusipMapRepository:
@@ -1165,6 +1174,112 @@ async def get_peer_distribution(
         peer_basis=f"SIC {sic_digits}-digit",
         caveats=_PEER_CAVEATS,
         distribution=distribution,
+    )
+
+
+# ---- Sector overview: asset-weighted DuPont aggregates (Sector Analytics D1) --------
+
+_SECTOR_CAVEATS = [
+    "These are ASSET-WEIGHTED sector aggregates (ΣNI/ΣRev × ΣRev/ΣAssets × ΣAssets/ΣEquity), "
+    "NOT medians or averages of company ratios -- the DuPont identity (ROE = Net Margin × Asset "
+    "Turnover × Equity Multiplier) holds on the aggregate by construction.",
+    "A company is included only when net income, revenue, assets AND equity are all reported for "
+    "the period; a company N/A on any leg is excluded, never counted as zero.",
+    "Sectors are grouped by SIC industry code, which is coarse and dated -- treat a group as a "
+    "starting axis, not ground truth.",
+    "Companies are aggregated by fiscal-period LABEL; fiscal periods are not calendar-aligned "
+    "across companies, and figures carry the usual ~quarter reporting lag (latest restatement "
+    "wins).",
+    "Only groups meeting the minimum size are shown; a smaller group is dropped, not shown as "
+    "sparse or zero.",
+    "A sector whose aggregate equity is near zero or negative (e.g. constituents with large "
+    "buyback-driven equity deficits) yields an extreme ROE and equity multiplier -- read the "
+    "decomposition: the DuPont legs show such a figure is leverage-driven, not a profitability "
+    "signal.",
+]
+
+
+def _sector_dupont_model(row: SectorDupontRow) -> SectorDupont:
+    """Map a SectorDupontRow (repo) to the API model, attaching the readable group label."""
+    return SectorDupont(
+        group=row.peer_group,
+        group_label=sic2_label(row.peer_group),
+        fiscal_year=row.fiscal_year,
+        fiscal_period=row.fiscal_period,
+        period_end=row.period_end,
+        peer_count=row.peer_count,
+        net_margin=row.net_margin,
+        asset_turnover=row.asset_turnover,
+        equity_multiplier=row.equity_multiplier,
+        roe=row.roe,
+        sum_net_income=row.sum_net_income,
+        sum_revenue=row.sum_revenue,
+        sum_avg_assets=row.sum_avg_assets,
+        sum_avg_equity=row.sum_avg_equity,
+    )
+
+
+@public_router.get(
+    "/sectors",
+    response_model=SectorList,
+    tags=["Sectors"],
+    summary="Sector overview: asset-weighted DuPont aggregates for one period",
+)
+async def get_sectors(
+    year: int | None = Query(
+        None,
+        description="Fiscal year; defaults to the latest WELL-COVERED annual (FY) year "
+        "(a barely-filed newest year is skipped -- pass it explicitly to see it)",
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: SectorDupontRepository = Depends(get_sector_dupont_repo),
+) -> SectorList:
+    """Every qualifying SIC sector's asset-weighted DuPont decomposition for one period.
+
+    A **precomputed** read of `sector_dupont` (the analytical/sector_dupont.py batch is the sole
+    producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md). Each sector's
+    `roe` equals `net_margin x asset_turnover x equity_multiplier` by construction (asset-weighted
+    aggregate, NOT a median). Empty `sectors` is a valid, honest result: no group met the minimum
+    size, or nothing has been materialized yet (`caveats` spells this out).
+    """
+    resolved_year = year if year is not None else repo.latest_fy_year()
+    sectors = (
+        [_sector_dupont_model(r) for r in repo.list_for_period(resolved_year, period)]
+        if resolved_year is not None
+        else []
+    )
+    return SectorList(
+        fiscal_year=resolved_year or 0,
+        fiscal_period=period,
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_SECTOR_CAVEATS,
+        sectors=sectors,
+    )
+
+
+@public_router.get(
+    "/sectors/{group}",
+    response_model=SectorSeries,
+    tags=["Sectors"],
+    summary="One sector's DuPont aggregate across every materialized period (trend)",
+)
+async def get_sector_series(
+    group: str,
+    repo: SectorDupontRepository = Depends(get_sector_dupont_repo),
+) -> SectorSeries:
+    """One SIC group's asset-weighted DuPont aggregate over time, oldest period first.
+
+    Feeds the sector trend chart (the UI slices it to 1Y / 5Y / All) and the DuPont tree (from the
+    latest point). Empty `points` is a valid, honest result -- the group never met the minimum
+    size, or isn't materialized yet.
+    """
+    points = [_sector_dupont_model(r) for r in repo.get_series(group)]
+    return SectorSeries(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_SECTOR_CAVEATS,
+        points=points,
     )
 
 

@@ -1,62 +1,76 @@
 # Active delivery task
-task_slug: cashflow-viz
-request: Add cash-flow statement visualizations to the company hub Statements→Cashflow tab (Table/Chart toggle), mirroring income + balance-sheet viz. Three views — (1) Cash Bridge waterfall Beginning→CFO→CFI→CFF→FX→Ending (identity-reconciled, single explicit residual); (2) FCF breakdown multi-period grouped columns OCF vs CapEx vs FCF(=CFO−CapEx); (3) Earnings-quality combo multi-period Net Income vs OCF + cash-conversion line (OCF/NI, cross-statement join). Track-1, no new ingest, mock-first. OUT: Sankey cash pipeline, raw diverging micro-bars.
-branch: cashflow-viz (STACKED on balance-sheet-viz, NOT master — master lacks balance_viz/
-  capital_structure_series which this feature extends; operator gates merge order at commit)
+task_slug: sector-overview-dupont
+request: Deliverable 1 from docs/ROADMAP_SECTOR_ANALYTICS.md — sector performance overview dashboard home + DuPont (#1). Honor the honesty fixes (asset-weighted aggregate not median; SIC caveats; N/A≠0) and the deferred list.
+branch: sector-overview-dupont (off master)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-20
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (scope gate PASS: Track 1, no new ingest; Sankey +
-      micro-bars OUT; 18 ACs incl. identity-reconcile, single residual, cash-basis match,
-      FCF=OCF−CapEx N/A-on-missing-capex, OCF/NI nm-on-NI≤0, N/A-never-0)
-- [x] 3 Backend -> 3-implementation.md §3a (5 schema models, viz.py cashflow_viz + cashflow_series,
-      2 endpoints + _prior_period_balance, tests/test_cashflow_viz.py). 452 passed (+21), 6 skip.
-      MOCK-FIRST PASS: bridge residual=0 on AAPL/WMT/JPM (identity holds); AAPL FCF 98.767B conv
-      0.995; WMT FCF 14.923B conv 1.90; JPM FCF=None (no capex) conv -2.59. Live endpoints 200 OK.
-      Off-by-one fixed (period_start = prior period_end + 1 day → tolerant date match). NOTE for QA:
-      trimmed fixtures have 1 FY period each so bridge is RELATIVE (absolute=false) on fixture/e2e
-      data; drive a ≥2-FY company on the live Docker volume to confirm absolute=true + matched basis.
-- [x] 3 Frontend -> 3-implementation.md §3b (app.js cashFlowBridge + fcfBreakdown + earningsQuality;
-      company.js cashflow gating+dispatch+render/paint; headless_check.js +2 pages; no company.css
-      change). e2e PASS 0 errors AAPL+WMT; eyeballed both (bridge relative walk reconciled, FCF
-      breakdown, earnings-quality NI/OCF + conversion 1.00×/1.90× on dashed 1× line). Bug caught+fixed:
-      Plot faceting → single band scale (composite period|metric keys) so the conversion line
-      connects + overlay marks position. Axis-label clip fixed. pytest 452 still green.
-- [x] 2 Principal Architect   -> 2-architecture.md (FULL-STACK: backend then frontend; no drift)
-      KEY DECISIONS: cash basis from change_in_cash.source_tag → cash_and_restricted_cash (modern
-      ASU-2016-18 tag) vs cash_and_equivalents (legacy); begin/end from prior+current BALANCE
-      statements on matched basis; relative-walk fallback. Cross-stmt join: one _facts_for_cik
-      feeds build_statement(cashflow)+build_statement(income) per period, join on fiscal key.
-      Bridge endpoint uses _facts_for_cik (FULL history — needs prior-period balance). 5 new
-      schema models, viz.py cashflow_viz + cashflow_series, 2 endpoints, tests/test_cashflow_viz.py.
-- [ ] 2 Principal Architect   -> 2-architecture.md
-- [ ] 3 Backend  (full-stack expected: backend then frontend)
-- [ ] 3 Frontend
-- [x] 4 QA Tester             -> 4-qa.md (PASS — all 18 ACs; pytest 452, e2e 0 errors; honesty
-      contract verified live: AAPL/WMT bridge residual=0 identity, JPM bank FCF=N/A, conversion
-      nm/na/ok. 2 non-blocking follow-ups logged. Stray scratch files removed. UNCOMMITTED.)
+- [x] 1 Product Manager       -> 1-brief.md (scope gate PASS: Track 1, SIC-aggregation is an
+      existing batch pattern. 13 ACs incl. per-company DuPont identity, asset-weighted aggregate
+      = product-of-drivers, shared-membership rule so N/A≠0 can't break identity, min-size drop,
+      "aggregate not median" label, no-alpha/price claim, 1Y/5Y/All trend, batch-only guardrails.)
+      OPERATOR DECISIONS: (1) new page + new sidebar "Home"/Sectors entry (script.js GROUPS);
+      marketing `/` index UNTOUCHED. (2) NOT single-snapshot — trend chart w/ 1Y/5Y/All ranges,
+      so aggregate is a MULTI-PERIOD time series.
+- [x] 2 Principal Architect   -> 2-architecture.md (FULL-STACK backend→frontend, no drift.
+      KEY: equity_multiplier=avg_Assets/avg_Equity (both AVERAGED) so per-company identity closes;
+      aggregate needs DOLLAR components (can't recover from ratios) → 2-table pattern mirroring
+      metric_values→metric_ranks. dupont_components() reuses _Ctx (no logic dup); returns None
+      unless all 4 present (shared membership). New: metric+extractor (metrics.py), 2 repos
+      (dupont_components staging + sector_dupont aggregate), ingest/dupont_backfill (python),
+      analytical/sector_dupont (DuckDB ATTACH, sums→ratios, HAVING>=min_size), normalize/sic.py
+      static SIC-2 labels, 2 endpoints /v1/sectors + /v1/sectors/{group}, GET /sectors page.
+      DuckDB import ONLY in analytical/sector_dupont.py. No mapping.py change (concepts exist).)
+- [x] 3 Backend  -> 3-implementation.md §3a. equity_multiplier metric + dupont_components extractor
+      (metrics.py); sic.py labels; dupont_components + sector_dupont repos; ingest/dupont_backfill +
+      analytical/sector_dupont (DuckDB, identity from sums); schema SectorDupont/List/Series; routes
+      _SECTOR_CAVEATS (6) + get_sectors + get_sector_series; main.py wiring + /sectors page route;
+      docs. pytest 467 pass (+15), ruff clean (endpoint B008 = existing FastAPI idiom). REAL-DATA
+      VERIFY on hydrated backup: 31,248 comp rows, 560 sector rows; per-sector identity <=1.1e-16;
+      banks em~11; /v1/sectors 200 FY2025 59 sectors; honest empties; sparse latest reachable.
+      KEY REFINEMENTS from verify: (1) latest_fy_year() = latest WELL-COVERED FY (raw MAX=2026 was
+      12 sparse sectors -> now 2025, 59). (2) get_series() FY-ONLY (quarterly sparse, would
+      double-count). (3) caveat #6 added re near-zero/negative aggregate-equity extremes (SIC 52
+      ROE~282% is HONEST + leverage-driven — surface equity_multiplier).
+- [x] 3 Frontend -> 3-implementation.md §3b. sectors.html (+vendored Plot/d3) / sectors.js /
+      sectors.css; app.js sectorDupontTrend builder (exported); script.js "Overview→Sectors" sidebar
+      entry (operator's Home menu; marketing / untouched); seed_fixture _seed_sector_dupont (direct
+      write like _seed_peer_ranks so offline e2e renders); headless_check +2 pages. Backend copy
+      aligned to Σ/× glyphs. e2e ALL errors=0 (sectors + sectors-expanded); eyeballed both:
+      sortable grid + honesty banner + 6-note disclosure; DuPont tree 15.4%=23.3%×0.06××11.00×
+      (banks) with =/× operators + plain-English legs + "aggregated over N, not a median"; 1Y/5Y/All
+      toggle; ROE trend FY2021-2025. Bug caught+fixed: sectors.html missing vendored Plot -> trend
+      threw into the (console-clean) error state -> added d3+plot scripts. pytest 467 still green.
+- [x] 4 QA Tester             -> 4-qa.md (PASS — all 13 ACs. pytest 467 pass; e2e all errors=0;
+      real-data drive: per-company identity err ≤2.8e-17 on AAPL/WMT/JPM, sector aggregate identity
+      ≤1.1e-16, banks em~11-12, honest empties. Honesty verified: aggregate-not-median label, N/A→—
+      never 0, extreme ROE (AAPL 171% / SIC-52 282%) honest leverage-driven w/ caveat #6. code-review
+      high: 5 findings, ALL low/non-blocking (logged in 4-qa.md). UNCOMMITTED. Deploy needs the batch
+      run on prod volume to populate sector_dupont first.)
 
 ## Notes / open loops
-- New run (operator picked "all three" + "full /deliver pipeline", 2026-07-20).
-- Precedent to mirror EXACTLY: income-statement-viz + balance-sheet-viz — tested pure
-  normalize/viz.py helpers + derived caveated /statements/{stmt}/viz (+ /viz-series for
-  multi-period) endpoints on the public router, thin Observable Plot renderers behind the
-  Statements Table/Chart toggle (vizCache key MUST include statement). Reuse wireStmtViewToggle.
-- Data is already normalized: STATEMENT_CONCEPTS["cashflow"] has cash_from_operations/investing/
-  financing, effect_of_exchange_rate_on_cash, change_in_cash, capital_expenditures,
-  depreciation_amortization, dividends_paid, share_repurchases, proceeds_from_*, repayments_of_debt,
-  acquisitions_net_of_cash, income_taxes_paid, interest_paid, and working-capital deltas. Net income
-  lives on the INCOME statement (concept net_income) — the combo needs a cross-statement read.
-- Honesty hazards: (a) bridge residual = mapping/reporting gap, must be single explicit labeled
-  term, never a silent plug; CFO+CFI+CFF+FX should = change_in_cash by identity. (b) beginning/
-  ending cash come from the balance sheet (cash_and_equivalents / cash_and_restricted_cash) at
-  period boundaries — pick one basis consistently; ASU-2016-18 restricted-cash mismatch is a real
-  reconciliation risk to surface. (c) capex reported as positive payment; FCF = CFO − CapEx.
-  (d) cash-conversion ratio undefined/misleading when NI<=0 — must degrade honestly, not show 0.
-  (e) never render a missing value as 0. Per [[feedback-viz-mock-before-build]] validate bridge
-  reconciliation + residual-dominance on AAPL + WMT BEFORE the full build.
-- OUT (flag, do not build): Sankey cash pipeline (implies complete sources→uses decomposition we
-  don't map); raw diverging micro-bars of line items (working-capital deltas carry us-gaap natural
-  sign, not cash-flow presentation sign).
+- DONE 2026-07-20. Green QA. Branch sector-overview-dupont (off master), UNCOMMITTED, NOT deployed.
+- Operator next options: (a) commit the branch; (b) request deploy via /devops-engineer (gated) —
+  deploy MUST run `python -m secfin.ingest.dupont_backfill` then `python -m secfin.analytical.sector_dupont`
+  (analytical extra) on the prod volume, else /sectors honestly shows empty. 5 non-blocking follow-ups
+  in 4-qa.md.
+- Precedent to mirror: analytical/peer_ranks.py + peer_distribution.py (DuckDB ATTACH TYPE sqlite
+  over live SQLite, write back via ordinary SQLite repo; min-size drop; R7 N/A-excluded). New table
+  mirrors metric_ranks / metric_distributions.
+- HONESTY (roadmap-flagged, non-negotiable): (a) DuPont sector value = asset-weighted aggregate
+  ΣNI/ΣRev × ΣRev/ΣAssets × ΣAssets/ΣEquity, NOT median; identity preserved; labeled "sector
+  aggregate, not a median." (b) company enters aggregate only if NI+Rev+Assets+Equity all present
+  (shared membership) so N/A≠0 can't break identity. (c) reuse _PEER_CAVEATS vocabulary + SIC
+  coarse/dated + min-size drop + ~quarter lag + restatement. (d) NO value rendered as 0. (e) NO
+  alpha/timing/market-price claim (native strength, not subtraction).
+- New metric equity_multiplier (Assets/Equity) basis MUST match roe + asset_turnover so per-company
+  identity net_margin×asset_turnover×equity_multiplier=roe holds. Docs: ROADMAP_METRICS.md, DATA_MODEL.md.
+- Shared app-shell sidebar rendered from script.js GROUPS[]; data pages use <body class="app"
+  data-shell="X"> + #appSide/#appTopbar mounts. Observable Plot already vendored (static/vendor/).
+- Architect open decisions: em averaging basis; aggregate point-in-time vs avg; trend granularity
+  (FY vs quarterly); SIC digit level (reuse settings.secfin_peer_sic_digits); SIC code→name map?;
+  route path (/sectors). Verify needs HYDRATED Docker volume (7.2G backup; data/secfin.db is a stub).
+- OUT (deferred, do not build): roadmap #2/#3/#4/#5; no dio/dpo; don't run peer_distribution.py here;
+  don't touch marketing `/` landing.

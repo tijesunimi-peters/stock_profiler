@@ -845,6 +845,7 @@ they mirror the structural mapping limitations already documented above (banks, 
 | interest_coverage | na³ | ok | na |
 | fcf / fcf_margin / accruals | ok | ok | ok |
 | asset_turnover | ok | ok | ok |
+| equity_multiplier | ok | ok | ok |
 | inventory_turnover | ok | ok | na |
 | dso | ok | ok | na |
 | eps_basic / eps_diluted | ok | ok | ok |
@@ -857,6 +858,39 @@ is `nm`. ³ Apple nets interest into other income/expense (no discrete `interest
 coverage is `na`. ⁴ `na` in the fixture only because `dei` is stripped there; resolves in
 production (see R6 above). Banks are `na` on the current/noncurrent-split and inventory metrics
 by structure — same limitation as their statements.
+
+### DuPont decomposition & sector aggregates (Sector Analytics, Deliverable 1)
+
+`equity_multiplier` (`avg(total_assets) / avg(stockholders_equity)`) is the leverage leg that
+completes the DuPont identity **per company**, on the *existing* bases:
+
+```
+net_margin × asset_turnover × equity_multiplier = roe
+(TTM_NI/TTM_Rev)(TTM_Rev/avg_Assets)(avg_Assets/avg_Equity) = TTM_NI/avg_Equity
+```
+
+It is deliberately averaged/averaged (not period-end) so this identity closes; `approximate` when
+either average falls back to the ending balance (R3), `na` when equity is absent or ≈0 (never `0`).
+
+**Sector aggregates are asset-weighted, not medians.** A median of ROE is *not*
+median(margin) × median(turnover) × median(leverage) — the identity only holds per company. The
+`analytical/sector_dupont.py` batch therefore aggregates the **dollar components** and takes ratios
+of the sums, per `(SIC group, period)`:
+
+```
+net_margin = ΣNI/ΣRev   asset_turnover = ΣRev/ΣAssets   equity_multiplier = ΣAssets/ΣEquity
+roe = ΣNI/ΣEquity   ( == the product of the three, identity-preserving )
+```
+
+A company enters a group's sums **only when all four legs are present** for that period (the
+shared-membership rule — a company N/A on any leg is excluded, never counted as `0`), so the three
+sums share one company set and the identity cannot be broken by mismatched membership. Groups below
+`settings.secfin_peer_min_size` are dropped. Materialized offline (per-company components in
+`dupont_components` via `ingest/dupont_backfill.py`, then summed in DuckDB) and served **cache-aside
+from the `sector_dupont` table** by `GET /v1/sectors` and `GET /v1/sectors/{group}` — **never a live
+aggregation** (guardrails 6/7). Caveats: SIC is coarse/dated; fiscal periods are aggregated by label
+(not calendar-aligned across companies); ~quarter reporting lag; labelled "sector aggregate — not a
+median" wherever shown.
 
 ### Metric history & trend signals (Phase 1b)
 

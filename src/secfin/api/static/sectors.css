@@ -1,0 +1,141 @@
+/* Sector overview (/sectors). Lives in the shared app shell; reuses app.css / company.css tokens
+ * and the .segmented control. The DuPont identity tree is the one place we spend any boldness —
+ * everything else stays disciplined. Token-driven, so light/dark follow the shell automatically. */
+
+/* ---- aggregation banner (load-bearing honesty) ---- */
+.agg-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 4px 0 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--accent-wash-border);
+  background: var(--accent-wash);
+  border-radius: 10px;
+}
+.agg-badge {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.agg-text { font-size: 13px; line-height: 1.5; color: var(--ink-body); }
+.agg-caveats { margin: 8px 0 18px; }
+
+/* ---- overview grid ---- */
+.sector-table-wrap { overflow-x: auto; }
+.sector-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.sector-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-page);
+  border-bottom: 2px solid var(--ink);
+  padding: 0;
+  white-space: nowrap;
+  z-index: 1;
+}
+.sector-table th.num { text-align: right; }
+.th-sort {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-soft);
+  padding: 9px 12px;
+  text-align: inherit;
+}
+.sector-table th.num .th-sort { text-align: right; }
+.th-sort:hover { color: var(--accent); }
+.sector-table th.sorted .th-sort { color: var(--ink); }
+
+.sector-row { cursor: pointer; border-bottom: 1px solid var(--border-tint-rule); }
+.sector-row:hover { background: var(--bg-tint); }
+.sector-row.open { background: var(--bg-tint); }
+.sector-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sector-table td { padding: 9px 12px; }
+.sector-table td.num { text-align: right; }
+.sector-table td.mono { font-family: var(--font-mono); }
+.sector-name { font-weight: 600; color: var(--ink); }
+
+.sector-detail > td { padding: 0 6px 8px; background: var(--bg-tint); }
+.detail-mount { padding: 6px 6px 14px; }
+
+/* ---- DuPont identity tree (the signature) ---- */
+.dupont {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.dp-leg {
+  flex: 1 1 150px;
+  min-width: 140px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 12px 14px;
+}
+.dp-result {
+  border: 1.5px solid var(--accent);
+  background: var(--accent-wash);
+}
+.dp-val {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.dp-name { margin-top: 6px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.dp-desc { margin-top: 2px; font-size: 11.5px; line-height: 1.4; color: var(--ink-soft); }
+.dp-op {
+  flex: none;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  color: var(--mono-muted);
+  padding: 0 2px;
+}
+.dp-meta {
+  margin: 6px 2px 0;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+}
+
+/* ---- trend ---- */
+.trend-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 8px;
+}
+.trend-controls-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.trend-mount { min-height: 40px; }
+
+@media (max-width: 560px) {
+  .dp-op { width: 100%; align-self: auto; text-align: center; padding: 2px 0; }
+  .dp-leg { flex-basis: 100%; }
+}
