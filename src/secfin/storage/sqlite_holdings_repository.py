@@ -274,7 +274,8 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         placeholders = ",".join("?" for _ in cusips)
         cur = self._conn.execute(
             f"SELECT h.manager_cik, hs.manager_name, h.cusip, h.issuer_name, h.shares, "
-            f"h.value, h.other_managers, hs.filing_manager_location "
+            f"h.value, h.other_managers, hs.filing_manager_location, h.put_call, "
+            f"h.shares_or_principal "
             f"FROM holdings h "
             f"JOIN holdings_snapshots hs "
             f"  ON h.manager_cik = hs.manager_cik AND h.report_period = hs.report_period "
@@ -284,18 +285,38 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         )
         return [
             IssuerHolder(
-                manager_cik=manager_cik,
-                manager_name=manager_name,
-                cusip=cusip,
-                issuer_name=issuer_name,
-                shares=shares,
-                value=value,
-                other_managers=_split_refs(other_managers),
-                location=location,
+                manager_cik=row[0],
+                manager_name=row[1],
+                cusip=row[2],
+                issuer_name=row[3],
+                shares=row[4],
+                value=row[5],
+                other_managers=_split_refs(row[6]),
+                location=row[7],
+                put_call=row[8],
+                shares_or_principal=row[9],
             )
-            for manager_cik, manager_name, cusip, issuer_name, shares, value, other_managers,
-            location in cur.fetchall()
+            for row in cur.fetchall()
         ]
+
+    def manager_cusip_sets(
+        self, manager_ciks: list[int], report_period: str
+    ) -> dict[int, set[str]]:
+        if not manager_ciks:
+            return {}
+        placeholders = ",".join("?" for _ in manager_ciks)
+        # Bounded to the K managers passed in, served by idx_holdings_manager_period -- a
+        # per-manager read (same character as book_values), NOT the whole-quarter cross-manager
+        # scan reserved for DuckDB (guardrail 6). Every position type, keyed by CUSIP.
+        cur = self._conn.execute(
+            f"SELECT manager_cik, cusip FROM holdings "
+            f"WHERE report_period = ? AND manager_cik IN ({placeholders})",
+            (report_period, *manager_ciks),
+        )
+        out: dict[int, set[str]] = {}
+        for manager_cik, cusip in cur.fetchall():
+            out.setdefault(manager_cik, set()).add(cusip)
+        return out
 
     def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
         cur = self._conn.execute(

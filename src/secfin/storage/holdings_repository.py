@@ -107,6 +107,22 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def manager_cusip_sets(
+        self, manager_ciks: list[int], report_period: str
+    ) -> dict[int, set[str]]:
+        """The set of CUSIPs each of `manager_ciks` reported holding in `report_period` -- for the
+        BOUNDED set of managers a co-holding view is about (the top-K holders of one issuer), NOT
+        every manager.
+
+        A single indexed read over `(manager_cik, report_period)` -- a bounded per-manager read, the
+        same character as `book_values` / `holders_of`, NOT the whole-quarter cross-manager
+        inversion reserved for DuckDB (`docs/ARCHITECTURE.md` 3b, guardrail 6) -- so it stays on the
+        live request path. Includes every position by CUSIP (any type); the caller strips the viewed
+        issuer's CUSIPs. Empty `manager_ciks` returns `{}`; a manager with no holdings that quarter
+        is absent from the result.
+        """
+
+    @abstractmethod
     def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
         """`(manager_cik, accession)` for every cached snapshot in `report_period` that has no
         `filing_manager_location` yet -- the work list for `ingest/location_backfill.py`.

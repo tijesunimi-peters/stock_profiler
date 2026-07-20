@@ -319,7 +319,93 @@ def _seed_nolocation_holdings(db_path: str) -> None:
                     ],
                 )
             )
-        print("seeded no-location 13F holder (JPM) for the geography empty-state guard")
+        # A SECOND JPM holder so the ownership treemap has more than one filer to tile (both
+        # render as small squares against the large "not reported by these filers" remainder --
+        # these two demo filers hold well under 1% of JPM's shares outstanding). Location stays
+        # None so the geography empty-state guard on this same page is unaffected.
+        for qi, quarter in enumerate(("2025-12-31", "2026-03-31")):
+            jpm_shares = float(1_400_000 + qi * 100_000)
+            repo.upsert_snapshot(
+                HoldingsSnapshot(
+                    manager_cik=72,
+                    manager_name="EVERPEAK ADVISORS LLC",
+                    report_period=quarter,
+                    filed=quarter,
+                    accession=f"0000000072-26-00000{qi}",
+                    is_amendment=False,
+                    filing_manager_location=None,
+                    holdings=[
+                        InstitutionalHolding(
+                            cusip=_JPM_CUSIP,
+                            issuer_name="JPMORGAN CHASE & CO",
+                            shares=jpm_shares,
+                            value=jpm_shares * 200.0,
+                        )
+                    ],
+                )
+            )
+        print("seeded no-location 13F holders (JPM) for the geography empty-state guard")
+    finally:
+        repo.close()
+
+
+# Extra AAPL holders whose OTHER books partially overlap -- gives the co-holding network
+# (docs/delivery/institutional-tab-viz/2d-...) a real ~7-node graph with DIFFERENTIATED edges (a
+# 4-manager cluster with Jaccard 0.2-0.6, plus the existing Vanguard/State Street pair on {Ally},
+# plus an isolated Berkshire whose deep synthetic book overlaps no one above the threshold) instead
+# of a 3-node triangle. Overlap is measured by CUSIP; these synthetic "other" CUSIPs stay unresolved
+# by design (fine -- the network measures CUSIP overlap, not CIK). Seeded for the newest quarter only.
+_CO_POOL = {  # cusip -> (issuer_name, $/share) for the shared "other holdings" pool
+    "91000AAA1": ("ORCHARD RIDGE CAP CO", 40.0),
+    "91000BBB2": ("SILVERBROOK INDS INC", 55.0),
+    "91000CCC3": ("TIDEWATER MOBILITY CO", 28.0),
+    "91000DDD4": ("KESTREL SOFTWARE INC", 120.0),
+    "91000EEE5": ("BRASSTOWN UTILITIES CO", 33.0),
+    "91000FFF6": ("PINEHURST FOODS CORP", 66.0),
+}
+# (manager_cik, name, state, AAPL shares, [other CUSIPs]) -- the "other" sets overlap by design.
+_COHOLDING_MANAGERS = [
+    (200, "FAIRWIND CAPITAL MGMT", "NY", 220_000_000,
+     ["91000AAA1", "91000BBB2", "91000CCC3", "91000DDD4"]),
+    (201, "GREYSTONE PARTNERS LP", "CA", 180_000_000,
+     ["91000AAA1", "91000BBB2", "91000CCC3", "91000EEE5"]),
+    (202, "MERIDIAN ASSET MGMT", "IL", 140_000_000,
+     ["91000AAA1", "91000BBB2", "91000EEE5", "91000FFF6"]),
+    (203, "HALLMARK ADVISORS INC", "TX", 90_000_000, ["91000DDD4", "91000FFF6"]),
+]
+
+
+def _seed_coholding(db_path: str) -> None:
+    repo = SQLiteHoldingsSnapshotRepository(db_path)
+    try:
+        for mcik, name, state, aapl_shares, others in _COHOLDING_MANAGERS:
+            holdings = [
+                InstitutionalHolding(
+                    cusip="037833100", issuer_name="APPLE INC",
+                    shares=float(aapl_shares), value=float(aapl_shares) * 190.0,
+                )
+            ]
+            for cusip in others:
+                iname, price = _CO_POOL[cusip]
+                holdings.append(
+                    InstitutionalHolding(
+                        cusip=cusip, issuer_name=iname, shares=5_000_000.0,
+                        value=5_000_000.0 * price,
+                    )
+                )
+            repo.upsert_snapshot(
+                HoldingsSnapshot(
+                    manager_cik=mcik,
+                    manager_name=name,
+                    report_period="2026-03-31",
+                    filed="2026-03-31",
+                    accession=f"{mcik:010d}-26-000001",
+                    is_amendment=False,
+                    filing_manager_location=state,
+                    holdings=holdings,
+                )
+            )
+        print(f"seeded {len(_COHOLDING_MANAGERS)} co-holding AAPL managers (overlapping books)")
     finally:
         repo.close()
 
@@ -426,6 +512,7 @@ def main() -> None:
     _seed_beneficial(db_path)
     _seed_holdings(db_path)
     _seed_nolocation_holdings(db_path)
+    _seed_coholding(db_path)
     _seed_sic(db_path)
     _seed_peer_ranks(db_path)
     _seed_api_key(db_path)

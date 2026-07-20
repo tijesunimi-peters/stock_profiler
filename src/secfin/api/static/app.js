@@ -2291,6 +2291,327 @@
     }
   }
 
+  // Institutional-holder treemap: each 13F filer sized by its share of the POOL of ingested
+  // institutional (13F) shares -- who holds the most among the reporting institutions. The box is
+  // the ingested pool (not the company), so the squares are dense and sum to ~100%; filers past the
+  // top-N fold into a labelled "Other ingested filers" tile (a minority sibling, NOT a "not held"
+  // remainder). SH-equity only (options/PRN excluded server-side). A single accent hue -- size is
+  // the encoding, never a verdict (STYLE_GUIDE §9.2). Filers with no share count are listed below,
+  // never given a fabricated square or a 0. Honesty: this is a share of the INGESTED 13F shares --
+  // NOT shares outstanding, NOT % of the company, NOT all institutional ownership (see the caption).
+  function convictionHeatmap(data, opts) {
+    opts = opts || {};
+    var width = opts.width || 720;
+    data = data || {};
+    var holders = (data.holders || []).filter(function (h) { return h.weight != null && h.weight > 0; });
+    var other = data.other_ingested;
+    var naFilers = data.na_filers || [];
+    var poolTotal = data.pool_total_shares;
+    var filerCount = data.ingested_filer_count || holders.length;
+
+    var card = chartCard("Which 13F filers hold the most of this company (by ingested shares)");
+
+    // Need valued filers + the d3 layout. No valued filers -> honest note (coverage, never a zero),
+    // distinguishing "none ingested" from "filers exist but none reported a usable share count".
+    if (!holders.length || !window.d3 || !window.d3.treemap) {
+      card.body.insertAdjacentHTML(
+        "beforeend",
+        states.empty(
+          naFilers.length
+            ? {
+                title: "No usable share counts to size",
+                copy: "This quarter's filers are on record, but none reported a common-share " +
+                  "count to size — read as coverage, not as zero ownership.",
+              }
+            : {
+                title: "No 13F holders ingested for this quarter",
+                copy: "No manager's 13F holding this company has been ingested for this quarter " +
+                  "yet. An empty result is not a confirmed zero — the quarter may not be ingested.",
+              }
+        )
+      );
+      card.caption(convictionCaption());
+      return card.root;
+    }
+
+    var maxWeight = holders.reduce(function (m, h) { return Math.max(m, h.weight); }, 0) || 1;
+    var height = Math.max(240, Math.min(520, Math.round(width * 0.6)));
+    var leaves = holders.map(function (h) {
+      return { name: h.manager_name || ("CIK " + h.manager_cik), weight: h.weight, shares: h.shares, kind: "filer" };
+    });
+    // Filers beyond the top-N shown, aggregated -- a labelled minority sibling ("other ingested
+    // filers"), NOT a "rest of the company" remainder. Only when the API returned it.
+    if (other && other.weight > 0.0005) {
+      leaves.push({
+        name: "Other ingested filers (" + other.filer_count + ")",
+        weight: other.weight, shares: other.shares, kind: "other",
+      });
+    }
+    var root = window.d3.hierarchy({ children: leaves })
+      .sum(function (d) { return d.weight || 0; })
+      .sort(function (a, b) { return b.value - a.value; });
+    window.d3.treemap().size([width, height]).paddingInner(2).round(true)(root);
+
+    var accent = cssVar("--accent", "#c0703a");
+    var otherFill = cssVar("--bg-alt", "#efe7d9");
+    var cellStroke = cssVar("--bg-card", "#fdfbf7");
+    var ink = cssVar("--ink", "#1c1a16");
+    var inkSoft = cssVar("--ink-soft", "#6b6459");
+    var NS = "http://www.w3.org/2000/svg";
+
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("role", "img");
+    svg.style.maxWidth = "100%";
+    svg.style.height = "auto";
+    svg.style.fontFamily = "'IBM Plex Mono', monospace";
+
+    root.leaves().forEach(function (leaf) {
+      var d = leaf.data;
+      var x = leaf.x0, y = leaf.y0, w = leaf.x1 - leaf.x0, hgt = leaf.y1 - leaf.y0;
+      if (w <= 0 || hgt <= 0) return;
+      var isOther = d.kind === "other";
+      var g = document.createElementNS(NS, "g");
+      g.setAttribute("transform", "translate(" + x + "," + y + ")");
+
+      var rect = document.createElementNS(NS, "rect");
+      rect.setAttribute("width", w);
+      rect.setAttribute("height", hgt);
+      rect.setAttribute("fill", isOther ? otherFill : accent);
+      // Size is the primary encoding; a light opacity ramp (bigger share = more saturated)
+      // reinforces it without introducing a second, verdict-like color scale.
+      rect.setAttribute("fill-opacity", isOther ? "1" : String(0.45 + 0.5 * (d.weight / maxWeight)));
+      rect.setAttribute("stroke", cellStroke);
+      rect.setAttribute("stroke-width", "1");
+      if (isOther) { rect.setAttribute("stroke-dasharray", "3 3"); rect.setAttribute("stroke", cssVar("--border-strong", "#d8d1c4")); }
+      g.appendChild(rect);
+
+      var title = document.createElementNS(NS, "title");
+      title.textContent = d.name + " — " + fmt.pct(d.weight) + " of ingested 13F shares" +
+        (typeof d.shares === "number" ? " · " + fmt.shares(d.shares) + " sh" : "");
+      g.appendChild(title);
+
+      // Only label cells big enough to hold text legibly; the rest rely on the hover title.
+      if (w > 58 && hgt > 26) {
+        var nameT = document.createElementNS(NS, "text");
+        nameT.setAttribute("x", 5);
+        nameT.setAttribute("y", 14);
+        nameT.setAttribute("fill", isOther ? inkSoft : ink);
+        nameT.setAttribute("font-size", "10");
+        var maxChars = Math.max(3, Math.floor((w - 8) / 6));
+        nameT.textContent = d.name.length > maxChars ? d.name.slice(0, maxChars - 1) + "…" : d.name;
+        g.appendChild(nameT);
+
+        var pctT = document.createElementNS(NS, "text");
+        pctT.setAttribute("x", 5);
+        pctT.setAttribute("y", 28);
+        pctT.setAttribute("fill", isOther ? inkSoft : ink);
+        pctT.setAttribute("font-size", "11");
+        pctT.setAttribute("font-weight", "600");
+        pctT.textContent = fmt.pct(d.weight);
+        g.appendChild(pctT);
+      }
+      svg.appendChild(g);
+    });
+
+    card.body.appendChild(svg);
+
+    // Context line: what the box IS (the ingested pool), never the company.
+    card.note(
+      "Sized by each filer's share of the " +
+      (typeof poolTotal === "number" ? fmt.shares(poolTotal) + " shares" : "shares") +
+      " held by the " + filerCount + " ingested 13F filer" + (filerCount === 1 ? "" : "s") +
+      " this quarter — a share of the reported institutional holdings, NOT of the company."
+    );
+
+    // N/A filers can't be sized (no share count) -- list them so they're surfaced, never dropped
+    // and never given a fabricated square.
+    if (naFilers.length) {
+      card.note(
+        "No computable share (reported no share count): " +
+        naFilers.map(function (h) { return h.manager_name || ("CIK " + h.manager_cik); }).join(", ") + "."
+      );
+    }
+
+    card.caption(convictionCaption());
+    return card.root;
+
+    function convictionCaption() {
+      return (
+        "Each square is a 13F filer's reported COMMON shares in this company as a share of the " +
+        "TOTAL 13F common shares across all ingested filers — who holds the most among the " +
+        "reporting institutions. It is NOT the company's shares outstanding, NOT a % of the " +
+        "company owned, and NOT all institutional ownership; it is coverage-dependent (more " +
+        "ingested filers shrink each share). These are shares the manager has investment " +
+        "DISCRETION over (often for client funds), not the firm's own beneficial ownership; " +
+        "option and debt (PRN) positions are excluded. A filer that reported no share count is " +
+        "listed below, never sized and never a zero."
+      );
+    }
+  }
+
+  // Co-holding network: the company's 13F holders (nodes, sized by their stake here) linked by the
+  // OVERLAP in their OTHER reported holdings (edges, by Jaccard). A DERIVED structural overlap as of
+  // the quarter snapshot -- NEVER coordinated/timed trading, never a style label (§9.2). A vendored
+  // d3-force layout, run to a DETERMINISTIC settle (fixed initial positions + synchronous ticks) so
+  // the render is stable. <2 holders or no linking overlap -> an honest empty/thin note, never a
+  // fake network. Isolated nodes (sharing no other names) are honest, not dropped.
+  function coHoldingNetwork(data, opts) {
+    opts = opts || {};
+    var width = opts.width || 720;
+    data = data || {};
+    var nodes = (data.nodes || []).map(function (n) {
+      return {
+        manager_cik: n.manager_cik,
+        name: n.manager_name || ("CIK " + n.manager_cik),
+        shares: n.shares,
+        other: n.other_holdings_count,
+      };
+    });
+    var rawEdges = data.edges || [];
+
+    var card = chartCard("Which holders run similar portfolios");
+
+    if (!window.d3 || !window.d3.forceSimulation || nodes.length < 2) {
+      card.body.insertAdjacentHTML(
+        "beforeend",
+        states.empty({
+          title: "Too few holders to graph",
+          copy: "A co-holding network needs at least two ingested holders of this company for the " +
+            "quarter. An empty or thin result is coverage, not a confirmed absence of overlap.",
+        })
+      );
+      card.caption(coHoldingCaption());
+      return card.root;
+    }
+
+    var byId = {};
+    nodes.forEach(function (n) { byId[n.manager_cik] = n; });
+    var links = rawEdges
+      .filter(function (e) { return byId[e.source] && byId[e.target]; })
+      .map(function (e) { return { source: e.source, target: e.target, jaccard: e.jaccard, shared: e.shared_count }; });
+
+    if (!links.length) {
+      // Nodes exist but no pair overlaps above the threshold -> honest note, never a fake network.
+      card.body.insertAdjacentHTML(
+        "beforeend",
+        states.empty({
+          title: "No shared other-holdings to connect",
+          copy: "These holders don't share enough OTHER reported holdings this quarter to draw a " +
+            "link — coverage or genuine divergence, not a confirmed absence of overlap.",
+        })
+      );
+      card.caption(coHoldingCaption());
+      return card.root;
+    }
+
+    var height = Math.max(280, Math.min(560, Math.round(width * 0.66)));
+    var NS = "http://www.w3.org/2000/svg";
+    var accent = cssVar("--accent", "#c0703a");
+    var edgeStroke = cssVar("--border-strong", "#d8d1c4");
+    var nodeStroke = cssVar("--bg-card", "#fdfbf7");
+    var ink = cssVar("--ink", "#1c1a16");
+
+    var maxShares = nodes.reduce(function (m, n) { return Math.max(m, n.shares || 0); }, 0) || 1;
+    function radius(n) { return 6 + 22 * Math.sqrt((n.shares || 0) / maxShares); }  // area ~ shares
+    var maxJ = links.reduce(function (m, l) { return Math.max(m, l.jaccard); }, 0) || 1;
+
+    // DETERMINISTIC layout: seed initial positions on a circle by index (so nodes are never
+    // coincident -> no random jiggle), then run the simulation to completion synchronously.
+    var cx = width / 2, cy = height / 2, R = Math.min(width, height) / 2 - 40;
+    nodes.forEach(function (n, i) {
+      var a = (2 * Math.PI * i) / nodes.length;
+      n.x = cx + R * Math.cos(a);
+      n.y = cy + R * Math.sin(a);
+    });
+    var sim = window.d3.forceSimulation(nodes)
+      .force("link", window.d3.forceLink(links).id(function (d) { return d.manager_cik; })
+        .distance(function (l) { return 40 + 120 * (1 - l.jaccard / maxJ); })
+        .strength(function (l) { return 0.1 + 0.6 * (l.jaccard / maxJ); }))
+      .force("charge", window.d3.forceManyBody().strength(-220))
+      .force("center", window.d3.forceCenter(cx, cy))
+      .force("collide", window.d3.forceCollide().radius(function (d) { return radius(d) + 4; }))
+      .stop();
+    for (var s = 0; s < 300; s++) sim.tick();
+    // Clamp into the viewport so nothing renders off-canvas.
+    nodes.forEach(function (n) {
+      var r = radius(n);
+      n.x = Math.max(r + 2, Math.min(width - r - 2, n.x));
+      n.y = Math.max(r + 2, Math.min(height - r - 2, n.y));
+    });
+
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + width + " " + height);
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.setAttribute("role", "img");
+    svg.style.maxWidth = "100%";
+    svg.style.height = "auto";
+    svg.style.fontFamily = "'IBM Plex Mono', monospace";
+
+    // Edges under nodes; width ~ overlap strength.
+    links.forEach(function (l) {
+      var a = typeof l.source === "object" ? l.source : byId[l.source];
+      var b = typeof l.target === "object" ? l.target : byId[l.target];
+      var line = document.createElementNS(NS, "line");
+      line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+      line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+      line.setAttribute("stroke", edgeStroke);
+      line.setAttribute("stroke-width", String(1 + 5 * (l.jaccard / maxJ)));
+      line.setAttribute("stroke-opacity", "0.75");
+      var tt = document.createElementNS(NS, "title");
+      tt.textContent = a.name + " ↔ " + b.name + " — " + l.shared +
+        " shared other holdings (" + fmt.pct(l.jaccard) + ")";
+      line.appendChild(tt);
+      svg.appendChild(line);
+    });
+    // Nodes: circle area ~ stake here, single accent hue (size is the encoding, not a verdict).
+    nodes.forEach(function (n) {
+      var r = radius(n);
+      var g = document.createElementNS(NS, "g");
+      var c = document.createElementNS(NS, "circle");
+      c.setAttribute("cx", n.x); c.setAttribute("cy", n.y); c.setAttribute("r", r);
+      c.setAttribute("fill", accent); c.setAttribute("fill-opacity", "0.85");
+      c.setAttribute("stroke", nodeStroke); c.setAttribute("stroke-width", "1.5");
+      var tt = document.createElementNS(NS, "title");
+      tt.textContent = n.name + " — " + fmt.shares(n.shares) + " sh of this company · " +
+        n.other + " other holdings";
+      c.appendChild(tt);
+      g.appendChild(c);
+      if (r > 13) {  // label the larger nodes; the rest rely on the hover title
+        var t = document.createElementNS(NS, "text");
+        t.setAttribute("x", n.x); t.setAttribute("y", n.y + r + 10);
+        t.setAttribute("text-anchor", "middle");
+        t.setAttribute("fill", ink); t.setAttribute("font-size", "9");
+        t.textContent = n.name.length > 18 ? n.name.slice(0, 17) + "…" : n.name;
+        g.appendChild(t);
+      }
+      svg.appendChild(g);
+    });
+    card.body.appendChild(svg);
+
+    card.note(
+      "Nodes = the top " + nodes.length + " holders of this company (circle size = shares held " +
+      "here); a line links two whose OTHER reported holdings overlap (thicker = more overlap). A " +
+      "holder sharing no other names sits unconnected."
+    );
+    card.caption(coHoldingCaption());
+    return card.root;
+
+    function coHoldingCaption() {
+      return (
+        "An edge is the OVERLAP in two filers' OTHER reported holdings (shared securities by CUSIP, " +
+        "as a Jaccard index) as of this quarter-end snapshot — a DERIVED structural overlap, NOT " +
+        "coordinated or timed trading, and never an investment-style label. This company's own " +
+        "position is excluded, so an edge reflects the OTHER names two filers share. " +
+        "Coverage-dependent: only ingested filers are nodes, and a thin or empty graph is coverage, " +
+        "not a confirmed absence of overlap."
+      );
+    }
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -2318,6 +2639,8 @@
     dumbbellChart: dumbbellChart,
     holdingsSeriesChart: holdingsSeriesChart,
     holderGeographyChart: holderGeographyChart,
+    convictionHeatmap: convictionHeatmap,
+    coHoldingNetwork: coHoldingNetwork,
     valueLineChart: valueLineChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,

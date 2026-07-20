@@ -299,6 +299,13 @@ class IssuerHolder(BaseModel):
     # issuer-centric row so the holder-geography endpoint can bucket holders by location.
     # None for holders whose snapshot predates the location column (an honest "unknown").
     location: str | None = None
+    # Carried through so issuer-centric consumers can tell a plain long-equity position from an
+    # option or a debt (principal) row: `put_call` is set for option positions (Put/Call), and
+    # `shares_or_principal` is "SH" (share count) vs "PRN" (principal amount). The ownership
+    # treemap counts only SH-equity (put_call None, not PRN) shares -- an option's "shares" are
+    # notional and a PRN amount is debt, neither of which is share ownership.
+    put_call: str | None = None
+    shares_or_principal: str | None = None
 
 
 # --- Fundamental metrics (normalize/metrics.py) ------------------------------------

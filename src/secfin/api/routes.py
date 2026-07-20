@@ -21,6 +21,7 @@ from secfin.api.auth import get_api_key_repo, require_api_key
 from secfin.auth.models import ApiKeyRecord, UsageSummary
 from secfin.auth.usage import usage_summary
 from secfin.config import settings
+from secfin.normalize.coholding import co_holding_edges
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
 from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
 from secfin.normalize.geography import classify_location
@@ -139,6 +140,38 @@ _HOLDINGS_SERIES_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
     "(thousands -> whole dollars, ~2023), so shares are the unit-stable cross-quarter series.",
     "A quarter with no data for a holder means it was not reported/ingested that quarter, "
     "not that the holder exited -- quarter-over-quarter change is a DERIVED inference.",
+]
+
+# Institutional-holder-treemap caveats: each filer's square is its reported 13F common shares as a
+# share of the pool of ALL ingested filers' common shares -- who holds the most among the reporting
+# institutions. NOT shares outstanding, NOT % of the company, NOT all institutional ownership; it is
+# coverage-dependent; 13F shares are discretion, not beneficial ownership; options/PRN excluded.
+_CONVICTION_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "Percentage is this filer's reported 13F common shares as a share of the TOTAL 13F common "
+    "shares across all INGESTED filers of this company -- NOT the company's shares outstanding, "
+    "NOT a % of the company owned, and NOT all institutional ownership.",
+    "Coverage-dependent: it is a share of only the filers ingested this quarter, so as more filers "
+    "are ingested each filer's share shrinks -- an empty or thin result is not a confirmed zero.",
+    "Common-equity (SH) shares only: option (put/call) and principal (PRN) rows are EXCLUDED from "
+    "both a filer's shares and the pool -- an option's 'shares' are notional and a PRN amount is "
+    "debt, neither is share ownership.",
+    "13F shares are those a manager has investment DISCRETION over (often on behalf of client "
+    "funds), NOT the firm's own beneficial ownership.",
+]
+
+# Co-holding-network caveats: an edge is the overlap in two filers' OTHER reported holdings (shared
+# securities by CUSIP, Jaccard) as of the quarter-end snapshot -- a DERIVED structural overlap, NOT
+# coordinated/timed trading, and never a style label (§9.2 descriptive-not-prescriptive).
+_COHOLDING_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "An edge is the OVERLAP in the two filers' OTHER reported holdings (shared securities by CUSIP "
+    "as a Jaccard index) as of this quarter-end snapshot -- a DERIVED structural overlap, NOT "
+    "coordinated or timed trading, and never an investment-style (momentum/value/etc.) label.",
+    "This company's own position is excluded from each filer's set, so an edge reflects the OTHER "
+    "names they share, not the trivial fact of both holding this company. Overlap counts reported "
+    "positions of any type by CUSIP.",
+    "Coverage-dependent: only ingested filers are nodes, and overlap only reflects the holdings "
+    "ingested for this quarter -- a thin or empty graph is coverage, not a confirmed absence of "
+    "overlap.",
 ]
 
 # Beneficial ownership (13D/13G) coverage floor -- see docs/DATA_MODEL.md's "Coverage
@@ -1361,6 +1394,267 @@ async def get_institutional_holder_geography(
         "by_state": by_state_out,
         "outside_states": {"filer_count": len(outside_managers), "value": outside_value},
         "unknown": {"filer_count": len(unknown_managers), "value": unknown_value},
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-conviction",
+    tags=["Institutional Ownership"],
+    summary="Each 13F filer's share of the ingested institutional (13F) shares of a company",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "period": "2024-06-30",
+                        "caveats": _CONVICTION_CAVEATS,
+                        "pool_total_shares": 2_250_000_000,
+                        "ingested_filer_count": 3,
+                        "holders": [
+                            {
+                                "manager_cik": 102909,
+                                "manager_name": "Vanguard Group Inc",
+                                "issuer_name": "Apple Inc.",
+                                "shares": 1_330_000_000,
+                                "weight": 0.591,
+                                "status": "ok",
+                                "reason": None,
+                            }
+                        ],
+                        "other_ingested": {
+                            "filer_count": 1,
+                            "shares": 280_000_000,
+                            "weight": 0.124,
+                        },
+                        "na_filers": [
+                            {
+                                "manager_cik": 1067983,
+                                "manager_name": "Berkshire Hathaway Inc",
+                                "reason": "reported no share count for one or more of its "
+                                "common-equity positions",
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
+async def get_institutional_conviction(
+    symbol: str,
+    period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+    top: int = Query(20, ge=1, le=50, description="How many top filers to show as squares"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """For this company's 13F filers as of `period`, each filer's share of the TOTAL 13F shares held
+    across all INGESTED filers -- the institutional-holder treemap's data.
+
+    `weight = (this filer's reported 13F common shares) / (Σ common shares across ALL ingested
+    filers of the company, this quarter)`. Only **SH-equity** rows count -- option (put/call) and
+    principal (PRN) rows are excluded, since their "shares" are notional/debt, not share ownership.
+    The denominator is the whole ingested pool (`pool_total_shares`), so a shown filer's share is
+    its slice of the pool, not of the visible subset. A pure `holders_of` composition -- no
+    companyfacts read, no DuckDB, no cross-manager scan.
+
+    **Honesty (see `caveats`):** this is share of the *ingested* 13F shares -- NOT the company's
+    shares outstanding, NOT % of the company owned, NOT all institutional ownership. It is
+    coverage-dependent (more ingested filers shrink each share). 13F shares are those a manager has
+    investment DISCRETION over (often client funds), not the firm's own beneficial ownership.
+
+    Filers beyond the top-`top` are aggregated into `other_ingested` (a minority "other ingested
+    filers" tile); a filer that reported an equity position but no share count is excluded from the
+    pool and listed in `na_filers` -- never a fabricated 0.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+        # Per filer: sum of SH-equity shares of the issuer. Option (put/call) rows are notional and
+        # PRN rows are debt -- both skipped, so a manager holding ONLY those is not a common-equity
+        # holder and never enters the pool. `has_null` flags a filer that reported an equity
+        # position but left its share count blank (stake unknown -> excluded from the pool, N/A).
+        per_manager: dict[int, dict] = {}
+        for h in holdings_repo.holders_of(cusips, period):
+            if h.put_call is not None or h.shares_or_principal == "PRN":
+                continue
+            entry = per_manager.get(h.manager_cik)
+            if entry is None:
+                entry = {
+                    "manager_cik": h.manager_cik,
+                    "manager_name": h.manager_name,
+                    "issuer_name": h.issuer_name,
+                    "shares": 0.0,
+                    "has_null": False,
+                }
+                per_manager[h.manager_cik] = entry
+            if isinstance(h.shares, (int, float)):
+                entry["shares"] += h.shares
+            else:
+                entry["has_null"] = True
+
+    # A filer counts toward the pool only with a positive, fully-reported SH share count; the rest
+    # are N/A (excluded from the denominator, never zero-filled). Denominator is the WHOLE pool.
+    valued = sorted(
+        (m for m in per_manager.values() if not m["has_null"] and m["shares"] > 0),
+        key=lambda m: -m["shares"],
+    )
+    na = [m for m in per_manager.values() if m["has_null"] or m["shares"] <= 0]
+    pool_total = sum(m["shares"] for m in valued)
+
+    holders = []
+    other_ingested = None
+    if pool_total > 0:
+        holders = [
+            {
+                "manager_cik": m["manager_cik"],
+                "manager_name": m["manager_name"],
+                "issuer_name": m["issuer_name"],
+                "shares": m["shares"],
+                "weight": m["shares"] / pool_total,
+                "status": "ok",
+                "reason": None,
+            }
+            for m in valued[:top]
+        ]
+        rest = valued[top:]
+        if rest:
+            rest_shares = sum(m["shares"] for m in rest)
+            other_ingested = {
+                "filer_count": len(rest),
+                "shares": rest_shares,
+                "weight": rest_shares / pool_total,
+            }
+
+    na_filers = [
+        {
+            "manager_cik": m["manager_cik"],
+            "manager_name": m["manager_name"],
+            "reason": "reported no share count for one or more of its common-equity positions",
+        }
+        for m in na
+    ]
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "caveats": _CONVICTION_CAVEATS,
+        "pool_total_shares": pool_total if pool_total > 0 else None,
+        "ingested_filer_count": len(valued),
+        "holders": holders,
+        "other_ingested": other_ingested,
+        "na_filers": na_filers,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-co-holding",
+    tags=["Institutional Ownership"],
+    summary="Network of a company's 13F holders linked by overlap in their OTHER holdings",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "period": "2024-06-30",
+                        "caveats": _COHOLDING_CAVEATS,
+                        "min_overlap": 0.1,
+                        "nodes": [
+                            {
+                                "manager_cik": 102909,
+                                "manager_name": "Vanguard Group Inc",
+                                "shares": 1_330_000_000,
+                                "other_holdings_count": 3200,
+                            },
+                            {
+                                "manager_cik": 93751,
+                                "manager_name": "State Street Corp",
+                                "shares": 640_000_000,
+                                "other_holdings_count": 2800,
+                            },
+                        ],
+                        "edges": [
+                            {
+                                "source": 93751,
+                                "target": 102909,
+                                "jaccard": 0.62,
+                                "shared_count": 2100,
+                            }
+                        ],
+                    }
+                }
+            }
+        }
+    },
+)
+async def get_institutional_co_holding(
+    symbol: str,
+    period: str = Query(..., description="Quarter-end, e.g. 2024-06-30"),
+    top: int = Query(25, ge=2, le=50, description="How many top holders to graph as nodes"),
+    min_overlap: float = Query(
+        0.1, ge=0.0, le=1.0, description="Minimum Jaccard overlap to draw an edge"
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """A network of this company's 13F holders (nodes) linked by the OVERLAP in their OTHER reported
+    holdings (edges) -- the co-holding graph's data.
+
+    Nodes are the top-`top` holders by reported stake in this company (node size). An edge between
+    two holders is the **Jaccard overlap of their other-holdings CUSIP sets** (this company's own
+    CUSIPs excluded), drawn when it clears `min_overlap`. A DERIVED structural overlap -- NOT
+    coordinated or timed trading, no style labels (see `caveats`).
+
+    Bounded and live: `holders_of` (top-`top`) + one bounded `manager_cusip_sets` read + pairwise
+    Jaccard in Python -- NOT a DuckDB cross-manager scan (guardrail 6). A holder that shares no
+    other names is an honest isolated node (still listed in `nodes`, with no edge). Thin/empty is
+    the UI's honest-state call.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    # Nodes: dedup holders to one per manager (sum shares across classes), largest stake first,
+    # capped to `top`. holders_of already orders by shares DESC.
+    per_manager: dict[int, dict] = {}
+    for h in holdings_repo.holders_of(cusips, period):
+        entry = per_manager.get(h.manager_cik)
+        if entry is None:
+            entry = {"manager_cik": h.manager_cik, "manager_name": h.manager_name, "shares": 0.0}
+            per_manager[h.manager_cik] = entry
+        if isinstance(h.shares, (int, float)):
+            entry["shares"] += h.shares
+    top_managers = list(per_manager.values())[:top]
+
+    # Edges: each node manager's full CUSIP set (bounded read), minus this company's own CUSIPs,
+    # then pairwise Jaccard. `other_holdings_count` is the size of that other-names set (tooltip).
+    issuer_cusips = set(cusips)
+    sets = holdings_repo.manager_cusip_sets([m["manager_cik"] for m in top_managers], period)
+    edges = co_holding_edges(sets, issuer_cusips, min_overlap)
+
+    nodes = [
+        {
+            "manager_cik": m["manager_cik"],
+            "manager_name": m["manager_name"],
+            "shares": m["shares"],
+            "other_holdings_count": len(sets.get(m["manager_cik"], set()) - issuer_cusips),
+        }
+        for m in top_managers
+    ]
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "caveats": _COHOLDING_CAVEATS,
+        "min_overlap": min_overlap,
+        "nodes": nodes,
+        "edges": [e._asdict() for e in edges],
     }
 
 

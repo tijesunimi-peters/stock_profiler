@@ -641,6 +641,65 @@ state / other / unknown happens at the serve/UI edge in `normalize/geography.py`
 capital originates and NOT the issuer's location. The choropleth is titled and captioned to say
 exactly that; it is never framed as "clusters of capital."
 
+### API: institutional-holder treemap (Phase 2a)
+
+`GET /v1/companies/{symbol}/institutional-conviction?period=&top=` backs the Institutional tab's
+holder **treemap** — each 13F filer drawn as a square sized by its share of the **pool of ingested
+institutional shares** ("who holds the most among the reporting institutions"). A *derived* number,
+so each holder carries `status` + provenance and N/A is never a fabricated value:
+
+```
+weight = (this filer's reported 13F COMMON shares in the company, this quarter)
+         / (Σ COMMON shares across ALL INGESTED 13F filers of the company, same quarter)
+```
+
+- **SH-equity only.** The numerator sums a filer's `sshPrnamtType = "SH"` equity rows across the
+  issuer's CUSIPs; **option (put/call) and principal (PRN) rows are excluded** from both a filer's
+  shares and the pool — an option's "shares" are notional and a PRN amount is debt, neither is share
+  ownership. A filer holding only options/PRN is not a common-equity holder and is omitted entirely.
+- **Denominator = the whole ingested pool.** `pool_total_shares = Σ SH shares of every ingested
+  filer` (computed over the full `holders_of` result, not the shown `top`), so a shown filer's
+  weight is its slice of the whole pool. Filers beyond `top` are aggregated into `other_ingested`
+  (a minority "other ingested filers" tile); the shown squares + that tile sum to ~100%. A pure
+  `holders_of` composition — **no companyfacts/shares-outstanding read, no DuckDB, no cross-manager
+  scan** (guardrail 6). `holders_of` carries `put_call` / `shares_or_principal` for the SH-only rule.
+- **Honesty (in `_CONVICTION_CAVEATS` + the caption):** this is a share of the *ingested* 13F shares
+  — **NOT** the company's shares outstanding, **NOT** a % of the company owned, **NOT** all
+  institutional ownership. It is **coverage-dependent** (as more filers are ingested each filer's
+  share shrinks; empty/thin ≠ a confirmed zero). 13F shares are those a manager has investment
+  **discretion** over (often client funds), not the firm's own beneficial ownership.
+- **N/A, never 0.** A filer that reported an equity position but no share count is excluded from the
+  pool and listed in `na_filers` (never a fabricated square or a 0). If no filer has a usable share
+  count, `pool_total_shares` is `null`, `holders` is `[]`, and the view shows an honest empty state.
+
+### API: co-holding network (Phase 2b)
+
+`GET /v1/companies/{symbol}/institutional-co-holding?period=&top=&min_overlap=` backs the
+Institutional tab's holder **network**: nodes = the company's top-`top` 13F holders (by stake),
+edges = the overlap in their *other* reported holdings. A *derived* structural overlap:
+
+```
+edge(A, B) = jaccard(A_other, B_other)          drawn when >= min_overlap
+  A_other = A's reported CUSIPs for the quarter  MINUS this company's own CUSIP(s)
+```
+
+- **Overlap on CUSIPs, this issuer excluded.** Computed on raw CUSIPs (all reported positions of
+  any type — no CUSIP→CIK resolution, so no unresolved-CUSIP loss), with the viewed company's own
+  CUSIP(s) removed from every set — so an edge reflects the *other* names two filers share, not the
+  trivial fact of both holding this company. Jaccard (`|A∩B| / |A∪B|`) normalizes for book size. The
+  pure logic is `normalize/coholding.co_holding_edges` (unit-tested); `CoHoldingEdge` carries
+  `jaccard` + `shared_count`.
+- **Bounded and live** — `holders_of` (top-`top` nodes) + one bounded `manager_cusip_sets` read +
+  pairwise Jaccard in Python. NOT a DuckDB cross-manager scan (guardrail 6): the same bounded-read
+  precedent as the treemap's `book_values`. The `top` cap (≤50) enforces the bound.
+- **Honesty (in `_COHOLDING_CAVEATS` + the caption):** an edge is a **derived structural overlap as
+  of the quarter snapshot — NOT coordinated or timed trading, and never an investment-style
+  (momentum/value/etc.) label** (§9.2 descriptive-not-prescriptive). Coverage-dependent (only
+  ingested filers are nodes; a thin/empty graph is coverage, not a confirmed absence of overlap).
+- A holder that shares no other names is an honest **isolated node** (in `nodes`, no edge). `<2`
+  holders or no edges → the UI renders an honest thin/empty state, never a fake network. No new
+  canonical concept (no `mapping.py` change); converges with `ROADMAP_13F_ANALYTICS.md` C1.
+
 ### 13D / 13G
 
 `BeneficialOwnership` captures 5%+ ownership filings — 13D (activist) and 13G (passive) —

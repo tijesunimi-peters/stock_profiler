@@ -24,7 +24,7 @@ const PAGES = process.env.PAGES
       ["statements-segments", "/company/AAPL?tab=statements&stmt=segments"],
       ["trend", "/company/AAPL?trend=net_margin"],
       ["institutional", "/company/AAPL?tab=institutional"],
-      // JPM's holder has no reported location -> exercises the holder-geography EMPTY STATE
+      // JPM's holders have no reported location -> exercises the holder-geography EMPTY STATE
       // (no-mappable-location -> honest note + tallies, never a blank map). Regression guard for
       // docs/delivery/institutional-tab-viz/4-qa.md round 3.
       ["institutional-nolocation", "/company/JPM?tab=institutional"],

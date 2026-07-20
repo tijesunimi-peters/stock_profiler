@@ -411,3 +411,42 @@ def test_issuer_periods_is_empty_for_an_unheld_cusip_or_no_cusips():
     assert repo.issuer_periods(["00000000X"]) == []  # cusip nobody holds
     assert repo.issuer_periods([]) == []  # nothing to look up
     repo.close()
+
+
+# ---- manager_cusip_sets (co-holding-network node CUSIP sets) -----------------------------
+
+
+def _multi_cusip_snapshot(period, *, manager_cik, name, cusips):
+    return HoldingsSnapshot(
+        manager_cik=manager_cik,
+        manager_name=name,
+        report_period=period,
+        holdings=[InstitutionalHolding(cusip=c, shares=1.0) for c in cusips],
+    )
+
+
+def test_manager_cusip_sets_returns_each_managers_cusips():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        _multi_cusip_snapshot("2026-03-31", manager_cik=1, name="A", cusips=["x", "y", "z"]))
+    repo.upsert_snapshot(
+        _multi_cusip_snapshot("2026-03-31", manager_cik=2, name="B", cusips=["x", "w"]))
+
+    sets = repo.manager_cusip_sets([1, 2], "2026-03-31")
+    assert sets == {1: {"x", "y", "z"}, 2: {"x", "w"}}
+    repo.close()
+
+
+def test_manager_cusip_sets_is_bounded_quarter_scoped_and_handles_empty():
+    repo = SQLiteHoldingsSnapshotRepository(":memory:")
+    repo.upsert_snapshot(
+        _multi_cusip_snapshot("2025-12-31", manager_cik=1, name="A", cusips=["old"]))
+    repo.upsert_snapshot(
+        _multi_cusip_snapshot("2026-03-31", manager_cik=1, name="A", cusips=["x", "y"]))
+    repo.upsert_snapshot(_multi_cusip_snapshot("2026-03-31", manager_cik=2, name="B", cusips=["z"]))
+
+    # Bounded to the requested managers; a holding in another quarter must not leak in.
+    assert repo.manager_cusip_sets([1], "2026-03-31") == {1: {"x", "y"}}
+    assert repo.manager_cusip_sets([1, 999], "2026-03-31") == {1: {"x", "y"}}  # absent omitted
+    assert repo.manager_cusip_sets([], "2026-03-31") == {}  # nothing to look up
+    repo.close()

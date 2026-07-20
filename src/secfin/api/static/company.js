@@ -509,6 +509,8 @@
         mountHoldersTable(holders);
         mountHoldingsSeries();
         mountHolderGeography(period);
+        mountConviction(period);
+        mountCoHolding(period);
         mountActivityChart(period, fromPeriod, activity);
         mountDumbbellChart(period, fromPeriod, holders);
         mountInstActivityTable(period, fromPeriod, activity);
@@ -536,8 +538,8 @@
     return (
       institutionalStandingCaveat() +
       holdersSection(period, holders) +
-      holdingsSeriesSection() + holderGeographySection() +
-      activitySection(activity) + caveatsBlock(caveats)
+      holdingsSeriesSection() + holderGeographySection() + convictionSection() +
+      coHoldingSection() + activitySection(activity) + caveatsBlock(caveats)
     );
   }
 
@@ -557,6 +559,20 @@
     return (
       '<h3 class="metric-group-title" style="margin-top:26px">Where the filers holding this company are based</h3>' +
       '<div id="holder-geography-mount"></div>'
+    );
+  }
+
+  function convictionSection() {
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">Which 13F filers hold the most of this company</h3>' +
+      '<div id="conviction-mount"></div>'
+    );
+  }
+
+  function coHoldingSection() {
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">Which holders run similar portfolios</h3>' +
+      '<div id="coholding-mount"></div>'
     );
   }
 
@@ -697,6 +713,58 @@
             title: "No holder locations for this quarter",
             copy: "No manager reported holding this issuer for the selected quarter, so there " +
               "are no filer locations to map.",
+          });
+        }
+      },
+      function () { /* enhancement chart -- skip on failure, never break the tab */ }
+    );
+  }
+
+  // Institutional-holder treemap: each filer sized by its share of the pool of ingested 13F shares
+  // (GET /institutional-conviction for the selected quarter). Skips silently on failure; the chart
+  // renders its own empty state when there's no usable share count to size.
+  function mountConviction(period) {
+    var mount = $("conviction-mount");
+    if (!mount) return;
+    P.api(
+      "/companies/" + encodeURIComponent(symbol) +
+      "/institutional-conviction?period=" + encodeURIComponent(period)
+    ).then(
+      function (res) {
+        var node = P.convictionHeatmap(res, { width: P.measuredWidth(mount, 720) });
+        if (node) {
+          mount.appendChild(node);
+        } else {
+          mount.innerHTML = P.states.empty({
+            title: "No holders to measure for this quarter",
+            copy: "No manager reported holding this issuer for the selected quarter, so there's " +
+              "nothing to size. An empty result is not a confirmed zero.",
+          });
+        }
+      },
+      function () { /* enhancement chart -- skip on failure, never break the tab */ }
+    );
+  }
+
+  // Co-holding network: the company's holders linked by overlap in their OTHER holdings (GET
+  // /institutional-co-holding for the selected quarter). Skips silently on failure; the chart
+  // renders its own thin/empty state when there are too few holders or no linking overlap.
+  function mountCoHolding(period) {
+    var mount = $("coholding-mount");
+    if (!mount) return;
+    P.api(
+      "/companies/" + encodeURIComponent(symbol) +
+      "/institutional-co-holding?period=" + encodeURIComponent(period)
+    ).then(
+      function (res) {
+        var node = P.coHoldingNetwork(res, { width: P.measuredWidth(mount, 720) });
+        if (node) {
+          mount.appendChild(node);
+        } else {
+          mount.innerHTML = P.states.empty({
+            title: "No holders to graph for this quarter",
+            copy: "No manager reported holding this issuer for the selected quarter, so there's " +
+              "no network to draw. An empty result is not a confirmed zero.",
           });
         }
       },
