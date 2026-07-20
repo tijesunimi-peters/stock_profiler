@@ -729,6 +729,66 @@ class CompanyPeerDistribution(BaseModel):
     distribution: PeerDistribution | None = None
 
 
+# --- Sector-aggregate DuPont (Sector Analytics D1, analytical/sector_dupont.py) ------
+#
+# One SIC group's ASSET-WEIGHTED DuPont decomposition for one period. roe is SigmaNI/SigmaEquity
+# and equals net_margin x asset_turnover x equity_multiplier by construction -- an aggregate, NOT
+# a median or mean of company ratios. PRECOMPUTED by the batch; never a live DuckDB read.
+
+
+class SectorDupont(BaseModel):
+    """One sector's asset-weighted DuPont aggregate for one period."""
+
+    group: str  # the SIC prefix aggregated within, e.g. "35"
+    group_label: str  # readable SIC major-group name (falls back to the bare code)
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str  # representative (max) period-end in the group for this fiscal period
+    peer_count: int  # companies contributing every DuPont leg (N/A on any leg -> excluded)
+    net_margin: float  # SigmaNI / SigmaRev
+    asset_turnover: float  # SigmaRev / SigmaAssets
+    equity_multiplier: float  # SigmaAssets / SigmaEquity
+    roe: float  # SigmaNI / SigmaEquity (== the product of the three)
+    sum_net_income: float  # kept for auditability of the aggregate
+    sum_revenue: float
+    sum_avg_assets: float
+    sum_avg_equity: float
+
+
+_SECTOR_AGGREGATION = (
+    "asset-weighted sector aggregate "
+    "(ΣNI/ΣRev × ΣRev/ΣAssets × ΣAssets/ΣEquity) -- not a median"
+)
+
+
+class SectorList(BaseModel):
+    """Every qualifying sector's DuPont aggregate for one period (the overview grid).
+
+    Empty `sectors` is a valid, honest result: no SIC group met the minimum size, or nothing has
+    been materialized yet (`caveats` spells this out)."""
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    aggregation: str = _SECTOR_AGGREGATION
+    caveats: list[str] = Field(default_factory=list)
+    sectors: list[SectorDupont] = Field(default_factory=list)
+
+
+class SectorSeries(BaseModel):
+    """One sector's DuPont aggregate across every materialized period (the trend).
+
+    Empty `points` is a valid, honest result (the group never met the minimum size, or isn't
+    materialized yet)."""
+
+    group: str
+    group_label: str
+    peer_basis: str  # e.g. "SIC 2-digit"
+    aggregation: str = _SECTOR_AGGREGATION
+    caveats: list[str] = Field(default_factory=list)
+    points: list[SectorDupont] = Field(default_factory=list)
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

@@ -43,6 +43,9 @@ const PAGES = process.env.PAGES
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
       ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
+      // Sector overview grid, and a sector auto-expanded (?group=) to the DuPont tree + 5Y trend.
+      ["sectors", "/sectors"],
+      ["sectors-expanded", "/sectors?group=60&range=5y"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];

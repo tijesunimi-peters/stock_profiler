@@ -41,6 +41,7 @@ from secfin.storage.sqlite_metric_distribution_repository import (
 from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankRepository
 from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
+from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -142,6 +143,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # distribution applies to a company; ingest/sic_backfill.py is the sole writer. See
     # api.routes.get_company_profile_repo.
     app.state.company_profile_repo = SQLiteCompanyProfileRepository(settings.secfin_db_path)
+    # Precomputed asset-weighted sector DuPont aggregates (Sector Analytics D1) -- sibling of
+    # metric_rank_repo above, same read-only-on-the-serving-path shape; analytical/sector_dupont.py
+    # is the sole writer, so the live API never touches DuckDB. See routes.get_sector_dupont_repo.
+    app.state.sector_dupont_repo = SQLiteSectorDupontRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -155,6 +160,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.metric_distribution_repo.close()
         app.state.metric_value_repo.close()
         app.state.company_profile_repo.close()
+        app.state.sector_dupont_repo.close()
 
 
 app = FastAPI(
@@ -310,6 +316,12 @@ async def company_comparison() -> FileResponse:
 async def screening() -> FileResponse:
     # The cross-company screening shell; screen.js reads the query and calls /v1/screen + /concepts.
     return FileResponse(STATIC_DIR / "screen.html")
+
+
+@app.get("/sectors", include_in_schema=False)
+async def sector_overview() -> FileResponse:
+    # The sector overview shell; sectors.js calls /v1/sectors + /v1/sectors/{group}.
+    return FileResponse(STATIC_DIR / "sectors.html")
 
 
 @app.get("/privacy", include_in_schema=False)

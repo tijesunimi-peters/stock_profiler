@@ -137,6 +137,7 @@ R1/R2/R4 apply to every metric and are omitted from the column for brevity.
 | Metric | Formula | Rules |
 |---|---|---|
 | Asset turnover | `revenue / avg(total_assets)` | R3 |
+| Equity multiplier | `avg(total_assets) / avg(stockholders_equity)` | R3; **averaged/averaged** so the DuPont identity `net_margin × asset_turnover × equity_multiplier = roe` closes per-company; na when equity absent/≈0 |
 | Inventory turnover | `cost_of_revenue / avg(inventory)` | R3, R7 (no-inventory firms) |
 | Days sales outstanding | `avg(accounts_receivable) / revenue * 365` | R3, R7 |
 

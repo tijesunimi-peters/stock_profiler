@@ -21,6 +21,9 @@
     var current = document.body.getAttribute("data-shell") || "";
 
     var GROUPS = [
+      { label: "Overview", items: [
+        { key: "sectors", label: "Sectors", href: "/sectors" },
+      ] },
       { label: "Data", items: [
         { key: "company", label: "Company hub", href: "/company/AAPL" },
         { key: "compare", label: "Compare", href: "/compare" },
