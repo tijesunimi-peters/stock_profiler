@@ -106,6 +106,79 @@ class NormalizedView(BaseModel):
     rows: list[NormalizedFactLine] = Field(default_factory=list)
 
 
+class IncomeBridgeStep(BaseModel):
+    """One step of the income-statement waterfall (see normalize/viz.py).
+
+    A derived presentation shape over the canonical income statement -- NOT a new
+    measurement. `value` is the magnitude drawn (>= 0); `direction`/`running_total`
+    carry the sign and position so the renderer never re-derives sign. Anchors and
+    flow steps carry the provenance of the reported line behind them; a `residual`
+    step ("Other / unattributed") is computed, so it has no source line.
+    """
+
+    kind: Literal["anchor", "flow", "residual"]
+    canonical_concept: str | None = None  # None for residual steps
+    label: str
+    value: float  # magnitude for the bar (>= 0)
+    direction: Literal["up", "down", "base"]  # base = anchor column from 0; up/down = floating flow
+    running_total: float  # cumulative position AFTER this step (anchors == their reported value)
+    unit: str  # always the monetary unit (USD); the bridge is monetary-only
+    source_tag: str | None = None  # provenance for anchor/flow; None for residual
+    is_extension: bool | None = None  # provenance for anchor/flow; None for residual
+
+
+class IncomeBridge(BaseModel):
+    """The revenue -> net income waterfall for one period, or an explicit unavailable
+    state when a required anchor (revenue / net income) is missing -- never a partial,
+    misleading bridge."""
+
+    available: bool
+    unavailable_reason: str | None = None
+    steps: list[IncomeBridgeStep] = Field(default_factory=list)
+    net_income: float | None = None  # the reconciliation target; final running_total equals this
+
+
+class CommonSizeLine(BaseModel):
+    """One income line as a share of revenue. A null `value` stays null (`pct_of_revenue`
+    is None too) -- a missing line is a documented gap, never rendered as 0%."""
+
+    canonical_concept: str
+    label: str
+    value: float | int | None  # raw reported value (None = N/A, never coerced to 0)
+    pct_of_revenue: float | None  # value / revenue, sign preserved; None when value is None
+    source_tag: str
+    is_extension: bool = False
+
+
+class CommonSize(BaseModel):
+    """The 100% common-size income view for one period, or an unavailable state when
+    there is no revenue base to divide by (missing or zero)."""
+
+    available: bool
+    unavailable_reason: str | None = None
+    revenue: float | int | None = None
+    lines: list[CommonSizeLine] = Field(default_factory=list)
+
+
+class IncomeStatementViz(BaseModel):
+    """Derived presentation views over an income statement: the waterfall bridge and
+    the 100% common-size breakdown. The numbers are the same normalized values as
+    /statements/income, re-shaped for visualization -- not a new measurement. See
+    normalize/viz.py."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_start: str | None = None
+    period_end: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+    bridge: IncomeBridge
+    common_size: CommonSize
+    caveats: list[str] = Field(default_factory=list)
+
+
 class InsiderTransaction(BaseModel):
     """One insider transaction (from Forms 3/4/5). See sec/insider.py."""
 

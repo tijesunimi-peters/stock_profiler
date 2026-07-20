@@ -533,6 +533,14 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   color: #fff;
 }
 
+/* Income-statement Table/Chart segmented control (company.js) — sits above the statement,
+   audit-first Table selected by default. */
+.stmt-view-toggle {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+
 .raw-json {
   margin: 16px 0 0;
   padding: 16px 18px;

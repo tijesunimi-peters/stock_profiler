@@ -48,6 +48,7 @@ from secfin.normalize.schema import (
     CusipResolutionStats,
     FiscalPeriod,
     HoldingsSnapshot,
+    IncomeStatementViz,
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
@@ -68,6 +69,7 @@ from secfin.normalize.statements import (
     build_normalized_view,
     build_statement,
 )
+from secfin.normalize.viz import income_viz
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.sec.insider import fetch_insider_transactions_with_filings
@@ -447,6 +449,41 @@ async def get_statement(
             detail=f"No {statement} data found for {symbol} {period} {year}.",
         )
     return result
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/income/viz",
+    response_model=IncomeStatementViz,
+    tags=["Financials"],
+    summary="Waterfall bridge + 100% common-size views of an income statement",
+)
+async def get_income_statement_viz(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> IncomeStatementViz:
+    """Derived presentation views over one company's income statement for one period:
+    a revenue -> net income **waterfall bridge** and a **100% common-size** breakdown.
+
+    The numbers are the same normalized values as /statements/income, re-shaped for
+    visualization -- not a new measurement (same cache-aside facts path, same
+    build_statement). A filing that exists but lacks a required anchor (revenue / net
+    income) or a revenue base returns 200 with an explicit `available=false` state on
+    the affected view -- an honest "can't chart this period", not an error. See the
+    `caveats` field and normalize/viz.py.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _statement_facts_for_cik(repo, client, cik, year, period)
+    stmt = build_statement(facts, cik, "income", year, period)
+    if not stmt.lines and stmt.accession is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No income data found for {symbol} {period} {year}.",
+        )
+    return income_viz(stmt)
 
 
 # Normalized tag-level view (public; ROADMAP_DATA_DEPTH "normalize without mapping",

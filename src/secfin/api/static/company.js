@@ -165,6 +165,8 @@
     fundValue: null, // "year|period" selected on Fundamentals
     stmtValue: null, // "year|period" selected on Statements
     instValue: null, // quarter-end string selected on Institutional
+    stmtMode: "table", // income statement only: "table" | "chart" (audit-first default)
+    vizCache: {}, // "year|period" -> income viz response (lazy, per period)
   };
 
   function monthYear(iso) {
@@ -1147,7 +1149,7 @@
         "</span></div>";
     });
 
-    return (
+    var tableInner = (
       '<div class="filing-header">' +
       "<div>" +
       '<div class="filing-title">' + P.esc(STMT_TITLES[state.statement]) + "</div>" +
@@ -1173,6 +1175,21 @@
       "</div></div>" +
       '<pre class="raw-json" id="stmt-json" hidden></pre>' +
       '<p class="caveat">Sourced from SEC EDGAR filings — subject to normal filing lag (a 10-K posts ~45–90 days after period end). Values are raw USD unless noted; display figures are rounded, exact reported figures on click.</p>'
+    );
+
+    // Only the income statement gets the chart view (the waterfall bridge + common-size are
+    // income-specific); balance & cash flow keep the table-only view untouched.
+    if (state.statement !== "income") return tableInner;
+
+    var tableHidden = state.stmtMode === "chart" ? " hidden" : "";
+    var chartHidden = state.stmtMode === "chart" ? "" : " hidden";
+    return (
+      '<div class="stmt-view-toggle" role="group" aria-label="Statement view">' +
+      '<button type="button" class="toggle-btn" data-stmt-mode="table" aria-pressed="' + (state.stmtMode === "table") + '">▤ Table</button>' +
+      '<button type="button" class="toggle-btn" data-stmt-mode="chart" aria-pressed="' + (state.stmtMode === "chart") + '">▧ Chart</button>' +
+      "</div>" +
+      '<div id="stmt-table-wrap"' + tableHidden + ">" + tableInner + "</div>" +
+      '<div id="stmt-chart-wrap"' + chartHidden + "></div>"
     );
   }
 
@@ -1206,6 +1223,58 @@
       var revealed = btn.classList.toggle("revealed");
       btn.textContent = btn.getAttribute(revealed ? "data-exact" : "data-abbrev");
     });
+
+    if (state.statement === "income") wireStmtViewToggle(stmt);
+  }
+
+  // Table/Chart segmented toggle for the income statement. Chart mode lazily fetches the
+  // derived viz endpoint (server owns the honesty math) for the current period, caches it,
+  // and renders the waterfall bridge + common-size cards. Toggling never refetches.
+  function wireStmtViewToggle(stmt) {
+    var toggle = document.querySelector(".stmt-view-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-stmt-mode]");
+      if (!btn) return;
+      var mode = btn.getAttribute("data-stmt-mode");
+      if (mode === state.stmtMode) return;
+      state.stmtMode = mode;
+      toggle.querySelectorAll("[data-stmt-mode]").forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b.getAttribute("data-stmt-mode") === mode));
+      });
+      $("stmt-table-wrap").hidden = mode === "chart";
+      $("stmt-chart-wrap").hidden = mode !== "chart";
+      if (mode === "chart") renderStmtCharts(stmt);
+    });
+    // If we re-entered the view already in chart mode (period change while charting), draw now.
+    if (state.stmtMode === "chart") renderStmtCharts(stmt);
+  }
+
+  function renderStmtCharts(stmt) {
+    var wrap = $("stmt-chart-wrap");
+    if (!wrap) return;
+    var key = stmt.fiscal_year + "|" + stmt.fiscal_period;
+    var cached = state.vizCache[key];
+    if (cached) { paintStmtCharts(wrap, cached); return; }
+    wrap.innerHTML = P.states.loading({ title: "Loading charts" });
+    P.api(
+      "/companies/" + encodeURIComponent(symbol) + "/statements/income/viz?year=" +
+      stmt.fiscal_year + "&period=" + encodeURIComponent(stmt.fiscal_period)
+    ).then(
+      function (viz) { state.vizCache[key] = viz; if (state.stmtMode === "chart") paintStmtCharts(wrap, viz); },
+      function (err) { wrap.innerHTML = P.states.error({ copy: "Couldn't load charts (" + (err.status || "network") + ")." }); }
+    );
+  }
+
+  function paintStmtCharts(wrap, viz) {
+    wrap.innerHTML = "";
+    var w = P.measuredWidth(wrap, 640);
+    wrap.appendChild(P.incomeBridge(viz.bridge, { width: w }));
+    wrap.appendChild(P.commonSizeChart(viz.common_size, { width: w }));
+    var cav = document.createElement("p");
+    cav.className = "caveat";
+    cav.textContent = (viz.caveats || []).join(" ");
+    wrap.appendChild(cav);
   }
 
   // ---------- Phase-3 dimensional spike view (merged from the retired /explorer) ----------
