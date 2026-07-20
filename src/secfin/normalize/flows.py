@@ -8,6 +8,9 @@ derivation lives here so the rest of the system treats it as a first-class, clea
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
+
 from secfin.normalize.schema import HoldingDelta, HoldingsSnapshot, IssuerHolder
 
 # 13F report periods are always a calendar quarter-end. (month, day) -> the prior
@@ -107,6 +110,57 @@ def diff_snapshots(
             )
         )
     return deltas
+
+
+@dataclass(frozen=True)
+class ActivitySummary:
+    """Aggregate of one quarter-over-quarter DERIVED diff (a list of HoldingDeltas).
+
+    Counts are how many (manager, position) pairs fell into each action bucket; the flows
+    are SHARES, never dollar value -- the 13F `value` unit changed (thousands -> whole
+    dollars, ~2023), so only counts and shares are unit-stable across quarters. Like
+    everything in this module it is a *computed* result, not reported trade data.
+    """
+
+    new: int
+    added: int
+    reduced: int
+    exited: int
+    inflow_shares: float  # sum of shares_change over new+added positions (>= 0)
+    outflow_shares: float  # sum of |shares_change| over reduced+exited positions (>= 0)
+    net_shares: float  # inflow_shares - outflow_shares (== sum of all shares_change)
+
+
+def summarize_activity(deltas: Iterable[HoldingDelta]) -> ActivitySummary:
+    """Roll a quarter's HoldingDeltas up into per-action counts and share inflow/outflow.
+
+    Consumes the rows `diff_snapshots`/`diff_holders` already produce -- it never
+    re-classifies (`action` is taken as given). `new`/`added` have shares_change > 0 and
+    feed the inflow; `reduced`/`exited` have shares_change < 0 and feed the outflow as a
+    positive magnitude. `unchanged` rows (only present if a caller asked to include them)
+    contribute to no bucket and to neither flow. An empty iterable yields an all-zero
+    summary -- the honest "no derivable activity" result, not a fabricated one.
+    """
+    counts = {"new": 0, "added": 0, "reduced": 0, "exited": 0}
+    inflow = 0.0
+    outflow = 0.0
+    for d in deltas:
+        change = d.shares_change or 0.0
+        if d.action in ("new", "added"):
+            counts[d.action] += 1
+            inflow += change
+        elif d.action in ("reduced", "exited"):
+            counts[d.action] += 1
+            outflow += -change
+    return ActivitySummary(
+        new=counts["new"],
+        added=counts["added"],
+        reduced=counts["reduced"],
+        exited=counts["exited"],
+        inflow_shares=inflow,
+        outflow_shares=outflow,
+        net_shares=inflow - outflow,
+    )
 
 
 def diff_holders(

@@ -2129,6 +2129,162 @@
     return card.root;
   }
 
+  // ---------- derived holder-activity trend (issuer axis) ----------
+  // Two views over GET /companies/{symbol}/institutional-activity-series, whose `transitions`
+  // are quarter-over-quarter DERIVED diffs (flows.diff_holders), oldest->newest. Never reported
+  // trades -- both captions say so, and the endpoint's caveats ride along. NOTE on color: the
+  // four action buckets are a fixed CATEGORICAL vocabulary (identity, not magnitude), so they
+  // take the sanctioned categorical-scheme path with a fixed stack order -- never a green/red
+  // good-bad verdict (STYLE_GUIDE §9.2/§10). The two accumulation buckets (New, Added) and the
+  // two distribution buckets (Reduced, Exited) sit adjacent in that order, so the split reads by
+  // POSITION in the stack, not by hue.
+  var ACTIVITY_ORDER = ["New", "Added", "Reduced", "Exited"]; // fixed stack + legend order
+
+  // Viz 1 -- activity-mix stacked bar: per quarter, the COUNT of (manager, position) pairs in
+  // each action bucket, stacked. `transitions`: the endpoint's array (oldest->newest). Counts,
+  // not value, and not shares -- a bucket count is unit-safe across the 2023 value-unit flip.
+  // Returns a DOM node, or null when there's no transition with any non-zero count (caller shows
+  // an honest empty state instead of a blank chart). opts: { width }.
+  function activityMixChart(transitions, opts) {
+    if (!window.Plot) return null;
+    opts = opts || {};
+    var width = opts.width || 720;
+    transitions = (transitions || []).filter(function (t) { return t && t.counts; });
+    if (!transitions.length) return null;
+
+    // One row per (quarter, action) with a positive count. A zero-count action simply has no
+    // segment that quarter (honest gap, never a zero-height bar). Bail if nothing changed at all.
+    var rows = [];
+    transitions.forEach(function (t) {
+      var period = quarterTick(t.to_period);
+      ["new", "added", "reduced", "exited"].forEach(function (action) {
+        var c = t.counts[action] || 0;
+        if (c > 0) rows.push({ period: period, action: HOLDING_ACTION_LABEL[action], count: c });
+      });
+    });
+    if (!rows.length) return null;
+
+    var t = plotTokens();
+    var periodsAsc = transitions.map(function (tr) { return quarterTick(tr.to_period); });
+    var segStroke = cssVar("--bg-card", "#fdfbf7");
+
+    var plot = window.Plot.plot({
+      width: width,
+      height: Math.max(230, Math.min(400, width * 0.48)),
+      marginLeft: 46,
+      marginTop: 12,
+      marginBottom: 34,
+      style: { background: "transparent", fontFamily: t.fontMono, fontSize: 10.5, color: t.inkSoft, overflow: "visible" },
+      x: { domain: periodsAsc, label: null, tickSize: 0 },
+      y: { grid: true, label: "Holders (count)", labelAnchor: "top", tickFormat: function (v) { return v % 1 === 0 ? String(v) : ""; } },
+      color: { domain: ACTIVITY_ORDER, scheme: pickCategoricalScheme(), legend: true },
+      marks: [
+        window.Plot.barY(rows, {
+          x: "period", y: "count", fill: "action", order: ACTIVITY_ORDER,
+          stroke: segStroke, strokeWidth: 1,
+          channels: { Quarter: "period", Action: "action", Holders: "count" },
+          tip: { format: { x: false, y: false, fill: false, Quarter: true, Action: true, Holders: true } },
+        }),
+        window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.6 }),
+      ],
+    });
+
+    var card = chartCard("Derived holder activity mix over recent quarters");
+    card.body.appendChild(plot);
+    card.caption(
+      "How many filers NEWLY entered, ADDED to, REDUCED, or EXITED this issuer each quarter — " +
+      "each quarter DERIVED by diffing that quarter's 13F holders against the prior quarter's " +
+      "(never reported trades). Bars are COUNTS of positions, not dollar value. A quarter whose " +
+      "prior quarter wasn't ingested is omitted, not shown as zero. Long positions only; 13F " +
+      "lags up to ~45 days."
+    );
+    return card.root;
+  }
+
+  // Viz 2 -- Plot-native inflows-vs-outflows flow for ONE quarter-over-quarter transition.
+  // `transition`: ONE element of the endpoint's `transitions` -- the caller picks WHICH one (the
+  // mount keys it off the SELECTED quarter, not always the newest). The title reflects the
+  // transition's own to_period, so it always names the quarter shown. Two opposing bars on a
+  // zero-centred axis: shares acquired (New + Added) extend right, shares divested (Reduced +
+  // Exited) extend left, plus an explicit net figure. SHARES (not value -- unit-stable), one
+  // terracotta accent, direction (not color) carries in vs out (§9.2/§10). Returns null when
+  // nothing flowed (both zero) -> caller shows an empty state. opts: { width }.
+  function activityFlowChart(transition, opts) {
+    if (!window.Plot || !transition) return null;
+    opts = opts || {};
+    var width = opts.width || 640;
+    var inflow = transition.inflow_shares || 0;
+    var outflow = transition.outflow_shares || 0;
+    var net = transition.net_shares || 0;
+    if (inflow === 0 && outflow === 0) return null;
+
+    var ACCENT = cssVar("--accent", "#C0703A");
+    var INK = cssVar("--ink", "#1C1A16");
+    var INK_SOFT = cssVar("--ink-soft", "#6B6459");
+    var FONT_MONO = cssVar("--font-mono", "'IBM Plex Mono', monospace");
+
+    // Short y labels (the New+Added / Reduced+Exited attribution lives in the caption) -- a long
+    // label right-anchored to the axis runs past the SVG's left edge and clips, the same failure
+    // mode divergingBars/compositionRankedBars guard against.
+    var IN_LABEL = "Shares acquired";
+    var OUT_LABEL = "Shares divested";
+    var data = [
+      { label: IN_LABEL, x: inflow, dir: 1 },
+      { label: OUT_LABEL, x: -outflow, dir: -1 },
+    ];
+    var M = Math.max(inflow, outflow, 1);
+    var xDomain = [-M * 1.25, M * 1.25];
+
+    var plot = window.Plot.plot({
+      width: width,
+      height: 150,
+      marginLeft: 116,
+      marginRight: 96,
+      marginTop: 10,
+      marginBottom: 30,
+      style: { fontFamily: FONT_MONO, fontSize: 10.5, background: "transparent", color: INK_SOFT, overflow: "visible" },
+      x: { domain: xDomain, label: "Shares (signed) — left = out, right = in", tickFormat: signedSharesTick, grid: false },
+      y: { domain: [IN_LABEL, OUT_LABEL], label: null },
+      marks: [
+        window.Plot.gridX({ stroke: cssVar("--border-tint-rule", "#E5DFD3"), strokeOpacity: 0.7 }),
+        window.Plot.barX(data, {
+          x: "x", y: "label", fill: ACCENT, stroke: ACCENT, strokeWidth: 1, rx: 3,
+          channels: { Shares: function (d) { return signedSharesTick(d.x); } },
+          tip: { format: { x: false, y: false, fill: false, Shares: true } },
+        }),
+        // On-bar magnitude label, into the empty half so it never collides with the y-axis names.
+        window.Plot.text(data.filter(function (d) { return d.dir > 0; }), {
+          x: "x", y: "label", text: function (d) { return signedSharesTick(d.x); },
+          textAnchor: "start", dx: 6, fontFamily: FONT_MONO, fontSize: 10.5, fill: INK_SOFT,
+        }),
+        window.Plot.text(data.filter(function (d) { return d.dir < 0; }), {
+          x: "x", y: "label", text: function (d) { return signedSharesTick(d.x); },
+          textAnchor: "end", dx: -6, fontFamily: FONT_MONO, fontSize: 10.5, fill: INK_SOFT,
+        }),
+        window.Plot.ruleX([0], { stroke: INK, strokeOpacity: 0.75 }),
+      ],
+    });
+
+    var card = chartCard("Derived share flow — " + quarterTick(transition.to_period));
+    card.body.appendChild(plot);
+    var netArrow = net > 0 ? "▲" : net < 0 ? "▼" : "–";
+    var netLine = document.createElement("p");
+    netLine.className = "plot-chart-note";
+    netLine.style.margin = "2px 0 0";
+    netLine.innerHTML =
+      "Net " + netArrow + " <strong>" + esc(signedSharesTick(net)) + " shares</strong> " +
+      "(acquired " + esc(shares(inflow)) + " − divested " + esc(shares(outflow)) + ")";
+    card.body.appendChild(netLine);
+    card.caption(
+      "DERIVED by diffing " + esc(quarterTick(transition.from_period)) + " → " +
+      esc(quarterTick(transition.to_period)) + " 13F holder snapshots — never reported trades. " +
+      "Shares acquired = New + Added positions; shares divested = Reduced + Exited. Aggregate " +
+      "SHARES entering vs leaving across all reporting filers (not dollar value, not fund cash " +
+      "flows). Long positions only; 13F lags up to ~45 days."
+    );
+    return card.root;
+  }
+
   // US-states GeoJSON is vendored (static/vendor/us-states.geojson) and fetched same-origin,
   // ONCE, then memoized -- never a CDN/chart-lib load (STYLE_GUIDE §10). Plot's built-in
   // "albers-usa" projection draws the 50 states + DC (territories fall outside it, matching
@@ -2638,6 +2794,8 @@
     activitySummaryTiles: activitySummaryTiles,
     dumbbellChart: dumbbellChart,
     holdingsSeriesChart: holdingsSeriesChart,
+    activityMixChart: activityMixChart,
+    activityFlowChart: activityFlowChart,
     holderGeographyChart: holderGeographyChart,
     convictionHeatmap: convictionHeatmap,
     coHoldingNetwork: coHoldingNetwork,

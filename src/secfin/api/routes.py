@@ -23,7 +23,12 @@ from secfin.auth.usage import usage_summary
 from secfin.config import settings
 from secfin.normalize.coholding import co_holding_edges
 from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
-from secfin.normalize.flows import diff_holders, diff_snapshots, prior_quarter_end
+from secfin.normalize.flows import (
+    diff_holders,
+    diff_snapshots,
+    prior_quarter_end,
+    summarize_activity,
+)
 from secfin.normalize.geography import classify_location
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.metrics import (
@@ -172,6 +177,22 @@ _COHOLDING_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
     "Coverage-dependent: only ingested filers are nodes, and overlap only reflects the holdings "
     "ingested for this quarter -- a thin or empty graph is coverage, not a confirmed absence of "
     "overlap.",
+]
+
+# Activity-series caveats: the quarter-over-quarter mix (counts per action) and the latest
+# quarter's inflow/outflow are DERIVED by diffing each quarter against the PRIOR calendar
+# quarter's 13F holders. A quarter whose calendar-prior quarter wasn't ingested is OMITTED
+# (diffing against nothing would mislabel every holder as "new"), never shown as zero activity.
+_ACTIVITY_SERIES_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "Per-quarter counts are DERIVED by diffing each quarter against the PRIOR calendar quarter's "
+    "13F holders -- not reported trades.",
+    "A quarter whose prior calendar quarter was not ingested is OMITTED (no bar), never shown as "
+    "zero activity or as an all-new spike -- diffing against an un-ingested quarter would mislabel "
+    "every holder as new.",
+    "Bars are COUNTS of (manager, position) pairs and inflow/outflow are SHARES -- never dollar "
+    "value, whose unit changed (thousands -> whole dollars, ~2023).",
+    "Inflow/outflow are aggregate DERIVED share changes across all reporting filers -- not fund "
+    "cash flows and not dollar amounts.",
 ]
 
 # Beneficial ownership (13D/13G) coverage floor -- see docs/DATA_MODEL.md's "Coverage
@@ -1194,6 +1215,110 @@ async def get_institutional_activity(
         "to_period": period,
         "caveats": _ISSUER_CENTRIC_CAVEATS,
         "activity": deltas,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-activity-series",
+    tags=["Institutional Ownership"],
+    summary="DERIVED per-quarter holder-activity mix + latest-quarter share flow (13F diff)",
+    responses={
+        200: {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "cik": 320193,
+                        "cusips": ["037833100"],
+                        "transitions": [
+                            {
+                                "from_period": "2024-09-30",
+                                "to_period": "2024-12-31",
+                                "counts": {"new": 12, "added": 40, "reduced": 33, "exited": 5},
+                                "inflow_shares": 6_100_000.0,
+                                "outflow_shares": 1_900_000.0,
+                                "net_shares": 4_200_000.0,
+                            }
+                        ],
+                        "caveats": _ACTIVITY_SERIES_CAVEATS,
+                    }
+                }
+            }
+        }
+    },
+)
+async def get_institutional_activity_series(
+    symbol: str,
+    quarters: int = Query(6, ge=1, le=12, description="Max number of quarter-over-quarter bars"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """DERIVED holder-activity trend for this issuer over recent quarters.
+
+    For each of the most recent ingested quarters, diffs it against its PRIOR CALENDAR
+    quarter (`flows.diff_holders`, the same derivation `/institutional-activity` uses for a
+    single quarter) and rolls the result up into per-action counts + share inflow/outflow
+    (`flows.summarize_activity`). Feeds two views: a stacked bar of the new/added/reduced/
+    exited mix over the quarters, and a latest-quarter inflow-vs-outflow flow.
+
+    A quarter is included ONLY when its prior calendar quarter is itself ingested -- a diff
+    against an un-ingested quarter would mislabel every holder as "new" (`diff_holders`'
+    `prior=[]` convention), a phantom "everyone entered" spike. Such quarters are OMITTED
+    (never a zero bar). So each transition is a genuine two-ingested-quarter diff, and the
+    counts for a to-quarter equal `GET /institutional-activity?period=<that quarter>` grouped
+    by action. `transitions` is oldest -> newest (chart axis order). An empty list is a valid
+    result (fewer than two ingested quarters, or no adjacent ingested pair), not an error.
+
+    Pure composition of the same live indexed point reads the tab already uses
+    (`issuer_periods` + `holders_of`) -- no new store query, no DuckDB. These are DERIVED
+    from REPORTED snapshots; see `caveats`.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    ingested = holdings_repo.issuer_periods(cusips)  # newest-first
+    ingested_set = set(ingested)
+
+    transitions: list[dict] = []
+    for period in ingested:  # newest-first; we collect up to `quarters` then reverse
+        if len(transitions) >= quarters:
+            break
+        try:
+            prior_period = prior_quarter_end(period)
+        except ValueError:
+            continue  # not a recognized quarter-end; can't derive a prior
+        if prior_period not in ingested_set:
+            continue  # prior not ingested -> omit (diffing against nothing => false all-new)
+        deltas = diff_holders(
+            holdings_repo.holders_of(cusips, period),
+            holdings_repo.holders_of(cusips, prior_period),
+            to_period=period,
+            from_period=prior_period,
+        )
+        summary = summarize_activity(deltas)
+        transitions.append(
+            {
+                "from_period": prior_period,
+                "to_period": period,
+                "counts": {
+                    "new": summary.new,
+                    "added": summary.added,
+                    "reduced": summary.reduced,
+                    "exited": summary.exited,
+                },
+                "inflow_shares": summary.inflow_shares,
+                "outflow_shares": summary.outflow_shares,
+                "net_shares": summary.net_shares,
+            }
+        )
+
+    transitions.reverse()  # oldest -> newest for the chart axis
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "transitions": transitions,
+        "caveats": _ACTIVITY_SERIES_CAVEATS,
     }
 
 

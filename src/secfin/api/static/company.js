@@ -511,6 +511,7 @@
         mountHolderGeography(period);
         mountConviction(period);
         mountCoHolding(period);
+        mountActivityTrend(period);
         mountActivityChart(period, fromPeriod, activity);
         mountDumbbellChart(period, fromPeriod, holders);
         mountInstActivityTable(period, fromPeriod, activity);
@@ -539,7 +540,7 @@
       institutionalStandingCaveat() +
       holdersSection(period, holders) +
       holdingsSeriesSection() + holderGeographySection() + convictionSection() +
-      coHoldingSection() + activitySection(activity) + caveatsBlock(caveats)
+      coHoldingSection() + activityTrendSection() + activitySection(activity) + caveatsBlock(caveats)
     );
   }
 
@@ -573,6 +574,19 @@
     return (
       '<h3 class="metric-group-title" style="margin-top:26px">Which holders run similar portfolios</h3>' +
       '<div id="coholding-mount"></div>'
+    );
+  }
+
+  // Derived holder-activity TREND (issuer axis, GET /institutional-activity-series). Period-
+  // independent (spans the recent quarters like the accumulation chart), so it lives in its own
+  // section OUTSIDE the period-reactive activitySection below -- it must render even when the
+  // selected period has no single-quarter comparison. Two mounts: the activity-mix stacked bar
+  // over recent quarters, then the latest-quarter inflows-vs-outflows flow.
+  function activityTrendSection() {
+    return (
+      '<h3 class="metric-group-title" style="margin-top:26px">How holders have been building or trimming this position</h3>' +
+      '<div id="activity-mix-mount"></div>' +
+      '<div id="activity-flow-mount"></div>'
     );
   }
 
@@ -689,6 +703,65 @@
             copy: "Fewer than two 13F quarters are ingested for this issuer, so there's no " +
               "multi-quarter accumulation to show yet. Read as coverage, not zero ownership.",
           });
+        }
+      },
+      function () { /* enhancement chart -- skip on failure, never break the tab */ }
+    );
+  }
+
+  // Derived holder-activity trend (GET /institutional-activity-series). Two views with DIFFERENT
+  // time behavior:
+  //   * the mix stacked bar spans the 6 most recent quarters (period-INDEPENDENT -- it's a trend);
+  //   * the inflows-vs-outflows flow reflects the SELECTED quarter `period` -- it picks the
+  //     transition whose to_period matches, so it moves with the tab's period selector like the
+  //     rest of the view (re-mounted by renderInstitutionalData on every change).
+  // We request quarters=12 (the endpoint max) so a selected quarter older than the 6 shown in the
+  // mix is still covered for the flow; the mix slices to its 6 newest. A selected quarter with no
+  // matching transition (its comparable prior quarter isn't available) gets an honest empty state
+  // for THAT quarter -- never another quarter's numbers under the selected label. Both DERIVED,
+  // never re-computed client-side. Skips silently on failure.
+  function mountActivityTrend(period) {
+    var mixMount = $("activity-mix-mount");
+    var flowMount = $("activity-flow-mount");
+    if (!mixMount && !flowMount) return;
+    P.api("/companies/" + encodeURIComponent(symbol) + "/institutional-activity-series?quarters=12").then(
+      function (res) {
+        var transitions = res.transitions || [];
+        if (mixMount) {
+          // 6 newest quarters -- period-independent trend (unchanged behavior).
+          var mix = P.activityMixChart(transitions.slice(-6), { width: P.measuredWidth(mixMount, 720) });
+          if (mix) {
+            mixMount.appendChild(mix);
+          } else {
+            mixMount.innerHTML = P.states.empty({
+              title: "Not enough comparable quarters",
+              copy: "Fewer than two 13F quarters with a comparable prior quarter are ingested for " +
+                "this issuer, so there's no quarter-over-quarter activity to chart yet. Read as " +
+                "coverage, not zero activity. This is a DERIVED view, never reported trades.",
+            });
+          }
+        }
+        if (flowMount) {
+          // The flow reflects the SELECTED quarter: pick the transition whose to_period matches.
+          var tx = null;
+          for (var i = 0; i < transitions.length; i++) {
+            if (transitions[i].to_period === period) { tx = transitions[i]; break; }
+          }
+          var flow = tx ? P.activityFlowChart(tx, { width: P.measuredWidth(flowMount, 640) }) : null;
+          if (flow) {
+            flowMount.appendChild(flow);
+          } else {
+            // No transition for the selected quarter (its comparable prior quarter isn't ingested,
+            // it's the earliest quarter, or it's outside the fetched window). Honest empty state
+            // for THIS quarter -- never fall back to a different quarter's flow (that would be a
+            // wrong-quarter number under the selected label).
+            flowMount.innerHTML = P.states.empty({
+              title: "No derived share flow for " + P.esc(quarterLabel(period)),
+              copy: "No comparable prior quarter is available to diff against for the selected " +
+                "quarter, so there's no inflow/outflow to derive. Pick a quarter whose prior " +
+                "quarter is also ingested. This is a DERIVED view, never reported trades.",
+            });
+          }
         }
       },
       function () { /* enhancement chart -- skip on failure, never break the tab */ }
