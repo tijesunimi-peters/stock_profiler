@@ -572,6 +572,50 @@ listing/ranking — are done, verified against real SEC data end-to-end. What's 
 project-wide is the pre-launch checklist below and the deliberately-deferred Track 2
 items, neither of which is more Track-1 feature work.
 
+## Candidate data source — Form 144 (insider proposed sales) [Track 1, not started]
+
+A new structured-form ingest that extends the Milestone-2 ownership/insider family. Form 144
+is the insider's **notice of a proposed sale** of restricted stock — an "insider about to sell
+supply" early-warning signal that pairs with our 13F/insider data. **Verified available as
+structured data on EDGAR (2026-07-20)** with our compliant User-Agent:
+
+- **It's a structured `primary_doc.xml` in the `http://www.sec.gov/edgar/ownership` namespace —
+  the SAME schema family as Forms 3/4/5**, so ingestion reuses `sec/insider.py`'s ownership-XML
+  parsing pattern rather than a new mechanism. Machine-readable fields (confirmed against a real
+  AXT, Inc. filing): `issuerCik`/`issuerName`, `nameOfPersonForWhoseAccount…` (the seller),
+  `relationshipToIssuer`, `noOfUnitsSold` (proposed amount), `aggregateMarketValue`,
+  `noOfUnitsOutstanding`, `approxSaleDate`, broker + exchange, and repeatable
+  `securitiesToBeSold[]` (acquired date / nature / amount).
+
+**Scope guards (bake into the brief):**
+- **Track 1 — reported fields only.** Every field is *reported on the form*, including
+  `aggregateMarketValue` (the filer's own stated proposed-sale value). We re-shape reported
+  structured fields; we do **not** fetch or compute price/market data (Hard limit — no market
+  data). Do not approximate a "sale price" beyond what the form states.
+- **Honesty: a NOTICE of a PROPOSED sale, never an executed trade.** Frame as "intent to sell
+  restricted shares" — a proposed amount that may not fully execute (same discipline as the 13F
+  "derived, not reported" and "long-only" caveats). Never present a 144 as a completed sale.
+- **Coverage floor ~2023.** Electronic filing became mandatory ~April 2023; structured 144s
+  confirmed on EDGAR back to at least Aug 2023, pre-2023 largely paper/not on EDGAR. Same
+  first-class coverage-floor treatment as 13D/G (~mid-2025 structured XML) and XBRL (~2009) —
+  **pin the exact cutoff before promising any history** (verify, don't assume).
+- **SEC compliance unchanged** — the throttled `SECClient` + compliant User-Agent; discovery via
+  the same submissions/EDGAR paths we already use.
+
+**Open design point (for the architect):** issuer-centric discovery. A 144 is filed under the
+seller/agent CIK, not in the *issuer's* submissions history, so an issuer-centric index
+("who's about to sell company X") keys off `issuerCik` inside the XML (EDGAR full-text search or
+a periodic form-144 scan) — measure discovery coverage before shipping it as a feature.
+
+- [ ] Parser in `sec/` (reuse the ownership-XML pattern; new canonical model, or reuse the
+      insider shape where fields align — architect decides, records it in `DATA_MODEL.md`).
+- [ ] Filing-granular cache repo behind an interface (mirror `insider_repository.py` /
+      `beneficial_ownership_repository.py`).
+- [ ] Issuer-centric endpoint (`issuerCik` index) with the "proposed, not executed" + coverage-
+      floor caveats always present.
+- [ ] Downstream (optional): enrich `ROADMAP_13F_ANALYTICS.md` A4 (insider × institutional
+      timeline) with proposed-sales markers alongside executed Form 4 trades.
+
 ## Deferred (NOT Track 1 — decide later, deliberately)
 
 - [ ] Track 2: MD&A / risk factors / footnotes (free-text narrative)
