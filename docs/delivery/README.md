@@ -24,6 +24,16 @@ umbrella — read it to route, or invoke a sub-specialty directly when the side 
 You are the conductor. The roles do **not** auto-advance — you invoke each one when you're
 satisfied with the previous handoff, so every stage boundary is a review checkpoint you control.
 
+**Automated option — `/deliver <request>`.** To run the four build stages end to end in one pass
+(PM → architect → engineer → QA) without invoking each role by hand, use `/deliver`. A new run
+(`/deliver <request>`) starts at the PM and needs a `/clear`ed or `/compact`ed context; it tracks
+progress in `docs/delivery/_active.md`, so **`/deliver` (or `/deliver resume`) continues the active
+task from wherever it stopped — even in a fresh session with no prior context** (it rebuilds context
+from the state file + the stage handoff docs; resuming needs no reset). It runs the stages
+sequentially in one context, loops a QA failure back to the owning engineer (≤3 cycles), and stops
+at the QA gate — never commits, pushes, or deploys, and still pauses for genuine operator decisions
+and scope-gate flags. Use the manual flow below when you want a checkpoint at every stage boundary.
+
 1. **Reset, then start.** `/clear` (new task) or `/compact` (keep a related thread), then
    `/product-manager <your request>`. Only this first step needs the reset.
 2. **Advance one role at a time.** When a stage hands off, invoke the next slash command —
