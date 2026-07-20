@@ -24,6 +24,10 @@ const PAGES = process.env.PAGES
       // Income-statement chart view (waterfall bridge + common-size): two filer shapes.
       ["statements-income-chart", "/company/AAPL?tab=statements&stmt=income"],
       ["statements-income-chart-wmt", "/company/WMT?tab=statements&stmt=income"],
+      // Balance-sheet chart view (capital-structure trend + working-capital bridge + matrix):
+      // AAPL (clean, negative working capital) and WMT (derives liabilities for the trend).
+      ["statements-balance-chart", "/company/AAPL?tab=statements&stmt=balance"],
+      ["statements-balance-chart-wmt", "/company/WMT?tab=statements&stmt=balance"],
       ["statements-segments", "/company/AAPL?tab=statements&stmt=segments"],
       ["trend", "/company/AAPL?trend=net_margin"],
       ["institutional", "/company/AAPL?tab=institutional"],
@@ -64,12 +68,13 @@ const PAGES = process.env.PAGES
         await page.click(".data-row .row-value[data-exact]");
         await new Promise((r) => setTimeout(r, 300));
       }
-      if (name.startsWith("statements-income-chart")) {
-        // Flip the income statement to the Chart view; wait for the lazy viz fetch + Plot
-        // render. The screenshot captures the waterfall bridge + common-size cards, and any
-        // JS error in the builders fails the check.
+      if (name.startsWith("statements-income-chart") || name.startsWith("statements-balance-chart")) {
+        // Flip the statement to the Chart view; wait for the lazy viz fetch + Plot render. The
+        // screenshot captures the chart cards (income: waterfall + common-size; balance:
+        // capital-structure trend + working-capital bridge + matrix), and any JS error in the
+        // builders fails the check.
         await page.click('.stmt-view-toggle [data-stmt-mode="chart"]');
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1800));
       }
       if (name === "company") {
         // Exercise the company autocomplete (suggest.js) via the shell's topbar search:

@@ -165,8 +165,8 @@
     fundValue: null, // "year|period" selected on Fundamentals
     stmtValue: null, // "year|period" selected on Statements
     instValue: null, // quarter-end string selected on Institutional
-    stmtMode: "table", // income statement only: "table" | "chart" (audit-first default)
-    vizCache: {}, // "year|period" -> income viz response (lazy, per period)
+    stmtMode: "table", // income + balance sheet: "table" | "chart" (audit-first default)
+    vizCache: {}, // "statement|year|period" -> viz response (lazy). Series: "statement|series".
   };
 
   function monthYear(iso) {
@@ -1177,9 +1177,10 @@
       '<p class="caveat">Sourced from SEC EDGAR filings — subject to normal filing lag (a 10-K posts ~45–90 days after period end). Values are raw USD unless noted; display figures are rounded, exact reported figures on click.</p>'
     );
 
-    // Only the income statement gets the chart view (the waterfall bridge + common-size are
-    // income-specific); balance & cash flow keep the table-only view untouched.
-    if (state.statement !== "income") return tableInner;
+    // The income statement and the balance sheet get a chart view (income: waterfall bridge +
+    // common-size; balance: capital-structure trend + working-capital bridge + balance matrix).
+    // Cash flow & segments keep the table-only view untouched.
+    if (state.statement !== "income" && state.statement !== "balance") return tableInner;
 
     var tableHidden = state.stmtMode === "chart" ? " hidden" : "";
     var chartHidden = state.stmtMode === "chart" ? "" : " hidden";
@@ -1224,12 +1225,12 @@
       btn.textContent = btn.getAttribute(revealed ? "data-exact" : "data-abbrev");
     });
 
-    if (state.statement === "income") wireStmtViewToggle(stmt);
+    if (state.statement === "income" || state.statement === "balance") wireStmtViewToggle(stmt);
   }
 
-  // Table/Chart segmented toggle for the income statement. Chart mode lazily fetches the
-  // derived viz endpoint (server owns the honesty math) for the current period, caches it,
-  // and renders the waterfall bridge + common-size cards. Toggling never refetches.
+  // Table/Chart segmented toggle for the income statement and balance sheet. Chart mode lazily
+  // fetches the derived viz endpoint(s) (server owns the honesty math) for the current period,
+  // caches by statement, and renders the statement's chart cards. Toggling never refetches.
   function wireStmtViewToggle(stmt) {
     var toggle = document.querySelector(".stmt-view-toggle");
     if (!toggle) return;
@@ -1253,7 +1254,9 @@
   function renderStmtCharts(stmt) {
     var wrap = $("stmt-chart-wrap");
     if (!wrap) return;
-    var key = stmt.fiscal_year + "|" + stmt.fiscal_period;
+    if (state.statement === "balance") { renderBalanceCharts(wrap, stmt); return; }
+    // Cache key includes the statement so income/balance never collide on the same (year, period).
+    var key = state.statement + "|" + stmt.fiscal_year + "|" + stmt.fiscal_period;
     var cached = state.vizCache[key];
     if (cached) { paintStmtCharts(wrap, cached); return; }
     wrap.innerHTML = P.states.loading({ title: "Loading charts" });
@@ -1271,6 +1274,45 @@
     var w = P.measuredWidth(wrap, 640);
     wrap.appendChild(P.incomeBridge(viz.bridge, { width: w }));
     wrap.appendChild(P.commonSizeChart(viz.common_size, { width: w }));
+    var cav = document.createElement("p");
+    cav.className = "caveat";
+    cav.textContent = (viz.caveats || []).join(" ");
+    wrap.appendChild(cav);
+  }
+
+  // Balance sheet chart mode: the capital-structure TREND (multi-period, independent of the
+  // selected period) + the per-period working-capital bridge and balance matrix. The trend
+  // comes from a separate series endpoint, so we fetch two things and paint once they're both
+  // resolved. The single-period viz is cached per (statement, year, period); the series is
+  // cached once per statement (it doesn't vary with the selected period).
+  function renderBalanceCharts(wrap, stmt) {
+    var vizKey = "balance|" + stmt.fiscal_year + "|" + stmt.fiscal_period;
+    var seriesKey = "balance|series";
+    var viz = state.vizCache[vizKey], series = state.vizCache[seriesKey];
+    if (viz && series) { paintBalanceCharts(wrap, viz, series); return; }
+    wrap.innerHTML = P.states.loading({ title: "Loading charts" });
+    var base = "/companies/" + encodeURIComponent(symbol) + "/statements/balance/";
+    var pViz = viz ? Promise.resolve(viz) : P.api(
+      base + "viz?year=" + stmt.fiscal_year + "&period=" + encodeURIComponent(stmt.fiscal_period)
+    );
+    var pSeries = series ? Promise.resolve(series) : P.api(base + "viz-series?period=FY");
+    Promise.all([pViz, pSeries]).then(
+      function (r) {
+        state.vizCache[vizKey] = r[0];
+        state.vizCache[seriesKey] = r[1];
+        if (state.stmtMode === "chart") paintBalanceCharts(wrap, r[0], r[1]);
+      },
+      function (err) { wrap.innerHTML = P.states.error({ copy: "Couldn't load charts (" + (err.status || "network") + ")." }); }
+    );
+  }
+
+  function paintBalanceCharts(wrap, viz, series) {
+    wrap.innerHTML = "";
+    var w = P.measuredWidth(wrap, 640);
+    // Brief priority order: trend (#2) -> working-capital (#4) -> matrix (#1).
+    wrap.appendChild(P.capitalStructureTrend(series, { width: w }));
+    wrap.appendChild(P.workingCapitalBridge(viz.working_capital, { width: w }));
+    wrap.appendChild(P.balanceMatrix(viz.matrix, { width: w }));
     var cav = document.createElement("p");
     cav.className = "caveat";
     cav.textContent = (viz.caveats || []).join(" ");

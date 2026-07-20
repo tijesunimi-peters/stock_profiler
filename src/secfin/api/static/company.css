@@ -274,6 +274,58 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
 .coverage-strip-mount:empty { display: none; margin: 0; }
 .coverage-strip .plot-chart-body svg { display: block; }
 
+/* ---------- Balance Matrix as a 2-column table (ClearyFi.balanceMatrix) ----------
+ * Assets | Liabilities & Equity, side by side; wraps to a single column on narrow widths.
+ * Lives inside the shared chartCard's .plot-chart-body (already overflow-x:auto). */
+.bmatrix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 28px;
+  padding: 6px 2px 2px;
+}
+@media (max-width: 560px) { .bmatrix { grid-template-columns: 1fr; } }
+.bmatrix-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding: 4px 2px 8px;
+  border-bottom: 2px solid var(--ink);
+}
+.bmatrix-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+.bmatrix-label { font-size: 13.5px; color: var(--ink); line-height: 1.25; }
+.bmatrix-val {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+/* "Other / unmapped" residual: computed, not reported -- muted + accent-wash + dashed rule. */
+.bmatrix-residual {
+  background: var(--accent-wash);
+  border-bottom: 1px dashed var(--accent);
+}
+.bmatrix-residual .bmatrix-label,
+.bmatrix-residual .bmatrix-val { color: var(--mono-muted); font-style: italic; }
+/* Bold TOTAL row = the filer's independently reported total for the side. */
+.bmatrix-total {
+  border-bottom: none;
+  border-top: 2px solid var(--ink);
+  margin-top: 2px;
+  padding-top: 8px;
+}
+.bmatrix-total .bmatrix-label { font-weight: 750; font-size: 14px; }
+.bmatrix-total .bmatrix-val { font-weight: 700; font-size: 14px; color: var(--ink); }
+
 /* ---------- Phase 5 polish: standing caveat (caption-dedup, STYLE_GUIDE §6) ---------- */
 .standing-caveat-mount { margin: 2px 0 18px; }
 .standing-caveat-mount:empty { display: none; margin: 0; }

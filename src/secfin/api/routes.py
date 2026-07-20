@@ -41,7 +41,9 @@ from secfin.normalize.metrics import (
     metric_periods,
 )
 from secfin.normalize.schema import (
+    BalanceSheetViz,
     BeneficialOwnership,
+    CapitalStructureSeries,
     CompanyMetrics,
     CompanyPeerDistribution,
     CompanyPeerRanks,
@@ -69,7 +71,7 @@ from secfin.normalize.statements import (
     build_normalized_view,
     build_statement,
 )
-from secfin.normalize.viz import income_viz
+from secfin.normalize.viz import balance_viz, capital_structure_series, income_viz
 from secfin.sec.client import SECClient
 from secfin.sec.companyfacts import fetch_raw_facts_all
 from secfin.sec.insider import fetch_insider_transactions_with_filings
@@ -484,6 +486,87 @@ async def get_income_statement_viz(
             detail=f"No income data found for {symbol} {period} {year}.",
         )
     return income_viz(stmt)
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/balance/viz",
+    response_model=BalanceSheetViz,
+    tags=["Financials"],
+    summary="Balance Matrix + Working-Capital bridge views of a balance sheet",
+)
+async def get_balance_statement_viz(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> BalanceSheetViz:
+    """Derived presentation views over one company's balance sheet for one period: the
+    **Balance Matrix** (Assets vs Liabilities+Equity, with the filer's two independently
+    reported totals reconciled -- never forced) and the **Working-Capital bridge** (current
+    assets vs current liabilities).
+
+    The numbers are the same normalized values as /statements/balance, re-shaped for
+    visualization -- not a new measurement (same cache-aside facts path, same
+    build_statement). A filing that lacks a required reported total returns 200 with an
+    explicit `available=false` state on the affected view -- an honest "can't chart this",
+    not an error. See the `caveats` field and normalize/viz.py.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _statement_facts_for_cik(repo, client, cik, year, period)
+    stmt = build_statement(facts, cik, "balance", year, period)
+    if not stmt.lines and stmt.accession is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No balance data found for {symbol} {period} {year}.",
+        )
+    return balance_viz(stmt)
+
+
+# Bound the capital-structure series work: how many periods a client may request, and the
+# default when unspecified (matches the trend the mock drew).
+_CAPITAL_STRUCTURE_DEFAULT_LIMIT = 6
+_CAPITAL_STRUCTURE_MAX_LIMIT = 12
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/balance/viz-series",
+    response_model=CapitalStructureSeries,
+    tags=["Financials"],
+    summary="Capital-structure trend (financing mix across recent periods)",
+)
+async def get_capital_structure_series(
+    symbol: str,
+    period: FiscalPeriod = Query("FY", description="Period type for the series (FY for now)"),
+    limit: int = Query(
+        _CAPITAL_STRUCTURE_DEFAULT_LIMIT,
+        ge=1,
+        le=_CAPITAL_STRUCTURE_MAX_LIMIT,
+        description="How many recent periods to include (most recent first, drawn oldest->newest).",
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CapitalStructureSeries:
+    """The **Capital-Structure trend**: one company's financing mix (Liabilities vs Equity,
+    normalized to the reported financing total) across its most recent `limit` periods of
+    the given `period` type, drawn oldest->newest.
+
+    Uses the full-history cache-aside facts path (like /periods). Percentages are NOT
+    clamped -- a negative-equity period truthfully shows equity < 0 and liabilities > 100%.
+    A period missing a required total is carried as an explicit gap, not omitted. An empty
+    series is a valid 200 (an honest "nothing to chart"), not an error. See normalize/viz.py.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+    # Most recent `limit` periods of the requested type (available_periods is newest-first).
+    selected = [(y, p) for (y, p) in available_periods(facts) if p == period][:limit]
+    statements = [build_statement(facts, cik, "balance", y, p) for (y, p) in selected]
+    statements = [s for s in statements if s.lines or s.accession is not None]
+    return capital_structure_series(statements)
 
 
 # Normalized tag-level view (public; ROADMAP_DATA_DEPTH "normalize without mapping",

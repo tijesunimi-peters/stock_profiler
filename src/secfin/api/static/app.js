@@ -3026,6 +3026,287 @@
     return card.root;
   }
 
+  // ---------- balance-sheet visualizations (capital-structure trend + working-capital + matrix) ----------
+  //
+  // All three consume the balance viz endpoints (normalize/viz.py): the multi-period trend from
+  // GET .../statements/balance/viz-series, the working-capital bridge + matrix from
+  // GET .../statements/balance/viz. The server owns EVERY honesty decision -- the reconciliation
+  // delta, the residual plugs, the signed percentages -- so these are thin renderers that draw
+  // exactly what the JSON says and never re-derive a sign, a total, or clamp a percentage. Single
+  // terracotta accent + ink, NO green/red (§10): structure is not a good/bad verdict.
+
+  // A financing/matrix segment's display role -> a stable legend label. `kind` comes straight
+  // from the API ("liabilities" | "equity" | "residual").
+  function balanceRole(kind) {
+    if (kind === "residual") return "Other / unmapped";
+    if (kind === "equity") return "Equity";
+    return "Liabilities";
+  }
+  function balancePct(ratio) { return (ratio * 100).toFixed(1) + "%"; }
+
+  // The capital-structure TREND: one 100% stacked bar per period (oldest->newest), Liabilities vs
+  // Equity as a share of the reported financing total. `series` is the CapitalStructureSeries
+  // response: { periods[]: { fiscal_year, period_end, available, unavailable_reason,
+  // financing_total, segments[]: { kind, label, value, pct } } }. Percentages are NOT clamped: a
+  // negative-equity period truthfully shows equity below the zero line and liabilities past 100%
+  // (Plot stacks a negative segment below 0). A period the server marks unavailable is drawn as an
+  // explicit "n/a" gap slot, never a full/empty bar. Returns a chartCard node.
+  function capitalStructureTrend(series, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Capital structure (Liabilities vs Equity, % of financing)");
+
+    var periods = (series && series.periods) || [];
+    var drawable = periods.filter(function (p) { return p.available !== false && (p.segments || []).length; });
+    if (!drawable.length) {
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = "Trend unavailable — no period reports the totals needed to chart the financing mix.";
+      card.body.appendChild(p0);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var labelOf = function (p) { return "FY" + p.fiscal_year; };
+    var order = periods.map(labelOf); // gaps kept in the timeline so a missing year is visible
+
+    var rows = [];
+    var hasResidual = false;
+    drawable.forEach(function (p) {
+      (p.segments || []).forEach(function (s) {
+        if (s.kind === "residual") hasResidual = true;
+        rows.push({
+          period: labelOf(p),
+          role: balanceRole(s.kind),
+          pct: s.pct,
+          pctText: balancePct(s.pct),
+          valueText: usd(s.value),
+          totalText: usd(p.financing_total),
+        });
+      });
+    });
+    var gaps = periods
+      .filter(function (p) { return p.available === false || !(p.segments || []).length; })
+      .map(function (p) { return { period: labelOf(p), reason: p.unavailable_reason || "not reported" }; });
+
+    // y extent from the stacked positive/negative sums per period (unclamped).
+    var posMax = 1, negMin = 0;
+    drawable.forEach(function (p) {
+      var pos = 0, neg = 0;
+      (p.segments || []).forEach(function (s) { if (s.pct >= 0) pos += s.pct; else neg += s.pct; });
+      posMax = Math.max(posMax, pos); negMin = Math.min(negMin, neg);
+    });
+    var pad = (posMax - negMin) * 0.06 || 0.05;
+
+    var roleDomain = ["Liabilities", "Equity"].concat(hasResidual ? ["Other / unmapped"] : []);
+    var roleRange = [t.ink, t.accent].concat(hasResidual ? [t.accentWash] : []);
+
+    var height = Math.max(260, opts.height || 320);
+    var marks = [
+      window.Plot.gridY({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.ruleY([1], { stroke: t.inkSoft, strokeOpacity: 0.6, strokeDasharray: "3,3" }), // 100% reference
+      window.Plot.barY(rows, {
+        x: "period", y: "pct", fill: "role", stroke: cssVar("--bg-page", "#fbf8f2"), strokeWidth: 0.75, rx: 1,
+        channels: { Segment: "role", Share: "pctText", Value: "valueText", Financing: "totalText" },
+        tip: { format: { x: true, y: false, fill: false, Segment: true, Share: true, Value: true, Financing: true } },
+      }),
+      window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.7 }),
+    ];
+    if (gaps.length) {
+      marks.push(window.Plot.text(gaps, {
+        x: "period", y: 0.5, text: function () { return "n/a"; },
+        fontFamily: t.fontMono, fontSize: 10, fill: t.inkSoft, fillOpacity: 0.6,
+      }));
+    }
+
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 46, marginRight: 14, marginTop: 28, marginBottom: 34,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: order, label: null },
+      y: { domain: [negMin - pad, posMax + pad], label: "% of financing", tickFormat: function (v) { return (v * 100).toFixed(0) + "%"; }, grid: false },
+      color: { domain: roleDomain, range: roleRange, legend: true },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    card.note(
+      "Each bar is one period's financing split — Liabilities vs Equity as a share of the reported " +
+      "total liabilities & equity. A period where equity is negative truthfully shows equity below " +
+      "the line and liabilities past 100% (never clamped); a year with missing totals is marked n/a, " +
+      "not drawn as an empty bar."
+    );
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
+  // The working-capital bridge: current assets extend right of a centred zero line, current
+  // liabilities left, each broken into its mapped components; the gap between the two ends is Net
+  // Working Capital. `wc` is the response's `working_capital`: { available, unavailable_reason,
+  // current_assets, current_liabilities, net_working_capital, asset_components[],
+  // liability_components[] }. A null component value is omitted (never a 0-width bar); the server's
+  // "Other / unmapped" residual closes each side to its reported total. NWC keeps its sign -- a
+  // deficit reads as a deficit. Returns a chartCard node, or an honest unavailable card.
+  function workingCapitalBridge(wc, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var card = chartCard(opts.title || "Working capital (current assets vs current liabilities)");
+
+    if (!wc || wc.available === false) {
+      var reason = (wc && wc.unavailable_reason) || "This period doesn't report the current totals needed.";
+      var pu = document.createElement("p");
+      pu.className = "state-copy";
+      pu.style.margin = "0";
+      pu.textContent = "Working capital unavailable — " + reason;
+      card.body.appendChild(pu);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+    if (!window.Plot) return card.root;
+
+    var t = plotTokens();
+    var ASSETS = "Current assets", LIABS = "Current liabilities";
+    // Components with a real value only (null stays omitted, never 0). Liabilities drawn negative.
+    var rows = [];
+    (wc.asset_components || []).forEach(function (c) {
+      if (c.value === null || c.value === undefined) return;
+      rows.push({ side: ASSETS, label: c.label, x: c.value, isResidual: c.kind === "residual", valueText: usd(c.value) });
+    });
+    (wc.liability_components || []).forEach(function (c) {
+      if (c.value === null || c.value === undefined) return;
+      rows.push({ side: LIABS, label: c.label, x: -c.value, isResidual: c.kind === "residual", valueText: usd(c.value) });
+    });
+
+    var ca = wc.current_assets, cl = wc.current_liabilities, nwc = wc.net_working_capital;
+    var bg = cssVar("--bg-page", "#fbf8f2");
+    var height = 168;
+    var marks = [
+      window.Plot.gridX({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.barX(rows, {
+        y: "side", x: "x", fill: function (d) { return d.isResidual ? t.accentWash : (d.side === ASSETS ? t.ink : t.accent); },
+        stroke: bg, strokeWidth: 0.75, rx: 1,
+        channels: { Line: "label", Value: "valueText" },
+        tip: { format: { x: false, y: false, Line: true, Value: true } },
+      }),
+      window.Plot.ruleX([0], { stroke: t.ink, strokeOpacity: 0.75 }),
+      // Reported totals at each bar's far end.
+      window.Plot.text([{ side: ASSETS, x: ca }], { y: "side", x: "x", text: function () { return usd(ca); }, textAnchor: "start", dx: 5, fontFamily: t.fontMono, fontSize: 10, fill: t.ink }),
+      window.Plot.text([{ side: LIABS, x: -cl }], { y: "side", x: "x", text: function () { return usd(cl); }, textAnchor: "end", dx: -5, fontFamily: t.fontMono, fontSize: 10, fill: t.ink }),
+    ];
+
+    var maxSpan = Math.max(ca, cl) * 1.18 || 1;
+    var plotNode = window.Plot.plot({
+      width: width, height: height,
+      marginLeft: 128, marginRight: 66, marginTop: 10, marginBottom: 30,
+      style: { fontFamily: t.fontMono, fontSize: 10, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: [-maxSpan, maxSpan], label: "← liabilities   ·   assets →", tickFormat: function (v) { return usd(Math.abs(v)); }, grid: false },
+      y: { domain: [ASSETS, LIABS], label: null },
+      marks: marks,
+    });
+    card.body.appendChild(plotNode);
+    var deficit = nwc < 0;
+    card.note(
+      "Net working capital = current assets − current liabilities = " +
+      (deficit ? MINUS : "") + usd(Math.abs(nwc)).replace(/^\(|\)$/g, "") +
+      (deficit
+        ? " — a deficit: current liabilities exceed current assets (common for retailers/tech with fast payables). Shown with its sign, not flipped."
+        : " — a cushion of current assets over current liabilities.") +
+      ' Dashed-wash "Other / unmapped" segments are the gap to the filer\'s reported current total, shown not hidden.'
+    );
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
+  // The Balance Matrix: two stacked columns -- Assets, and Liabilities & Equity -- each segment a
+  // reported leaf line, sized by value. `matrix` is the response's `matrix`: { available,
+  // unavailable_reason, assets{segments[],reported_total,...}, financing{...},
+  // reconciliation_delta, balanced, reconciliation_note }. The filer's TWO independently reported
+  // totals are shown and reconciled (a balanced tick, or an annotated delta) -- never forced by
+  // rescaling a column. A negative-equity segment stacks below 0 (Plot), truthfully. The
+  // "Other / unmapped" residual is accent-wash + dashed, distinct as computed-not-reported.
+  function balanceMatrix(matrix, opts) {
+    opts = opts || {};
+    var card = chartCard(opts.title || "Balance matrix (Assets = Liabilities + Equity)");
+
+    if (!matrix || matrix.available === false) {
+      var reason = (matrix && matrix.unavailable_reason) || "This period doesn't report the totals needed.";
+      var pu = document.createElement("p");
+      pu.className = "state-copy";
+      pu.style.margin = "0";
+      pu.textContent = "Balance matrix unavailable — " + reason;
+      card.body.appendChild(pu);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+
+    // A 2-column TABLE (not a chart): left "Assets", right "Liabilities & Equity". Each column
+    // lists its reported leaf lines, then the computed "Other / unmapped" residual as a DISTINCT
+    // row, then a bold TOTAL row = the side's reported total. Values use usd() so a negative
+    // (e.g. an accumulated-deficit equity) reads as ($X) -- signed, never abs()'d; a null line
+    // never appears (the server emits only present lines + the signed residual), never as 0.
+    function columnEl(side) {
+      var col = document.createElement("div");
+      col.className = "bmatrix-col";
+      var head = document.createElement("div");
+      head.className = "bmatrix-head";
+      head.textContent = side.label;
+      col.appendChild(head);
+
+      var rowsWrap = document.createElement("div");
+      rowsWrap.className = "bmatrix-rows";
+      (side.segments || []).forEach(function (s) {
+        var row = document.createElement("div");
+        row.className = "bmatrix-row" + (s.kind === "residual" ? " bmatrix-residual" : "");
+        var l = document.createElement("span");
+        l.className = "bmatrix-label";
+        l.textContent = s.label;
+        var v = document.createElement("span");
+        v.className = "bmatrix-val";
+        v.textContent = usd(s.value);
+        row.appendChild(l);
+        row.appendChild(v);
+        rowsWrap.appendChild(row);
+      });
+      // Bold total = the filer's INDEPENDENTLY reported total for this side (not the segment sum).
+      var total = document.createElement("div");
+      total.className = "bmatrix-row bmatrix-total";
+      var tl = document.createElement("span");
+      tl.className = "bmatrix-label";
+      tl.textContent = "Total " + side.label.toLowerCase();
+      var tv = document.createElement("span");
+      tv.className = "bmatrix-val";
+      tv.textContent = usd(side.reported_total);
+      total.appendChild(tl);
+      total.appendChild(tv);
+      rowsWrap.appendChild(total);
+
+      col.appendChild(rowsWrap);
+      return col;
+    }
+
+    var grid = document.createElement("div");
+    grid.className = "bmatrix";
+    grid.appendChild(columnEl(matrix.assets));
+    grid.appendChild(columnEl(matrix.financing));
+    card.body.appendChild(grid);
+
+    // Reconciliation: surfaced, never forced. Balanced -> a tick; otherwise the signed delta.
+    if (matrix.balanced) {
+      card.note("✓ Balances — the filer's two independently reported totals (total assets, total liabilities & equity) agree. \"Other / unmapped\" rows are the gap to lines we haven't mapped, shown not hidden.");
+    } else {
+      var d = matrix.reconciliation_delta;
+      card.note(
+        "⚠ Reported totals differ by " + (d < 0 ? MINUS : "") + usd(Math.abs(d)).replace(/^\(|\)$/g, "") +
+        " (total assets − total liabilities & equity). Shown as reported — neither column is rescaled to force a match."
+      );
+    }
+    if (matrix.reconciliation_note) card.note(matrix.reconciliation_note);
+    card.caption(opts.caption || "");
+    return card.root;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -3060,6 +3341,9 @@
     valueLineChart: valueLineChart,
     incomeBridge: incomeBridge,
     commonSizeChart: commonSizeChart,
+    capitalStructureTrend: capitalStructureTrend,
+    workingCapitalBridge: workingCapitalBridge,
+    balanceMatrix: balanceMatrix,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,

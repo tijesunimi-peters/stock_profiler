@@ -28,6 +28,13 @@ built through the normal cache-aside path.
 from __future__ import annotations
 
 from secfin.normalize.schema import (
+    BalanceMatrix,
+    BalanceMatrixSegment,
+    BalanceMatrixSide,
+    BalanceSheetViz,
+    CapitalStructurePeriod,
+    CapitalStructureSegment,
+    CapitalStructureSeries,
     CommonSize,
     CommonSizeLine,
     IncomeBridge,
@@ -35,6 +42,8 @@ from secfin.normalize.schema import (
     IncomeStatementViz,
     Statement,
     StatementLine,
+    WorkingCapitalBridge,
+    WorkingCapitalComponent,
 )
 
 # The reported subtotals the bridge hangs on, in canonical (top-to-bottom) order.
@@ -311,4 +320,413 @@ def income_viz(stmt: Statement) -> IncomeStatementViz:
         bridge=_build_bridge(stmt),
         common_size=_build_common_size(stmt),
         caveats=INCOME_VIZ_CAVEATS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Balance-sheet visualizations (Balance Matrix, Working-Capital bridge,
+# Capital-Structure trend). Same honesty invariants as the income viz above:
+# a null line stays null (never 0); any gap between the mapped leaf lines and a
+# reported total is ONE explicit, labeled residual (never a plug); the two
+# independently reported totals (total_assets vs liabilities_and_equity) are
+# reconciled and shown, never forced; equity stays SIGNED.
+# ---------------------------------------------------------------------------
+
+_BALANCE_RESIDUAL_LABEL = "Other / unmapped"
+
+# Matrix asset column -- leaf, NET concepts only, in canonical statement order. The
+# standalone contra concepts (allowance_for_doubtful_accounts, accumulated_depreciation,
+# ppe_gross) are deliberately EXCLUDED: the net leaves (ppe_net, accounts_receivable =
+# AccountsReceivableNetCurrent) already embed them, so including the contras would
+# double-subtract. Subtotals (total_current_assets, assets_noncurrent) are excluded too --
+# they feed reported_total + the residual, never a segment (would double-count).
+_MATRIX_ASSET_CONCEPTS: list[str] = [
+    "cash_and_equivalents",
+    "marketable_securities_current",
+    "accounts_receivable",
+    "inventory",
+    "prepaid_expenses",
+    "other_assets_current",
+    "ppe_net",
+    "operating_lease_right_of_use_asset",
+    "goodwill",
+    "intangible_assets",
+    "marketable_securities_noncurrent",
+    "other_assets_noncurrent",
+]
+
+# Matrix financing column -- leaf liability lines (equity is added separately as one block).
+_MATRIX_LIABILITY_CONCEPTS: list[str] = [
+    "accounts_payable",
+    "accrued_liabilities",
+    "accounts_payable_and_accrued_liabilities",
+    "debt_current",
+    "deferred_revenue_current",
+    "operating_lease_liabilities_current",
+    "other_liabilities_current",
+    "long_term_debt",
+    "deferred_revenue",
+    "operating_lease_liabilities_noncurrent",
+    "other_liabilities_noncurrent",
+]
+
+_MATRIX_EQUITY_CONCEPT = "stockholders_equity"
+
+# Working-capital bridge -- the current-scoped leaf subsets of the above.
+_CURRENT_ASSET_CONCEPTS: list[str] = [
+    "cash_and_equivalents",
+    "marketable_securities_current",
+    "accounts_receivable",
+    "inventory",
+    "prepaid_expenses",
+    "other_assets_current",
+]
+_CURRENT_LIABILITY_CONCEPTS: list[str] = [
+    "accounts_payable",
+    "accrued_liabilities",
+    "accounts_payable_and_accrued_liabilities",
+    "debt_current",
+    "deferred_revenue_current",
+    "operating_lease_liabilities_current",
+    "other_liabilities_current",
+]
+
+# When total_assets and reported liabilities_and_equity disagree by more than this, the
+# matrix flags it as a genuine discrepancy (annotated) rather than "balances". Dollar-exact
+# normally (both from the same filing, same unit); the relative guard covers rounding on a
+# large sheet.
+_RECON_REL_TOLERANCE = 0.005
+
+BALANCE_VIZ_CAVEATS: list[str] = [
+    "Sourced from SEC EDGAR filings -- subject to normal filing lag (a 10-K posts "
+    "~45-90 days after period end).",
+    "Derived presentation view: the same normalized values as /statements/balance, "
+    "re-shaped for visualization. Not a new measurement.",
+    "A balance sheet is an instant snapshot -- the reported position as of the period "
+    "end, not a flow over the period.",
+    "Any gap between the mapped lines and the filer's reported total is shown as an "
+    f'explicit "{_BALANCE_RESIDUAL_LABEL}" block, not hidden. A large such block usually '
+    "means a reporting line we have not yet mapped, not a real economic bucket.",
+    "The Assets = Liabilities + Equity check compares the filer's two independently "
+    "reported totals; any discrepancy is annotated, never forced by rescaling a column.",
+]
+
+
+def _value(line: StatementLine | None) -> float | None:
+    """The line's value as a float, or None when the line is absent/null. Never 0 for a
+    missing line -- absence stays absence."""
+    if not _has_value(line):
+        return None
+    return float(line.value)  # type: ignore[union-attr,arg-type]
+
+
+def _matrix_side(
+    label: str,
+    concepts: list[str],
+    by_concept: dict[str, StatementLine],
+    reported_total: float,
+    reported_total_concept: str,
+    extra_segments: list[BalanceMatrixSegment] | None = None,
+) -> BalanceMatrixSide:
+    """Build one matrix column: a `line` segment per present leaf concept (plus any
+    `extra_segments`, e.g. the equity block), then one `residual` = reported_total - sum
+    of the segments when it exceeds the epsilon. The residual is the ONLY balancing term."""
+    segments: list[BalanceMatrixSegment] = []
+    covered = 0.0
+    for concept in concepts:
+        line = by_concept.get(concept)
+        v = _value(line)
+        if v is None:
+            continue
+        covered += v
+        segments.append(
+            BalanceMatrixSegment(
+                kind="line",
+                canonical_concept=concept,
+                label=line.label,  # type: ignore[union-attr]
+                value=line.value,  # type: ignore[union-attr]
+                unit=line.unit,  # type: ignore[union-attr]
+                source_tag=line.source_tag,  # type: ignore[union-attr]
+                is_extension=line.is_extension,  # type: ignore[union-attr]
+            )
+        )
+    for seg in extra_segments or []:
+        covered += float(seg.value)
+        segments.append(seg)
+
+    residual = reported_total - covered
+    if abs(residual) >= _RESIDUAL_EPSILON:
+        segments.append(
+            BalanceMatrixSegment(
+                kind="residual",
+                canonical_concept=None,
+                label=_BALANCE_RESIDUAL_LABEL,
+                value=residual,
+                unit="USD",
+                source_tag=None,
+                is_extension=None,
+            )
+        )
+    return BalanceMatrixSide(
+        label=label,
+        segments=segments,
+        reported_total=reported_total,
+        reported_total_concept=reported_total_concept,
+    )
+
+
+def _financing_total(by_concept: dict[str, StatementLine]) -> tuple[float | None, str | None]:
+    """The reported financing total: the filer's own LiabilitiesAndStockholdersEquity when
+    present, else the sum of reported total_liabilities + stockholders_equity (both must be
+    present -- reported liabilities + reported equity, not a plug). Returns (value, concept)
+    or (None, None) when neither is derivable."""
+    le = _value(by_concept.get("liabilities_and_equity"))
+    if le is not None:
+        return le, "liabilities_and_equity"
+    liabilities = _value(by_concept.get("total_liabilities"))
+    equity = _value(by_concept.get(_MATRIX_EQUITY_CONCEPT))
+    if liabilities is not None and equity is not None:
+        return liabilities + equity, "derived"
+    return None, None
+
+
+def _build_matrix(stmt: Statement) -> BalanceMatrix:
+    by_concept = _lines_by_concept(stmt)
+
+    total_assets = _value(by_concept.get("total_assets"))
+    if total_assets is None:
+        return BalanceMatrix(
+            available=False,
+            unavailable_reason="No reported total assets for this period.",
+        )
+
+    le, le_concept = _financing_total(by_concept)
+    if le is None:
+        return BalanceMatrix(
+            available=False,
+            unavailable_reason=(
+                "No reported total liabilities & equity for this period (and no "
+                "reported liabilities + equity to derive it from)."
+            ),
+        )
+
+    assets_side = _matrix_side(
+        "Assets", _MATRIX_ASSET_CONCEPTS, by_concept, total_assets, "total_assets"
+    )
+
+    equity_line = by_concept.get(_MATRIX_EQUITY_CONCEPT)
+    equity_segments: list[BalanceMatrixSegment] = []
+    if _has_value(equity_line):
+        equity_segments.append(
+            BalanceMatrixSegment(
+                kind="line",
+                canonical_concept=_MATRIX_EQUITY_CONCEPT,
+                label=equity_line.label,  # type: ignore[union-attr]
+                value=equity_line.value,  # type: ignore[union-attr]
+                unit=equity_line.unit,  # type: ignore[union-attr]
+                source_tag=equity_line.source_tag,  # type: ignore[union-attr]
+                is_extension=equity_line.is_extension,  # type: ignore[union-attr]
+            )
+        )
+    financing_side = _matrix_side(
+        "Liabilities & Equity",
+        _MATRIX_LIABILITY_CONCEPTS,
+        by_concept,
+        le,
+        le_concept,
+        extra_segments=equity_segments,
+    )
+
+    delta = total_assets - le
+    tolerance = max(_RESIDUAL_EPSILON, _RECON_REL_TOLERANCE * abs(total_assets))
+    balanced = abs(delta) <= tolerance
+    note = None
+    if le_concept == "derived":
+        note = "Reconciled against reported total liabilities + stockholders' equity (the filer did not tag a combined total)."
+
+    return BalanceMatrix(
+        available=True,
+        assets=assets_side,
+        financing=financing_side,
+        reconciliation_delta=delta,
+        balanced=balanced,
+        reconciliation_note=note,
+    )
+
+
+def _wc_components(
+    concepts: list[str], by_concept: dict[str, StatementLine], reported_total: float
+) -> list[WorkingCapitalComponent]:
+    """The current-asset (or -liability) component breakdown for the working-capital
+    bridge: one `line` per present concept (a null value stays null, never 0), then a
+    `residual` to the reported current total."""
+    components: list[WorkingCapitalComponent] = []
+    covered = 0.0
+    for concept in concepts:
+        line = by_concept.get(concept)
+        if line is None:
+            continue  # concept not on this filing at all
+        v = _value(line)
+        if v is not None:
+            covered += v
+        components.append(
+            WorkingCapitalComponent(
+                kind="line",
+                canonical_concept=concept,
+                label=line.label,
+                value=line.value,  # None stays None
+                source_tag=line.source_tag,
+                is_extension=line.is_extension,
+            )
+        )
+    residual = reported_total - covered
+    if abs(residual) >= _RESIDUAL_EPSILON:
+        components.append(
+            WorkingCapitalComponent(
+                kind="residual",
+                canonical_concept=None,
+                label=_BALANCE_RESIDUAL_LABEL,
+                value=residual,
+                source_tag=None,
+                is_extension=None,
+            )
+        )
+    return components
+
+
+def _build_working_capital(stmt: Statement) -> WorkingCapitalBridge:
+    by_concept = _lines_by_concept(stmt)
+    ca_line = by_concept.get("total_current_assets")
+    cl_line = by_concept.get("total_current_liabilities")
+    ca = _value(ca_line)
+    cl = _value(cl_line)
+
+    if ca is None or cl is None:
+        missing = []
+        if ca is None:
+            missing.append("total current assets")
+        if cl is None:
+            missing.append("total current liabilities")
+        return WorkingCapitalBridge(
+            available=False,
+            unavailable_reason=f"No reported {' and '.join(missing)} for this period.",
+        )
+
+    unit = ca_line.unit if ca_line is not None else "USD"  # type: ignore[union-attr]
+    return WorkingCapitalBridge(
+        available=True,
+        current_assets=ca_line.value,  # type: ignore[union-attr]
+        current_liabilities=cl_line.value,  # type: ignore[union-attr]
+        net_working_capital=ca - cl,
+        unit=unit,
+        asset_components=_wc_components(_CURRENT_ASSET_CONCEPTS, by_concept, ca),
+        liability_components=_wc_components(_CURRENT_LIABILITY_CONCEPTS, by_concept, cl),
+    )
+
+
+def balance_viz(stmt: Statement) -> BalanceSheetViz:
+    """Derive the Balance Matrix and Working-Capital bridge from a balance sheet.
+
+    `stmt` must be a balance sheet (built via build_statement with statement="balance").
+    Carries through the statement's period metadata; adds the shared source/lag caveats.
+    """
+    return BalanceSheetViz(
+        cik=stmt.cik,
+        fiscal_year=stmt.fiscal_year,
+        fiscal_period=stmt.fiscal_period,
+        period_start=stmt.period_start,
+        period_end=stmt.period_end,
+        form=stmt.form,
+        filed=stmt.filed,
+        accession=stmt.accession,
+        matrix=_build_matrix(stmt),
+        working_capital=_build_working_capital(stmt),
+        caveats=BALANCE_VIZ_CAVEATS,
+    )
+
+
+def _capital_structure_period(stmt: Statement) -> CapitalStructurePeriod:
+    by_concept = _lines_by_concept(stmt)
+    le, _le_concept = _financing_total(by_concept)
+    equity = _value(by_concept.get(_MATRIX_EQUITY_CONCEPT))
+    reported_liab = _value(by_concept.get("total_liabilities"))
+    reported_le = _value(by_concept.get("liabilities_and_equity"))
+
+    # Required: a financing total to normalize against, plus the equity segment. The
+    # liabilities segment is the reported aggregate when present, else derived from the
+    # two OTHER reported totals (reported LE - reported equity -- an accounting identity
+    # between two reported numbers, not a plug). Many large filers (e.g. WMT) never tag
+    # the aggregate `Liabilities` at all, so requiring it would make the whole trend a
+    # wall of gaps for them. Missing a genuinely required input -> an explicit gap, never
+    # a drawn 0%/100% bar.
+    if reported_liab is not None:
+        liabilities = reported_liab
+    elif reported_le is not None and equity is not None:
+        liabilities = reported_le - equity
+    else:
+        liabilities = None
+
+    if le is None or le == 0.0 or equity is None or liabilities is None:
+        if le is None:
+            reason = "No reported total liabilities & equity for this period."
+        elif le == 0.0:
+            reason = "Reported total liabilities & equity is zero -- no base to normalize."
+        elif equity is None:
+            reason = "No reported stockholders' equity for this period."
+        else:
+            reason = "No reported (or derivable) total liabilities for this period."
+        return CapitalStructurePeriod(
+            fiscal_year=stmt.fiscal_year,
+            fiscal_period=stmt.fiscal_period,
+            period_end=stmt.period_end,
+            available=False,
+            unavailable_reason=reason,
+        )
+
+    equity_line = by_concept[_MATRIX_EQUITY_CONCEPT]
+    liab_line = by_concept.get("total_liabilities")
+    liab_label = liab_line.label if liab_line is not None else "Total Liabilities"
+    segments = [
+        CapitalStructureSegment(
+            kind="liabilities", label=liab_label, value=liabilities, pct=liabilities / le
+        ),
+        CapitalStructureSegment(
+            kind="equity", label=equity_line.label, value=equity_line.value, pct=equity / le
+        ),
+    ]
+    residual = le - (liabilities + equity)
+    if abs(residual) >= _RESIDUAL_EPSILON:
+        segments.append(
+            CapitalStructureSegment(
+                kind="residual",
+                label=_BALANCE_RESIDUAL_LABEL,
+                value=residual,
+                pct=residual / le,
+            )
+        )
+    return CapitalStructurePeriod(
+        fiscal_year=stmt.fiscal_year,
+        fiscal_period=stmt.fiscal_period,
+        period_end=stmt.period_end,
+        available=True,
+        financing_total=le,
+        segments=segments,
+    )
+
+
+def capital_structure_series(statements: list[Statement]) -> CapitalStructureSeries:
+    """Derive the Capital-Structure trend from a sequence of balance sheets (any order in;
+    emitted oldest -> newest). Two-way Liabilities-vs-Equity split normalized to each
+    period's reported financing total. Percentages are NOT clamped -- a negative-equity
+    period truthfully shows equity < 0 and liabilities > 100%. Periods missing a required
+    total are carried as explicit gaps."""
+    ordered = sorted(statements, key=lambda s: (s.period_end or "", s.fiscal_year))
+    periods = [_capital_structure_period(s) for s in ordered]
+    cik = statements[0].cik if statements else 0
+    fp = statements[0].fiscal_period if statements else "FY"
+    return CapitalStructureSeries(
+        cik=cik,
+        fiscal_period=fp,
+        periods=periods,
+        caveats=BALANCE_VIZ_CAVEATS,
     )

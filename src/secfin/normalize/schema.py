@@ -179,6 +179,139 @@ class IncomeStatementViz(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+# --- Balance-sheet visualization shapes (see normalize/viz.py) ---
+# Three derived presentation views over a canonical balance sheet: the Balance Matrix
+# (Assets vs Liabilities+Equity, with the filer's two independently reported totals
+# reconciled, never forced), the Working-Capital bridge, and -- across periods -- the
+# Capital-Structure trend. Same honesty invariants as the income viz: a null line stays
+# null (never 0), any gap between mapped lines and a reported total is one explicit,
+# labeled "Other / unmapped" residual (never a fudged plug), and equity is kept SIGNED
+# (a negative/accumulated-deficit equity is real, never abs()'d).
+
+
+class BalanceMatrixSegment(BaseModel):
+    """One block of a Balance-Matrix column. `value` is SIGNED (equity may be negative,
+    and so may a residual). A `residual` block is the labeled "Other / unmapped" gap
+    between the mapped leaf lines and the side's reported total -- computed, so no source
+    line."""
+
+    kind: Literal["line", "residual"]
+    canonical_concept: str | None = None  # None for residual
+    label: str
+    value: float | int  # SIGNED reported value (never coerced/abs'd)
+    unit: str
+    source_tag: str | None = None  # provenance for lines; None for residual
+    is_extension: bool | None = None
+
+
+class BalanceMatrixSide(BaseModel):
+    """One column of the Balance Matrix -- Assets, or Liabilities & Equity. Segments are
+    leaf lines only (subtotals feed `reported_total` + the residual, never stacked as
+    their own segment, which would double-count)."""
+
+    label: str  # "Assets" | "Liabilities & Equity"
+    segments: list[BalanceMatrixSegment] = Field(default_factory=list)
+    reported_total: float | int | None = None  # total_assets / LE (signed)
+    reported_total_concept: str | None = None  # "total_assets" | "liabilities_and_equity" | "derived"
+
+
+class BalanceMatrix(BaseModel):
+    """Assets vs Liabilities+Equity for one period, or an explicit unavailable state when
+    a required reported total is missing. The reconciliation between the filer's two
+    independently reported totals (total_assets vs liabilities_and_equity) is SURFACED via
+    `reconciliation_delta`/`balanced` -- never forced by rescaling a column."""
+
+    available: bool
+    unavailable_reason: str | None = None
+    assets: BalanceMatrixSide | None = None
+    financing: BalanceMatrixSide | None = None
+    reconciliation_delta: float | int | None = None  # total_assets - LE, SIGNED
+    balanced: bool | None = None
+    reconciliation_note: str | None = None  # e.g. "reconciled against derived L+E sum"
+
+
+class WorkingCapitalComponent(BaseModel):
+    """One current-asset or current-liability line inside the working-capital bridge. A
+    null `value` stays null (never 0). A `residual` block is the labeled "Other / unmapped"
+    gap between the mapped current leaves and the reported current total."""
+
+    kind: Literal["line", "residual"]
+    canonical_concept: str | None = None
+    label: str
+    value: float | int | None  # None = N/A (never coerced to 0); residual signed
+    source_tag: str | None = None
+    is_extension: bool | None = None
+
+
+class WorkingCapitalBridge(BaseModel):
+    """Net working capital (current assets vs current liabilities) for one period, or an
+    explicit unavailable state when a reported current total is missing -- never a
+    fabricated total summed from components."""
+
+    available: bool
+    unavailable_reason: str | None = None
+    current_assets: float | int | None = None
+    current_liabilities: float | int | None = None
+    net_working_capital: float | int | None = None  # CA - CL, SIGNED
+    unit: str | None = None
+    asset_components: list[WorkingCapitalComponent] = Field(default_factory=list)
+    liability_components: list[WorkingCapitalComponent] = Field(default_factory=list)
+
+
+class BalanceSheetViz(BaseModel):
+    """Derived presentation views over a balance sheet for one period: the Balance Matrix
+    and the Working-Capital bridge. Same normalized values as /statements/balance,
+    re-shaped for visualization -- not a new measurement. See normalize/viz.py."""
+
+    cik: int
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_start: str | None = None
+    period_end: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+    matrix: BalanceMatrix
+    working_capital: WorkingCapitalBridge
+    caveats: list[str] = Field(default_factory=list)
+
+
+class CapitalStructureSegment(BaseModel):
+    """One segment of a period's 100% financing bar. `pct` is `value / financing_total`
+    and is NOT clamped: a filer with negative equity legitimately shows equity `pct` < 0
+    and liabilities `pct` > 1. Equity is kept signed."""
+
+    kind: Literal["liabilities", "equity", "residual"]
+    label: str
+    value: float | int  # SIGNED
+    pct: float  # value / financing_total (may be >1 or <0 -- both are real, never clamped)
+
+
+class CapitalStructurePeriod(BaseModel):
+    """One period's financing mix (Liabilities vs Equity, normalized to the reported
+    financing total), or an explicit gap state when a required total is missing -- never a
+    drawn 0%/100% bar for a period we can't chart."""
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str | None = None
+    available: bool
+    unavailable_reason: str | None = None
+    financing_total: float | int | None = None  # LE (reported or derived)
+    segments: list[CapitalStructureSegment] = Field(default_factory=list)
+
+
+class CapitalStructureSeries(BaseModel):
+    """The Capital-Structure trend: a company's financing mix across recent periods,
+    oldest->newest. Periods missing a required total are carried as explicit gaps, not
+    omitted silently. See normalize/viz.py."""
+
+    cik: int
+    fiscal_period: FiscalPeriod  # the period type of the series (FY for v1)
+    periods: list[CapitalStructurePeriod] = Field(default_factory=list)  # oldest -> newest
+    caveats: list[str] = Field(default_factory=list)
+
+
 class InsiderTransaction(BaseModel):
     """One insider transaction (from Forms 3/4/5). See sec/insider.py."""
 
