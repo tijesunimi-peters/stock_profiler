@@ -261,6 +261,13 @@ ruff check . && ruff format .
 
 # bulk backfill (downloads SEC companyfacts.zip/submissions.zip, parses with a
 # multiprocessing pool, writes to SQLite via a single writer process)
+# REQUIRED for full market-wide concept coverage: this is the ONLY path that ingests the
+# full ~500-tag payload per company. A volume seeded only by frames_backfill (6 headline
+# concepts) + daily incremental is headline-concepts-only -- the granular balance-sheet/income
+# concepts (AssetsCurrent, LiabilitiesCurrent, LongTermDebt, InventoryNet, InterestExpense,
+# OperatingIncomeLoss) that the sector liquidity/solvency spreads + lifecycle metrics need stay
+# near-empty until this runs. (Root-caused + re-ingested 2026-07-21; see ROADMAP_SECTOR_ANALYTICS
+# #3.) Whole-market run ~= 20k companies / 120M+ facts; grows raw_facts a lot -- size the volume.
 python -m secfin.ingest.backfill
 
 # daily incremental (companies that filed 10-K/10-Q recently, via the throttled SECClient)

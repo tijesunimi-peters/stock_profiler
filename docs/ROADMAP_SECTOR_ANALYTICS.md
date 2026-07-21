@@ -134,6 +134,25 @@ render check + `pytest` green.
   granular balance-sheet/income concept coverage** — why current-asset/liability/debt/operating-
   income concepts are near-absent in the whole-market ingest, and a re-ingest to light up the L/S
   spreads.
+  - **RESOLVED** 2026-07-21 (`granular-concept-coverage`). **Root cause was operational, not a
+    parse bug:** the flatten path (`sec/companyfacts.py`) captures every tag, but the **per-company
+    bulk companyfacts backfill** (`ingest/backfill.py`, `source=bulk_companyfacts`) — the only path
+    that ingests the full ~500-tag payload per company — **had never been run** on the volume (0
+    `bulk_companyfacts` checkpoints). The market-wide breadth came solely from `frames_backfill`,
+    whose `SCREENABLE_CONCEPTS` is 6 headline concepts (revenue/net_income/total_assets/
+    total_liabilities/stockholders_equity/cash), so granular concepts stayed at tens of CIKs.
+    **Fix (operator chose the full backfill over a lighter frames-concept extension):** ran
+    `secfin.ingest.backfill` whole-market (20,072 companies, 121M facts), then re-ran
+    `metrics_backfill → peer_ranks → peer_distribution`. The `raw_facts` UNIQUE-key COALESCE upsert
+    (added 2026-07-16) merged companyfacts fiscal metadata into the existing frames rows
+    non-destructively (screening `frame` values preserved). **Coverage lift (distinct CIKs):**
+    AssetsCurrent 68→13,177, LiabilitiesCurrent 67→13,138, LongTermDebt 34→7,200, InventoryNet
+    38→6,943, InterestExpense 49→10,954, OperatingIncomeLoss 64→13,097. The four L/S spread metrics
+    now return boxes at parity with `net_margin` (current_ratio/quick_ratio 19, debt_to_equity 11,
+    interest_coverage 12 — up from 0–1). **Note:** a fresh volume seeded only by frames/incremental
+    is headline-concepts-only; **full market coverage requires the bulk companyfacts backfill.**
+    Verified on a scratch hydrated copy; the **prod-volume re-ingest is a deferred DevOps step**
+    (size the prod volume for the larger `raw_facts` first — see below).
 - **#4** 100% common-size DNA — sector-aggregate path; resolve CapEx (cash-flow) mixing.
 - **#2** OCF-vs-NI scatter — sector-aggregate; bubble viz.
 - **#5** DIO/DSO/DPO lifecycle — add `dio` + `dpo` metrics; multi-line time-series; **cut the alpha
