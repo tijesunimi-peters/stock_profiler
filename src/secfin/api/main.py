@@ -42,6 +42,7 @@ from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankReposit
 from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRepository
+from secfin.storage.sqlite_sector_lifecycle_repository import SQLiteSectorLifecycleRepository
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -147,6 +148,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # metric_rank_repo above, same read-only-on-the-serving-path shape; analytical/sector_dupont.py
     # is the sole writer, so the live API never touches DuckDB. See routes.get_sector_dupont_repo.
     app.state.sector_dupont_repo = SQLiteSectorDupontRepository(settings.secfin_db_path)
+    # Precomputed aggregate asset-lifecycle days-metrics (Sector Analytics D5) -- same
+    # read-only-on-the-serving-path shape; analytical/sector_lifecycle.py is the sole writer, so
+    # the live API never touches DuckDB. See routes.get_sector_lifecycle_repo.
+    app.state.sector_lifecycle_repo = SQLiteSectorLifecycleRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -161,6 +166,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.metric_value_repo.close()
         app.state.company_profile_repo.close()
         app.state.sector_dupont_repo.close()
+        app.state.sector_lifecycle_repo.close()
 
 
 app = FastAPI(

@@ -848,6 +848,9 @@ they mirror the structural mapping limitations already documented above (banks, 
 | equity_multiplier | ok | ok | ok |
 | inventory_turnover | ok | ok | na |
 | dso | ok | ok | na |
+| dio | ok | ok | na |
+| dpo | ok | ok | na |
+| ccc | ok | ok | na |
 | eps_basic / eps_diluted | ok | ok | ok |
 | book_value_per_share | ok | na⁴ | ok |
 | fcf_per_share / share_count | ok | ok | ok |
@@ -891,6 +894,45 @@ from the `sector_dupont` table** by `GET /v1/sectors` and `GET /v1/sectors/{grou
 aggregation** (guardrails 6/7). Caveats: SIC is coarse/dated; fiscal periods are aggregated by label
 (not calendar-aligned across companies); ~quarter reporting lag; labelled "sector aggregate — not a
 median" wherever shown.
+
+### Asset-lifecycle metrics & sector trend (Sector Analytics, Deliverable 5)
+
+Three days-metrics describe how a company's cash moves through working capital, all on the same
+period-end-anchored TTM-flow / average-balance basis as `dso` (`days` unit, TTM basis):
+
+```
+dio = avg(inventory)            / cost_of_revenue × 365   (Days Inventory Outstanding)
+dpo = avg(accounts_payable)     / cost_of_revenue × 365   (Days Payable Outstanding)
+ccc = dio + dso − dpo                                     (Cash Conversion Cycle)
+```
+
+Each is `approximate` when its average falls back to the ending balance because no prior-period
+balance is reported (R3, reused `_INEXACT_AVG_REASON`), and `na` when an input is unreported or the
+denominator is ≈0 (never `0`). **`ccc` propagates N/A: if any of DIO/DSO/DPO is unavailable the
+cycle is `na`, never computed treating the missing leg as `0`** (which would fabricate a shorter or
+longer cycle). CCC can legitimately be **negative** (payables outlast inventory + receivables). No
+new canonical concept: `inventory`, `accounts_payable`, `cost_of_revenue`, `accounts_receivable`
+and `revenue` are all already mapped.
+
+**Sector aggregate = a ratio of summed dollars, not a median** (same discipline as the DuPont
+aggregate). Per `(SIC group, period)`:
+
+```
+dio = ΣInventory/ΣCostOfRevenue × 365   dpo = ΣPayables/ΣCostOfRevenue × 365
+dso = ΣReceivables/ΣRevenue × 365       ccc = dio + dso − dpo
+```
+
+A company enters a group's sums **only when all five legs are present** for that period (the
+shared-membership rule — a company N/A on any leg is excluded, never counted as `0`), so the sums
+share one company set and `ccc = dio + dso − dpo` holds by construction. Groups below
+`settings.secfin_peer_min_size` are dropped; the `approximate` flag is carried up (a point is
+flagged when any contributing company used a period-end balance). Materialized offline (per-company
+legs in `lifecycle_components` via `ingest/lifecycle_backfill.py`, then summed in DuckDB by
+`analytical/sector_lifecycle.py`) and served **cache-aside from the `sector_lifecycle` table** by
+`GET /v1/sectors/{group}/lifecycle` (FY-only series) — **never a live aggregation** (guardrails
+6/7). This is a **descriptive** read of a sector's working-capital structure — **not** a timing
+signal, edge, or alpha claim. Same SIC-coarse / label-aggregated / ~quarter-lag caveats as the
+DuPont aggregate, labelled "sector aggregate — not a median."
 
 ### Metric history & trend signals (Phase 1b)
 

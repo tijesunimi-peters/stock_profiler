@@ -48,6 +48,9 @@ const PAGES = process.env.PAGES
       // box chart on a liquidity/solvency metric (?metric=).
       ["sectors", "/sectors"],
       ["sectors-expanded", "/sectors?group=60&range=5y"],
+      // A working-capital sector expanded to the DIO/DSO/DPO/CCC lifecycle trend -- group 73
+      // (services) has a NEGATIVE CCC, and the "all" range shows the ~ approximate affordance.
+      ["sectors-lifecycle", "/sectors?group=73&range=all"],
       ["sectors-spreads", "/sectors?metric=debt_to_equity"],
       // Long-tailed metric -> exercises the honest whisker-clipping path (▸ markers + caption).
       ["sectors-spreads-clip", "/sectors?metric=interest_coverage"],

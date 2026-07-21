@@ -653,6 +653,53 @@ def _dso(ctx: _Ctx) -> MetricValue:
     return ctx.ok("dso", label, value, unit, basis)
 
 
+def _dio(ctx: _Ctx) -> MetricValue:
+    label, unit, basis = "Days Inventory Outstanding", "days", "TTM"
+    avg, exact = ctx.avg("inventory")
+    cogs = ctx.ttm("cost_of_revenue")
+    if avg is None or cogs is None:
+        return ctx.na("dio", label, unit, basis, "inventory or cost of revenue not reported")
+    if abs(cogs) < _NEAR_ZERO:
+        return ctx.na("dio", label, unit, basis, "cost of revenue is zero/near-zero")
+    value = avg / cogs * 365.0
+    if not exact:
+        return ctx.approx("dio", label, value, unit, basis, _INEXACT_AVG_REASON)
+    return ctx.ok("dio", label, value, unit, basis)
+
+
+def _dpo(ctx: _Ctx) -> MetricValue:
+    label, unit, basis = "Days Payable Outstanding", "days", "TTM"
+    avg, exact = ctx.avg("accounts_payable")
+    cogs = ctx.ttm("cost_of_revenue")
+    if avg is None or cogs is None:
+        return ctx.na("dpo", label, unit, basis, "payables or cost of revenue not reported")
+    if abs(cogs) < _NEAR_ZERO:
+        return ctx.na("dpo", label, unit, basis, "cost of revenue is zero/near-zero")
+    value = avg / cogs * 365.0
+    if not exact:
+        return ctx.approx("dpo", label, value, unit, basis, _INEXACT_AVG_REASON)
+    return ctx.ok("dpo", label, value, unit, basis)
+
+
+def _ccc(ctx: _Ctx) -> MetricValue:
+    """Cash Conversion Cycle = DIO + DSO - DPO, composed from the three days-metrics.
+
+    A DESCRIPTIVE working-capital-structure figure (how long cash sits in inventory + receivables
+    vs. how long suppliers finance it), NOT a timing signal. N/A propagates: if ANY leg is not a
+    usable value the whole cycle is N/A -- a missing leg is never treated as zero (which would
+    fabricate a shorter or longer cycle). `approximate` if any leg used a period-end balance.
+    CCC can legitimately be negative (payables outlast inventory + receivables)."""
+    label, unit, basis = "Cash Conversion Cycle", "days", "TTM"
+    dio, dso, dpo = _dio(ctx), _dso(ctx), _dpo(ctx)
+    for leg, name in ((dio, "DIO"), (dso, "DSO"), (dpo, "DPO")):
+        if leg.value is None:  # na or nm on any leg -> no honest cycle
+            return ctx.na("ccc", label, unit, basis, f"{name} is not available for this period")
+    value = dio.value + dso.value - dpo.value
+    if "approximate" in (dio.status, dso.status, dpo.status):
+        return ctx.approx("ccc", label, value, unit, basis, _INEXACT_AVG_REASON)
+    return ctx.ok("ccc", label, value, unit, basis)
+
+
 def _eps_basic(ctx: _Ctx) -> MetricValue:
     return _reported_per_share(ctx, "eps_basic", "EPS (Basic)")
 
@@ -756,6 +803,9 @@ _METRICS = [
     ("equity_multiplier", _equity_multiplier),
     ("inventory_turnover", _inventory_turnover),
     ("dso", _dso),
+    ("dio", _dio),
+    ("dpo", _dpo),
+    ("ccc", _ccc),
     ("eps_basic", _eps_basic),
     ("eps_diluted", _eps_diluted),
     ("book_value_per_share", _book_value_per_share),
@@ -855,6 +905,57 @@ def dupont_components(
         avg_equity=equity,
         period_end=anchor.end,
         approximate=not (a_exact and e_exact),
+    )
+
+
+class LifecycleComponents(NamedTuple):
+    """The five asset-lifecycle dollar inputs for one company + period, on the same bases the
+    per-company dio/dso/dpo metrics use. The raw ingredients the sector-aggregate batch
+    (`analytical/sector_lifecycle.py`) sums per SIC group into DIO/DSO/DPO/CCC."""
+
+    inventory: float  # average inventory over the TTM window
+    accounts_payable: float  # average accounts payable over the TTM window
+    accounts_receivable: float  # average accounts receivable over the TTM window
+    cost_of_revenue: float  # TTM cost of revenue (DIO/DPO denominator)
+    revenue: float  # TTM revenue (DSO denominator)
+    period_end: str
+    approximate: bool  # an average fell back to the ending balance (no prior-period balance)
+
+
+def lifecycle_components(
+    facts: list[RawFact], cik: int, fiscal_year: int, fiscal_period: FiscalPeriod
+) -> LifecycleComponents | None:
+    """The asset-lifecycle inputs for one company + period, or None when the company can't enter
+    the sector aggregate for that period.
+
+    Returns None unless ALL FIVE legs -- average inventory, payables and receivables plus TTM cost
+    of revenue and revenue -- are present and no denominator is degenerate. The all-legs
+    shared-membership rule (mirrors `dupont_components`): a company missing any leg is excluded from
+    the aggregate, never zero-filled, so DIO/DSO/DPO are summed over ONE consistent company set and
+    the aggregate CCC = DIO + DSO - DPO holds by construction. Reuses the metric engine's own anchor
+    resolution and TTM/average accessors -- no logic duplication."""
+    index = _index_concepts(facts)
+    anchor = _resolve_anchor(index, fiscal_year, fiscal_period)
+    if anchor is None:
+        return None
+    ctx = _Ctx(index, facts, anchor)
+    inv, inv_exact = ctx.avg("inventory")
+    ap, ap_exact = ctx.avg("accounts_payable")
+    ar, ar_exact = ctx.avg("accounts_receivable")
+    cogs = ctx.ttm("cost_of_revenue")
+    rev = ctx.ttm("revenue")
+    if inv is None or ap is None or ar is None or cogs is None or rev is None:
+        return None
+    if abs(cogs) < _NEAR_ZERO or abs(rev) < _NEAR_ZERO:
+        return None
+    return LifecycleComponents(
+        inventory=inv,
+        accounts_payable=ap,
+        accounts_receivable=ar,
+        cost_of_revenue=cogs,
+        revenue=rev,
+        period_end=anchor.end,
+        approximate=not (inv_exact and ap_exact and ar_exact),
     )
 
 

@@ -789,6 +789,53 @@ class SectorSeries(BaseModel):
     points: list[SectorDupont] = Field(default_factory=list)
 
 
+# --- Sector asset-lifecycle trend (Sector Analytics D5, analytical/sector_lifecycle.py) ----------
+#
+# Aggregate DIO/DSO/DPO/CCC per (SIC group, period) -- a RATIO OF SUMMED DOLLARS across the sector,
+# NOT a median of company figures. PRECOMPUTED by the sector-lifecycle batch, never a live DuckDB
+# read. A DESCRIPTIVE read of a sector's working-capital STRUCTURE (how long cash sits in inventory
+# + receivables vs. how long suppliers finance it), NOT a timing signal or edge. Every company in a
+# point contributed all five legs, so ccc == dio + dso - dpo by construction; a period with no
+# qualifying group is OMITTED, never emitted as a zero.
+
+_LIFECYCLE_AGGREGATION = (
+    "aggregate days-metrics -- Σinventory/Σcost_of_revenue × 365 (DIO), "
+    "Σreceivables/Σrevenue × 365 (DSO), Σpayables/Σcost_of_revenue × 365 (DPO), "
+    "CCC = DIO + DSO − DPO -- a ratio of summed dollars, not a median"
+)
+
+
+class SectorLifecyclePoint(BaseModel):
+    """One sector's aggregate asset-lifecycle days-metrics for one period (a point on the trend)."""
+
+    group: str  # the SIC prefix aggregated within, e.g. "35"
+    group_label: str  # readable SIC major-group name (falls back to the bare code)
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str  # representative (max) period-end in the group for this fiscal period
+    peer_count: int  # companies contributing all five legs (N/A on any leg -> excluded)
+    approximate: bool  # at least one contributing company reported only a period-end balance
+    dio: float  # ΣInventory / ΣCostOfRevenue × 365
+    dpo: float  # ΣAccountsPayable / ΣCostOfRevenue × 365
+    dso: float  # ΣAccountsReceivable / ΣRevenue × 365
+    ccc: float  # dio + dso − dpo (exact on the shared company set)
+
+
+class SectorLifecycleSeries(BaseModel):
+    """One sector's asset-lifecycle aggregate across every materialized FY period (the trend).
+
+    Empty `points` is a valid, honest result (the group never met the minimum size for all five
+    legs, or isn't materialized yet). A missing fiscal year is simply absent -- the client breaks
+    the line on the gap, never interpolates and never draws a zero."""
+
+    group: str
+    group_label: str
+    peer_basis: str  # e.g. "SIC 2-digit"
+    aggregation: str = _LIFECYCLE_AGGREGATION
+    caveats: list[str] = Field(default_factory=list)
+    points: list[SectorLifecyclePoint] = Field(default_factory=list)
+
+
 # --- Sector liquidity/solvency spreads (Sector Analytics D3, analytical/peer_distribution.py) ---
 #
 # Five-number summaries (min/p25/median/p75/max) of a metric's DISTRIBUTION within a SIC group --

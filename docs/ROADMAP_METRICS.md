@@ -140,6 +140,9 @@ R1/R2/R4 apply to every metric and are omitted from the column for brevity.
 | Equity multiplier | `avg(total_assets) / avg(stockholders_equity)` | R3; **averaged/averaged** so the DuPont identity `net_margin × asset_turnover × equity_multiplier = roe` closes per-company; na when equity absent/≈0 |
 | Inventory turnover | `cost_of_revenue / avg(inventory)` | R3, R7 (no-inventory firms) |
 | Days sales outstanding | `avg(accounts_receivable) / revenue * 365` | R3, R7 |
+| Days inventory outstanding | `avg(inventory) / cost_of_revenue * 365` | R3, R7 |
+| Days payable outstanding | `avg(accounts_payable) / cost_of_revenue * 365` | R3, R7 |
+| Cash conversion cycle | `dio + dso − dpo` | N/A propagates (any leg na ⇒ na, never leg-as-0); approximate if any leg approximate; can be negative |
 
 ### Per-share
 
