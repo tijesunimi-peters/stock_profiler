@@ -49,6 +49,27 @@ class MetricDistributionRepository(ABC):
         computed (below the minimum peer-group size, or not yet run for that period)."""
 
     @abstractmethod
+    def list_for_metric(
+        self, metric: str, fiscal_year: int, fiscal_period: str
+    ) -> list[MetricDistributionRow]:
+        """Every qualifying SIC group's distribution for ONE metric+period -- the cross-sector
+        (box-per-sector) read. Only groups the batch materialized (>= min size) are returned;
+        below-min groups are absent, never zero-filled."""
+
+    @abstractmethod
+    def list_for_group(
+        self, peer_group: str, fiscal_year: int, fiscal_period: str
+    ) -> list[MetricDistributionRow]:
+        """Every metric's distribution for ONE SIC group+period -- the per-sector (box-per-metric)
+        read. The caller filters to the metrics it plots; a metric N/A for the group is simply
+        absent, never a zero box."""
+
+    @abstractmethod
+    def latest_fy_year(self, metric: str) -> int | None:
+        """The most recent materialized annual (FY) fiscal year for one metric, or None if the
+        metric has no rows. The default period for the cross-sector read when none is given."""
+
+    @abstractmethod
     def count(self) -> int:
         """Total precomputed distribution rows (for batch progress / tests)."""
 

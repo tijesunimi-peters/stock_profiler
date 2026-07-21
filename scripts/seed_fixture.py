@@ -515,6 +515,80 @@ def _seed_sector_dupont(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed metric distributions for the demo /sectors box-and-whisker spreads. Written DIRECTLY
+# (not via the DuckDB analytical batch) so the offline/e2e profile -- base install, no `analytical`
+# extra -- can render the cross-sector box chart + per-sector spread panel. The real pipeline
+# (analytical/peer_distribution.py over a hydrated volume) is exercised separately. Same SIC groups
+# as `_SECTOR_DEMO`. `net_margin` is populated for every group (the default, always-drawn view);
+# the liquidity/solvency metrics are populated for only SOME groups (the real-world shape -- sparse
+# coverage), and group "28" is deliberately given NO liquidity/solvency rows so the per-sector panel
+# exercises the omit-a-metric-never-a-zero-box path.
+_SPREAD_DEMO = [
+    # metric, group -> (min, p25, median, p75, max, peer_count)
+    ("net_margin", {
+        "35": (0.02, 0.09, 0.14, 0.19, 0.31, 26),
+        "60": (-0.05, 0.12, 0.22, 0.29, 0.44, 40),
+        "28": (0.04, 0.11, 0.18, 0.24, 0.33, 22),
+        "73": (-0.18, 0.03, 0.11, 0.20, 0.55, 55),
+        "52": (-0.02, 0.02, 0.05, 0.08, 0.14, 12),
+    }),
+    ("roe", {
+        "35": (0.05, 0.14, 0.22, 0.31, 0.62, 26),
+        "60": (0.02, 0.08, 0.13, 0.18, 0.29, 40),
+        "73": (-0.30, 0.06, 0.19, 0.34, 1.10, 55),
+    }),
+    ("current_ratio", {
+        "35": (0.7, 1.2, 1.7, 2.4, 4.9, 26),
+        "60": (0.3, 0.7, 1.0, 1.4, 2.2, 40),
+        "73": (0.9, 1.4, 2.0, 3.1, 7.1, 55),
+    }),
+    ("debt_to_equity", {
+        "35": (0.05, 0.4, 0.9, 1.7, 4.2, 26),
+        "60": (1.5, 4.0, 6.5, 9.0, 13.0, 40),
+    }),
+    # interest_coverage has genuinely long right tails (a firm with tiny interest expense shows a
+    # huge ratio) -- seeded with extreme maxima so the box chart's honest tail-CLIPPING path renders
+    # (whiskers beyond the axis marked ▸, true min-max kept in the tooltip; never clipped from data).
+    ("interest_coverage", {
+        "35": (0.5, 4.0, 9.0, 22.0, 480.0, 26),
+        "60": (1.2, 3.0, 5.5, 9.0, 40.0, 40),
+        "73": (-8.0, 2.0, 6.0, 15.0, 260.0, 55),
+    }),
+]
+
+
+def _seed_metric_distributions(db_path: str) -> None:
+    from secfin.storage.metric_distribution_repository import MetricDistributionRow
+    from secfin.storage.sqlite_metric_distribution_repository import (
+        SQLiteMetricDistributionRepository,
+    )
+
+    repo = SQLiteMetricDistributionRepository(db_path)
+    rows = []
+    for metric, by_group in _SPREAD_DEMO:
+        for group, (lo, p25, med, p75, hi, n) in by_group.items():
+            rows.append(
+                MetricDistributionRow(
+                    peer_group=group,
+                    fiscal_year=2025,
+                    fiscal_period="FY",
+                    metric=metric,
+                    peer_count=n,
+                    min=lo,
+                    p25=p25,
+                    median=med,
+                    p75=p75,
+                    max=hi,
+                )
+            )
+    try:
+        repo.clear()
+        repo.bulk_upsert(rows)
+        print(f"seeded metric distributions: {len(rows)} rows for the sector spreads")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -564,6 +638,7 @@ def main() -> None:
     _seed_sic(db_path)
     _seed_peer_ranks(db_path)
     _seed_sector_dupont(db_path)
+    _seed_metric_distributions(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

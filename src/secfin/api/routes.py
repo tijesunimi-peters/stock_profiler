@@ -56,6 +56,7 @@ from secfin.normalize.schema import (
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
+    MetricSpread,
     NormalizedView,
     PeerDistribution,
     PeerRank,
@@ -63,6 +64,9 @@ from secfin.normalize.schema import (
     SectorDupont,
     SectorList,
     SectorSeries,
+    SectorSpread,
+    SectorSpreadList,
+    SectorSpreadProfile,
     Statement,
     StatementType,
 )
@@ -1257,6 +1261,108 @@ async def get_sectors(
     )
 
 
+# Metrics offered as cross-sector / per-sector SPREADS (Sector Analytics D3). Each is already a
+# materialized metric (metrics.py / METRIC_KEYS); the batch (analytical/peer_distribution.py)
+# writes their per-SIC five-number summaries into metric_distributions, which these views read
+# cache-aside. Two families, both valid:
+#   * PROFITABILITY/EFFICIENCY -- derived from headline concepts (net income, revenue, assets,
+#     equity) that the ingest covers broadly, so these are populated across ~60 sectors today.
+#   * LIQUIDITY/SOLVENCY -- need granular balance-sheet/income concepts (current assets, current
+#     liabilities, debt, interest expense) that are still sparse market-wide, so most sectors
+#     don't yet meet the minimum group size. They are offered anyway and render an HONEST empty
+#     state per the usual rules (never a zero box); they light up as that coverage improves.
+_SPREAD_METRICS_PROFITABILITY = (
+    "net_margin",
+    "roe",
+    "roa",
+    "asset_turnover",
+    "revenue_growth_yoy",
+    "earnings_growth_yoy",
+)
+_SPREAD_METRICS_LIQUIDITY_SOLVENCY = (
+    "current_ratio",
+    "quick_ratio",
+    "debt_to_equity",
+    "interest_coverage",
+)
+_SPREAD_METRICS = _SPREAD_METRICS_PROFITABILITY + _SPREAD_METRICS_LIQUIDITY_SOLVENCY
+
+# The distribution views reuse the peer-ranking caveat vocabulary verbatim (a spread is a POSITION,
+# not a verdict; N/A excluded, never a low value; SIC coarse; below-min groups dropped) plus two
+# lines specific to reading a box and to the coverage-limited metrics.
+_SPREAD_CAVEATS = _PEER_CAVEATS + [
+    "A box shows the SPREAD of reported values within a sector (min/p25/median/p75/max) -- a wide "
+    "box means the peers are dispersed, and a higher value is not automatically 'better'.",
+    "Some metrics (notably the liquidity/solvency ratios) depend on granular balance-sheet "
+    "concepts that are still sparsely reported across the market; a sector with too few comparable "
+    "companies is omitted, never shown as zero -- coverage fills in as more filings are ingested.",
+]
+
+
+@public_router.get(
+    "/sectors/spreads",
+    response_model=SectorSpreadList,
+    tags=["Sectors"],
+    summary="Cross-sector spread of one metric (a box per SIC group)",
+)
+async def get_sector_spreads(
+    metric: str = Query(
+        ...,
+        description="One of: " + ", ".join(_SPREAD_METRICS),
+    ),
+    year: int | None = Query(
+        None, description="Fiscal year; defaults to the latest materialized annual (FY) year"
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    dist_repo: MetricDistributionRepository = Depends(get_metric_distribution_repo),
+) -> SectorSpreadList:
+    """Every qualifying SIC sector's five-number summary (min/p25/median/p75/max) for one metric +
+    period -- for a box-per-sector comparison of the within-sector spread.
+
+    A **precomputed** read of `metric_distributions` (the analytical/peer_distribution.py batch is
+    the sole producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md). Only
+    groups meeting the minimum peer-group size are present; a below-min group is absent, never
+    zero-filled. Empty `spreads` is a valid, honest result -- expected for the coverage-limited
+    liquidity/solvency metrics until their granular concepts are more broadly ingested (`caveats`
+    spells this out).
+    """
+    if metric not in _SPREAD_METRICS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown spread metric '{metric}'. Valid metrics: "
+            f"{', '.join(_SPREAD_METRICS)}.",
+        )
+    resolved_year = year if year is not None else dist_repo.latest_fy_year(metric)
+    rows = (
+        dist_repo.list_for_metric(metric, resolved_year, period)
+        if resolved_year is not None
+        else []
+    )
+    spreads = [
+        SectorSpread(
+            group=r.peer_group,
+            group_label=sic2_label(r.peer_group),
+            peer_count=r.peer_count,
+            min=r.min,
+            p25=r.p25,
+            median=r.median,
+            p75=r.p75,
+            max=r.max,
+        )
+        for r in rows
+    ]
+    return SectorSpreadList(
+        metric=metric,
+        label=METRIC_LABELS.get(metric, metric),
+        unit=METRIC_UNITS.get(metric, ""),
+        fiscal_year=resolved_year or 0,
+        fiscal_period=period,
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_SPREAD_CAVEATS,
+        spreads=spreads,
+    )
+
+
 @public_router.get(
     "/sectors/{group}",
     response_model=SectorSeries,
@@ -1280,6 +1386,62 @@ async def get_sector_series(
         peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
         caveats=_SECTOR_CAVEATS,
         points=points,
+    )
+
+
+@public_router.get(
+    "/sectors/{group}/spreads",
+    response_model=SectorSpreadProfile,
+    tags=["Sectors"],
+    summary="One sector's metric spread (a box per metric)",
+)
+async def get_sector_spread_profile(
+    group: str,
+    year: int | None = Query(
+        None, description="Fiscal year; defaults to the latest materialized annual (FY) year"
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    dist_repo: MetricDistributionRepository = Depends(get_metric_distribution_repo),
+) -> SectorSpreadProfile:
+    """One SIC group's five-number summary for each offered metric + period -- for a box-per-metric
+    drill-down of that sector's spread.
+
+    A **precomputed** read of `metric_distributions` (the analytical/peer_distribution.py batch is
+    the sole producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md). A metric
+    the group is below the minimum size for (or N/A) is simply absent -- never rendered as a zero
+    box. Empty `metrics` is a valid, honest result.
+    """
+    # Default the period off a broadly-covered metric so a barely-filed metric doesn't yield a
+    # spurious "latest" year; the UI passes an explicit year anyway.
+    resolved_year = year if year is not None else dist_repo.latest_fy_year(_SPREAD_METRICS[0])
+    by_metric = (
+        {r.metric: r for r in dist_repo.list_for_group(group, resolved_year, period)}
+        if resolved_year is not None
+        else {}
+    )
+    metrics = [
+        MetricSpread(
+            metric=m,
+            label=METRIC_LABELS.get(m, m),
+            unit=METRIC_UNITS.get(m, ""),
+            peer_count=by_metric[m].peer_count,
+            min=by_metric[m].min,
+            p25=by_metric[m].p25,
+            median=by_metric[m].median,
+            p75=by_metric[m].p75,
+            max=by_metric[m].max,
+        )
+        for m in _SPREAD_METRICS
+        if m in by_metric
+    ]
+    return SectorSpreadProfile(
+        group=group,
+        group_label=sic2_label(group),
+        fiscal_year=resolved_year or 0,
+        fiscal_period=period,
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_SPREAD_CAVEATS,
+        metrics=metrics,
     )
 
 
