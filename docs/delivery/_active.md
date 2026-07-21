@@ -43,12 +43,17 @@ updated: 2026-07-21
       count; ~60 was net_margin breadth), negative CCC honest. No defects. UNCOMMITTED, NOT deployed.)
 
 ## Deploy note
-- Green QA 2026-07-21. Branch sector-lifecycle-trends (off master), UNCOMMITTED, NOT deployed.
-- DEFERRED DevOps step (same pattern as granular-concept-coverage): after the prod bulk companyfacts
-  backfill, on the PROD volume run: `lifecycle_backfill` -> `sector_lifecycle`. Until then live
-  /sectors/{group}/lifecycle returns honest empty series (UI shows empty state, never 0).
-- Scratch DB data/granular_scratch/granular_verify.db (54G, now also has lifecycle_components +
-  sector_lifecycle) retained from the prior task; remove at wrap-up if disk is needed.
+- 2026-07-21: committed (30be878) -> merged master (aca6b8c) -> pushed origin. Part A CODE DEPLOYED
+  to prod (clearyfi.com) + verified: verify_deployment 11/11, 38 routes, company-level dio/dpo/ccc
+  live on real data (AAPL ok). Sector aggregates honest-empty (Part B pending). See 5-deploy.md +
+  DEPLOYMENT_DO.md §6b.
+- INCIDENT during deploy: prod root disk was 100% full (daily 7.3G backups, no retention). Freed to
+  16G (pruned old/corrupt backups + docker cache, kept Jul18/19/latest). Live DB intact.
+- OPEN (awaiting operator): (1) URGENT backup retention — refills disk in ~2 days without it;
+  (2) Part B data home — granular raw_facts ~57G doesn't fit the 48G droplet; operator weighing a
+  separate DB resource. Until Part B, sector aggregates stay empty (honest).
+- Scratch DB data/granular_scratch/granular_verify.db (54G, has lifecycle tables) retained; could be
+  the seed for Part B (ship-a-backup path) depending on the DB-home decision.
 
 ## Notes / open loops
 - Full-stack task. Backend first (mirror _dso; reuse sector_dupont scaffold — DuckDB-over-SQLite

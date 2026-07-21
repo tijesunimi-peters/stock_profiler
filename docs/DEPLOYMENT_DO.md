@@ -182,11 +182,43 @@ The Caddy log-review routine (runbook §10) stays the source of truth for per-pa
 detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metered
 (keyed) requests plus process-wide response classes.
 
+## 6b. Deploy log & incidents
+
+- **2026-07-21 — deployed `sector-lifecycle-trends`** (Sector Analytics D5: DIO/DSO/DPO/CCC
+  metrics + `/v1/sectors/{group}/lifecycle` + the `/sectors` lifecycle trend). Standard §5 flow
+  (rsync + build + up -d), rollback image tagged `secfin-api:rollback-jul17` (id `2b3a1ebf68b9`,
+  the pre-deploy Jul-17 image). Post-deploy: 38 routes (was 23), `verify_deployment.py` 11/11 PASS.
+  Company-level `dio/dpo/ccc` compute live on existing data (e.g. AAPL FY2024 = ok); the SECTOR
+  aggregate (`/v1/sectors*`, incl. lifecycle) returns **honest empty** until the data step runs
+  (see below) — the prod volume is still the pre-granular-backfill DB.
+- **2026-07-21 — DISK-FULL INCIDENT (resolved).** Root disk hit 48G/48G (0 free); `dockerd`/
+  `rsyslogd` were logging write failures and `docker exec` failed with "no space left on device".
+  **Cause:** `secfin-backup.timer` writes a full ~7.3G SQLite snapshot to
+  `/opt/secfin/data/backups` **daily with NO retention** — 8 snapshots (~37G) filled the disk, and
+  the Jul-20/Jul-21 snapshots were left **corrupt partials** (5.9G / 1.4M) because the disk was
+  already full. **Fix:** pruned the old dailies (Jul 15/16/17) + the two corrupt partials,
+  **kept Jul 18, Jul 19, and `secfin-latest.db`** (last known-good = Jul 19), + `docker builder
+  prune`. Freed to 33G/48G (16G free). Live volume DB verified intact throughout (AAPL metrics
+  served real data the whole time). **RECURRENCE RISK — still open:** with no retention, the next
+  daily backup re-accumulates ~7.3G/day and will refill the disk in ~2 days. Must add retention
+  (keep last N) or pause `secfin-backup.timer`, and is coupled to the off-droplet DB/backup
+  decision below.
+
 ## 7. Open items (tracked in docs/product/LAUNCH_READINESS.md)
 
+- **Backup retention (NEW, 2026-07-21) — the backup job has no retention and refilled the disk
+  (see §6b).** Interim: prune to last-2 by hand or pause the timer; permanent: retention in
+  `storage/backup.py` (keep last N) or move backups off-droplet.
+- **Granular data + sector aggregates need a bigger data home (Part B, deferred 2026-07-21).**
+  The whole-market granular `raw_facts` is ~57G — it does NOT fit the 48G droplet. Operator is
+  weighing moving the DB to a **separate resource** (droplet = app serving only). Until decided,
+  the sector aggregates (`sector_dupont`, `sector_lifecycle`, `metric_distributions`) stay
+  unmaterialized on prod and the sector views show honest empty states. On the target volume,
+  after the bulk companyfacts backfill: run `metrics_backfill → peer_ranks → peer_distribution →
+  dupont_backfill → sector_dupont → lifecycle_backfill → sector_lifecycle`.
 - Off-droplet backup destination -- backups currently live only on the droplet's
   own disk; operator deliberately deferred the decision (Spaces+rclone hourly vs.
-  Litestream were the assessed options, 2026-07-14).
+  Litestream were the assessed options, 2026-07-14). **Now also the disk-fill cause (§6b).**
 - GitHub deploy key on the droplet so day-2 becomes `git pull` (runbook §12)
   instead of §5's rsync.
 - ~~Verify the first timer runs (morning of 2026-07-15 UTC)~~ — done. The first
