@@ -3764,6 +3764,105 @@
     return card.root;
   }
 
+  // Asset-lifecycle trend (Sector Analytics D5). Four days-metrics over a sector's FY series: the
+  // three components DIO / DSO / DPO and their synthesis CCC = DIO + DSO − DPO, which is drawn as
+  // the emphasized (heavier) line — the components are the supporting story. `points`: the API's
+  // FY-only aggregate series (oldest first), each { fiscal_year, dio, dso, dpo, ccc, approximate }.
+  // A ratio of summed dollars, NOT a median — descriptive working-capital structure, no timing/edge
+  // claim. Lines BREAK on a coverage-gap year (null, never interpolated or zero); CCC can be
+  // negative (payables outlast inventory + receivables), so a zero baseline is always drawn. opts:
+  // { width, range: "1y"|"5y"|"all", title, caption }.
+  var LIFECYCLE_SERIES = [
+    { key: "dio", label: "DIO" },
+    { key: "dso", label: "DSO" },
+    { key: "dpo", label: "DPO" },
+    { key: "ccc", label: "CCC" },
+  ];
+  function sectorLifecycleTrend(points, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var range = opts.range || "5y";
+    var card = chartCard(opts.title || "Asset lifecycle over time (days)");
+    var pts = (points || []).filter(function (p) { return p && p.fiscal_year != null; });
+    if (pts.length < 2 || !window.Plot) {
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = pts.length === 1
+        ? "Only one fiscal year is on record in this range — not enough to draw a trend."
+        : "No lifecycle aggregate on record for this range.";
+      card.body.appendChild(p0);
+      card.caption(opts.caption || "");
+      return card.root;
+    }
+
+    // Contiguous year window for the chosen range, so a missing year leaves a visible break in
+    // every line (never interpolated, never zero-filled). Mirrors the DuPont trend's windowing.
+    var byYear = {};
+    pts.forEach(function (p) { byYear[p.fiscal_year] = p; });
+    var years = pts.map(function (p) { return p.fiscal_year; });
+    var latest = Math.max.apply(null, years);
+    var earliest = Math.min.apply(null, years);
+    var start = range === "1y" ? latest - 1 : range === "5y" ? latest - 4 : earliest;
+    if (start < earliest) start = earliest;
+
+    var rows = [], present = [];
+    var anyApprox = false;
+    for (var y = start; y <= latest; y++) {
+      var row = byYear[y];
+      if (row && row.approximate) anyApprox = true;
+      LIFECYCLE_SERIES.forEach(function (s) {
+        var v = row && row[s.key] != null ? row[s.key] : null;
+        var d = { year: y, series: s.label, value: v, approx: !!(row && row.approximate) };
+        rows.push(d);
+        if (v !== null) present.push(d);
+      });
+    }
+
+    var t = plotTokens();
+    var domain = LIFECYCLE_SERIES.map(function (s) { return s.label; });
+    var isCcc = function (d) { return d.series === "CCC"; };
+    var comp = function (d) { return d.series !== "CCC"; };
+    var daysText = function (v) { return fmt.days(v); };
+
+    var plotNode = window.Plot.plot({
+      width: width,
+      height: 210,
+      marginLeft: 40,
+      marginRight: 16,
+      marginTop: 28,
+      marginBottom: 28,
+      style: { fontFamily: t.fontMono, fontSize: 10.5, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { type: "point", tickFormat: function (yr) { return "FY" + yr; }, label: null },
+      y: { grid: true, nice: true, label: "days", tickFormat: function (v) { return v.toFixed(0); } },
+      color: { domain: domain, scheme: pickCategoricalScheme(), legend: true },
+      marks: [
+        window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.55 }),
+        // Components (DIO/DSO/DPO): the supporting lines, drawn lighter.
+        window.Plot.lineY(rows.filter(comp), { x: "year", y: "value", z: "series", stroke: "series", strokeWidth: 1.5, curve: "linear" }),
+        window.Plot.dot(present.filter(comp), { x: "year", y: "value", fill: "series", r: 2.75, stroke: cssVar("--bg-card", "#fff"), strokeWidth: 1 }),
+        // CCC: the synthesis, drawn as the hero line (heavier, larger dots).
+        window.Plot.lineY(rows.filter(isCcc), { x: "year", y: "value", z: "series", stroke: "series", strokeWidth: 2.75, curve: "linear" }),
+        window.Plot.dot(present.filter(isCcc), { x: "year", y: "value", fill: "series", r: 3.75, stroke: cssVar("--bg-card", "#fff"), strokeWidth: 1.5 }),
+        // Hover targets across all series with a days-formatted readout.
+        window.Plot.dot(present, {
+          x: "year", y: "value", r: 9, fill: "transparent",
+          channels: { Metric: "series", Year: function (d) { return "FY" + d.year; }, Days: function (d) { return daysText(d.value); } },
+          tip: { format: { x: false, y: false, Metric: true, Year: true, Days: true } },
+        }),
+      ],
+    });
+    card.body.appendChild(plotNode);
+
+    var hasGap = rows.some(function (d) { return d.value === null; });
+    var notes = [];
+    notes.push("CCC = DIO + DSO − DPO (the heavier line) — a ratio of summed dollars across the sector, not a median.");
+    if (anyApprox) notes.push("A ~ year includes at least one company that reported only a period-end balance, so its figure is approximate.");
+    if (hasGap) notes.push("A break in a line is a fiscal year with no aggregate on record — a coverage gap, not zero.");
+    card.caption(notes.join(" "));
+    return card.root;
+  }
+
   // Horizontal box-and-whisker (Sector Analytics D3). `boxes`: [{ label, peer_count, min, p25,
   // median, p75, max }] -- five-number summaries PRECOMPUTED by analytical/peer_distribution.py
   // (never a live aggregation). One box per row on a SHARED x-axis, so pass only boxes in the same
@@ -3916,6 +4015,7 @@
     fcfBreakdown: fcfBreakdown,
     earningsQuality: earningsQuality,
     sectorDupontTrend: sectorDupontTrend,
+    sectorLifecycleTrend: sectorLifecycleTrend,
     boxWhiskerChart: boxWhiskerChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,

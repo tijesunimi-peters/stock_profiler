@@ -48,7 +48,7 @@ inspect via Python's `sqlite3` with `file:...?immutable=1`.
 | 2 | OCF-growth vs NI-growth scatter, bubble = assets/capex | Growth + `accruals` metrics exist; assets/capex mapped | Sector-aggregate batch; scatter viz |
 | 3 | Box-and-whisker metric spreads (profitability + liquidity/solvency) | **SHIPPED** (2026-07-20, `sector-box-whisker-spreads`) | Done: 2 cache-aside endpoints over `metric_distributions` + `boxWhiskerChart` on `/sectors`. See note below. |
 | 4 | 100% common-size structural DNA | `commonSizeChart` exists (single-co) | Sector-aggregate path; decide CapEx (cash-flow) mixing; page |
-| 5 | DIO/DSO/DPO asset-lifecycle multi-line trend | `dso` + `inventory_turnover` exist; **`dio`, `dpo` missing** (facts mapped) | Add 2 metrics; multi-line sector time-series; **cut alpha claim** |
+| 5 | DIO/DSO/DPO asset-lifecycle multi-line trend | **SHIPPED** (2026-07-21, `sector-lifecycle-trends`) | Done: `dio`/`dpo`/`ccc` metrics + `sector_lifecycle` aggregate (ratio-of-sums) + `GET /v1/sectors/{group}/lifecycle` + multi-line trend on `/sectors`. Alpha claim cut. See note below. |
 
 Shared prerequisite for all five: a **sector-first surface** (index + per-sector page). None exists
 today.
@@ -155,8 +155,21 @@ render check + `pytest` green.
     (size the prod volume for the larger `raw_facts` first — see below).
 - **#4** 100% common-size DNA — sector-aggregate path; resolve CapEx (cash-flow) mixing.
 - **#2** OCF-vs-NI scatter — sector-aggregate; bubble viz.
-- **#5** DIO/DSO/DPO lifecycle — add `dio` + `dpo` metrics; multi-line time-series; **cut the alpha
-  claim**.
+- **#5** DIO/DSO/DPO lifecycle — **SHIPPED** 2026-07-21 (`sector-lifecycle-trends`). Added canonical
+  metrics `dio` (`avg(inventory)/cost_of_revenue × 365`) and `dpo` (`avg(accounts_payable)/
+  cost_of_revenue × 365`) mirroring `dso` (same period-end-anchored TTM/as-of, status+reason,
+  `approximate` on a period-end-balance fallback), plus the derived **CCC = DIO + DSO − DPO** with
+  strict **N/A propagation** (any leg N/A ⇒ CCC N/A, never a leg-as-0). No new raw concept (inputs
+  already mapped). Sector aggregate `sector_lifecycle` is a **ratio of summed dollars** (ΣInventory/
+  ΣCostOfRevenue × 365, etc.), per `(SIC group, period)`, all-five-legs shared membership so CCC is
+  exact — materialized offline (`ingest/lifecycle_backfill.py` → `analytical/sector_lifecycle.py`,
+  DuckDB-over-SQLite, **never the live path**) and served cache-aside by `GET /v1/sectors/{group}/
+  lifecycle` (FY-only series). The `/sectors` expand-detail gained a **multi-line lifecycle trend**
+  (DIO/DSO/DPO/CCC over the FY series), lines break on coverage gaps, `approximate` points flagged.
+  **Alpha/timing claim CUT** — framed as descriptive working-capital structure, standard sector
+  caveats carried, N/A never rendered as 0. Verified on a scratch re-ingested copy; the **prod-volume
+  re-ingest + the two new batches (`lifecycle_backfill`, `sector_lifecycle`) are a deferred DevOps
+  step** (the live site stays sparse until then).
 
 ---
 

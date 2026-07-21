@@ -589,6 +589,58 @@ def _seed_metric_distributions(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed sector-aggregate asset-lifecycle rows for the demo /sectors lifecycle trend. Written
+# DIRECTLY (not via the DuckDB analytical batch) so the offline/e2e profile -- base install, no
+# `analytical` extra -- can render the DIO/DSO/DPO/CCC multi-line chart. The real pipeline
+# (ingest/lifecycle_backfill + analytical/sector_lifecycle over a hydrated volume) is exercised
+# separately. Rows are built with `aggregate_row` from synthetic sums, so `ccc == dio + dso - dpo`
+# holds exactly, like real data. Only WORKING-CAPITAL sectors are seeded: banks (group "60") have no
+# inventory, so they honestly get NO lifecycle row and render the empty state on expand -- the same
+# all-five-legs membership the real aggregate enforces. Group "73" (services) has DPO > DIO+DSO, so
+# its CCC is NEGATIVE (payables outlast the cycle); group "28" (chemicals) SKIPS FY2023 so the
+# trend line's coverage-gap break renders; the latest year carries approx_count > 0 so the
+# "~ approximate" affordance shows.
+_LIFECYCLE_DEMO = [
+    # (group, dio_days, dpo_days, dso_days, base peer_count)
+    ("35", 62.0, 90.0, 45.0, 24),  # machinery -- modest positive cycle
+    ("28", 108.0, 78.0, 58.0, 20),  # chemicals -- inventory-heavy (gap at 2023)
+    ("73", 20.0, 89.0, 64.0, 50),  # services -- NEGATIVE ccc (payables-financed)
+    ("52", 70.0, 40.0, 12.0, 11),  # retail -- short DSO
+]
+
+
+def _seed_sector_lifecycle(db_path: str) -> None:
+    from secfin.analytical.sector_lifecycle import aggregate_row
+    from secfin.storage.sqlite_sector_lifecycle_repository import (
+        SQLiteSectorLifecycleRepository,
+    )
+
+    repo = SQLiteSectorLifecycleRepository(db_path)
+    rows = []
+    s_cogs, s_rev = 1000.0, 1400.0  # fixed denominators -> days map straight from the sums
+    for group, dio, dpo, dso, base_n in _LIFECYCLE_DEMO:
+        for year in _SECTOR_YEARS:
+            if group == "28" and year == 2023:
+                continue  # coverage gap -> the trend lines break here, never a 0 point
+            drift = 1.0 + 0.04 * (year - 2023)  # a gentle year-over-year lengthening
+            s_inv = dio * drift / 365.0 * s_cogs
+            s_ap = dpo / 365.0 * s_cogs
+            s_ar = dso * drift / 365.0 * s_rev
+            approx_count = 2 if year == max(_SECTOR_YEARS) else 0  # latest year flagged approximate
+            row = aggregate_row(
+                group, year, "FY", f"{year}-12-31", base_n + (year - 2021), approx_count,
+                s_inv, s_ap, s_ar, s_cogs, s_rev,
+            )
+            if row is not None:
+                rows.append(row)
+    try:
+        repo.clear()
+        repo.bulk_upsert(rows)
+        print(f"seeded sector lifecycle: {len(rows)} rows across {len(_LIFECYCLE_DEMO)} sectors")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -639,6 +691,7 @@ def main() -> None:
     _seed_peer_ranks(db_path)
     _seed_sector_dupont(db_path)
     _seed_metric_distributions(db_path)
+    _seed_sector_lifecycle(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

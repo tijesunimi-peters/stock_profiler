@@ -62,6 +62,8 @@ from secfin.normalize.schema import (
     PeerRank,
     RawFact,
     SectorDupont,
+    SectorLifecyclePoint,
+    SectorLifecycleSeries,
     SectorList,
     SectorSeries,
     SectorSpread,
@@ -104,6 +106,10 @@ from secfin.storage.metric_rank_repository import MetricRankRepository
 from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
+from secfin.storage.sector_lifecycle_repository import (
+    SectorLifecycleRepository,
+    SectorLifecycleRow,
+)
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
 # own served pages (`/company/{symbol}` and friends, static/company.js) call directly
@@ -285,6 +291,10 @@ def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
 
 def get_sector_dupont_repo(request: Request) -> SectorDupontRepository:
     return request.app.state.sector_dupont_repo
+
+
+def get_sector_lifecycle_repo(request: Request) -> SectorLifecycleRepository:
+    return request.app.state.sector_lifecycle_repo
 
 
 def get_cusip_repo(request: Request) -> CusipMapRepository:
@@ -1442,6 +1452,78 @@ async def get_sector_spread_profile(
         peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
         caveats=_SPREAD_CAVEATS,
         metrics=metrics,
+    )
+
+
+# Caveats for the asset-lifecycle trend. Descriptive working-capital STRUCTURE -- deliberately NO
+# alpha / timing / edge language (Sector Analytics honesty flag #2: the DIO/DSO/DPO figure IS
+# management's own filed number carrying the usual ~quarter lag, not an information advantage).
+_LIFECYCLE_CAVEATS = [
+    "These are AGGREGATE days-metrics -- ΣInventory/ΣCostOfRevenue × 365 (DIO), "
+    "ΣReceivables/ΣRevenue × 365 (DSO), ΣPayables/ΣCostOfRevenue × 365 (DPO) -- a ratio of summed "
+    "dollars across the sector, NOT a median or average of company figures.",
+    "CCC = DIO + DSO − DPO on ONE consistent company set; a company is included only when "
+    "inventory, payables, receivables, cost of revenue AND revenue are all reported, so a company "
+    "N/A on any leg is excluded, never counted as zero.",
+    "DIO/DSO/DPO use average balances; where a contributing company reported only a period-end "
+    "balance (no prior-period), its figure is APPROXIMATE -- a point drawn from any such company "
+    "is flagged.",
+    "This describes a sector's WORKING-CAPITAL STRUCTURE -- how long cash sits in inventory and "
+    "receivables versus how long suppliers finance it. It is descriptive, and implies nothing "
+    "about future returns or when to buy or sell.",
+    "Sectors are grouped by SIC industry code, which is coarse and dated -- treat a group as a "
+    "starting axis, not ground truth.",
+    "Companies are aggregated by fiscal-period LABEL; fiscal periods are not calendar-aligned "
+    "across companies, and figures carry the usual ~quarter reporting lag (latest restatement "
+    "wins).",
+    "Only groups meeting the minimum size are shown; a smaller group is dropped, not shown as "
+    "sparse or zero, and a fiscal year with no aggregate is a gap -- never a zero.",
+]
+
+
+def _sector_lifecycle_model(row: SectorLifecycleRow) -> SectorLifecyclePoint:
+    """Map a SectorLifecycleRow (repo) to the API model, attaching the readable group label."""
+    return SectorLifecyclePoint(
+        group=row.peer_group,
+        group_label=sic2_label(row.peer_group),
+        fiscal_year=row.fiscal_year,
+        fiscal_period=row.fiscal_period,
+        period_end=row.period_end,
+        peer_count=row.peer_count,
+        approximate=row.approx_count > 0,
+        dio=row.dio,
+        dpo=row.dpo,
+        dso=row.dso,
+        ccc=row.ccc,
+    )
+
+
+@public_router.get(
+    "/sectors/{group}/lifecycle",
+    response_model=SectorLifecycleSeries,
+    tags=["Sectors"],
+    summary="One sector's aggregate asset-lifecycle (DIO/DSO/DPO/CCC) across every FY (trend)",
+)
+async def get_sector_lifecycle(
+    group: str,
+    repo: SectorLifecycleRepository = Depends(get_sector_lifecycle_repo),
+) -> SectorLifecycleSeries:
+    """One SIC group's aggregate DIO/DSO/DPO/CCC over time, oldest FY first.
+
+    A **precomputed** read of `sector_lifecycle` (the analytical/sector_lifecycle.py batch is the
+    sole producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md). Each point is
+    a ratio of summed dollars across the sector (NOT a median), and `ccc` equals `dio + dso - dpo`
+    by construction (every contributing company reported all five legs). Descriptive working-capital
+    structure -- no timing/edge claim. Empty `points` is a valid, honest result -- the group never
+    met the minimum size for all five legs, or isn't materialized yet.
+    """
+    points = [_sector_lifecycle_model(r) for r in repo.get_series(group)]
+    return SectorLifecycleSeries(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        caveats=_LIFECYCLE_CAVEATS,
+        points=points,
     )
 
 

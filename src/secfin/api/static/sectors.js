@@ -53,6 +53,7 @@
     spreadMetric: normalizeMetric(params.get("metric")) || "net_margin",
     spreads: {}, // metric -> SectorSpreadList payload (lazy)
     groupSpreads: {}, // group -> SectorSpreadProfile payload (lazy)
+    lifecycle: {}, // group -> SectorLifecycleSeries payload (lazy)
   };
 
   function normalizeRange(r) {
@@ -234,6 +235,72 @@
     spreadMount.className = "detail-spreads";
     mount.appendChild(spreadMount);
     paintDetailSpreads(spreadMount, series.group);
+
+    // Asset-lifecycle trend: DIO/DSO/DPO and their synthesis CCC over the FY series. Loads lazily;
+    // on failure it just skips (an enhancement, never breaks the detail).
+    var lifecycleMount = document.createElement("div");
+    lifecycleMount.className = "detail-lifecycle";
+    mount.appendChild(lifecycleMount);
+    paintLifecycle(lifecycleMount, series.group);
+  }
+
+  // ---------- per-sector detail: asset-lifecycle trend (DIO/DSO/DPO/CCC) ----------
+
+  function paintLifecycle(mount, group) {
+    if (state.lifecycle[group]) { drawLifecycle(mount, state.lifecycle[group]); return; }
+    mount.innerHTML = P.states.loading({ title: "Loading lifecycle", note: "" });
+    P.api("/sectors/" + encodeURIComponent(group) + "/lifecycle")
+      .then(function (res) { state.lifecycle[group] = res; drawLifecycle(mount, res); })
+      .catch(function () { mount.innerHTML = ""; }); // skip silently — the rest of the detail stands
+  }
+
+  function drawLifecycle(mount, res) {
+    mount.innerHTML = "";
+    var pts = res.points || [];
+    var head = document.createElement("div");
+    head.className = "detail-lifecycle-head";
+    var anyApprox = pts.some(function (p) { return p.approximate; });
+    head.innerHTML =
+      '<span class="detail-lifecycle-title">Cash conversion cycle · ' + P.esc(res.group_label) + "</span>" +
+      (anyApprox ? '<span class="approx-badge" title="Some years include a company that reported only a period-end balance">~ approximate</span>' : "");
+    mount.appendChild(head);
+
+    var lede = document.createElement("p");
+    lede.className = "detail-lifecycle-lede";
+    lede.textContent =
+      "How long cash sits in inventory (DIO) and receivables (DSO) before it comes back, versus how " +
+      "long suppliers finance it (DPO). CCC = DIO + DSO − DPO is the net days cash is tied up — " +
+      "descriptive working-capital structure for this sector, not a signal about returns.";
+    mount.appendChild(lede);
+
+    if (pts.length < 2) {
+      mount.innerHTML +=
+        '<p class="detail-spread-empty">' +
+        (pts.length === 1
+          ? "Only one fiscal year is on record for this sector — not enough to draw a lifecycle trend."
+          : "No lifecycle aggregate on record for this sector yet — sparse coverage, not zero.") +
+        "</p>";
+      mount.appendChild(lifecycleCaveats(res));
+      return;
+    }
+
+    var chartWrap = document.createElement("div");
+    chartWrap.className = "lifecycle-mount";
+    mount.appendChild(chartWrap);
+    var width = P.measuredWidth(mount, 560);
+    chartWrap.appendChild(P.sectorLifecycleTrend(pts, { width: width, range: state.range, title: null }));
+    mount.appendChild(lifecycleCaveats(res));
+  }
+
+  function lifecycleCaveats(res) {
+    var wrap = document.createElement("div");
+    var caveats = (res.caveats || []).map(function (c) { return "<li>" + P.esc(c) + "</li>"; }).join("");
+    if (caveats) {
+      wrap.innerHTML =
+        '<details class="disclosure lifecycle-caveats"><summary>How to read this lifecycle (' +
+        (res.caveats || []).length + " notes)</summary><ul>" + caveats + "</ul></details>";
+    }
+    return wrap;
   }
 
   // 2-digit metric keys whose "ratio" unit reads as a PERCENT (mirrors app.js PERCENT_METRICS) —
