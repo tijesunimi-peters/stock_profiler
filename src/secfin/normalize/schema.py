@@ -789,6 +789,73 @@ class SectorSeries(BaseModel):
     points: list[SectorDupont] = Field(default_factory=list)
 
 
+# --- Sector liquidity/solvency spreads (Sector Analytics D3, analytical/peer_distribution.py) ---
+#
+# Five-number summaries (min/p25/median/p75/max) of a metric's DISTRIBUTION within a SIC group --
+# for box-and-whisker views on the sector page. PRECOMPUTED by the peer-distribution batch (the
+# same rows the company-anchored /peers/{metric}/distribution endpoint reads), never a live DuckDB
+# read. A spread is a POSITION/dispersion, NOT a good/bad verdict; N/A companies are excluded from
+# the summary, never counted as a low value; a missing box is an honest empty state, never a 0.
+
+
+class SectorSpread(BaseModel):
+    """One SIC group's five-number summary for one metric -- a single cross-sector box."""
+
+    group: str  # the SIC prefix the distribution was computed within, e.g. "35"
+    group_label: str  # readable SIC major-group name (falls back to the bare code)
+    peer_count: int  # companies in the group with a comparable (non-N/A) value
+    min: float
+    p25: float
+    median: float
+    p75: float
+    max: float
+
+
+class SectorSpreadList(BaseModel):
+    """Cross-sector: every qualifying sector's box for ONE liquidity/solvency metric + period.
+
+    Empty `spreads` is a valid, honest result: no SIC group met the minimum size for this
+    metric/period, or nothing has been materialized yet (`caveats` spells this out)."""
+
+    metric: str
+    label: str
+    unit: str
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    caveats: list[str] = Field(default_factory=list)
+    spreads: list[SectorSpread] = Field(default_factory=list)
+
+
+class MetricSpread(BaseModel):
+    """One metric's five-number summary for one sector -- a single box in the per-sector panel."""
+
+    metric: str
+    label: str
+    unit: str
+    peer_count: int
+    min: float
+    p25: float
+    median: float
+    p75: float
+    max: float
+
+
+class SectorSpreadProfile(BaseModel):
+    """Per-sector: the liquidity/solvency box set for ONE SIC group + period.
+
+    Empty `metrics` is a valid, honest result (the group never met the minimum size for any of
+    these metrics, or isn't materialized yet)."""
+
+    group: str
+    group_label: str
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    caveats: list[str] = Field(default_factory=list)
+    metrics: list[MetricSpread] = Field(default_factory=list)
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

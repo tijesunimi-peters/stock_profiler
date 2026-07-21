@@ -3764,6 +3764,116 @@
     return card.root;
   }
 
+  // Horizontal box-and-whisker (Sector Analytics D3). `boxes`: [{ label, peer_count, min, p25,
+  // median, p75, max }] -- five-number summaries PRECOMPUTED by analytical/peer_distribution.py
+  // (never a live aggregation). One box per row on a SHARED x-axis, so pass only boxes in the same
+  // unit (the cross-sector view passes one metric across sectors; the per-sector panel calls this
+  // once PER metric because scales differ). A box shows POSITION/dispersion, never a good/bad
+  // verdict -- one neutral accent, no diverging color (§9.2). Honest tails: the view clips only
+  // when the whiskers dwarf the interquartile core, and then marks the clipped rows (▸/◂) with a
+  // caption -- the reported min/max are never altered (the tooltip shows the true range). Returns a
+  // chartCard root; renders an empty state (never a zero box) when there is nothing to plot. opts:
+  // { width, height, title, caption, metric, unit, marginLeft, emptyCopy }.
+  function boxWhiskerChart(boxes, opts) {
+    opts = opts || {};
+    var width = opts.width || 640;
+    var metric = opts.metric || null;
+    var unit = opts.unit || "ratio";
+    var card = chartCard(opts.title || null);
+    boxes = (boxes || []).filter(function (b) {
+      return b && b.min !== null && b.min !== undefined && b.max !== null && b.max !== undefined;
+    });
+    if (!boxes.length || !window.Plot) {
+      var p = document.createElement("p");
+      p.className = "state-copy";
+      p.style.margin = "0";
+      p.textContent =
+        opts.emptyCopy || "Not enough comparable companies to plot a spread for this yet.";
+      card.body.appendChild(p);
+      if (opts.caption) card.caption(opts.caption);
+      return card.root;
+    }
+    var t = plotTokens();
+    var fmtV = function (v) { return unitFmt(v, unit, metric); };
+
+    // Honest view domain. Default to the true [min, max]. Only when the whiskers dwarf the IQR
+    // core (a few extreme outliers would flatten every box to a line) do we clip the DRAWN extent
+    // to the core plus padding, count the rows that spill past it, and mark them -- the data's
+    // real min/max stay in the row (and the tooltip).
+    var domLo = Math.min.apply(null, boxes.map(function (b) { return b.min; }));
+    var domHi = Math.max.apply(null, boxes.map(function (b) { return b.max; }));
+    var coreLo = Math.min.apply(null, boxes.map(function (b) { return b.p25; }));
+    var coreHi = Math.max.apply(null, boxes.map(function (b) { return b.p75; }));
+    var coreSpan = coreHi - coreLo;
+    var viewLo = domLo, viewHi = domHi, clipped = 0;
+    if (coreSpan > 0 && domHi - domLo > 4 * coreSpan) {
+      var pad = coreSpan * 0.6;
+      viewLo = coreLo - pad;
+      viewHi = coreHi + pad;
+    }
+    if (viewHi <= viewLo) { var e = Math.abs(viewLo) || 1; viewLo -= e * 0.5; viewHi += e * 0.5; }
+
+    var rows = boxes.map(function (b) {
+      var loOut = b.min < viewLo, hiOut = b.max > viewHi;
+      if (loOut || hiOut) clipped++;
+      return {
+        label: b.label,
+        p25: b.p25, p75: b.p75, median: b.median, n: b.peer_count,
+        dMin: Math.max(b.min, viewLo), dMax: Math.min(b.max, viewHi),
+        rangeText: fmtV(b.min) + " – " + fmtV(b.max),
+        medianText: fmtV(b.median),
+        loOut: loOut, hiOut: hiOut,
+      };
+    });
+
+    var height = opts.height || Math.max(58, rows.length * 26 + 40);
+    var marks = [
+      window.Plot.gridX({ stroke: t.trackBorder, strokeOpacity: 0.5 }),
+      window.Plot.ruleY(rows, { y: "label", x1: "dMin", x2: "dMax", stroke: t.inkSoft, strokeWidth: 1 }),
+      window.Plot.barX(rows, {
+        y: "label", x1: "p25", x2: "p75",
+        fill: t.accent, fillOpacity: 0.22, stroke: t.accent, strokeWidth: 1, rx: 2, clip: true,
+        // Sector carries the FULL label (the y-axis tick is truncated to fit the margin), so the
+        // hover always reveals the whole sector name.
+        channels: { Sector: "label", Median: function (d) { return d.medianText; }, Range: function (d) { return d.rangeText; }, Companies: "n" },
+        tip: { format: { x1: false, x2: false, y: false, Sector: true, Median: true, Range: true, Companies: true } },
+      }),
+      window.Plot.tickX(rows, { y: "label", x: "median", stroke: t.ink, strokeWidth: 2 }),
+    ];
+    var hiOut = rows.filter(function (r) { return r.hiOut; });
+    var loOut = rows.filter(function (r) { return r.loOut; });
+    if (hiOut.length) marks.push(window.Plot.text(hiOut, { y: "label", x: viewHi, text: "▸", textAnchor: "end", dx: -1, fill: t.inkSoft, fontSize: 12 }));
+    if (loOut.length) marks.push(window.Plot.text(loOut, { y: "label", x: viewLo, text: "◂", textAnchor: "start", dx: 1, fill: t.inkSoft, fontSize: 12 }));
+
+    var plot = window.Plot.plot({
+      width: width,
+      height: height,
+      marginLeft: opts.marginLeft != null ? opts.marginLeft : 204,
+      marginRight: 46,
+      marginTop: 8,
+      marginBottom: 26,
+      style: { fontFamily: t.fontMono, fontSize: 10.5, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      x: { domain: [viewLo, viewHi], label: null, tickFormat: function (v) { return fmtV(v); }, grid: false, nice: false },
+      // Long SIC names would overrun the margin and clip at the SVG's left edge -- truncate the
+      // TICK for display (the full name stays in the box's tooltip via the Sector channel).
+      y: {
+        domain: rows.map(function (r) { return r.label; }),
+        label: null,
+        tickSize: 0,
+        tickFormat: function (d) { return d && d.length > 28 ? d.slice(0, 27) + "…" : d; },
+      },
+      marks: marks,
+    });
+    card.body.appendChild(plot);
+    var cap = opts.caption || "";
+    if (clipped) {
+      cap += (cap ? " " : "") + clipped + " sector" + (clipped === 1 ? "" : "s") +
+        " reach beyond the axis (marked ▸/◂) — the true min–max is in each box's tooltip; nothing is clipped from the data.";
+    }
+    if (cap) card.caption(cap);
+    return card.root;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -3806,6 +3916,7 @@
     fcfBreakdown: fcfBreakdown,
     earningsQuality: earningsQuality,
     sectorDupontTrend: sectorDupontTrend,
+    boxWhiskerChart: boxWhiskerChart,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,

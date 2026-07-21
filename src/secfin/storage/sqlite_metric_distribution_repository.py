@@ -80,6 +80,39 @@ class SQLiteMetricDistributionRepository(MetricDistributionRepository):
         row = cur.fetchone()
         return None if row is None else MetricDistributionRow(*row)
 
+    _SELECT_COLS = (
+        "peer_group, fiscal_year, fiscal_period, metric, peer_count, min, p25, median, p75, max"
+    )
+
+    def list_for_metric(
+        self, metric: str, fiscal_year: int, fiscal_period: str
+    ) -> list[MetricDistributionRow]:
+        cur = self._conn.execute(
+            f"SELECT {self._SELECT_COLS} FROM metric_distributions "
+            "WHERE metric = ? AND fiscal_year = ? AND fiscal_period = ? "
+            "ORDER BY median DESC",
+            (metric, fiscal_year, fiscal_period),
+        )
+        return [MetricDistributionRow(*r) for r in cur.fetchall()]
+
+    def list_for_group(
+        self, peer_group: str, fiscal_year: int, fiscal_period: str
+    ) -> list[MetricDistributionRow]:
+        cur = self._conn.execute(
+            f"SELECT {self._SELECT_COLS} FROM metric_distributions "
+            "WHERE peer_group = ? AND fiscal_year = ? AND fiscal_period = ?",
+            (peer_group, fiscal_year, fiscal_period),
+        )
+        return [MetricDistributionRow(*r) for r in cur.fetchall()]
+
+    def latest_fy_year(self, metric: str) -> int | None:
+        row = self._conn.execute(
+            "SELECT MAX(fiscal_year) FROM metric_distributions "
+            "WHERE metric = ? AND fiscal_period = 'FY'",
+            (metric,),
+        ).fetchone()
+        return None if row is None or row[0] is None else int(row[0])
+
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM metric_distributions").fetchone()[0]
 

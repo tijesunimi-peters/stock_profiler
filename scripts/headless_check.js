@@ -43,9 +43,16 @@ const PAGES = process.env.PAGES
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
       ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
-      // Sector overview grid, and a sector auto-expanded (?group=) to the DuPont tree + 5Y trend.
+      // Sector overview grid (+ default net_margin cross-sector spread), a sector auto-expanded
+      // (?group=) to the DuPont tree + 5Y trend + per-sector spread panel, and the cross-sector
+      // box chart on a liquidity/solvency metric (?metric=).
       ["sectors", "/sectors"],
       ["sectors-expanded", "/sectors?group=60&range=5y"],
+      ["sectors-spreads", "/sectors?metric=debt_to_equity"],
+      // Long-tailed metric -> exercises the honest whisker-clipping path (▸ markers + caption).
+      ["sectors-spreads-clip", "/sectors?metric=interest_coverage"],
+      // A metric with no qualifying sectors -> the honest empty state (never a zero box).
+      ["sectors-spreads-empty", "/sectors?metric=quick_ratio"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];

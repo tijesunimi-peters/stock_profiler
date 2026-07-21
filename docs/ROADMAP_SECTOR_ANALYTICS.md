@@ -46,7 +46,7 @@ inspect via Python's `sqlite3` with `file:...?immutable=1`.
 |---|-------|--------------------|-------------|
 | 1 | DuPont decomposition tree (ROE → margin × turnover × leverage) | Metrics exist except **`equity_multiplier`** (facts mapped) | Add metric; **median→aggregate fix**; sector-aggregate batch; tree viz |
 | 2 | OCF-growth vs NI-growth scatter, bubble = assets/capex | Growth + `accruals` metrics exist; assets/capex mapped | Sector-aggregate batch; scatter viz |
-| 3 | Box-and-whisker liquidity/solvency spreads | **~80% built**: API + `peer_distribution.py` exist; `metric_distributions` **empty** | Run batch; box/strip viz; reuse sector page |
+| 3 | Box-and-whisker metric spreads (profitability + liquidity/solvency) | **SHIPPED** (2026-07-20, `sector-box-whisker-spreads`) | Done: 2 cache-aside endpoints over `metric_distributions` + `boxWhiskerChart` on `/sectors`. See note below. |
 | 4 | 100% common-size structural DNA | `commonSizeChart` exists (single-co) | Sector-aggregate path; decide CapEx (cash-flow) mixing; page |
 | 5 | DIO/DSO/DPO asset-lifecycle multi-line trend | `dso` + `inventory_turnover` exist; **`dio`, `dpo` missing** (facts mapped) | Add 2 metrics; multi-line sector time-series; **cut alpha claim** |
 
@@ -120,7 +120,20 @@ render check + `pytest` green.
 
 ## Deferred (reuse Deliverable 1's sector page + aggregation scaffold)
 
-- **#3** box-and-whisker spreads — run `peer_distribution.py`; box/strip viz. (~80% built already.)
+- **#3** box-and-whisker spreads — **SHIPPED** 2026-07-20 (`sector-box-whisker-spreads`).
+  `/v1/sectors/spreads` (cross-sector, a box per SIC group for one metric) + `/v1/sectors/{group}/
+  spreads` (per-sector, a box per metric) read `metric_distributions` cache-aside; the `/sectors`
+  page gained a metric-selectable cross-sector box chart + a per-sector small-multiple in the expand
+  detail. **Coverage caveat (found on the hydrated volume):** the liquidity/solvency metrics
+  (`current_ratio`/`quick_ratio`/`debt_to_equity`/`interest_coverage`) are near-empty market-wide —
+  the ingest has headline concepts (Assets/Equity/NetIncome, ~8.6K ciks) but the granular ones
+  (AssetsCurrent 68 ciks, LongTermDebt 34, InterestExpense 49) for only tens. Per operator decision
+  the spread selector was **broadened** to the broadly-covered profitability/efficiency metrics
+  (net_margin/roe/roa/asset_turnover/rev+earnings growth — populated ~60 sectors) plus the L/S
+  metrics (offered, honest empties that fill in as coverage improves). **Follow-up (separate task):
+  granular balance-sheet/income concept coverage** — why current-asset/liability/debt/operating-
+  income concepts are near-absent in the whole-market ingest, and a re-ingest to light up the L/S
+  spreads.
 - **#4** 100% common-size DNA — sector-aggregate path; resolve CapEx (cash-flow) mixing.
 - **#2** OCF-vs-NI scatter — sector-aggregate; bubble viz.
 - **#5** DIO/DSO/DPO lifecycle — add `dio` + `dpo` metrics; multi-line time-series; **cut the alpha
