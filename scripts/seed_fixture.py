@@ -497,6 +497,8 @@ def _seed_sector_dupont(db_path: str) -> None:
             if group == "28" and year == 2023:
                 continue  # coverage gap -> the trend line breaks here, never a 0 point
             drift = 1.0 + 0.03 * (year - 2023)  # a gentle year-over-year margin drift
+            if group == "73" and year == 2025:
+                drift *= 1.5  # a latest-year JUMP so the biggest-shifts band has a favorable move
             s_eq = 1_000.0
             s_assets = em * s_eq
             s_rev = at * s_assets
@@ -537,14 +539,32 @@ _SPREAD_DEMO = [
         "60": (0.02, 0.08, 0.13, 0.18, 0.29, 40),
         "73": (-0.30, 0.06, 0.19, 0.34, 1.10, 55),
     }),
+    # roa + the growth metrics round out the Profitability / Growth theme drill-downs for group 73.
+    ("roa", {
+        "35": (0.01, 0.05, 0.08, 0.13, 0.24, 26),
+        "73": (-0.10, 0.02, 0.06, 0.11, 0.22, 55),
+    }),
+    ("revenue_growth_yoy", {
+        "73": (-0.20, 0.01, 0.07, 0.15, 0.48, 55),
+    }),
+    ("earnings_growth_yoy", {
+        "73": (-0.45, -0.03, 0.05, 0.18, 0.90, 55),
+    }),
     ("current_ratio", {
         "35": (0.7, 1.2, 1.7, 2.4, 4.9, 26),
         "60": (0.3, 0.7, 1.0, 1.4, 2.2, 40),
         "73": (0.9, 1.4, 2.0, 3.1, 7.1, 55),
     }),
+    # quick_ratio + debt_to_equity[73] complete the Financial health drill-down (4/4) for groups
+    # 73 (default) and 60 (banks -- exercises the focus-persist-across-sector-switch path).
+    ("quick_ratio", {
+        "60": (0.2, 0.6, 0.9, 1.2, 2.0, 40),
+        "73": (0.6, 1.0, 1.4, 2.1, 4.6, 55),
+    }),
     ("debt_to_equity", {
         "35": (0.05, 0.4, 0.9, 1.7, 4.2, 26),
         "60": (1.5, 4.0, 6.5, 9.0, 13.0, 40),
+        "73": (0.1, 0.9, 1.6, 3.0, 8.0, 55),
     }),
     # interest_coverage has genuinely long right tails (a firm with tiny interest expense shows a
     # huge ratio) -- seeded with extreme maxima so the box chart's honest tail-CLIPPING path renders
@@ -623,9 +643,12 @@ def _seed_sector_lifecycle(db_path: str) -> None:
             if group == "28" and year == 2023:
                 continue  # coverage gap -> the trend lines break here, never a 0 point
             drift = 1.0 + 0.04 * (year - 2023)  # a gentle year-over-year lengthening
+            # group 73 gets a latest-year DSO spike so the biggest-shifts band shows an UNFAVORABLE
+            # move (DSO up = worse) alongside 73's favorable margin jump -- both directions demoed.
+            dso_mult = 1.7 if (group == "73" and year == 2025) else 1.0
             s_inv = dio * drift / 365.0 * s_cogs
             s_ap = dpo / 365.0 * s_cogs
-            s_ar = dso * drift / 365.0 * s_rev
+            s_ar = dso * drift * dso_mult / 365.0 * s_rev
             approx_count = 2 if year == max(_SECTOR_YEARS) else 0  # latest year flagged approximate
             row = aggregate_row(
                 group, year, "FY", f"{year}-12-31", base_n + (year - 2021), approx_count,
@@ -677,6 +700,24 @@ _THEME_SCORE_DEMO = {
             ("current_ratio", 1.0, -0.3), ("quick_ratio", 0.9, -0.2)]),
         "cash_investment": (60, None, 2, 9, 88.0, [
             ("fcf_margin", 0.18, 0.7), ("ocf_growth_yoy", 0.04, 0.1)]),
+    },
+    # 35 (machinery) + 28 (chemicals): a few themes each so the peer strip shows several sectors,
+    # not just 2. (Their drill-downs stay light -- the point is peer-strip breadth.)
+    "35": {
+        "profitability": (55, -1.0, 4, 11, 58.0, [
+            ("net_margin", 0.14, 0.2), ("roe", 0.22, 0.4), ("roa", 0.08, 0.1)]),
+        "growth": (49, 2.0, 6, 11, 48.0, [
+            ("revenue_growth_yoy", 0.05, -0.1), ("earnings_growth_yoy", 0.06, 0.0)]),
+        "financial_health": (57, 1.0, 5, 10, 62.0, [
+            ("debt_to_equity", 0.9, 0.3), ("current_ratio", 1.7, 0.4)]),
+    },
+    "28": {
+        "profitability": (62, 3.0, 3, 11, 74.0, [
+            ("net_margin", 0.18, 0.6), ("roe", 0.16, 0.3), ("roa", 0.09, 0.2)]),
+        "growth": (45, -4.0, 8, 11, 30.0, [
+            ("revenue_growth_yoy", 0.02, -0.5), ("earnings_growth_yoy", -0.03, -0.7)]),
+        "financial_health": (52, 0.0, 6, 10, 50.0, [
+            ("debt_to_equity", 1.4, -0.1), ("current_ratio", 1.9, 0.5)]),
     },
 }
 

@@ -1,70 +1,77 @@
 # Active delivery task
-task_slug: sector-scorecard
-request: Phase 2 of docs/REDESIGN_SECTOR_OVERVIEW.md — composite scorecard hero for /sectors. Mostly frontend (consumes GET /v1/sectors/theme-scores from Phase 0) + fixture seeding. Seven-tile scorecard from the selected sector's themes[] (5 scored: score/trend-delta chip/percentile/rank badge; 2 deferred "not yet scored"); score click -> inline decomposition; scorecard becomes the hero above the DuPont body. FULL favorability color (new positive/caution/negative token trio). N/A never 0; position-not-verdict framing; caveats surfaced.
-branch: sector-scorecard (stacked on sector-overview-shell / Phase 1)
+task_slug: sector-drilldown
+request: Phase 3 of docs/REDESIGN_SECTOR_OVERVIEW.md — final sector-overview phase: peer strip + biggest-shifts band + theme drill-down + tile-body-click theme-expand. Mostly frontend (peer strip + drill-down read already-fetched data; metric-level shifts compute off DuPont + lifecycle series in state). Peer strip = context-only bars per sector on the focused theme (from /sectors/theme-scores), not clickable. Biggest-shifts = metric-level standardized YoY change over DuPont+lifecycle series, top 3-5, favorability via display-only direction map (equity_multiplier neutral). Theme drill-down = focused theme's median+IQR tiles (reuse boxWhiskerChart / /sectors/{group}/spreads), KEEP the existing spreads panel too. Tile BODY click expands theme (peer strip + drill-down); SCORE button still opens Phase 2 decomposition; focused theme persists across sector switch. N/A never 0. Branch stacks on Phase 2 (sector-scorecard).
+branch: sector-drilldown (stacked on sector-scorecard / Phase 2)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-22
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (14 ACs; scope gate PASS Track 1; mostly frontend +
-      seed_fixture addition. Locked: full favorability color, scorecard-on-top, inline decomposition.
-      KEY honesty tension: score color must read as POSITION not verdict.)
-- [x] 2 Principal Architect   -> 2-architecture.md (frontend-only, SINGLE stage. Resolved R1-R5 +
-      D-ownership: R1 RESTRAINED score color = neutral score number + thin favorability band-accent
-      by score band (>=60 pos / 40-59 caution / <40 neg); delta chip is the loud signal. R2 delta:
-      >=+2 pos/up, <=-2 neg/down, |d|<2 flat, null="no prior FY" never 0. R3 new --positive/--caution/
-      --negative(+wash) tokens in style.css :root, hues finalized by design pass (anchor off syntax
-      greens/amber + terracotta), documented in STYLE_GUIDE. R4 fixture: group 73 all-5 themes mixed
-      +/-/null deltas + decomposition, group 60 OMIT operating_efficiency, 28/52 unseeded=empty case.
-      R5 fetch /sectors/theme-scores ONCE -> state.themeScores, pick by group, no refetch on switch.
-      D-ownership: seed_fixture.py + headless_check.js assigned to FRONTEND engineer (test fixture,
-      reuses Phase 0 repos) -> single frontend stage, no backend. Layout: new #scorecard mount between
-      #sectorbar and #aggregation; DuPont body (#view) stays below. Files: sectors.html/js/css,
-      style.css (tokens), STYLE_GUIDE, seed_fixture.py, headless_check.js. NO src/secfin change.
-      e2e: add sectors-decomp + sectors-scorecard-empty shots. AC->check table done.)
-- [x] 3 Frontend  -> 3-implementation.md (branch sector-scorecard, stacked on Phase 1. New
-      favorability tokens --positive/--caution/--negative (moss/amber/brick) in style.css +
-      STYLE_GUIDE; #scorecard mount; sectors.js scorecard hero (fetch /sectors/theme-scores ONCE ->
-      state.themeScores, pick by group, re-render on switch) — scoreTile (neutral score + delta chip
-      + percentile + rank + band accent), deferredTile, deltaChip (>=+2 pos/<=-2 neg/flat/null="no
-      prior FY" never 0), inline renderDecomp (constituents + median + oriented-z bars + equal-weight
-      + normalization); sectors.css; seed_fixture.py _seed_sector_theme_scores (73 all-5 mixed deltas
-      +decomp, 60 omit op-eff, 28/52 unseeded=empty); headless_check.js +sectors-decomp +sectors-
-      scorecard-empty. Found+FIXED a &amp; double-escape in the empty state (P.esc into states.empty
-      which re-escapes). pytest 506 pass; e2e PASS errors=0; EYEBALLED 4 scorecard shots (populated
-      73 5+2, decomp open, banks 60 4+2 op-eff omitted, empty 52). No src/secfin change.)
-- [x] 4 QA Tester             -> 4-qa.md (PASS — all 14 ACs verified by exercising the feature.
-      pytest 506 pass; e2e HEADLESS CHECK PASS errors=0; scripted interaction drive 18/18 PASS.
-      AC-1 scorecard hero above DuPont (7 tiles 5+2); AC-3 delta chips pos/neg/flat + null="no prior
-      FY" never 0; AC-5 inline decomp toggles one-at-a-time (constituents+note+normalization); AC-7
-      in-page switch does NOT refetch theme-scores (3->3 requests); AC-8 empty (group 52 + intercepted
-      sectors:[]) honest, DuPont still renders; AC-9 banks omit operating_efficiency (4 scored+2
-      deferred); AC-10 position-not-verdict copy, no affirmative buy/alpha; AC-11 score neutral ink,
-      favorability tokens only in sectors.css; AC-12 mobile 390px overflow=0. &amp; escape fix
-      confirmed clean. 2 non-blocking observations: O-1 score click re-renders scorecard -> focus
-      resets (minor a11y); O-2 "no prior FY" chip may wrap (acceptable). No defects. UNCOMMITTED,
-      branch STACKED on P1->P0.)
+- [x] 1 Product Manager       -> 1-brief.md (16 ACs; scope gate PASS Track 1; mostly frontend +
+      fixture. Locked: metric-level standardized shifts (equity_multiplier neutral), context-only
+      peer strip, keep both spread surfaces, tile-body expand + score-decomp, focus persists. R1
+      drill-down coverage partial/empty per theme; R6 largest phase.)
+- [x] 2 Principal Architect   -> 2-architecture.md (frontend-only, single stage. Resolved R1-R5: R1
+      theme->_SPREAD_METRICS coverage table (FH 4/4 populated, C&I 0/2 honest-empty), drill-down
+      states "showing N of M with a distribution". R2 standardized YoY change: changes=diffs, need
+      >=3 changes, z=(c_latest-mean(c))/pstdev(c), pstdev<1e-9 omit, rank by |z| top 3-5 with |z|>=
+      0.5. R2b display-only SHIFT_DIRECTION mirrors Phase 0 METRIC_DIRECTION (roe/net_margin/
+      asset_turnover higher; dio/dso/dpo/ccc lower; equity_multiplier NEUTRAL). R3 tile = clickable
+      expand region (role=button, sc-focused ring), score button stopPropagation; deferred tiles not
+      expandable. R4 focusTheme default first scored tile, persist across switch else fall back to
+      new sector's first scored. R5 extend _SPREAD_DEMO group 73 (net_margin/roa/roe + rev/earnings
+      growth + d-e/int-cov/current/quick) for populated FH+Profitability drill-down; C&I inherently
+      empty. New mounts #peerstrip/#shifts/#drilldown between #scorecard and #aggregation; all read
+      cached state (themeScores/series/lifecycle/groupSpreads), incremental render off the 3 fetch
+      .then's. Files: sectors.html/js/css, seed_fixture.py, headless_check.js. NO src/secfin. e2e:
+      +sectors-drilldown-fh +sectors-drilldown-empty. AC->check table done.)
+- [x] 3 Frontend  -> 3-implementation.md (branch sector-drilldown, stacked on P2. sectors.html 3
+      mounts; sectors.js state.focusTheme (default first scored, persists/falls-back on switch),
+      tile-body expand region (role=button, sc-focused, score button stopPropagation), renderPeerStrip
+      (bars from themeScores for focused theme, omit non-scoring, selected accent, not clickable),
+      renderShifts (standardized YoY z over DuPont+lifecycle series, top 3-5 |z|>=0.5, glyph=raw dir
+      color=favorability via SHIFT_DIRECTION, equity_multiplier neutral), renderDrilldown (focused
+      theme constituents ∩ groupSpreads, boxWhiskerChart per match, "N of M" caption, honest empty),
+      wired into render/selectSector + 3 fetch .then's; kept the existing spreads panel. sectors.css.
+      seed_fixture: extended _SPREAD_DEMO group 73 (FH 4/4 + Profitability 3/4 populated), group-73
+      2025 SHOCK (margin+DSO) so shifts populate, seeded groups 35+28 theme scores (peer strip 4
+      sectors). headless_check +sectors-drilldown-fh +sectors-drilldown-empty. Refined shift glyph to
+      raw-direction (color=favorability) for clarity. pytest 506 pass; e2e PASS errors=0; EYEBALLED:
+      default (peer strip 4 sectors + shifts populated both directions + Profitability drill-down 3/4),
+      FH drill-down 4/4 + peer-strip re-point, C&I honest-empty drill-down 0/2. No src/secfin change.)
+- [x] 4 QA Tester             -> 4-qa.md (PASS — all 16 ACs verified by exercising the feature.
+      pytest 506 pass; e2e HEADLESS CHECK PASS errors=0; scripted interaction drive 19/19 PASS.
+      AC-2 peer strip not clickable; AC-3 no zero bars (min height 55%); AC-4/5 shifts 4 rows, DSO/CCC
+      red-unfavorable + ROE/margin green-favorable (glyph=raw dir, color=favorability); AC-7 tile-body
+      expand re-points peer strip + drill-down; AC-8 FH 4/4, Profitability 3/4 (roic omitted never 0),
+      C&I honest-empty 0/2; AC-9 score-click decomposition doesn't change focus (stopPropagation);
+      AC-10 kept spreads panel; AC-11 focus persists 73->60 (FH) + falls back when banks omit op-eff;
+      AC-12 default focus first scored tile; AC-13 basis surfaced + no affirmative buy/alpha; AC-14
+      page order; AC-15 mobile 390px overflow=0. 2 non-blocking observations (O-1 drill-down sparse
+      per R1; O-2 score-click focus reset carried from P2). No defects. UNCOMMITTED, STACKED P0-P3.
+      COMPLETES the sector-overview altitude.)
 
 ## Deploy note
 - PASS unlocks a deploy REQUEST, not a deploy. Frontend/static-only; deploy = rebuild api image +
-  ship. Branch STACKED P0->P1->P2 (all unmerged) -- merge in order or together. Scorecard is honest-
-  empty on prod until DevOps runs `python -m secfin.analytical.sector_theme_scores`. Operator next:
-  commit branch and/or /devops-engineer.
+  ship. Branch STACKED P0->P1->P2->P3 (all unmerged) -- merge in order or together. Scorecard/peer-
+  strip honest-empty on prod until DevOps runs `python -m secfin.analytical.sector_theme_scores`.
+  Operator next: commit branch and/or /devops-engineer. This COMPLETES altitude 1 (Phases 0-3 of
+  docs/REDESIGN_SECTOR_OVERVIEW.md).
 
 ## Notes / open loops
-- Mostly frontend. Owner senior-frontend-engineer (static/). Small scripts/seed_fixture.py addition
-  (seed sector_theme_scores + sector_theme_components) -- architect assigns ownership.
-- Consumes existing GET /v1/sectors/theme-scores (Phase 0). Response = SectorThemeScoreList in
-  normalize/schema.py: sectors[{group, group_label, themes[{theme,theme_label,scored,score,
-  percentile,rank,rank_of,delta_vs_prior_fy,constituents[{metric,label,higher_is_better,median,
-  oriented_z}],reason}]}], + normalization + caveats. Fetch once, pick state.group's entry.
-- Files: static/sectors.html (scorecard mount above body), sectors.js (fetch + render scorecard +
-  decomposition + re-render on sector switch), sectors.css (tiles + favorability), style.css or
-  app.css (new positive/caution/negative tokens), STYLE_GUIDE (document tokens), scripts/
-  seed_fixture.py (seed theme scores), scripts/headless_check.js (scorecard shots).
-- Branch STACKS on Phase 1 (sector-overview-shell); Phase 0+1 unmerged. Note for operator.
-- HONESTY: N/A never 0; deferred themes never fabricated; caveats + normalization surfaced; score =
-  position not verdict despite color; favorability color only for favorability; light-only theme.
-- Verify: pytest green + e2e headless render check, EYEBALL shots (populated scorecard, empty,
-  decomposition open, deferred tiles, mobile).
+- Mostly frontend. Owner senior-frontend-engineer (static/) + scripts/ (fixture + headless).
+- Reuse already-fetched state in sectors.js: state.themeScores (all sectors -> peer strip),
+  state.series[group] (DuPont FY series -> shifts), state.lifecycle[group] (lifecycle FY series ->
+  shifts), state.groupSpreads[group] (per-sector box-whisker over _SPREAD_METRICS -> drill-down).
+- New: state.focusTheme (default first scored tile; persists across sector switch, 00 §11.2).
+  Tile BODY click -> focusTheme + peer strip + drill-down; SCORE button -> decompTheme (Phase 2).
+- KEY R1: drill-down only covers _SPREAD_METRICS-backed constituents; honest omit/empty otherwise.
+  Broadening = separate backend task, OUT of scope.
+- Files: sectors.html (peerstrip/shifts/drilldown mounts), sectors.js (peer strip + shifts +
+  drill-down + focusTheme + tile-body handler), sectors.css, seed_fixture.py (seed distributions for
+  a populated + an empty drill-down), headless_check.js (shots). NO src/secfin change.
+- HONESTY: N/A never 0 (omitted bars/metrics/boxes never zero); favorability only for favorability
+  (equity_multiplier neutral); no verdict/alpha; basis surfaced. Threshold-alert + what's-moving feed
+  = OUT (00 §13 / 01 §7).
+- Verify: pytest green + e2e headless render check, EYEBALL (peer strip on focused theme, shifts
+  band, drill-down populated + empty, focus persisting across sector switch, mobile).

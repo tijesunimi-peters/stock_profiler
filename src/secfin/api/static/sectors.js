@@ -33,6 +33,7 @@
     themeScores: null, // the /v1/sectors/theme-scores payload (fetched ONCE, all sectors)
     themeScoresErr: false, // the theme-scores fetch failed (scorecard shows a scoped error)
     decompTheme: null, // the theme whose decomposition is currently open (one at a time)
+    focusTheme: null, // the theme the peer strip + drill-down follow (default first scored; persists)
   };
 
   function normalizeRange(r) {
@@ -80,9 +81,9 @@
     });
 
     if (!d.sectors || !d.sectors.length) {
-      $("sectorbar").innerHTML = "";
-      $("scorecard").innerHTML = "";
-      $("aggregation").innerHTML = "";
+      ["sectorbar", "scorecard", "peerstrip", "shifts", "drilldown", "aggregation"].forEach(function (id) {
+        $(id).innerHTML = "";
+      });
       $("view").innerHTML = P.states.empty({
         title: "No sectors to show",
         copy: "No SIC group met the minimum size for this period, or the sector aggregates aren't materialized yet.",
@@ -97,8 +98,11 @@
     if (state.group) pushMRU(state.group); // record the landing sector as most-recent/last-viewed
     renderSectorBar();
     renderScorecard();
+    renderPeerStrip();
+    renderShifts();
+    renderDrilldown();
     renderBody();
-    ensureThemeScores(); // fetch the composite scores once, then repaint the scorecard
+    ensureThemeScores(); // fetch the composite scores once, then repaint the scorecard + focus surfaces
   }
 
   // The load-bearing honesty banner: what these numbers are (and are not), plus the full caveats.
@@ -144,9 +148,48 @@
     state.decompTheme = null; // close any open decomposition when the subject changes
     pushMRU(code);
     syncURL();
+    reconcileFocusTheme(); // keep the focused theme (00 §11.2), else fall back for the new sector
     renderSectorBar();
     renderScorecard();
+    renderPeerStrip();
+    renderShifts();
+    renderDrilldown();
     renderBody();
+  }
+
+  // ---------- focused theme (peer strip + drill-down subject; persists across sector switch) ------
+
+  function scoredThemes(entry) {
+    return entry && entry.themes ? entry.themes.filter(function (t) { return t.scored; }) : [];
+  }
+  function firstScoredTheme(entry) {
+    var s = scoredThemes(entry)[0];
+    return s ? s.theme : null;
+  }
+  function sectorScoresTheme(group, theme) {
+    return scoredThemes(themeEntryFor(group)).some(function (t) { return t.theme === theme; });
+  }
+  // Default the focus once theme scores are known; keep it if still valid for the sector.
+  function ensureFocusTheme() {
+    var entry = themeEntryFor(state.group);
+    if (!state.focusTheme || !sectorScoresTheme(state.group, state.focusTheme)) {
+      state.focusTheme = firstScoredTheme(entry);
+    }
+  }
+  // On sector switch: preserve the focused theme if the new sector scores it, else fall back to its
+  // first scored theme (best-effort metric-axis preservation, 00 §11.2).
+  function reconcileFocusTheme() {
+    if (!state.themeScores) return; // scores not loaded yet; ensureFocusTheme handles it on arrival
+    if (!state.focusTheme || !sectorScoresTheme(state.group, state.focusTheme)) {
+      state.focusTheme = firstScoredTheme(themeEntryFor(state.group));
+    }
+  }
+  function setFocusTheme(theme) {
+    if (!theme || theme === state.focusTheme) return;
+    state.focusTheme = theme;
+    renderScorecard(); // repaint tiles so the sc-focused ring moves
+    renderPeerStrip();
+    renderDrilldown();
   }
 
   // Update ?group= in place, no reload (keeps the trend range if the user set a non-default one).
@@ -317,7 +360,13 @@
   function ensureThemeScores() {
     if (state.themeScores || state.themeScoresErr) return; // fetch once; switching sector re-picks
     P.api("/sectors/theme-scores")
-      .then(function (res) { state.themeScores = res; renderScorecard(); })
+      .then(function (res) {
+        state.themeScores = res;
+        ensureFocusTheme(); // default the focused theme now that scores are known
+        renderScorecard();
+        renderPeerStrip();
+        renderDrilldown();
+      })
       .catch(function () { state.themeScoresErr = true; renderScorecard(); });
   }
 
@@ -402,8 +451,13 @@
     var band = favBand(t.score);
     var pct = t.percentile === null || t.percentile === undefined ? "—" : "P" + Math.round(t.percentile);
     var rank = t.rank && t.rank_of ? t.rank + " of " + t.rank_of : "—";
+    var focused = state.focusTheme === t.theme;
+    // The whole tile is a clickable "expand theme" region (peer strip + drill-down follow it); the
+    // inner score button opens the decomposition and stops propagation so the two don't collide.
     return (
-      '<div class="sc-tile sc-band-' + band + (state.decompTheme === t.theme ? " sc-open" : "") + '">' +
+      '<div class="sc-tile sc-band-' + band + (state.decompTheme === t.theme ? " sc-open" : "") +
+      (focused ? " sc-focused" : "") + '" role="button" tabindex="0" data-focus-theme="' + P.esc(t.theme) +
+      '" aria-pressed="' + focused + '" title="Expand this theme (peer strip + dispersion)">' +
       '<div class="sc-theme">' + P.esc(t.theme_label) + "</div>" +
       '<button type="button" class="sc-score" data-theme="' + P.esc(t.theme) + '" aria-expanded="' + (state.decompTheme === t.theme) + '" title="Show what drove this score">' +
       P.esc(String(t.score)) + "</button>" +
@@ -435,11 +489,21 @@
   }
 
   function wireScorecard() {
+    // Score button -> decomposition (stops propagation so the tile-body expand doesn't also fire).
     $("scorecard").querySelectorAll(".sc-score").forEach(function (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
         var th = btn.getAttribute("data-theme");
         state.decompTheme = state.decompTheme === th ? null : th; // toggle; one open at a time
         renderScorecard();
+      });
+    });
+    // Tile body -> expand the theme (peer strip + drill-down follow it). Keyboard: Enter/Space.
+    $("scorecard").querySelectorAll(".sc-tile[data-focus-theme]").forEach(function (tile) {
+      var th = tile.getAttribute("data-focus-theme");
+      tile.addEventListener("click", function () { setFocusTheme(th); });
+      tile.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFocusTheme(th); }
       });
     });
   }
@@ -480,6 +544,211 @@
       "</div>";
   }
 
+  // ---------- peer strip: where every sector sits on the focused theme (context, not clickable) ----
+
+  function focusThemeLabel() {
+    var entry = themeEntryFor(state.group);
+    var t = entry && (entry.themes || []).filter(function (x) { return x.theme === state.focusTheme; })[0];
+    if (t) return t.theme_label;
+    // fall back to the payload's label for any sector that has it
+    var p = state.themeScores;
+    if (p) {
+      for (var i = 0; i < (p.sectors || []).length; i++) {
+        var m = (p.sectors[i].themes || []).filter(function (x) { return x.theme === state.focusTheme; })[0];
+        if (m) return m.theme_label;
+      }
+    }
+    return state.focusTheme || "";
+  }
+
+  function renderPeerStrip() {
+    var mount = $("peerstrip");
+    if (!mount) return;
+    if (!state.themeScores || !state.focusTheme) { mount.innerHTML = ""; return; } // nothing focused yet
+    // every sector that SCORES the focused theme -> a bar (sectors that don't score it are omitted).
+    var bars = [];
+    (state.themeScores.sectors || []).forEach(function (s) {
+      var t = (s.themes || []).filter(function (x) { return x.theme === state.focusTheme && x.scored; })[0];
+      if (t) bars.push({ group: s.group, label: s.group_label, score: t.score, sel: s.group === state.group });
+    });
+    if (bars.length < 2) { mount.innerHTML = ""; return; } // not enough sectors to place one against
+    bars.sort(function (a, b) { return b.score - a.score; });
+    var row = bars
+      .map(function (b) {
+        return (
+          '<span class="ps-bar' + (b.sel ? " sel" : "") + '" style="height:' + Math.max(6, b.score) + '%" ' +
+          'title="' + P.esc(b.label) + " · " + b.score + '"></span>'
+        );
+      })
+      .join("");
+    var yr = state.themeScores.fiscal_year;
+    mount.innerHTML =
+      '<div class="peerstrip">' +
+      '<div class="ps-caption">' + P.esc(focusThemeLabel()) + " · " + bars.length + " sectors · FY" + yr +
+      " · <span class=\"ps-selnote\">" + P.esc(findSector(state.group) ? findSector(state.group).group_label : "selected") + "</span> highlighted</div>" +
+      '<div class="ps-bars" role="img" aria-label="Composite score of each sector on ' + P.esc(focusThemeLabel()) + '">' + row + "</div>" +
+      "</div>";
+  }
+
+  // ---------- biggest shifts: metrics with the largest standardized YoY change (this sector) --------
+
+  // Display-only favorability direction (mirrors normalize/metrics.METRIC_DIRECTION). equity_multiplier
+  // is NEUTRAL: leverage moving isn't cleanly good/bad for a sector, so it carries no favorability color.
+  var SHIFT_DIRECTION = {
+    roe: true, net_margin: true, asset_turnover: true,
+    dio: false, dso: false, dpo: false, ccc: false,
+    equity_multiplier: null,
+  };
+  var SHIFT_LABELS = {
+    roe: "ROE", net_margin: "Net margin", asset_turnover: "Asset turnover",
+    equity_multiplier: "Equity multiplier", dio: "Days inventory (DIO)", dso: "Days sales (DSO)",
+    dpo: "Days payable (DPO)", ccc: "Cash conversion cycle",
+  };
+  var SHIFT_MIN_CHANGES = 3; // need >= 3 YoY changes to standardize the latest one
+  var SHIFT_Z_FLOOR = 0.5; // ignore essentially-flat metrics
+
+  function mean(a) { return a.reduce(function (x, y) { return x + y; }, 0) / a.length; }
+  function pstdev(a) {
+    var m = mean(a);
+    return Math.sqrt(a.reduce(function (x, y) { return x + (y - m) * (y - m); }, 0) / a.length);
+  }
+
+  // A metric's standardized latest YoY change over its FY series (oldest first), or null if it can't
+  // be standardized (too little history / no historical variation) -- never fabricated.
+  function standardizedShift(metric, values) {
+    var vals = values.filter(function (v) { return v !== null && v !== undefined && isFinite(v); });
+    if (vals.length < SHIFT_MIN_CHANGES + 1) return null;
+    var changes = [];
+    for (var i = 1; i < vals.length; i++) changes.push(vals[i] - vals[i - 1]);
+    if (changes.length < SHIFT_MIN_CHANGES) return null;
+    var sd = pstdev(changes);
+    if (sd < 1e-9) return null; // no historical variation -> can't standardize
+    var latest = changes[changes.length - 1];
+    return { metric: metric, change: latest, z: (latest - mean(changes)) / sd };
+  }
+
+  function shiftCandidates() {
+    var out = [];
+    var s = state.series[state.group];
+    if (s && s.points && s.points.length) {
+      ["roe", "net_margin", "asset_turnover", "equity_multiplier"].forEach(function (m) {
+        var r = standardizedShift(m, s.points.map(function (p) { return p[m]; }));
+        if (r) out.push(r);
+      });
+    }
+    var lc = state.lifecycle[state.group];
+    if (lc && lc.points && lc.points.length) {
+      ["dio", "dso", "dpo", "ccc"].forEach(function (m) {
+        var r = standardizedShift(m, lc.points.map(function (p) { return p[m]; }));
+        if (r) out.push(r);
+      });
+    }
+    return out;
+  }
+
+  function shiftFavorability(metric, change) {
+    var dir = SHIFT_DIRECTION[metric];
+    if (dir === null || dir === undefined) return "neu"; // equity_multiplier / unknown -> neutral
+    if (Math.abs(change) < 1e-12) return "neu";
+    var favorable = (change > 0) === dir; // higher-better + up, or lower-better + down
+    return favorable ? "pos" : "neg";
+  }
+
+  function shiftRow(r) {
+    var fav = shiftFavorability(r.metric, r.change); // color = is the move good/bad
+    var glyph = r.change > 0 ? "▲" : r.change < 0 ? "▼" : "▬"; // glyph = which way it moved (raw)
+    var sign = r.change > 0 ? "+" : "";
+    var val = sign + metricFmt(r.metric, r.change).replace(/^-/, "−"); // keep the sign, en-dash negatives
+    return (
+      '<div class="shift-row shift-' + fav + '">' +
+      '<span class="shift-name">' + P.esc(SHIFT_LABELS[r.metric] || r.metric) + "</span>" +
+      '<span class="shift-delta"><span class="shift-glyph" aria-hidden="true">' + glyph + "</span>" + P.esc(val) + "</span>" +
+      '<span class="shift-basis">' + (r.z >= 0 ? "+" : "−") + Math.abs(r.z).toFixed(1) + "σ vs its own history</span>" +
+      "</div>"
+    );
+  }
+
+  function renderShifts() {
+    var mount = $("shifts");
+    if (!mount) return;
+    var haveSeries = state.series[state.group];
+    if (!haveSeries) { mount.innerHTML = ""; return; } // fills in once the DuPont series is cached
+    var cands = shiftCandidates()
+      .filter(function (r) { return Math.abs(r.z) >= SHIFT_Z_FLOOR; })
+      .sort(function (a, b) { return Math.abs(b.z) - Math.abs(a.z); })
+      .slice(0, 5);
+    var head =
+      '<div class="shifts-head"><h3 class="shifts-title">Biggest shifts</h3>' +
+      '<span class="shifts-hint">largest standardized year-over-year move among this sector’s DuPont + working-capital metrics</span></div>';
+    if (!cands.length) {
+      mount.innerHTML =
+        '<section class="shifts">' + head +
+        '<p class="shifts-empty">Not enough history yet to flag a standardized move for this sector.</p></section>';
+      return;
+    }
+    mount.innerHTML = '<section class="shifts">' + head + '<div class="shift-rows">' + cands.map(shiftRow).join("") + "</div></section>";
+  }
+
+  // ---------- theme drill-down: the focused theme's constituent dispersion (median + IQR) -----------
+
+  function renderDrilldown() {
+    var mount = $("drilldown");
+    if (!mount) return;
+    if (!state.themeScores || !state.focusTheme) { mount.innerHTML = ""; return; }
+    var label = focusThemeLabel();
+    var entry = themeEntryFor(state.group);
+    var theme = entry && (entry.themes || []).filter(function (x) { return x.theme === state.focusTheme && x.scored; })[0];
+    var head =
+      '<div class="drill-head"><h3 class="drill-title">' + P.esc(label) + " · dispersion</h3>" +
+      '<span class="drill-hint">how spread out each constituent is across this sector’s companies</span></div>';
+
+    if (!theme) {
+      mount.innerHTML =
+        '<section class="drilldown">' + head +
+        '<p class="drill-empty">' + P.esc(findSector(state.group) ? findSector(state.group).group_label : "This sector") +
+        " doesn’t score " + P.esc(label) + " — pick another theme above.</p></section>";
+      return;
+    }
+    var spreads = state.groupSpreads[state.group];
+    if (!spreads) {
+      mount.innerHTML = '<section class="drilldown">' + head + P.states.loading({ title: "Loading dispersion", note: "" }) + "</section>";
+      return;
+    }
+    var wantMetrics = (theme.constituents || []).map(function (c) { return c.metric; });
+    var byMetric = {};
+    (spreads.metrics || []).forEach(function (m) { byMetric[m.metric] = m; });
+    var matched = wantMetrics.map(function (m) { return byMetric[m]; }).filter(Boolean);
+
+    mount.innerHTML =
+      '<section class="drilldown">' + head +
+      '<p class="drill-cover">Showing ' + matched.length + " of " + wantMetrics.length +
+      " constituent" + (wantMetrics.length === 1 ? "" : "s") + " with a peer distribution." +
+      (matched.length < wantMetrics.length ? " Others have no distribution yet — omitted, not zero." : "") +
+      "</p>" +
+      '<div class="drill-boxes" id="drill-boxes"></div></section>';
+
+    var host = $("drill-boxes");
+    if (!matched.length) {
+      host.innerHTML =
+        '<p class="drill-empty">No peer distribution for this theme’s constituents yet — sparse coverage, ' +
+        "not zero. See the composite decomposition on the score for the full constituent set.</p>";
+      return;
+    }
+    var width = P.measuredWidth(host, 560);
+    matched.forEach(function (m) {
+      host.appendChild(
+        P.boxWhiskerChart(
+          [{ label: "", peer_count: m.peer_count, min: m.min, p25: m.p25, median: m.median, p75: m.p75, max: m.max }],
+          {
+            width: width, height: 60, marginLeft: 14, title: m.label, metric: m.metric, unit: m.unit,
+            caption: m.peer_count + " companies · min " + fmtSpreadVal(m.metric, m.min) +
+              " · median " + fmtSpreadVal(m.metric, m.median) + " · max " + fmtSpreadVal(m.metric, m.max),
+          }
+        )
+      );
+    });
+  }
+
   // ---------- sector body: DuPont tree + ROE trend + per-sector spreads + lifecycle ----------
 
   function renderBody() {
@@ -489,12 +758,12 @@
       return;
     }
     var g = state.group;
-    if (state.series[g]) { paintBody(view, state.series[g]); return; }
+    if (state.series[g]) { paintBody(view, state.series[g]); renderShifts(); return; }
     view.innerHTML = P.states.loading({ title: "Loading sector", note: "" });
     P.api("/sectors/" + encodeURIComponent(g))
       .then(function (res) {
         state.series[g] = res;
-        if (state.group === g) paintBody(view, res); // ignore a stale response if the user switched
+        if (state.group === g) { paintBody(view, res); renderShifts(); } // ignore a stale response
       })
       .catch(function () {
         if (state.group === g) view.innerHTML = P.states.error({ copy: "Couldn't load this sector's detail." });
@@ -540,7 +809,11 @@
     if (state.lifecycle[group]) { drawLifecycle(mount, state.lifecycle[group]); return; }
     mount.innerHTML = P.states.loading({ title: "Loading lifecycle", note: "" });
     P.api("/sectors/" + encodeURIComponent(group) + "/lifecycle")
-      .then(function (res) { state.lifecycle[group] = res; drawLifecycle(mount, res); })
+      .then(function (res) {
+        state.lifecycle[group] = res;
+        drawLifecycle(mount, res);
+        if (state.group === group) renderShifts(); // the lifecycle metrics can now enter the shifts band
+      })
       .catch(function () { mount.innerHTML = ""; }); // skip silently — the rest of the body stands
   }
 
@@ -605,9 +878,13 @@
 
   function paintDetailSpreads(mount, group) {
     mount.innerHTML = P.states.loading({ title: "Loading sector spread", note: "" });
-    if (state.groupSpreads[group]) { drawDetailSpreads(mount, state.groupSpreads[group]); return; }
+    if (state.groupSpreads[group]) { drawDetailSpreads(mount, state.groupSpreads[group]); renderDrilldown(); return; }
     P.api("/sectors/" + encodeURIComponent(group) + "/spreads?year=" + state.data.fiscal_year)
-      .then(function (res) { state.groupSpreads[group] = res; drawDetailSpreads(mount, res); })
+      .then(function (res) {
+        state.groupSpreads[group] = res;
+        drawDetailSpreads(mount, res);
+        if (state.group === group) renderDrilldown(); // the theme drill-down can now show its boxes
+      })
       .catch(function () { mount.innerHTML = ""; }); // skip silently — the tree + trend still stand
   }
 

@@ -154,12 +154,48 @@ decomposition open, deferred tiles) + `pytest`.
 
 ## Phase 3 — Peer strip · biggest-shifts · theme drill-down
 
-- **Peer strip** (`00 §3b`) re-points to the expanded theme — from the theme-scores endpoint.
-- **Biggest-shifts band** (`00 §12`) — standardized deltas off the per-sector FY series
-  (`/sectors/{group}`).
-- **Theme drill-down** — the median + IQR **tile grammar** (`00 §3`), reusing the existing
-  `boxWhiskerChart` / distribution plumbing. **DuPont-aggregate stays** as an honest analytic
-  here (labeled "aggregate, not median"), not folded into a median tile.
+**Built** (`sector-drilldown` branch, stacked on Phase 2): peer strip + biggest-shifts band + theme
+drill-down + the tile-body-click theme-expand. This completes the sector-overview altitude.
+
+The final phase: three surfaces (`01 §4–6`) + the **tile-body click** as the theme-expand trigger
+(the score click already opens the Phase 2 decomposition). **Mostly frontend** — the peer strip and
+the drill-down read data already fetched; the metric-level shifts compute off the DuPont + lifecycle
+series already in `state`. Largest phase of the redesign.
+
+**Locked decisions (operator, 2026-07-22):**
+- **Biggest-shifts = metric-level standardized change** (`00 §12`): top 3–5 individual metrics by
+  standardized YoY change over the **DuPont series** (`roe`, `net_margin`, `asset_turnover`,
+  `equity_multiplier`) + **lifecycle series** (`dio`, `dso`, `dpo`, `ccc`), both already fetched.
+  Favorability via a **display-only direction map** for those metrics (like the existing
+  `PERCENT_SPREAD` maps). `equity_multiplier` (leverage) is treated as **context/neutral** (no
+  favorability color — leverage-up isn't cleanly "bad" for a sector). Honest basis label; a metric
+  with too little history to standardize is omitted (never a fabricated shift).
+- **Peer strip = context only, NOT clickable** (`00 §3b` default): one bar per sector on the focused
+  theme (every sector's composite score, from the already-fetched `/sectors/theme-scores`), selected
+  sector in `accent`, others neutral; caption names the theme + basis. Sectors that don't score the
+  theme are omitted (no zero bars). The header selector stays the only way to switch sectors.
+- **Keep both spread surfaces:** add the theme drill-down (the focused theme's median+IQR tiles,
+  reusing `boxWhiskerChart` / `/sectors/{group}/spreads`) under the scorecard, **and keep** the
+  existing always-on "Metric spread across &lt;sector&gt;" panel lower in the body. Constituents
+  without a distribution are honestly omitted (never zero boxes).
+
+**Interaction model** (guide `01 §3`): the **tile body** click expands the theme → re-points the
+peer strip + shows the theme drill-down; the **score** button still opens the decomposition (Phase
+2). Two distinct affordances on the tile — needs clear hover/expand affordances (design pass). The
+**focused theme persists across sector switches** (`00 §11.2` metric-axis preservation); default
+focused theme on load = the first scored tile (confirm in design).
+
+**Page order** (`01` ordering): sector bar → scorecard → **peer strip** → **biggest-shifts** →
+**theme drill-down** → aggregation banner → DuPont tree + trend → (kept) per-sector spreads →
+lifecycle.
+
+**Out of scope (flagged):** the **threshold-alert layer** (`00 §13`) that would pin threshold-
+crossing metrics to the shifts band — no threshold layer exists (thresholds-with-metrics unbuilt);
+the shifts band is standardized-change-ranked only. The **"what's moving" filing-event feed**
+(`01 §7`) stays Track-2 / out.
+
+**Verify:** Docker e2e headless render check (peer strip on a focused theme, shifts band, drill-down
+open, focus persisting across a sector switch) + `pytest`.
 
 ## Sidebar submenu (nav)
 

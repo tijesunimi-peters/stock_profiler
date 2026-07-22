@@ -62,6 +62,11 @@ const PAGES = process.env.PAGES
       ["sectors-decomp", "/sectors?group=73"],
       // A sector with NO theme scores -> the honest empty-scorecard state (DuPont still below).
       ["sectors-scorecard-empty", "/sectors?group=52"],
+      // Expand a theme (tile body) -> peer strip + drill-down follow it. Financial health = a
+      // POPULATED drill-down (4/4 constituents have a distribution); Cash & investment = the honest
+      // EMPTY drill-down (its constituents have no distribution).
+      ["sectors-drilldown-fh", "/sectors?group=73"],
+      ["sectors-drilldown-empty", "/sectors?group=73"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];
@@ -116,6 +121,14 @@ const PAGES = process.env.PAGES
         // toggle/render fails the check; the screenshot captures the expanded panel.
         await page.click(".sc-score");
         await new Promise((r) => setTimeout(r, 400));
+      }
+      if (name === "sectors-drilldown-fh" || name === "sectors-drilldown-empty") {
+        // Expand a theme by clicking the tile BODY (not the score). Financial health -> a populated
+        // drill-down; Cash & investment -> the honest empty drill-down. Wait for the spread fetch.
+        const theme = name === "sectors-drilldown-fh" ? "financial_health" : "cash_investment";
+        await page.waitForSelector(`.sc-tile[data-focus-theme="${theme}"]`);
+        await page.click(`.sc-tile[data-focus-theme="${theme}"]`);
+        await new Promise((r) => setTimeout(r, 900));
       }
       if (name === "sectors-selector") {
         // Open the sector combobox (client-side filter over the loaded sector list): focus the
