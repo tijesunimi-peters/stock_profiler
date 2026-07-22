@@ -33,7 +33,9 @@ from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfil
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
+from secfin.storage.metric_value_repository import MetricValueRow
 from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankRepository
+from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 
 # A fixed demo API key so gated endpoints can be exercised offline / in the e2e profile.
@@ -761,6 +763,45 @@ def _seed_sector_theme_scores(db_path: str) -> None:
         repo.close()
 
 
+# Per-company metric_values + profiles + ranks for the Sector Analytics app's COMPANY view (the peer
+# dot-cloud). Seeds a SIC-35 group of synthetic filers (ciks 900001..900010) so the dot-plots +
+# search/?symbol= + dot-click render. The e2e uses ?symbol=900001 (a RAW CIK -> resolves directly,
+# no ticker-cache entry needed). Two metrics on one company are left N/A to prove exclusion (never 0).
+_APP_COMPANY_METRICS = [
+    "net_margin", "revenue_growth_yoy", "roe", "roa",
+    "debt_to_equity", "fcf_margin", "inventory_turnover", "current_ratio",
+]
+
+
+def _seed_app_company_group(db_path: str) -> None:
+    profiles = SQLiteCompanyProfileRepository(db_path)
+    values = SQLiteMetricValueRepository(db_path)
+    ranks = SQLiteMetricRankRepository(db_path)
+    n = 10
+    vrows, rrows = [], []
+    for i in range(n):
+        cik = 900001 + i
+        profiles.upsert(CompanyProfile(cik=cik, sic="3560", sic_description="Industrial machinery",
+                                       name=f"Machinery Co {i + 1}"))
+        for j, metric in enumerate(_APP_COMPANY_METRICS):
+            # a deterministic spread per metric; company 3 has two N/A metrics (must be excluded)
+            na = i == 3 and metric in ("fcf_margin", "inventory_turnover")
+            base = 0.04 + ((i * 3 + j) % 11) * 0.02  # 0.04..0.24-ish, varied
+            val = None if na else round(base * (5 if metric in ("roe", "current_ratio", "inventory_turnover", "debt_to_equity") else 1), 4)
+            vrows.append(MetricValueRow(cik, 2025, "FY", metric, val, "na" if na else "ok", "ratio"))
+            if not na:
+                rrows.append(MetricRankRow(cik, 2025, "FY", metric, "35", n,
+                                           round(i / (n - 1) * 100, 1), 0.0))
+    try:
+        values.bulk_upsert(vrows)
+        ranks.bulk_upsert(rrows)
+        print(f"seeded app company group: {n} SIC-35 filers, {len(vrows)} values, {len(rrows)} ranks")
+    finally:
+        profiles.close()
+        values.close()
+        ranks.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -813,6 +854,7 @@ def main() -> None:
     _seed_metric_distributions(db_path)
     _seed_sector_lifecycle(db_path)
     _seed_sector_theme_scores(db_path)
+    _seed_app_company_group(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

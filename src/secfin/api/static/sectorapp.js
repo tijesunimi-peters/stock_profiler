@@ -22,7 +22,6 @@
     subIdx: null, // reserved (sub-industry / SIC-4 not backed yet — omitted this phase)
     expandedTheme: null,
     decompTheme: null,
-    focalTicker: null, // Company view (Phase 2)
     compareA: null,
     compareB: null,
     ddOpen: false, // sector dropdown open
@@ -32,7 +31,15 @@
     series: {}, // group -> /sectors/{group}
     spreads: {}, // group -> /sectors/{group}/spreads
     lifecycle: {}, // group -> /sectors/{group}/lifecycle
+    // Company view (altitude 2) state
+    focalCik: null, // the focal filer's CIK (int); identity for the Company view
+    focalName: null,
+    focalGroup: null, // the focal's SIC peer group (e.g. "35")
+    focalPeers: null, // /companies/{cik}/peers payload (per-metric percentiles -> derived rail)
+    companyErr: false,
+    coValues: {}, // "group|metric" -> SectorCompanyValueList payload (the dot-cloud, cached)
   };
+  if (params.get("view") === "company") state.view = "company";
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
@@ -125,6 +132,8 @@
         resolveInitialSector();
         renderApp();
         ensureSectorData();
+        var sym = params.get("symbol"); // ?symbol= presets the Company view focal (used by e2e)
+        if (sym && !state.focalCik) selectFocal(sym);
       })
       .catch(function () {
         $("app").innerHTML = P.states.error({ copy: "Couldn't load sectors. Please try again." });
@@ -244,7 +253,9 @@
     return (
       '<header class="pa-topbar">' +
       '<form class="pa-search" id="paSearch"><span class="pa-search-ic">⌕</span>' +
-      '<span class="pa-search-ph">Search ticker or CIK…</span><span class="pa-kbd">⌘K</span></form>' +
+      '<input class="pa-search-input" id="paSearchInput" type="text" placeholder="Search ticker or CIK…" ' +
+      'autocomplete="off" spellcheck="false" aria-label="Search ticker or CIK to place a company in its peers">' +
+      '<span class="pa-kbd">⌘K</span></form>' +
       '<a class="pa-apiref" href="/docs">API reference ↗</a>' +
       "</header>"
     );
@@ -314,7 +325,7 @@
   function renderViewport() {
     var vp = $("viewport");
     if (state.view === "sector") return renderSectorView(vp);
-    if (state.view === "company") return renderStub(vp, "Company drill-down", "Where a single filer sits inside its peer distribution. Coming in a later phase of this app.");
+    if (state.view === "company") return renderCompanyView(vp);
     if (state.view === "compare") return renderStub(vp, "Sector compare", "Two sectors side by side on the same seven-theme spine. Coming in a later phase of this app.");
     return renderStub(vp, "Qualitative disclosures",
       "Risk-factor themes, going-concern, and litigation signals. Coming — Track 2 · not yet derived from filings. This product ingests structured data only; nothing here is fabricated.");
@@ -548,6 +559,215 @@
   }
   function selName() { var s = selectedSector(); return s ? s.group_label : "this sector"; }
 
+  // ---------- Company view (altitude 2): peer dot-plots, search-driven focal ----------
+
+  // The dot-plot metric set (materialized + broadly covered). Labels/units + higher_is_better come
+  // from each endpoint payload; this order drives the layout.
+  var CO_METRICS = ["net_margin", "revenue_growth_yoy", "roe", "roa", "debt_to_equity", "fcf_margin", "inventory_turnover", "current_ratio"];
+  // Display-only favorability direction (mirrors normalize/metrics.METRIC_DIRECTION) — for the
+  // derived per-theme percentile rail (invert lower-is-better before averaging). NO color.
+  var CO_DIR = {
+    gross_margin: 1, operating_margin: 1, net_margin: 1, roa: 1, roe: 1, roic: 1,
+    revenue_growth_yoy: 1, earnings_growth_yoy: 1, ocf_growth_yoy: 1, growth_acceleration: 1,
+    interest_coverage: 1, current_ratio: 1, quick_ratio: 1, asset_turnover: 1, inventory_turnover: 1, fcf_margin: 1,
+    debt_to_equity: 0, dso: 0, dio: 0, dpo: 0, ccc: 0,
+  };
+  // theme -> (label, constituents) mirrors normalize/themes.py (5 scored + 2 deferred).
+  var CO_THEMES = [
+    ["Profitability & returns", ["gross_margin", "operating_margin", "net_margin", "roa", "roe", "roic"]],
+    ["Growth", ["revenue_growth_yoy", "earnings_growth_yoy", "ocf_growth_yoy", "growth_acceleration"]],
+    ["Financial health", ["debt_to_equity", "interest_coverage", "current_ratio", "quick_ratio"]],
+    ["Cash & investment", ["fcf_margin", "ocf_growth_yoy"]],
+    ["Operating efficiency", ["inventory_turnover", "dso", "dio", "dpo", "ccc", "asset_turnover"]],
+  ];
+  var CO_DEFERRED = [["Accounting quality"], ["Structure & activity"]];
+
+  function focalYear() { return (state.sectors && state.sectors.fiscal_year) || (state.themeScores && state.themeScores.fiscal_year) || 2025; }
+
+  // Resolve a searched symbol (ticker OR raw CIK) -> the focal company's cik, SIC group, and
+  // per-metric percentiles (the derived rail), then load the group's dot-clouds.
+  function selectFocal(symbol) {
+    symbol = (symbol || "").toString().trim();
+    if (!symbol) return;
+    state.view = "company";
+    state.companyErr = false;
+    state.focalPeers = null; state.focalName = null;
+    P.api("/companies/" + encodeURIComponent(symbol) + "/peers?year=" + focalYear() + "&period=FY")
+      .then(function (res) {
+        state.focalCik = res.cik;
+        state.focalPeers = res;
+        state.focalGroup = (res.peers && res.peers[0] && res.peers[0].peer_group) || null;
+        renderApp();
+        ensureCompanyData();
+      })
+      .catch(function () { state.companyErr = true; renderApp(); });
+  }
+  // Re-focus to a peer (identified by cik) without changing the group (a peer is in the same group).
+  function selectFocalCik(cik, name) {
+    if (cik === state.focalCik) return;
+    state.focalCik = cik;
+    state.focalName = name || null;
+    P.api("/companies/" + cik + "/peers?year=" + focalYear() + "&period=FY")
+      .then(function (res) { if (state.focalCik === cik) { state.focalPeers = res; renderApp(); } })
+      .catch(function () { /* keep the dots; the rail just won't update */ renderApp(); });
+  }
+
+  function ensureCompanyData() {
+    var g = state.focalGroup;
+    if (!g) return;
+    CO_METRICS.forEach(function (m) {
+      var key = g + "|" + m;
+      if (state.coValues[key]) return;
+      P.api("/sectors/" + encodeURIComponent(g) + "/" + encodeURIComponent(m) + "/companies?year=" + focalYear() + "&period=FY")
+        .then(function (r) {
+          state.coValues[key] = r;
+          // pick up the focal's display name from any list that has it
+          if (!state.focalName && r.companies) {
+            var f = r.companies.filter(function (c) { return c.cik === state.focalCik; })[0];
+            if (f) state.focalName = f.name;
+          }
+          if (state.focalGroup === g) renderApp();
+        })
+        .catch(function () { state.coValues[key] = { companies: [] }; if (state.focalGroup === g) renderApp(); });
+    });
+  }
+
+  function quant(sorted, p) {
+    if (!sorted.length) return null;
+    var i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+  }
+  function focalLabel() {
+    if (state.focalName) return state.focalName;
+    return state.focalCik ? "CIK " + state.focalCik : "the focal filer";
+  }
+  // favorability-adjusted percentile: raw for higher-is-better, inverted for lower-is-better.
+  function adjPct(metric, p) { return CO_DIR[metric] === 0 ? 100 - p : p; }
+
+  function renderCompanyView(vp) {
+    if (state.companyErr) {
+      vp.innerHTML = coHead() + '<div class="pa-card">' + P.states.error({ copy: "Couldn't resolve that company." }) + "</div>";
+      return;
+    }
+    if (!state.focalCik) {
+      vp.innerHTML = coHead() +
+        '<div class="pa-stub"><div class="pa-stub-title">Place a filer in its peers</div>' +
+        '<div class="pa-stub-body">Search a ticker or CIK in the header to see where a single company sits inside its SIC-peer distribution for each metric — each dot a filer, the focal company a ◆.</div></div>';
+      return;
+    }
+    if (!state.focalGroup) {
+      vp.innerHTML = coHead() +
+        '<div class="pa-card"><div class="pa-empty-inline">' + P.esc(focalLabel()) +
+        " has no SIC peer group with enough filers to place it against — sparse coverage, not zero.</div></div>";
+      return;
+    }
+    vp.innerHTML = coHead() +
+      '<div class="pa-co-body"><div class="pa-co-rail">' + coRailHtml() + "</div>" +
+      '<div class="pa-co-main">' +
+      '<div class="pa-co-legend">each dot a filer · band = IQR · line = median · ◆ = ' + P.esc(focalLabel()) +
+      " · percentiles favorability-adjusted, N/A · N/M excluded</div>" +
+      CO_METRICS.map(coDotPlotHtml).join("") +
+      "</div></div>";
+    wireCompanyView();
+  }
+
+  function coHead() {
+    var g = state.focalGroup ? sicLabelOf(state.focalGroup) : "";
+    return (
+      '<div class="pa-co-head"><span class="pa-co-crumb">' + P.esc(g) + '</span><span class="pa-co-sep">›</span>' +
+      '<span class="pa-co-name">' + P.esc(focalLabel()) + "</span></div>"
+    );
+  }
+  function sicLabelOf(group) {
+    // reuse the sector list's label if present, else the bare code
+    var s = ((state.sectors && state.sectors.sectors) || []).filter(function (x) { return x.group === group; })[0];
+    return s ? s.group_label : "SIC " + group;
+  }
+
+  function coRailHtml() {
+    var peers = (state.focalPeers && state.focalPeers.peers) || [];
+    var byMetric = {};
+    peers.forEach(function (p) { byMetric[p.metric] = p.percentile; });
+    var themePcts = [];
+    var rows = CO_THEMES.map(function (t) {
+      var vals = t[1].map(function (m) { return byMetric[m] === undefined ? null : adjPct(m, byMetric[m]); }).filter(function (v) { return v !== null; });
+      if (!vals.length) {
+        return '<div class="pa-rail-row"><div class="pa-rail-rowhead"><span class="pa-rail-name">' + P.esc(t[0]) + '</span><span class="pa-rail-p">—</span></div><div class="pa-rail-track"></div></div>';
+      }
+      var avg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+      themePcts.push(avg);
+      return (
+        '<div class="pa-rail-row"><div class="pa-rail-rowhead"><span class="pa-rail-name">' + P.esc(t[0]) + '</span>' +
+        '<span class="pa-rail-p">P' + Math.round(avg) + "</span></div>" +
+        '<div class="pa-rail-track"><span class="pa-rail-fill" style="width:' + Math.round(avg) + '%"></span></div></div>'
+      );
+    }).join("");
+    var deferred = CO_DEFERRED.map(function (t) {
+      return '<div class="pa-rail-row"><div class="pa-rail-rowhead"><span class="pa-rail-name">' + P.esc(t[0]) + '</span><span class="pa-rail-p pa-rail-ns">not scored</span></div></div>';
+    }).join("");
+    var comp = themePcts.length ? Math.round(themePcts.reduce(function (a, b) { return a + b; }, 0) / themePcts.length) : null;
+    var card =
+      '<div class="pa-co-comp"><div class="pa-co-comp-label">Composite percentile</div>' +
+      '<div class="pa-co-comp-val">' + (comp === null ? "—" : "P" + comp) + "</div>" +
+      '<div class="pa-co-comp-note">derived · avg of the theme percentiles above (not a ranked position)</div></div>';
+    return '<div class="pa-rail-label">Percentile vs peers</div>' + rows + deferred + card;
+  }
+
+  function coDotPlotHtml(metric) {
+    var key = state.focalGroup + "|" + metric;
+    var payload = state.coValues[key];
+    if (!payload) {
+      return '<div class="pa-dp"><div class="pa-dp-head"><span class="pa-dp-name">' + P.esc(metricLabelFallback(metric)) + '</span></div>' + P.states.loading({ title: "", note: "" }) + "</div>";
+    }
+    var cos = payload.companies || [];
+    var hib = payload.higher_is_better;
+    var head =
+      '<div class="pa-dp-head"><span class="pa-dp-name">' + P.esc(payload.label || metric) + "</span>" +
+      (hib === false ? '<span class="pa-dp-lib">lower is better</span>' : "") +
+      focalValueLabel(cos, payload) + "</div>";
+    if (cos.length < 2) {
+      return '<div class="pa-dp">' + head + '<div class="pa-empty-inline">No peer distribution for this metric yet — sparse coverage, not zero.</div></div>';
+    }
+    var vals = cos.map(function (c) { return c.value; });
+    var sorted = vals.slice().sort(function (a, b) { return a - b; });
+    var min = sorted[0], max = sorted[sorted.length - 1];
+    var span = max - min || 1;
+    var pos = function (v) { return ((v - min) / span) * 100; };
+    var q1 = pos(quant(sorted, 0.25)), q3 = pos(quant(sorted, 0.75)), med = pos(quant(sorted, 0.5));
+    var dots = cos.map(function (c, i) {
+      var focal = c.cik === state.focalCik;
+      var jitter = ((i % 5) - 2) * 9; // deterministic vertical spread so dots don't fully overlap
+      if (focal) return ""; // focal drawn as a diamond on top (below)
+      return '<span class="pa-dot" data-cik="' + c.cik + '" data-name="' + P.esc(c.name || "") + '" title="' + P.esc(c.name || ("CIK " + c.cik)) + " · " + fmtCo(metric, c.value) + '" style="left:' + pos(c.value).toFixed(1) + "%;top:calc(50% + " + jitter + "%)\"></span>";
+    }).join("");
+    var focalCo = cos.filter(function (c) { return c.cik === state.focalCik; })[0];
+    var diamond = focalCo ? '<span class="pa-diamond" style="left:' + pos(focalCo.value).toFixed(1) + '%" title="' + P.esc(focalLabel()) + " · " + fmtCo(metric, focalCo.value) + '"></span>' : "";
+    var track =
+      '<div class="pa-dp-track">' +
+      '<span class="pa-dp-iqr" style="left:' + q1.toFixed(1) + "%;width:" + (q3 - q1).toFixed(1) + '%"></span>' +
+      '<span class="pa-dp-median" style="left:' + med.toFixed(1) + '%"></span>' +
+      dots + diamond + "</div>";
+    var cap = '<div class="pa-dp-cap">' + cos.length + " filers · min " + fmtCo(metric, min) + " · median " + fmtCo(metric, quant(sorted, 0.5)) + " · max " + fmtCo(metric, max) + "</div>";
+    return '<div class="pa-dp">' + head + track + cap + "</div>";
+  }
+
+  function focalValueLabel(cos, payload) {
+    var f = cos.filter(function (c) { return c.cik === state.focalCik; })[0];
+    if (!f) return '<span class="pa-dp-focal">◆ not in this metric</span>';
+    var pctPeer = f.percentile === null || f.percentile === undefined ? "" : " · P" + Math.round(adjPct(payload.metric, f.percentile));
+    return '<span class="pa-dp-focal">◆ ' + P.esc(fmtCo(payload.metric, f.value)) + pctPeer + "</span>";
+  }
+  function fmtCo(metric, v) { return metricFmt(metric, v); }
+  function metricLabelFallback(metric) { return metric.replace(/_/g, " "); }
+
+  function wireCompanyView() {
+    document.querySelectorAll(".pa-dot[data-cik]").forEach(function (dot) {
+      dot.addEventListener("click", function () {
+        selectFocalCik(parseInt(dot.getAttribute("data-cik"), 10), dot.getAttribute("data-name"));
+      });
+    });
+  }
+
   // ---------- wiring ----------
 
   function wireShell() {
@@ -559,8 +779,14 @@
     });
     var pin = $("paPin");
     if (pin) pin.addEventListener("click", togglePin);
-    var search = $("paSearch");
-    if (search) search.addEventListener("submit", function (e) { e.preventDefault(); });
+    // header search: place a filer in its peers (Company view). Autocomplete via suggest.js;
+    // Enter/pick resolves the ticker (or a raw CIK) to the focal company.
+    var form = $("paSearch");
+    var input = $("paSearchInput");
+    if (form && input) {
+      form.addEventListener("submit", function (e) { e.preventDefault(); selectFocal(input.value); });
+      if (window.ClearyFiSuggest) window.ClearyFiSuggest.attach(input, { onPick: function (sym) { selectFocal(sym); } });
+    }
     document.querySelectorAll(".pa-rail-btn").forEach(function (b) {
       b.addEventListener("click", function () { setView(b.getAttribute("data-view")); });
     });

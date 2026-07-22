@@ -964,6 +964,43 @@ class SectorThemeScoreList(BaseModel):
     sectors: list[SectorThemeScores] = Field(default_factory=list)
 
 
+# --- Per-company value list within a sector (Sector Analytics app, Company view / altitude 2) -----
+#
+# Every company in a SIC group with a comparable (non-N/A) value for one metric+period -- for the
+# peer dot-cloud (each dot a filer). A plain read over materialized metric_values ⨝ company_profiles
+# (+ metric_ranks percentile). N/A · N/M companies are EXCLUDED, never surfaced as 0; a group below
+# the minimum peer size returns an honest empty list. `percentile` is a POSITION within the peer
+# set, not a good/bad verdict; `higher_is_better` orients it (invert for a lower-is-better metric).
+
+
+class SectorCompanyValue(BaseModel):
+    """One company's value for a metric, for a peer dot in the distribution."""
+
+    cik: int  # stored/passed as an int (never the zero-padded string)
+    name: str | None  # display name from company_profiles (may be None)
+    value: float  # the company's reported value (raw unit; never None -- N/A rows are excluded)
+    percentile: float | None  # 0-100 position within the peer group, or None if not ranked
+
+
+class SectorCompanyValueList(BaseModel):
+    """Every qualifying company's value for one metric within a SIC group.
+
+    Empty `companies` is a valid, honest result: the group is below the minimum peer size, or has no
+    comparable values for this metric/period (`caveats` spells this out)."""
+
+    group: str  # the SIC prefix, e.g. "35"
+    group_label: str  # readable SIC major-group name (falls back to the bare code)
+    metric: str
+    label: str
+    unit: str
+    higher_is_better: bool  # orientation for the client (invert the percentile for lower-is-better)
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    caveats: list[str] = Field(default_factory=list)
+    companies: list[SectorCompanyValue] = Field(default_factory=list)
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

@@ -984,6 +984,21 @@ there is no DuckDB on this path at all). A score is a **position vs other sector
 buy/sell verdict**; the `_PEER_CAVEATS`-derived caveats plus the normalization line state this.
 Empty `sectors` is a valid honest result.
 
+### Per-company value list within a sector (Sector Analytics app, Company view)
+
+`GET /v1/sectors/{group}/{metric}/companies` — every company in a SIC group with a **comparable
+value** for one metric+period, for the Company view's **peer dot-cloud** (each dot a filer, the
+focal company marked). A plain **cache-aside read** over the operational store — **no DuckDB on the
+request path**: `metric_values` (per-company value) `JOIN company_profiles` (cik→SIC membership +
+name) `LEFT JOIN metric_ranks` (percentile). Each row: `cik`, `name`, `value` (raw unit),
+`percentile` (position within the peer group, or null). **N/A · N/M companies are excluded**
+(`value IS NULL` / status not `ok`/`approximate`) — never a 0 row. A group below
+`settings.secfin_peer_min_size` returns an **honest empty** `companies` list (same below-min
+convention as `/peers` and `/sectors/spreads`). `higher_is_better` (from `METRIC_DIRECTION`) lets
+the client orient the percentile (invert for a lower-is-better metric); `percentile` is a
+**position, not a good/bad verdict**. Served via `SectorCompanyRepository` (SQL in storage only, no
+raw SQL in the API). No new canonical concept — a read over already-materialized tables.
+
 ### Metric history & trend signals (Phase 1b)
 
 The same engine run across a company's whole quarterly (or annual) history, served at

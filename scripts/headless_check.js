@@ -75,6 +75,11 @@ const PAGES = process.env.PAGES
       ["sectorapp", "/sector-analytics"],
       ["sectorapp-decomp", "/sector-analytics"],
       ["sectorapp-stub", "/sector-analytics"],
+      // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
+      // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
+      ["sectorapp-company-empty", "/sector-analytics?view=company"],
+      ["sectorapp-company", "/sector-analytics?view=company&symbol=900001"],
+      ["sectorapp-company-refocus", "/sector-analytics?view=company&symbol=900001"],
     ];
 
 (async () => {
@@ -127,6 +132,14 @@ const PAGES = process.env.PAGES
         await page.waitForSelector(".pa-tile-score");
         await page.click(".pa-tile-score");
         await new Promise((r) => setTimeout(r, 400));
+      }
+      if (name === "sectorapp-company" || name === "sectorapp-company-refocus") {
+        // Wait for the dot-plots to load; the refocus shot then clicks a peer dot to re-focus.
+        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        if (name === "sectorapp-company-refocus") {
+          await page.click(".pa-dp-track .pa-dot");
+          await new Promise((r) => setTimeout(r, 600));
+        }
       }
       if (name === "sectorapp-stub") {
         // Click the Qualitative view rail -> the honest "Coming — Track 2" stub (no fabricated data).

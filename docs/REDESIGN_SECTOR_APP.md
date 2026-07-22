@@ -47,7 +47,7 @@ company/compare-pair persist across view switches (prototype §7).
 | View | Real data source | Honest gaps / Track-2 |
 |------|------------------|-----------------------|
 | **Sector** | `/v1/sectors/theme-scores` (scores + decomposition), `/v1/sectors/{group}` (DuPont), `/v1/sectors/{group}/spreads` (drill-down), `/v1/sectors/{group}/lifecycle` | Only **5 of 7 themes scored**; Accounting quality + Structure & activity render as **"not yet scored"** (their constituents are Track-2/filing-metadata). **Filing-event feed** (8-K/Form 4/S-1) = Track-2 → omit or clearly-illustrative. **Sub-industry pills** (SIC-4) + **coverage %/filed %** = no backend → omit or "full peer set", no fabricated %. |
-| **Company** | `/v1/companies/{symbol}/peers`, `/peers/{metric}/distribution`, `/metrics` | **Dot-plot needs per-peer values**; the distribution endpoint returns only the five-number summary. Either (a) a **new endpoint** returning each peer's value for a metric, or (b) a **fallback**: IQR band + median tick + focal-company diamond (no full dot cloud). Decide in architecture. Percentiles favorability-adjusted, N/A·N/M excluded. |
+| **Company** (Phase 2) | `/v1/companies/{symbol}/peers`, `/peers/{metric}/distribution`, `/metrics` + **a NEW read endpoint** for per-company values | **LOCKED (operator 2026-07-22): full dot-cloud** — add a new read endpoint returning **each company's value** for a sector+metric (from `metric_values` joined by SIC — Track 1, over existing tables) so the peer dots are real + clickable (click-to-refocus). **Focal company is search-driven** (the ⌘K ticker search; its SIC gives the peer set; empty state until one is picked). Percentiles favorability-adjusted, N/A·N/M excluded. **Phase 2 is full-stack** (backend endpoint first, then frontend). |
 | **Compare** | `/v1/sectors/theme-scores` (both sectors' theme scores → paired composite bars), sector metric medians from `/sectors/{group}` + `/spreads` | Sector-vs-sector (the prototype's real intent); the existing `/compare` page is company-vs-company and is unrelated. True-length bars, "lower is better" text marker on inverted metrics, **no winner**, A=accent / B=GAAP-blue **categorical identity only**. |
 | **Qualitative** | **NONE — Track 2.** Risk-theme clustering, going-concern, litigation, per-filer signals are all free-text/filing-metadata we do **not** ingest. | **Honesty landmine — see below.** Must be built **unmistakably illustrative** ("Track 2 · not derived from filings · illustrative") or a "coming" placeholder. Do **not** present synthetic going-concern/litigation as real. |
 
@@ -79,8 +79,12 @@ via ↑/↓). Provisional banner on the scorecard, as in the prototype.
    5+2, provisional framing, click-score decomposition, click-tile peer strip + drill-down,
    biggest-shifts — all arrow-glyph, no color). Company/Compare/Qualitative rail entries render as
    inert stubs. **This is the "sector page from scratch."**
-2. **Company view** — dot-plot distributions + percentile rail + composite rank (resolve the
-   per-peer-values data gap first).
+2. **Company view** — **BUILT** (`sector-app-company`, stacked on Phase 1): new read endpoint
+   `GET /v1/sectors/{group}/{metric}/companies` (per-company values, `metric_values` ⨝
+   `company_profiles`) + the Company view in `sectorapp.js` — search-driven focal (⌘K / `?symbol=`),
+   a derived per-theme percentile rail + composite card, per-metric **dot-plots** (dot per filer,
+   client-computed IQR band + median, focal `--accent` diamond, click-to-refocus). No favorability
+   color.
 3. **Compare view** — sector-vs-sector paired bars + metric-median cards.
 4. **Qualitative view** — per the honesty decision (stub vs illustrative).
 

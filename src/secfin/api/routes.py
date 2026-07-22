@@ -33,6 +33,7 @@ from secfin.normalize.flows import (
 from secfin.normalize.geography import classify_location
 from secfin.normalize.mapping import candidate_tags
 from secfin.normalize.metrics import (
+    METRIC_DIRECTION,
     METRIC_KEYS,
     METRIC_LABELS,
     METRIC_UNITS,
@@ -68,6 +69,8 @@ from secfin.normalize.schema import (
     SectorLifecycleSeries,
     SectorList,
     SectorSeries,
+    SectorCompanyValue,
+    SectorCompanyValueList,
     SectorSpread,
     SectorSpreadList,
     SectorSpreadProfile,
@@ -116,6 +119,7 @@ from secfin.storage.sector_lifecycle_repository import (
     SectorLifecycleRepository,
     SectorLifecycleRow,
 )
+from secfin.storage.sector_company_repository import SectorCompanyRepository
 from secfin.storage.sector_theme_score_repository import (
     SectorThemeComponentRow,
     SectorThemeScoreRepository,
@@ -310,6 +314,10 @@ def get_sector_lifecycle_repo(request: Request) -> SectorLifecycleRepository:
 
 def get_sector_theme_score_repo(request: Request) -> SectorThemeScoreRepository:
     return request.app.state.sector_theme_score_repo
+
+
+def get_sector_company_repo(request: Request) -> SectorCompanyRepository:
+    return request.app.state.sector_company_repo
 
 
 def get_cusip_repo(request: Request) -> CusipMapRepository:
@@ -1664,6 +1672,74 @@ async def get_sector_lifecycle(
         peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
         caveats=_LIFECYCLE_CAVEATS,
         points=points,
+    )
+
+
+# ---- Per-company value list within a sector (Sector Analytics app, Company view) ---------------
+
+_SECTOR_COMPANY_CAVEATS = _PEER_CAVEATS + [
+    "Each row is one filer's own reported value for the metric; companies with an N/A or N/M value "
+    "for this period are EXCLUDED, never shown as zero.",
+    "`percentile` is a company's POSITION within its SIC peer group, not a good/bad verdict -- for "
+    "a lower-is-better metric a lower value is more favorable (`higher_is_better` says which).",
+]
+
+
+@public_router.get(
+    "/sectors/{group}/{metric}/companies",
+    response_model=SectorCompanyValueList,
+    tags=["Sectors"],
+    summary="Per-company values within a SIC sector for one metric (the peer dot-cloud)",
+)
+async def get_sector_company_values(
+    group: str,
+    metric: str,
+    year: int | None = Query(
+        None, description="Fiscal year; defaults to the latest FY with values for the metric"
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: SectorCompanyRepository = Depends(get_sector_company_repo),
+) -> SectorCompanyValueList:
+    """Every company in the SIC group with a comparable value for one metric+period -- the data for
+    the Company view's peer dot-cloud (each dot a filer, the focal company marked).
+
+    A plain cache-aside read over the materialized `metric_values` (per-company values) joined to
+    `company_profiles` (SIC membership + name) and `metric_ranks` (percentile) -- no DuckDB on the
+    request path. N/A · N/M companies are EXCLUDED (never a zero row); a group below the minimum peer
+    size returns an honest empty `companies` list. `percentile` is a POSITION, not a verdict.
+    """
+    if metric not in METRIC_KEYS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown metric '{metric}'. Valid metrics: {', '.join(METRIC_KEYS)}.",
+        )
+    resolved_year = year if year is not None else repo.latest_fy(metric)
+    sic_digits = settings.secfin_peer_sic_digits
+    rows = (
+        repo.list_for_group_metric(group, sic_digits, metric, resolved_year, period)
+        if resolved_year is not None
+        else []
+    )
+    # A group below the minimum peer size is not comparable -- return an honest empty list rather
+    # than a handful of dots (mirrors the below-min convention on /peers and /sectors/spreads).
+    if len(rows) < settings.secfin_peer_min_size:
+        rows = []
+    companies = [
+        SectorCompanyValue(cik=r.cik, name=r.name, value=r.value, percentile=r.percentile)
+        for r in rows
+    ]
+    return SectorCompanyValueList(
+        group=group,
+        group_label=sic2_label(group),
+        metric=metric,
+        label=METRIC_LABELS.get(metric, metric),
+        unit=METRIC_UNITS.get(metric, ""),
+        higher_is_better=METRIC_DIRECTION.get(metric, True),
+        fiscal_year=resolved_year or 0,
+        fiscal_period=period,
+        peer_basis=f"SIC {sic_digits}-digit",
+        caveats=_SECTOR_COMPANY_CAVEATS,
+        companies=companies,
     )
 
 

@@ -168,6 +168,8 @@ src/secfin/
     sqlite_metric_rank_repository.py
     sector_theme_score_repository.py    # abstract composite theme-score + decomposition store
     sqlite_sector_theme_score_repository.py  # sector_theme_scores + sector_theme_components tables
+    sector_company_repository.py        # abstract per-company-in-sector value read (Company view)
+    sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
     backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
     restore.py                 # hydrate a fresh volume from a backup
   analytical/                  # analytical-layer BATCH jobs (DuckDB over the SQLite file) --
