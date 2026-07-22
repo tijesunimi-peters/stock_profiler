@@ -85,7 +85,15 @@ via ↑/↓). Provisional banner on the scorecard, as in the prototype.
    a derived per-theme percentile rail + composite card, per-metric **dot-plots** (dot per filer,
    client-computed IQR band + median, focal `--accent` diamond, click-to-refocus). No favorability
    color.
-3. **Compare view** — sector-vs-sector paired bars + metric-median cards.
+3. **Compare view** — **BUILT** (`sector-app-compare`, stacked on Phase 2): the Compare view in
+   `sectorapp.js` — **frontend-only** (reuses `/v1/sectors/theme-scores` all-sectors +
+   `/sectors/{group}/spreads`, no new endpoint). Two sector selectors (A `--accent` / B
+   `--gaap-color`, **categorical identity only**); paired **true-length** composite + per-theme
+   bars with a signed, non-verdict gap label (ink weight, `|gap|≥10` fuller); a **derived**
+   composite row (mean of scored themes, labeled); paired **metric-median cards** (per-metric
+   normalized bars, raw value at bar end, "lower is better" text marker on inverted). Deferred/
+   absent themes render "not scored"; a sector missing a metric renders **N/A** — never 0. The
+   control-bar "pin to compare" jumps here with A pinned. **No winner, no favorability color.**
 4. **Qualitative view** — per the honesty decision (stub vs illustrative).
 
 Phase 1 is the natural first `/deliver` and delivers the actual sector page; 2–4 complete the app.

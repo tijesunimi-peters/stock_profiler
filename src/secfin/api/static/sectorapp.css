@@ -186,6 +186,50 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-stub-title { font-weight: 800; font-size: 18px; color: var(--ink); }
 .pa-stub-body { margin: 8px auto 0; max-width: 56ch; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
 
+/* ---- Compare view (altitude 3): sector vs sector. A = --accent (terracotta), B = --pa-b
+   (slate blue): CATEGORICAL IDENTITY ONLY, never favorability. No --positive/--caution/--negative.
+   The app is self-contained (it does not load app.css), so B's blue is a LOCAL named token here --
+   the same slate blue app.css names --gaap-color -- not app.css's token. ---- */
+.pa-app { --pa-b: #3d6a8a; }
+.pa-cmp-idA { --pa-cmp: var(--accent); }
+.pa-cmp-idB { --pa-cmp: var(--pa-b); }
+
+.pa-cmp-selects { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
+.pa-cmp-sel { display: inline-flex; align-items: center; gap: 8px; }
+.pa-cmp-id { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: #fff; background: var(--pa-cmp); flex: none; }
+.pa-cmp-select { font-family: var(--font-sans); font-size: 13.5px; font-weight: 600; color: var(--ink); background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 11px; min-width: 220px; }
+.pa-cmp-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--pa-cmp); vertical-align: -1px; }
+.pa-cmp-note { font-size: 11.5px; color: var(--ink-soft); margin-top: 9px; line-height: 1.5; }
+
+.pa-cmp-sec { margin-top: 22px; }
+.pa-cmp-sec-head { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); margin-bottom: 10px; }
+.pa-cmp-rows { display: flex; flex-direction: column; gap: 4px; }
+.pa-cmp-row { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; }
+.pa-cmp-row.composite { border-color: var(--border-strong); background: var(--bg-tint); }
+.pa-cmp-row.notscored { background: transparent; border-style: dashed; }
+.pa-cmp-rowhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.pa-cmp-theme { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.pa-cmp-derived { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); margin-left: 7px; }
+.pa-cmp-gap { font-family: var(--font-mono); font-size: 11px; }
+.pa-cmp-gap.strong { color: var(--ink); font-weight: 600; }
+.pa-cmp-gap.soft { color: var(--mono-muted); }
+.pa-cmp-nsreason { font-size: 11px; color: var(--ink-soft); margin: -2px 0 7px; line-height: 1.45; }
+
+.pa-cmp-barline { display: grid; grid-template-columns: 18px 1fr 62px; align-items: center; gap: 9px; margin-top: 5px; }
+.pa-cmp-bartrack { height: 8px; background: var(--bg-badge); border-radius: 4px; overflow: hidden; }
+.pa-cmp-bar { display: block; height: 100%; background: var(--pa-cmp); border-radius: 4px; }
+.pa-cmp-val { font-family: var(--font-mono); font-size: 12px; color: var(--ink-body); text-align: right; }
+.pa-cmp-ns { color: var(--mono-muted); font-size: 10.5px; }
+.pa-cmp-na { color: var(--mono-muted); }
+
+.pa-cmp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.pa-cmp-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.pa-cmp-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.pa-cmp-metric { font-size: 13px; font-weight: 600; color: var(--ink); }
+.pa-cmp-lib { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mono-muted); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; }
+.pa-cmp-cardline { display: grid; grid-template-columns: 18px 1fr 68px; align-items: center; gap: 9px; margin-top: 5px; }
+.pa-cmp-cardcap { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); margin-top: 10px; }
+
 /* ---- responsive ---- */
 @media (max-width: 900px) {
   .pa-side { display: none; }
@@ -196,6 +240,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-rail-rule, .pa-rail-note { display: none; }
   .pa-co-body { grid-template-columns: 1fr; }
   .pa-co-rail { position: static; }
+  .pa-cmp-cards { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .pa-main { padding: 14px 16px 60px; }
@@ -205,4 +250,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-shift-row { grid-template-columns: 16px 1fr auto; }
   .pa-shift-basis { grid-column: 2 / -1; text-align: left; }
   .pa-dd-btn { min-width: 0; }
+  .pa-cmp-selects { flex-direction: column; gap: 8px; }
+  .pa-cmp-select { min-width: 0; width: 100%; }
+  .pa-cmp-sel { width: 100%; }
 }

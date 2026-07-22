@@ -40,6 +40,9 @@
     coValues: {}, // "group|metric" -> SectorCompanyValueList payload (the dot-cloud, cached)
   };
   if (params.get("view") === "company") state.view = "company";
+  if (params.get("view") === "compare") state.view = "compare";
+  if (params.get("a")) state.compareA = params.get("a"); // ?a=&b= preset the Compare pair (groups)
+  if (params.get("b")) state.compareB = params.get("b");
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
@@ -180,6 +183,15 @@
     }
   }
 
+  // lazy spread fetch for an arbitrary group (Compare view needs A's and B's medians)
+  function ensureSpreads(g) {
+    if (!g || state.spreads[g] || !state.sectors) return;
+    P.api("/sectors/" + encodeURIComponent(g) + "/spreads?year=" + state.sectors.fiscal_year)
+      .then(function (r) { state.spreads[g] = r; if (state.view === "compare") renderApp(); })
+      .catch(function () { state.spreads[g] = { metrics: [] }; if (state.view === "compare") renderApp(); });
+  }
+  function ensureCompareData() { ensureSpreads(state.compareA); ensureSpreads(state.compareB); }
+
   function ensureExpandedTheme() {
     var entry = themeEntry(selectedGroup());
     var scored = scoredThemes(entry);
@@ -204,8 +216,12 @@
   function expandTheme(theme) { state.expandedTheme = theme; renderApp(); }
   function toggleDecomp(theme) { state.decompTheme = state.decompTheme === theme ? null : theme; renderApp(); }
   function togglePin() {
+    // Pin the current sector as A and jump into the Compare view (the operator picks B there).
     var g = selectedGroup();
-    state.compareA = state.compareA === g ? null : g; // parked: Compare view is a later phase
+    if (!g) return;
+    state.compareA = g;
+    state.view = "compare";
+    ensureCompareData();
     renderApp();
   }
 
@@ -277,7 +293,7 @@
   function controlBarHtml() {
     var list = (state.sectors && state.sectors.sectors) || [];
     var sel = selectedSector();
-    var pinned = sel && state.compareA === sel.group;
+    var pinned = sel && (state.compareA === sel.group || state.compareB === sel.group);
     var menu = state.ddOpen
       ? '<div class="pa-dd-menu" id="paDdMenu">' + list.map(function (s, i) {
           var cur = i === state.sectorIdx;
@@ -326,7 +342,7 @@
     var vp = $("viewport");
     if (state.view === "sector") return renderSectorView(vp);
     if (state.view === "company") return renderCompanyView(vp);
-    if (state.view === "compare") return renderStub(vp, "Sector compare", "Two sectors side by side on the same seven-theme spine. Coming in a later phase of this app.");
+    if (state.view === "compare") return renderCompareView(vp);
     return renderStub(vp, "Qualitative disclosures",
       "Risk-factor themes, going-concern, and litigation signals. Coming — Track 2 · not yet derived from filings. This product ingests structured data only; nothing here is fabricated.");
   }
@@ -766,6 +782,192 @@
         selectFocalCik(parseInt(dot.getAttribute("data-cik"), 10), dot.getAttribute("data-name"));
       });
     });
+  }
+
+  // ---------- Compare view (altitude 3): sector vs sector ----------
+  //
+  // A = --accent (terracotta), B = --gaap-color (blue): a FIXED CATEGORICAL IDENTITY only, never
+  // favorability. Bars are TRUE-LENGTH and NO winner is ever declared. Reuses state.themeScores
+  // (per-theme 0-100 scores) + state.spreads[group] (per-metric medians) — no new endpoint.
+
+  function sectorLabel(group) {
+    var s = ((state.sectors && state.sectors.sectors) || []).filter(function (x) { return x.group === group; })[0];
+    return s ? s.group_label : (group ? "SIC " + group : "");
+  }
+  function shortLabel(group) {
+    var l = sectorLabel(group);
+    return l.length > 22 ? l.split(/[ &]/)[0] : l; // compact leader tag for the gap label
+  }
+  function themeOf(entry, key) {
+    return entry && entry.themes ? (entry.themes.filter(function (t) { return t.theme === key; })[0] || null) : null;
+  }
+
+  function renderCompareView(vp) {
+    if (!state.compareA && !state.compareB) state.compareA = selectedGroup();
+    ensureCompareData();
+    var A = state.compareA, B = state.compareB;
+    vp.innerHTML =
+      cmpHead() +
+      cmpSelectorsHtml(A, B) +
+      (!A
+        ? '<div class="pa-card"><div class="pa-empty-inline">Pick a sector to compare.</div></div>'
+        : !B
+        ? '<div class="pa-card"><div class="pa-empty-inline">Pick a second sector (B) to compare against ' + P.esc(sectorLabel(A)) + '.</div></div>'
+        : cmpThemesHtml(A, B) + cmpMetricsHtml(A, B));
+    wireCompareView();
+  }
+
+  function cmpHead() {
+    return (
+      '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Sector compare</h2></div>' +
+      '<div class="pa-sec-sub">Two sectors on the same theme spine · A and B are colors of identity, not a ranking · no winner is declared</div>'
+    );
+  }
+
+  function cmpSelectorsHtml(A, B) {
+    var list = (state.sectors && state.sectors.sectors) || [];
+    function opts(sel, withBlank) {
+      var blank = withBlank ? '<option value=""' + (sel ? "" : " selected") + ">Pick a second sector…</option>" : "";
+      return blank + list.map(function (s) {
+        return '<option value="' + P.esc(s.group) + '"' + (s.group === sel ? " selected" : "") + ">" + P.esc(s.group_label) + "</option>";
+      }).join("");
+    }
+    return (
+      '<div class="pa-cmp-selects">' +
+      '<label class="pa-cmp-sel"><span class="pa-cmp-id pa-cmp-idA">A</span>' +
+      '<select class="pa-cmp-select" id="cmpSelA" aria-label="Sector A">' + opts(A, false) + "</select></label>" +
+      '<label class="pa-cmp-sel"><span class="pa-cmp-id pa-cmp-idB">B</span>' +
+      '<select class="pa-cmp-select" id="cmpSelB" aria-label="Sector B">' + opts(B, true) + "</select></label>" +
+      "</div>" +
+      '<div class="pa-cmp-note">A <span class="pa-cmp-swatch pa-cmp-idA"></span> and B <span class="pa-cmp-swatch pa-cmp-idB"></span> mark identity only — not good vs bad. Bars are true-length; no winner is declared.</div>'
+    );
+  }
+
+  // --- theme spine: paired composite + per-theme true-length bars ---
+  function cmpThemesHtml(A, B) {
+    if (!state.themeScores) return '<div class="pa-card">' + P.states.loading({ title: "Loading theme scores", note: "" }) + "</div>";
+    var eA = themeEntry(A), eB = themeEntry(B);
+    if (!eA && !eB) {
+      return '<div class="pa-card">' + P.states.empty({
+        title: "No composite theme scores for either sector",
+        copy: "Neither sector has materialized theme scores yet — sparse coverage, not zero.",
+      }) + "</div>";
+    }
+    // canonical theme order = first appearance across A then B (both come pre-ordered by the API)
+    var order = [], seen = {};
+    [eA, eB].forEach(function (e) { (e && e.themes || []).forEach(function (t) { if (!seen[t.theme]) { seen[t.theme] = 1; order.push(t); } }); });
+
+    // derived overall composite = mean of each sector's SCORED theme scores (labeled, not a rank)
+    function composite(e) {
+      var sc = scoredThemes(e).map(function (t) { return t.score; }).filter(function (v) { return v !== null && v !== undefined; });
+      return sc.length ? Math.round(sc.reduce(function (a, b) { return a + b; }, 0) / sc.length) : null;
+    }
+    var rows = cmpScoreRow("Composite", composite(eA), composite(eB), A, B, true);
+    rows += order.map(function (ref) {
+      var tA = themeOf(eA, ref.theme), tB = themeOf(eB, ref.theme);
+      var sA = tA && tA.scored ? tA.score : null;
+      var sB = tB && tB.scored ? tB.score : null;
+      // a theme that is a deferred marker for whichever sector has it, or absent for both -> not scored
+      var deferred = (tA && !tA.scored) || (tB && !tB.scored);
+      if (sA === null && sB === null) return cmpNotScoredRow(ref.theme_label, deferred, tA, tB);
+      return cmpScoreRow(ref.theme_label, sA, sB, A, B, false);
+    }).join("");
+
+    return (
+      '<section class="pa-cmp-sec"><div class="pa-cmp-sec-head">Composite theme spine</div>' +
+      '<div class="pa-cmp-rows">' + rows + "</div>" +
+      '<div class="pa-provisional">≈ Scores provisional — each is a position vs other sectors (50 = cross-sector average), not a good/bad or buy verdict. Composite is derived (mean of scored themes), not a ranked position.</div>' +
+      "</section>"
+    );
+  }
+
+  function cmpScoreRow(label, sA, sB, A, B, isComposite) {
+    var gap = "";
+    if (sA !== null && sB !== null) {
+      var d = sA - sB;
+      if (d === 0) gap = '<span class="pa-cmp-gap soft">even</span>';
+      else {
+        var lead = d > 0 ? A : B;
+        var strong = Math.abs(d) >= 10 ? " strong" : " soft";
+        gap = '<span class="pa-cmp-gap' + strong + '">' + P.esc(shortLabel(lead)) + " +" + Math.abs(d) + "</span>";
+      }
+    }
+    return (
+      '<div class="pa-cmp-row' + (isComposite ? " composite" : "") + '">' +
+      '<div class="pa-cmp-rowhead"><span class="pa-cmp-theme">' + P.esc(label) + (isComposite ? '<span class="pa-cmp-derived">derived</span>' : "") + "</span>" + gap + "</div>" +
+      cmpBar("A", sA) + cmpBar("B", sB) +
+      "</div>"
+    );
+  }
+  function cmpBar(idLetter, score) {
+    var cls = idLetter === "A" ? "pa-cmp-idA" : "pa-cmp-idB";
+    var w = score === null || score === undefined ? 0 : Math.max(0, Math.min(100, score));
+    var val = score === null || score === undefined ? '<span class="pa-cmp-ns">not scored</span>' : score;
+    return (
+      '<div class="pa-cmp-barline"><span class="pa-cmp-id ' + cls + '">' + idLetter + "</span>" +
+      '<div class="pa-cmp-bartrack"><span class="pa-cmp-bar ' + cls + '" style="width:' + w + '%"></span></div>' +
+      '<span class="pa-cmp-val">' + val + "</span></div>"
+    );
+  }
+  function cmpNotScoredRow(label, deferred, tA, tB) {
+    var reason = (tA && tA.reason) || (tB && tB.reason) || "";
+    return (
+      '<div class="pa-cmp-row notscored">' +
+      '<div class="pa-cmp-rowhead"><span class="pa-cmp-theme">' + P.esc(label) + "</span>" +
+      '<span class="pa-cmp-gap soft">' + (deferred ? "not yet scored" : "not scored") + "</span></div>" +
+      (reason ? '<div class="pa-cmp-nsreason">' + P.esc(reason) + "</div>" : "") +
+      cmpBar("A", null) + cmpBar("B", null) +
+      "</div>"
+    );
+  }
+
+  // --- metric medians: paired cards, per-metric normalized bars, raw value at bar end ---
+  function cmpMetricsHtml(A, B) {
+    var sA = state.spreads[A], sB = state.spreads[B];
+    if (!sA || !sB) return '<div class="pa-cmp-sec"><div class="pa-cmp-sec-head">Metric medians</div><div class="pa-card">' + P.states.loading({ title: "Loading sector medians", note: "" }) + "</div></div>";
+    var mapA = {}, mapB = {};
+    (sA.metrics || []).forEach(function (m) { mapA[m.metric] = m; });
+    (sB.metrics || []).forEach(function (m) { mapB[m.metric] = m; });
+    // union in A's order, then any B-only metrics (so a sector's missing metric shows an honest N/A)
+    var order = [], seen = {};
+    (sA.metrics || []).forEach(function (m) { if (!seen[m.metric]) { seen[m.metric] = 1; order.push(m.metric); } });
+    (sB.metrics || []).forEach(function (m) { if (!seen[m.metric]) { seen[m.metric] = 1; order.push(m.metric); } });
+    if (!order.length) {
+      return '<section class="pa-cmp-sec"><div class="pa-cmp-sec-head">Metric medians</div><div class="pa-card"><div class="pa-empty-inline">No shared metric medians for these sectors yet — sparse coverage, not zero.</div></div></section>';
+    }
+    var cards = order.map(function (metric) {
+      var a = mapA[metric], b = mapB[metric];
+      var label = (a && a.label) || (b && b.label) || metricLabelFallback(metric);
+      var lib = CO_DIR[metric] === 0 ? '<span class="pa-cmp-lib">lower is better</span>' : "";
+      var av = a ? a.median : null, bv = b ? b.median : null;
+      var den = Math.max(Math.abs(av || 0), Math.abs(bv || 0)) || 1;
+      function line(idLetter, v) {
+        var cls = idLetter === "A" ? "pa-cmp-idA" : "pa-cmp-idB";
+        if (v === null || v === undefined) {
+          return '<div class="pa-cmp-cardline"><span class="pa-cmp-id ' + cls + '">' + idLetter + '</span><div class="pa-cmp-bartrack"></div><span class="pa-cmp-val pa-cmp-na">N/A</span></div>';
+        }
+        var w = (Math.abs(v) / den) * 100;
+        return '<div class="pa-cmp-cardline"><span class="pa-cmp-id ' + cls + '">' + idLetter + '</span>' +
+          '<div class="pa-cmp-bartrack"><span class="pa-cmp-bar ' + cls + '" style="width:' + w.toFixed(1) + '%"></span></div>' +
+          '<span class="pa-cmp-val">' + P.esc(metricFmt(metric, v)) + "</span></div>";
+      }
+      return (
+        '<div class="pa-cmp-card"><div class="pa-cmp-card-head"><span class="pa-cmp-metric">' + P.esc(label) + "</span>" + lib + "</div>" +
+        line("A", av) + line("B", bv) + "</div>"
+      );
+    }).join("");
+    return (
+      '<section class="pa-cmp-sec"><div class="pa-cmp-sec-head">Metric medians</div>' +
+      '<div class="pa-cmp-cards">' + cards + "</div>" +
+      '<div class="pa-cmp-cardcap">Sector medians · bar length normalized per metric · value shown raw · A ' +
+      P.esc(sectorLabel(A)) + " vs B " + P.esc(sectorLabel(B)) + " · N/A where a sector has no comparable median</div></section>"
+    );
+  }
+
+  function wireCompareView() {
+    var a = $("cmpSelA"), b = $("cmpSelB");
+    if (a) a.addEventListener("change", function () { state.compareA = a.value || null; ensureCompareData(); renderApp(); });
+    if (b) b.addEventListener("change", function () { state.compareB = b.value || null; ensureCompareData(); renderApp(); });
   }
 
   // ---------- wiring ----------

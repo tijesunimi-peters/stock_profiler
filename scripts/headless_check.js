@@ -80,6 +80,14 @@ const PAGES = process.env.PAGES
       ["sectorapp-company-empty", "/sector-analytics?view=company"],
       ["sectorapp-company", "/sector-analytics?view=company&symbol=900001"],
       ["sectorapp-company-refocus", "/sector-analytics?view=company&symbol=900001"],
+      // Compare view (altitude 3): sector-vs-sector paired theme bars + metric-median cards.
+      // 73 vs 60 (60 omits operating-efficiency -> honest "not scored" on B); 73 alone (B unset ->
+      // prompt); 73 vs 28 (28 has no liquidity/solvency spreads -> metric-card N/A cells); and the
+      // pin-to-compare flow (land on a sector, click Pin, then pick B). NO favorability color.
+      ["sectorapp-compare", "/sector-analytics?view=compare&a=73&b=60"],
+      ["sectorapp-compare-nab", "/sector-analytics?view=compare&a=73"],
+      ["sectorapp-compare-na", "/sector-analytics?view=compare&a=73&b=28"],
+      ["sectorapp-compare-pin", "/sector-analytics?group=73"],
     ];
 
 (async () => {
@@ -140,6 +148,20 @@ const PAGES = process.env.PAGES
           await page.click(".pa-dp-track .pa-dot");
           await new Promise((r) => setTimeout(r, 600));
         }
+      }
+      if (name === "sectorapp-compare" || name === "sectorapp-compare-na") {
+        // Wait for the paired theme bars to render.
+        await page.waitForSelector(".pa-cmp-bar", { timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (name === "sectorapp-compare-pin") {
+        // Pin the current sector as A -> jump into Compare, then pick sector B from its selector.
+        await page.waitForSelector("#paPin");
+        await page.click("#paPin");
+        await page.waitForSelector("#cmpSelB", { timeout: 8000 });
+        await page.select("#cmpSelB", "60");
+        await page.waitForSelector(".pa-cmp-bar", { timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 400));
       }
       if (name === "sectorapp-stub") {
         // Click the Qualitative view rail -> the honest "Coming — Track 2" stub (no fabricated data).
