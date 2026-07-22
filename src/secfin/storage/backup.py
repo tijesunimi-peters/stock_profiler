@@ -20,6 +20,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sqlite3
 from datetime import datetime, timezone
@@ -28,6 +29,38 @@ from pathlib import Path
 from secfin.config import settings
 
 LATEST_NAME = "secfin-latest.db"
+
+# A completed timestamped snapshot: secfin-YYYYmmddTHHMMSSZ.db (LATEST_NAME never matches, so it
+# is never counted toward retention or pruned). Sidecar journals/WAL are cleaned up alongside.
+_SNAPSHOT_RE = re.compile(r"^secfin-\d{8}T\d{6}Z\.db$")
+_SIDECAR_SUFFIXES = ("-journal", "-wal", "-shm")
+
+
+def prune_backups(backup_dir: str, keep: int) -> list[Path]:
+    """Delete all but the newest `keep` timestamped snapshots in `backup_dir`.
+
+    Each snapshot is a full multi-GB copy of the DB, so an uncapped daily backup fills the disk
+    (prod incident 2026-07-21). Keeps `secfin-latest.db` untouched (it is the restore pointer, not
+    a dated snapshot). `keep <= 0` prunes nothing. Removes each pruned snapshot's -journal/-wal/-shm
+    sidecars too (a disk-full run can leave a corrupt partial with an orphaned journal). Returns the
+    snapshot paths removed, newest-kept first excluded."""
+    if keep <= 0:
+        return []
+    dir_path = Path(backup_dir)
+    snapshots = sorted(
+        (p for p in dir_path.glob("secfin-*.db") if _SNAPSHOT_RE.match(p.name)),
+        key=lambda p: p.name,  # timestamp names sort lexicographically == chronologically
+        reverse=True,
+    )
+    removed: list[Path] = []
+    for stale in snapshots[keep:]:
+        for suffix in _SIDECAR_SUFFIXES:
+            sidecar = stale.with_name(stale.name + suffix)
+            if sidecar.exists():
+                sidecar.unlink()
+        stale.unlink()
+        removed.append(stale)
+    return removed
 
 
 def backup_db(db_path: str, backup_dir: str) -> Path:
@@ -63,6 +96,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--db-path", default=settings.secfin_db_path)
     p.add_argument("--backup-dir", default=settings.secfin_backup_dir)
+    p.add_argument(
+        "--keep",
+        type=int,
+        default=settings.secfin_backup_retention,
+        help="Retain only the newest N timestamped snapshots (0 = keep all). "
+        f"Default {settings.secfin_backup_retention}. secfin-latest.db is never pruned.",
+    )
     return p
 
 
@@ -70,6 +110,10 @@ def main(argv: list[str] | None = None) -> None:
     args = build_arg_parser().parse_args(argv)
     dest = backup_db(args.db_path, args.backup_dir)
     print(f"Backed up {args.db_path} -> {dest} (and {LATEST_NAME})")
+    removed = prune_backups(args.backup_dir, args.keep)
+    if removed:
+        print(f"Pruned {len(removed)} old snapshot(s), kept newest {args.keep}: "
+              + ", ".join(p.name for p in removed))
 
 
 if __name__ == "__main__":
