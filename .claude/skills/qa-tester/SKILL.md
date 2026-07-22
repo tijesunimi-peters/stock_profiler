@@ -45,6 +45,11 @@ you just don't audit the source to find one.
 4. **Review the UI/UX of the feature** from the user's side of the screen (see below).
 5. Verify the **honesty contract**: caveats present, derived data labeled, provenance intact,
    no fabricated precision, no missing value shown as `0`, 13F deltas read as derived.
+6. **Fill out the review questionnaire** (see below) in the QA report — a structured account, in
+   your own words, of *what was implemented* and how you verified it.
+7. **Prepare and require manual UI verification** (see below) — for any UI change, write the
+   hands-on click-through script and gate the pass on the operator actually running it. Automated
+   checks alone never complete a UI QA.
 
 ## UI/UX review (your specialty)
 
@@ -67,12 +72,59 @@ driving the flow. Check:
 - **Consistency**: matches the STYLE_GUIDE and the company-hub reference — reuses the shared
   components rather than a one-off look.
 
+## Review questionnaire (fill this out in the report)
+
+Before the verdict, answer every question below **in your own words** — not copied from the brief or
+the engineer's handoff. The point is to prove you understood and *exercised* the change, and to
+surface anything the automated checks didn't settle. Put it in `4-qa.md` under a `## Review
+questionnaire` heading.
+
+1. **What shipped** — describe the change as a *user* experiences it, in 1–3 sentences.
+2. **Surfaces touched** — the endpoints, pages, views, and components that changed.
+3. **AC → evidence** — every acceptance criterion mapped to the concrete artifact that proves it (a
+   response body, a named screenshot, or a specific driven interaction). No AC without evidence.
+4. **States exercised** — which of loading / populated / empty / error you actually triggered, and
+   *how* you triggered each (not "should render" — what you did and saw).
+5. **Edge cases probed** — the product-specific ones you hit and the result: **N/A vs N/M vs 0**,
+   restatements (latest-filed wins), multi-class / PRN / option 13F rows, rate-limit (429),
+   upstream-SEC failures (502/503, not bare 500s).
+6. **Honesty contract** — each rule you confirmed: caveats present, derived numbers labeled with
+   status/reason, provenance intact, **no missing value shown as `0`**, 13F deltas read as derived,
+   no fabricated precision or over-claiming copy.
+7. **Deltas from the brief** — anything built differently from the brief/architecture, and any AC
+   you could **not** fully verify by automation — and why (this feeds the manual step below).
+8. **Residual risk** — what a human should confirm by hand, and what would worry you most if it
+   were wrong.
+
+## Manual UI verification (required — operator-gated)
+
+The e2e render check catches console/page errors, and eyeballing screenshots catches static layout —
+but **neither exercises the *felt* behaviour of interacting**: click/tap response, keyboard and
+focus order, hover, transitions, scroll, back/forward, real typed input, and how it all holds
+together in a live browser. So for **any UI change, a QA pass is not complete until a human has
+driven the feature by hand.** This is a blocking gate, not a nicety.
+
+- **Write a numbered manual-verification script** in `4-qa.md` under `## Manual UI verification`: the
+  exact hands-on click-through for a person to run — the URL to open, each interaction in order, and
+  the **expected result** of each. Cover the primary flow plus the key states and edge cases from the
+  questionnaire (empty, error, N/A-not-0, the risky interaction). Keep it concrete and short enough
+  to run in a few minutes.
+- **Gate the verdict on it.** Until the operator has run the script and confirmed, the verdict is
+  **"PASS — pending manual UI verification"**, never "ready to deploy". Record the operator's outcome
+  in the doc (confirmed + date, or the discrepancy they found). **Do not** hand off "ready to deploy"
+  on automated evidence alone — surface the pending manual step to the operator explicitly.
+- If a manual step contradicts the automated result, that's a **defect** → loop back to the owning
+  engineer (below), don't wave it through.
+- **Backend-only changes** (no rendered surface) are exempt from the manual UI step — say so in the
+  report rather than omitting it silently.
+
 ## Report
 
-Pass/fail **per acceptance criterion**, each with its command output or screenshot evidence, plus a
-short **UI/UX review** section, and any defects (severity + reproduction). Distinguish "this change
-broke it" from a pre-existing or flaky failure — re-run to confirm flakiness before blaming the
-change.
+`4-qa.md` must contain, in this order: pass/fail **per acceptance criterion** (each with its command
+output or screenshot evidence), the **review questionnaire** (all 8 answers), a short **UI/UX
+review** section, the **manual UI verification** script + its operator outcome, and any defects
+(severity + reproduction). Distinguish "this change broke it" from a pre-existing or flaky failure —
+re-run to confirm flakiness before blaming the change.
 
 ## Handoff
 
@@ -81,5 +133,7 @@ change.
   UX) — with the failing criteria and repro. Do not advance.
 - **On pass → DevOps Engineer**: end with a **Handoff** block (or
   `docs/delivery/<task-slug>/4-qa.md`): the verdict, the evidence, and an explicit "ready to
-  deploy" or "blocked by X". A green QA report unlocks a deployment *request* — never the
+  deploy" or "blocked by X". For a UI change the honest verdict is **"PASS — pending manual UI
+  verification"** until the operator confirms the hands-on script; only *then* is it "ready to
+  deploy". A green QA report (manual step included) unlocks a deployment *request* — never the
   deployment itself (that stays operator-gated).
