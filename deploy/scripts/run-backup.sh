@@ -6,16 +6,18 @@
 # manual command already documented:
 #   docker compose run --rm api python -m secfin.storage.backup
 #
-# Also prunes old snapshots under ./data/backups so a small VPS disk doesn't fill up --
-# storage/backup.py itself has no retention policy (it's a plain snapshot writer), so
-# that housekeeping lives here instead of in application code.
+# Retention is COUNT-based and lives in storage/backup.py (`--keep N`): it prunes to the newest N
+# snapshots after each run. A count cap is bounded by disk regardless of snapshot size; the old
+# time-based `find -mtime +14` here was NOT -- at 7.3G/snapshot, 7 days already overran the 48G
+# droplet before the 14-day window could ever trigger (prod incident 2026-07-21, DEPLOYMENT_DO.md
+# §6b). Set SECFIN_BACKUP_KEEP per host to fit its disk (droplet: small; a bigger data volume: more).
 set -uo pipefail
 
 APP_DIR="${SECFIN_APP_DIR:-/opt/secfin}"
 LOG_DIR="${SECFIN_LOG_DIR:-/var/log/secfin}"
 STATUS_FILE="$LOG_DIR/backup.status"
 COMPOSE_FILE="${SECFIN_COMPOSE_FILE:-docker-compose.prod.yml}"
-RETENTION_DAYS="${SECFIN_BACKUP_RETENTION_DAYS:-14}"
+KEEP="${SECFIN_BACKUP_KEEP:-7}"
 
 mkdir -p "$LOG_DIR"
 
@@ -24,13 +26,9 @@ if ! cd "$APP_DIR"; then
     exit 1
 fi
 
-if docker compose -f "$COMPOSE_FILE" run --rm api python -m secfin.storage.backup; then
-    # Prune timestamped snapshots (secfin-<UTC timestamp>.db) older than the retention
-    # window. Never touches secfin-latest.db -- restore.py's --latest flag depends on it
-    # always being present and current.
-    find ./data/backups -maxdepth 1 -name 'secfin-*.db' ! -name 'secfin-latest.db' \
-        -mtime "+${RETENTION_DAYS}" -print -delete >>"$STATUS_FILE.pruned" 2>&1
-    echo "$(date -u +%FT%TZ) OK backup completed (retention=${RETENTION_DAYS}d)" >>"$STATUS_FILE"
+# backup.py writes the snapshot AND prunes to the newest $KEEP (secfin-latest.db is never pruned).
+if docker compose -f "$COMPOSE_FILE" run --rm api python -m secfin.storage.backup --keep "$KEEP"; then
+    echo "$(date -u +%FT%TZ) OK backup completed (keep=${KEEP})" >>"$STATUS_FILE"
 else
     code=$?
     echo "$(date -u +%FT%TZ) FAIL backup exited $code" >>"$STATUS_FILE"
