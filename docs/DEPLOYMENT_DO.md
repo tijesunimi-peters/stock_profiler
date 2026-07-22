@@ -220,13 +220,23 @@ detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metere
   current operational data incl. API keys) + the granular data is regenerable. **MUST re-enable**
   (`systemctl enable --now secfin-backup.timer`) once Spaces-backed backups are wired — until then
   API-key signups after Jul 22 are unprotected. `secfin-incremental.timer` left running.
-- **Granular data + sector aggregates need a bigger data home (Part B, in planning 2026-07-21).**
-  The whole-market granular `raw_facts` is ~57G — it does NOT fit the 48G droplet. Decision taken:
-  move the DB to a **DO Block Storage Volume** (droplet = app serving only). Scoped in
-  **`docs/DEPLOYMENT_BLOCK_STORAGE.md`** (sizing/cost/migration) — awaiting the operator's
-  volume-size + backup-location call, then `doctl volume create/attach`. Until then the sector
-  aggregates (`sector_dupont`, `sector_lifecycle`, `metric_distributions`) stay unmaterialized on
-  prod and the sector views show honest empty states.
+- **Granular data + sector aggregates — Part B, MIGRATION PENDING (2026-07-21).** The whole-market
+  granular `raw_facts` is ~57G — it does NOT fit the 48G droplet, so the data moves to a **DO Block
+  Storage Volume** (droplet = app serving only). Full plan in **`docs/DEPLOYMENT_BLOCK_STORAGE.md`**.
+  **Current state — provisioned, not yet migrated:**
+  - Volume `secfin-data-vol` (**100 GiB**, ext4, region `tor1`) is **created, attached, and mounted
+    at `/mnt/secfin_data_vol`** on the droplet (`/dev/sda` via
+    `scsi-0DO_Volume_secfin-data-vol`). ~$10/mo.
+  - Chosen path: **on-box re-ingest** (not offline-then-rsync); **backups → DO Spaces** (a local 57G
+    snapshot won't fit the 100 GiB Volume) — Spaces not yet wired, backup timer paused (see above).
+  - **Not yet done:** repoint compose `/app/data` → the Volume, seed the DB from a fresh consistent
+    copy (preserving API keys), run the ordered on-box backfills (`ingest.backfill → metrics_backfill
+    → peer_ranks → peer_distribution → dupont_backfill → sector_dupont → lifecycle_backfill →
+    sector_lifecycle`, `SECFIN_BACKFILL_WORKERS=1`), reclaim bulk zips, verify populated sectors,
+    wire Spaces backups + re-enable the timer.
+  - Until the migration runs, the sector aggregates (`sector_dupont`, `sector_lifecycle`,
+    `metric_distributions`) stay unmaterialized on prod and the sector views show honest empty states
+    (company-level DIO/DSO/DPO/CCC already compute live).
 - Off-droplet backup destination -- backups currently live only on the droplet's
   own disk; operator deliberately deferred the decision (Spaces+rclone hourly vs.
   Litestream were the assessed options, 2026-07-14). **Now also the disk-fill cause (§6b).**

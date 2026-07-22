@@ -1,6 +1,24 @@
 # Part B — Move the data to a DigitalOcean Block Storage Volume (scoping)
 
-**Status:** scoping / awaiting operator provisioning decision (2026-07-21).
+**Status:** volume provisioned; migration pending (2026-07-21). See DEPLOYMENT_DO.md §7.
+
+## Decisions taken (2026-07-21) — supersede the "Options" table below
+- **Volume:** `secfin-data-vol`, **100 GiB**, ext4, region `tor1` — **created, attached, mounted at
+  `/mnt/secfin_data_vol`** (`/dev/sda`). ~$10/mo. (Operator chose 100G over the recommended 250G to
+  save cost; consequence below.)
+- **Backups:** a 57G snapshot won't fit the 100 GiB Volume alongside the DB, so backups go **off-box
+  to DO Spaces** (Option B's backup path — not yet wired). Interim: `secfin-backup.timer` is
+  **paused**; rollback = the Jul 22 droplet snapshot; granular data is regenerable.
+- **Re-ingest:** **on the box** (not offline-then-rsync). Slow on 1 vCPU / 2 GB — run with
+  `SECFIN_BACKFILL_WORKERS=1`, several hours.
+- **Migration seed:** copy the *current* prod DB (fresh consistent snapshot) onto the Volume to
+  **preserve API keys/holdings**, then run the backfills there — do NOT ship the stale 54G scratch DB.
+
+The Options table below is retained for rationale/context; the live choice is 100 GiB + Spaces.
+
+---
+
+**Original scoping (2026-07-21):**
 **Context:** the granular whole-market `raw_facts` is ~57G and does not fit the 48G droplet root
 disk (DEPLOYMENT_DO.md §6b/§7). Decision taken: keep the SQLite/DuckDB architecture, move the
 **data** onto a **DO Block Storage Volume**, leave the droplet for app serving. **I do not
