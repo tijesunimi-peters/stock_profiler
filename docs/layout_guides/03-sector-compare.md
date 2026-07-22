@@ -33,6 +33,23 @@ card on the page (A = accent, B = secondary-accent). This is what lets the eye
 track "which is which" without a legend on each panel. Pull both colors from the
 existing style guide (`00 §1`); if the guide has no suitable second accent, ask.
 
+### Entry point: pin-to-compare
+
+This page is the **escape hatch from single-sector focus** (`00 §11.4`), and the
+primary way a user arrives is by pinning sectors from the other altitudes rather
+than by setting both pickers here. Consequences:
+
+- Arriving with **one pin** pre-fills sector A and leaves B empty with a prompt
+  to choose. Do not silently default B to anything.
+- Arriving with **two pins** fills both and renders immediately.
+- A **third pin attempt** does not silently evict A or B. Surface the choice
+  (replace which one?) and treat repeated third-pin attempts as the signal to
+  raise N-way comparison with the user — see the extensibility note below.
+- Pins are part of cross-page state (`00 §7`) and survive altitude switches.
+
+The pickers here are the same **pill row** control used everywhere else
+(`00 §11.1`), one row per sector slot, tinted to that slot's assigned color.
+
 ## 2. Composite scores
 
 A vertical list of **seven rows**, one per theme, in the same order as `01`. Each

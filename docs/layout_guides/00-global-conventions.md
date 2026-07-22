@@ -120,6 +120,34 @@ A metric tile shows, in this order:
 Do not vary this grammar between pages. A revenue-growth tile, an
 interest-coverage tile, and an R&D-intensity tile all render identically.
 
+### 3a. Rank badge (companion to every score)
+
+Because the product is **single-sector at a time** (§11), a bare score has no
+context — the reader cannot tell whether 68 is good. Therefore **any composite
+score or theme score is always rendered with a rank badge** in the form
+`68 · 3rd of 11`, where the ordinal is the sector's rank against all sectors on
+that theme. The badge sits directly beneath the score in `text.muted`, and the
+ordinal itself is **favorability-driven** (§5), not raw-percentile-driven.
+
+The rank badge is not optional decoration. It is the mechanism that repays the
+cross-sector context lost by showing one sector at a time.
+
+### 3b. Peer strip (contextual, one per page)
+
+A **peer strip** is a single row of small bars, one per sector, showing where
+every sector sits on **one currently-focused metric or theme**. The selected
+sector's bar uses `accent`; all others use a neutral fill from the guide. Labels
+are abbreviated sector names in `text.muted`, with the selected one in
+`accent`.
+
+Rules:
+- **One peer strip per page, maximum.** It is context, not content.
+- It **follows focus**: it re-renders to whatever theme or metric the user last
+  expanded or drilled into. Do not pin it permanently to one metric.
+- It is **not clickable-to-navigate by default** — confirm with the user whether
+  clicking a bar should switch the selected sector, since that competes with the
+  header selector.
+
 ---
 
 ## 4. Percentile-first
@@ -130,6 +158,12 @@ unless the reader already knows the sector norm. Raw values are shown, but they
 are secondary to the entity's position within the peer set. Percentiles are
 always **within the peer set**, never cross-sector, unless explicitly labeled
 "vs all sectors" (only the composite scorecard does this).
+
+**Percentile and rank are both shown, and they answer different questions.**
+Percentile places an entity inside its own peer set; rank (§3a) places the
+*sector* against other sectors. Overview and compare tiles carry the rank badge;
+company-page tiles carry the peer percentile. Never substitute one for the other
+without relabeling.
 
 ---
 
@@ -161,6 +195,16 @@ Every page's top bar includes, left to right:
 - **Filing-coverage indicator** — e.g. "94% filed", signaling how complete the
   period's filings are. This matters: early in a reporting period, aggregates are
   provisional. Show coverage prominently and never hide it.
+
+**Same-store comparison while coverage is incomplete.** A sector median computed
+from 40% of filers is not comparable to last quarter's median computed from 100%
+of them, and quarter-over-quarter deltas built that way are artifacts of the
+filing calendar rather than real change. Until coverage crosses a threshold,
+compute every period-over-period delta on a **same-store basis** — only filers
+that reported in *both* periods — and label it as such in `text.muted`
+("same-store, 41 of 62 filers"). Above the threshold, switch to the full peer
+set and label the switch. **Confirm the coverage threshold with the user**; do
+not pick one silently.
 
 The peer set is defined by **SIC or NAICS code**. SIC is coarse (diversified
 firms land in one bucket); prefer a NAICS crosswalk or a curated mapping if one
@@ -212,6 +256,20 @@ defined.** Do not invent one silently. Before implementing the scorecard,
 Until defined, build the scorecard against a clearly-labeled placeholder scoring
 function so it is obvious the numbers are not final.
 
+### 9a. Score transparency is mandatory
+
+A single number labeled "financial health" will be trusted further than it
+deserves — the same abstraction that makes the product digestible also makes it
+opaque. Every composite score must therefore be **openable**, showing:
+- the constituent metrics that rolled into it,
+- the weight applied to each,
+- each constituent's own contribution to the score this period (so the reader can
+  see *which* input moved the composite),
+- the normalization method in one line of `text.muted`.
+
+Build this affordance at the same time as the score, not later. A score without a
+visible decomposition should not ship.
+
 ---
 
 ## 10. Universal states
@@ -224,3 +282,119 @@ function so it is obvious the numbers are not final.
   the user.
 - **Error**: fail per-panel, not per-page — one broken metric should not blank the
   scorecard.
+
+---
+
+## 11. Single-sector focus — the selection model
+
+The product shows **one sector at a time.** There is no multi-sector heatmap
+home; the sector selector is the spine of the entire product. This is a
+deliberate anti-overload choice, and it carries obligations.
+
+### 11.1 The selector
+
+- Rendered as a **persistent pill row**, not a dropdown. Visible options let a
+  user step through sectors quickly and keep the previously-viewed sector in
+  peripheral memory for comparison; a dropdown hides both.
+- **Pinned to the top of every altitude.** Switching sector must never require
+  navigating back to the overview.
+- Selected pill uses the `accent` background/text treatment; unselected pills use
+  `text.primary` on a hairline-bordered transparent surface. Pull both from the
+  existing guide (§1).
+- If the sector count is large enough that pills wrap past two rows, **ask the
+  user** whether to group them or fall back to a combobox. Do not silently
+  truncate.
+
+### 11.2 State preservation is on the metric axis, not the page axis
+
+This is the behavior that makes one-at-a-time viable for comparison work.
+
+> If a user is reading the accruals-ratio detail for sector A and selects
+> sector B, they land on the **accruals-ratio detail for sector B** — not on
+> sector B's page header.
+
+Sector selection changes the *subject* of the current view; it never resets the
+view. The same holds for the expanded theme on the overview, the metric stack on
+the company page, and the theme landscape on the qualitative page. Preserve, in
+addition to the items in §7: **expanded theme, focused metric, and scroll
+anchor.**
+
+### 11.3 Sub-industry drill
+
+Sector medians hide most of the signal. "Technology" blends semiconductors,
+software, and hardware, which share almost nothing on capex intensity or
+deferred revenue. Once a sector is selected, offer a **second pill row of its
+sub-industries**, derived from the peer-set classification in §6.
+
+- Selecting a sub-industry narrows the peer set for every median, percentile,
+  and rank on the page, and updates the peer-set pill count.
+- The rank badge (§3a) must relabel when a sub-industry is active — ranks are
+  then against sibling sub-industries, not against sectors. Label it explicitly.
+- **Confirm the sub-industry taxonomy with the user** alongside the peer-set
+  decision in §6; they are the same decision at two depths.
+
+### 11.4 Pin-to-compare (escape hatch)
+
+Single-sector focus is the default, but users eventually need two sectors side by
+side. Provide a small **pin** control on the sector header. Pinned sectors
+accumulate into the compare altitude (`03`) rather than opening a second panel
+in place.
+
+The compare page is specified for **two** sectors. Allow at most two pins by
+default; if a user attempts a third, raise the N-way question (`03`
+extensibility note) rather than cramming a third bar into the paired layout.
+
+---
+
+## 12. Change-first surfaces
+
+Users mostly care about what is **different** this period, not the standing
+level. Every altitude that shows state should also carry a compact
+**"biggest shifts"** band: the three to five metrics that moved most against
+their own history, each as metric name + signed delta + favorability color.
+
+Two naming rules, because these are easy to confuse:
+- **"Biggest shifts"** = *metric deltas*, quarterly cadence, derived from XBRL
+  aggregates. Lives with the analytical panels.
+- **"What's moving"** = *filing events*, daily cadence, derived from 8-K/Form 4/
+  S-1 flow. Lives in the walled-off feed (`01 §5`).
+
+Do not merge these two surfaces and do not reuse each other's labels. They differ
+in cadence, source, and meaning, and merging them makes a quarterly aggregate
+look like breaking news.
+
+---
+
+## 13. Threshold alerts
+
+Do not rely on the user scanning for problems. Where a metric crosses a defined
+threshold against its own history — material-weakness rate doubling, insider net
+buying at a multi-year high, going-concern count rising — the product should
+**raise it**, as a flag on the relevant tile and an entry in the appropriate
+change surface (§12).
+
+- Thresholds are stored with the metric definition alongside `higherIsBetter`
+  (§5), not hardcoded per page.
+- Alert copy states the fact and the comparison basis, nothing more
+  ("material-weakness rate 4.1%, highest in 8 quarters"). No adjectives.
+- **Confirm the threshold set and the lookback window with the user** before
+  building. An alert layer that fires too often is worse than none.
+
+---
+
+## 14. Metric budget — what is on screen by default
+
+The catalog of SEC-derivable metrics is far larger than any page should show.
+Default views carry roughly **20 metrics across the seven themes**; everything
+else lives behind an "all metrics" expansion or a saved custom view.
+
+Guidance for what stays out of the default:
+- **Annual-cadence, niche disclosures** — governance and compensation (DEF 14A),
+  say-on-pay outcomes, board tenure, pension funding, CAM themes. These warrant
+  their own tucked-away surface, not front-page space.
+- **Anything the reader cannot act on at sector altitude** — single-filer trivia
+  belongs on the company page.
+
+When adding a metric to a default view, something else comes out. Treat the
+budget as fixed and **raise the tradeoff with the user** rather than growing the
+page.

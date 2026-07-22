@@ -26,7 +26,19 @@ Left to right:
 - Right side: the **filing basis** — "10-Q · Q1 FY26" — so the reader knows which
   filing the figures come from.
 
-Changing the sector or period here follows the shared state rules (`00 §7`).
+Beneath the breadcrumb line, the **same sector and sub-industry pill rows** as
+every other altitude (`00 §11.1`, `00 §11.3`). They are not decoration here: the
+peer set they define *is* every distribution on this page. Narrowing from sector
+to sub-industry re-derives the dot cloud, the IQR band, the median, and every
+percentile in the left rail — so the peer-set pill count must visibly update, and
+the context pill must show which classification is active
+("NAICS 334413 · rank 4 / 19").
+
+Changing the sector or period here follows the shared state rules (`00 §7`) and
+the metric-axis preservation rule (`00 §11.2`): if the reader is scrolled to the
+net-debt/EBITDA distribution and switches sector, they land on that same metric
+for the new peer set, with the focal company cleared and a prompt to pick one —
+**not** back at the top of the page.
 
 ## 2. Left rail — percentile summary
 
@@ -87,6 +99,10 @@ color affordance reflect favorability, not raw position (`00 §5`).
 - Click any **peer dot** → switch the focal company to that filer (re-render in
   place), preserving sector/period. Consider a hover tooltip naming the peer.
 - Breadcrumb sector name → back to **Sector overview** (`01`).
+- Composite rank card → open the score decomposition (`00 §9a`), the same panel
+  the overview scorecard opens. One implementation, both altitudes.
+- A metric that has crossed its threshold (`00 §13`) carries its flag on the
+  distribution row header, using the same copy as the overview.
 - Left-rail theme bar → optionally scroll/expand the corresponding metrics in the
   main column (confirm with user whether bars are navigational).
 

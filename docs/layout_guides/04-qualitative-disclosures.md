@@ -31,6 +31,23 @@ Breadcrumb: sector (`text.muted`) → chevron → "Qualitative disclosures"
 (`text.primary`). Peer/period pill ("62 filers · FY25 10-Ks"). Right side: the
 sections being read ("Item 1A · 3 · 1C · MD&A") so the reader knows the basis.
 
+Beneath it, the **same sector and sub-industry pill rows** as every other
+altitude (`00 §11.1`, `00 §11.3`). Two page-specific cautions:
+
+- Narrowing to a sub-industry shrinks the filer count fast, and the theme model
+  needs a minimum corpus to cluster stably. If a sub-industry falls below the
+  clustering threshold, **suppress the theme landscape and show the per-filer
+  signal matrix instead** (per the states section below) rather than rendering an
+  unstable cluster set. Say why, in `text.muted`.
+- Switching sector preserves the **selected theme** where a comparable theme
+  exists in the pinned taxonomy, and otherwise falls back to the top theme with a
+  `text.muted` note. This follows `00 §11.2`, adapted: the taxonomy is per-sector,
+  so metric-axis preservation is best-effort here, not guaranteed.
+
+**No peer strip on this page.** Coverage percentages across sectors are not
+comparable when each sector has its own frozen taxonomy, and a strip would imply
+they are. This is a deliberate exception to `00 §3b`.
+
 ## 2a. Risk-factor theme landscape (left, wider — the anchor)
 
 Header: "Risk-factor themes" + `text.muted` hint ("share of filers citing · YoY
@@ -69,6 +86,13 @@ language year over year (e.g. "AI-demand concentration — cited by 27 filers, 0
 last year"). Numeric dashboards can never catch these because they show up in
 prose long before they hit the financials. Each item: bold title + a one-line
 `text` note in the same tint.
+
+This panel is a **producer for the shared alert layer** (`00 §13`): a theme
+crossing its emergence threshold should also raise a flag the user can see from
+the sector overview, so a disclosure signal is not missed just because the reader
+never navigated to this altitude. Keep the alert copy count-based
+("cited by 27 filers, 0 last year") — the "count, don't editorialize" rule below
+applies to alerts as much as to this page.
 
 **Going-concern watch** — a card bordered with `negative`. Header with a count
 ("2 / 62"). Body: a short list of flagged filers, each with the **nature of the
