@@ -213,6 +213,13 @@ detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metere
 
 - ~~Backup retention~~ — **FIXED & deployed 2026-07-21** (count-based `--keep`, droplet `keep=2`).
   See §6b. Raise to `keep=7` after Part B moves the data to a bigger Volume.
+- **⏸️ BACKUPS PAUSED ON LIVE (2026-07-21).** `secfin-backup.timer` was **stopped + disabled**
+  (`systemctl disable --now`) ahead of the Part B block-storage migration: once the DB is ~57G a
+  local full snapshot won't fit the 100 GiB Volume, so backups must move to **DO Spaces**. Rollback
+  safety meanwhile = the **Jul 22 snapshot** on the droplet (`data/backups/secfin-latest.db`, 7.3G,
+  current operational data incl. API keys) + the granular data is regenerable. **MUST re-enable**
+  (`systemctl enable --now secfin-backup.timer`) once Spaces-backed backups are wired — until then
+  API-key signups after Jul 22 are unprotected. `secfin-incremental.timer` left running.
 - **Granular data + sector aggregates need a bigger data home (Part B, in planning 2026-07-21).**
   The whole-market granular `raw_facts` is ~57G — it does NOT fit the 48G droplet. Decision taken:
   move the DB to a **DO Block Storage Volume** (droplet = app serving only). Scoped in
