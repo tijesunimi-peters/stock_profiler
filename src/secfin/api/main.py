@@ -43,6 +43,9 @@ from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepos
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRepository
 from secfin.storage.sqlite_sector_lifecycle_repository import SQLiteSectorLifecycleRepository
+from secfin.storage.sqlite_sector_theme_score_repository import (
+    SQLiteSectorThemeScoreRepository,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -152,6 +155,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # read-only-on-the-serving-path shape; analytical/sector_lifecycle.py is the sole writer, so
     # the live API never touches DuckDB. See routes.get_sector_lifecycle_repo.
     app.state.sector_lifecycle_repo = SQLiteSectorLifecycleRepository(settings.secfin_db_path)
+    # Precomputed composite sector theme scores (sector-overview redesign, Phase 0) -- same
+    # read-only-on-the-serving-path shape; analytical/sector_theme_scores.py is the sole writer
+    # (a pure-Python offline batch over metric_distributions -- no DuckDB on this path at all).
+    # See routes.get_sector_theme_score_repo.
+    app.state.sector_theme_score_repo = SQLiteSectorThemeScoreRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -167,6 +175,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.company_profile_repo.close()
         app.state.sector_dupont_repo.close()
         app.state.sector_lifecycle_repo.close()
+        app.state.sector_theme_score_repo.close()
 
 
 app = FastAPI(

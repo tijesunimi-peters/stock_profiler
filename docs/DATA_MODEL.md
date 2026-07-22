@@ -934,6 +934,56 @@ legs in `lifecycle_components` via `ingest/lifecycle_backfill.py`, then summed i
 signal, edge, or alpha claim. Same SIC-coarse / label-aggregated / ~quarter-lag caveats as the
 DuPont aggregate, labelled "sector aggregate — not a median."
 
+### Composite sector theme scores (sector-overview redesign, Phase 0)
+
+A 0–100 **composite health score** per `(SIC group, period)` for each of **five backable themes**,
+the flagship analytic of the redesigned sector overview (`docs/REDESIGN_SECTOR_OVERVIEW.md`,
+`docs/layout_guides/01`). The guide names seven themes; two — **Accounting quality** and
+**Structure & activity** — need signals not ingested or not sector-aggregated (restatement /
+material-weakness / late-filing; S-1 / Form 15 / 8-K / insider / institutional flow — largely
+Track 2), so they are **not scored**: the endpoint surfaces them as explicit `scored: false`
+markers, never a fabricated `0`, and they are **never materialized**.
+
+**Direction map (favorability).** Every metric that enters a theme carries a `higher_is_better`
+flag (`normalize/metrics.py` `METRIC_DIRECTION`; guide `00 §5`) — the single source of truth that
+orients the z-score and any downstream color affordance. Lower-is-better metrics
+(`debt_to_equity`, `dso`, `dio`, `dpo`, `ccc`, `accruals`) flip sign. `higher_is_better()` raises
+`KeyError` for a metric with no entry (a themed metric MUST declare direction — no silent default).
+
+**Themes → constituents** (`normalize/themes.py` `THEMES`, scorecard order): only **scale-free**
+metrics (ratios, margins, growth rates, turnovers, days) are constituents — a raw dollar level
+(`fcf`, `net_debt`) is **excluded**, because a cross-sector z-score of an absolute magnitude
+conflates sector *size* with health.
+
+| Theme | Constituents |
+|-------|--------------|
+| Profitability & returns | gross/operating/net margin, roa, roe, roic |
+| Growth | revenue/earnings/ocf growth YoY, growth_acceleration |
+| Financial health | debt_to_equity, interest_coverage, current_ratio, quick_ratio |
+| Cash & investment | fcf_margin, ocf_growth_yoy |
+| Operating efficiency | inventory_turnover, dso, dio, dpo, ccc, asset_turnover |
+
+**Scoring.** Per `(year, period)`, per constituent: z-score the **per-sector medians** (read from
+`metric_distributions`) **across sectors**, then orient by `higher_is_better`. A metric with fewer
+than `MIN_SECTORS_FOR_ZSCORE` (3) sectors, or ≈zero dispersion, is **excluded** that period. Per
+sector, per theme: equal-weight-average the available oriented z's — **only if** at least
+`min_constituents(n) = max(2, ⌈n/2⌉)` are available, else the theme is **omitted for that sector**
+(not a low score, not a `0`). Map `score = round(clamp(50 + 15·z, 0, 100))` — **50 = cross-sector
+average, ±1σ ≈ 15 points**. The `percentile` (position vs all scored sectors) and dense `rank` /
+`rank_of` (1 = most favorable) are computed separately; `delta_vs_prior_fy` is the score change vs
+the prior FY, or `null` when there is no prior (never `0`-as-missing). Each score's
+**decomposition** (guide `00 §9a`) is stored per included constituent (`median_value`,
+`oriented_z`, `higher_is_better`) so the reader can see which input moved the composite; an excluded
+constituent has **no** component row.
+
+Materialized offline by the **pure-Python** batch `analytical/sector_theme_scores.py` (NOT DuckDB —
+its input `metric_distributions` is *already* the DuckDB stage's output, only a few thousand median
+rows) into `sector_theme_scores` (parent) + `sector_theme_components` (decomposition), and served
+**cache-aside** by `GET /v1/sectors/theme-scores` — **never a live aggregation** (guardrails 6/7;
+there is no DuckDB on this path at all). A score is a **position vs other sectors, not a good/bad or
+buy/sell verdict**; the `_PEER_CAVEATS`-derived caveats plus the normalization line state this.
+Empty `sectors` is a valid honest result.
+
 ### Metric history & trend signals (Phase 1b)
 
 The same engine run across a company's whole quarterly (or annual) history, served at

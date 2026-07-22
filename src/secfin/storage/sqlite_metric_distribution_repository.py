@@ -105,6 +105,14 @@ class SQLiteMetricDistributionRepository(MetricDistributionRepository):
         )
         return [MetricDistributionRow(*r) for r in cur.fetchall()]
 
+    def list_for_metric_all_periods(self, metric: str) -> list[MetricDistributionRow]:
+        cur = self._conn.execute(
+            f"SELECT {self._SELECT_COLS} FROM metric_distributions WHERE metric = ? "
+            "ORDER BY fiscal_year, fiscal_period, peer_group",
+            (metric,),
+        )
+        return [MetricDistributionRow(*r) for r in cur.fetchall()]
+
     def latest_fy_year(self, metric: str) -> int | None:
         row = self._conn.execute(
             "SELECT MAX(fiscal_year) FROM metric_distributions "

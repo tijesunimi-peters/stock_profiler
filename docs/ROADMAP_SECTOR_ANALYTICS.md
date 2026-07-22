@@ -53,6 +53,21 @@ inspect via Python's `sqlite3` with `file:...?immutable=1`.
 Shared prerequisite for all five: a **sector-first surface** (index + per-sector page). None exists
 today.
 
+### Follow-on: sector-overview REDESIGN (composite theme scores)
+
+A separate track (`docs/REDESIGN_SECTOR_OVERVIEW.md`) adopts the `docs/layout_guides/` design
+language for `/sectors`. **Phase 0 backend SHIPPED** (2026-07-21, `sector-theme-scores`): a 0–100
+composite **health score** per `(SIC group, period)` for the five backable themes (Profitability,
+Growth, Financial health, Cash & investment, Operating efficiency), with cross-sector rank +
+percentile, prior-FY delta, and per-constituent decomposition (guide `00 §9a`). New
+`METRIC_DIRECTION` favorability map, `normalize/themes.py`, `sector_theme_scores` +
+`sector_theme_components` tables, the **pure-Python** `analytical/sector_theme_scores.py` batch
+(input `metric_distributions` is already aggregated — no DuckDB), and cache-aside
+`GET /v1/sectors/theme-scores`. Accounting quality + Structure & activity are `scored: false`
+markers (Track-2 data). Prod batch run + the Phase 1–3 UI (single-sector spine, scorecard hero,
+peer strip, drill-down, sidebar submenu) are the next steps. See `docs/DATA_MODEL.md` and
+`docs/delivery/sector-theme-scores/`.
+
 ---
 
 ## Honesty / correctness flags (must be fixed before building)

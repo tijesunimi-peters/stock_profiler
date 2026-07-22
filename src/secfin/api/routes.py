@@ -12,6 +12,7 @@ rather than per-company data.
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -40,6 +41,7 @@ from secfin.normalize.metrics import (
     compute_metrics,
     metric_periods,
 )
+from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
 from secfin.normalize.schema import (
     BalanceSheetViz,
     BeneficialOwnership,
@@ -69,8 +71,12 @@ from secfin.normalize.schema import (
     SectorSpread,
     SectorSpreadList,
     SectorSpreadProfile,
+    SectorThemeScore,
+    SectorThemeScoreList,
+    SectorThemeScores,
     Statement,
     StatementType,
+    ThemeConstituent,
 )
 from secfin.normalize.screening import (
     SCREENABLE_CONCEPTS,
@@ -109,6 +115,11 @@ from secfin.storage.sector_dupont_repository import SectorDupontRepository, Sect
 from secfin.storage.sector_lifecycle_repository import (
     SectorLifecycleRepository,
     SectorLifecycleRow,
+)
+from secfin.storage.sector_theme_score_repository import (
+    SectorThemeComponentRow,
+    SectorThemeScoreRepository,
+    SectorThemeScoreRow,
 )
 
 # Gating rule: only genuinely EXTERNAL API consumption requires a key. Any endpoint our
@@ -295,6 +306,10 @@ def get_sector_dupont_repo(request: Request) -> SectorDupontRepository:
 
 def get_sector_lifecycle_repo(request: Request) -> SectorLifecycleRepository:
     return request.app.state.sector_lifecycle_repo
+
+
+def get_sector_theme_score_repo(request: Request) -> SectorThemeScoreRepository:
+    return request.app.state.sector_theme_score_repo
 
 
 def get_cusip_repo(request: Request) -> CusipMapRepository:
@@ -1370,6 +1385,131 @@ async def get_sector_spreads(
         peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
         caveats=_SPREAD_CAVEATS,
         spreads=spreads,
+    )
+
+
+# ---- Sector composite theme scores (sector-overview redesign, Phase 0) ---------------
+#
+# Declared BEFORE `/sectors/{group}` so the literal path wins over the {group} param route (same
+# ordering reason `/sectors/spreads` sits above it).
+
+_THEME_SCORE_NORMALIZATION = (
+    "Each theme score is the equal-weight mean of its constituent metrics' z-scored, "
+    "favorability-oriented per-sector medians, mapped to 0-100 as 50 + 15·z clamped to [0, 100] "
+    "(50 = cross-sector average, ±1σ ≈ 15 points)."
+)
+
+_THEME_SCORE_CAVEATS = _PEER_CAVEATS + [
+    _THEME_SCORE_NORMALIZATION,
+    "A score is a sector's POSITION relative to other sectors on that theme -- not a 'good'/'bad', "
+    "'buy'/'sell', or quality verdict. The rank and percentile place the sector against its peers; "
+    "the decomposition shows which constituents moved it.",
+    "Only SCALE-FREE metrics (ratios, margins, growth rates, turnovers, days) are scored; raw "
+    "dollar levels (e.g. free cash flow, net debt) are excluded because a cross-sector z-score of "
+    "an absolute magnitude conflates sector size with health.",
+    "A constituent with no comparable sector median is EXCLUDED from the average and absent from "
+    "the decomposition (never counted as zero); a theme with too few available constituents is not "
+    "scored for that sector.",
+    "Two of the seven themes -- accounting quality and structure & activity -- are NOT scored yet "
+    "(they need signals not ingested or not sector-aggregated). They appear as explicit "
+    "'not yet scored' markers, never as a fabricated score.",
+]
+
+
+def _theme_score_model(
+    row: SectorThemeScoreRow, components: list[SectorThemeComponentRow]
+) -> SectorThemeScore:
+    """Map a materialized score row + its included constituents to the API model."""
+    return SectorThemeScore(
+        theme=row.theme,
+        theme_label=THEME_LABELS.get(row.theme, row.theme),
+        scored=True,
+        score=row.score,
+        percentile=row.percentile,
+        rank=row.rank,
+        rank_of=row.rank_of,
+        delta_vs_prior_fy=row.delta_vs_prior_fy,
+        constituents=[
+            ThemeConstituent(
+                metric=c.metric,
+                label=METRIC_LABELS.get(c.metric, c.metric),
+                higher_is_better=c.higher_is_better,
+                median=c.median_value,
+                oriented_z=c.oriented_z,
+            )
+            for c in components
+        ],
+    )
+
+
+def _deferred_theme_markers() -> list[SectorThemeScore]:
+    """The two guide themes we cannot honestly score yet, as scored:false markers (never a 0)."""
+    return [
+        SectorThemeScore(theme=key, theme_label=label, scored=False, reason=reason)
+        for key, (label, reason) in DEFERRED_THEMES.items()
+    ]
+
+
+@public_router.get(
+    "/sectors/theme-scores",
+    response_model=SectorThemeScoreList,
+    tags=["Sectors"],
+    summary="Composite sector health scores across the backable themes for one period",
+)
+async def get_sector_theme_scores(
+    year: int | None = Query(
+        None, description="Fiscal year; defaults to the latest well-covered annual (FY) year"
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    repo: SectorThemeScoreRepository = Depends(get_sector_theme_score_repo),
+) -> SectorThemeScoreList:
+    """Every scored sector's composite theme scores for one period -- the scorecard's data source.
+
+    A **precomputed** read of `sector_theme_scores` / `sector_theme_components` (the
+    analytical/sector_theme_scores.py batch is the sole producer; the live path never recomputes a
+    score -- there is no DuckDB on this path). Each sector's `themes` lists the five backable themes
+    it qualified for (with score, cross-sector rank + percentile, prior-FY delta, and the
+    per-constituent decomposition), followed by the two deferred themes as `scored: false` markers.
+    A sector/theme that didn't meet the constituent thresholds is simply absent, never zero-filled.
+    Empty `sectors` is a valid, honest result: nothing materialized yet, or no sector qualified.
+    """
+    resolved_year = year if year is not None else repo.latest_fy_year()
+    scores = repo.list_for_period(resolved_year, period) if resolved_year is not None else []
+    components = (
+        repo.components_for_period(resolved_year, period) if resolved_year is not None else []
+    )
+
+    # group components under (peer_group, theme)
+    comps_by_key: dict[tuple[str, str], list[SectorThemeComponentRow]] = defaultdict(list)
+    for c in components:
+        comps_by_key[(c.peer_group, c.theme)].append(c)
+
+    # group scored themes under each sector
+    scored_by_group: dict[str, dict[str, SectorThemeScoreRow]] = defaultdict(dict)
+    for row in scores:
+        scored_by_group[row.peer_group][row.theme] = row
+
+    deferred = _deferred_theme_markers()
+    sectors: list[SectorThemeScores] = []
+    for group in sorted(scored_by_group):
+        by_theme = scored_by_group[group]
+        themes: list[SectorThemeScore] = [
+            _theme_score_model(by_theme[theme], comps_by_key.get((group, theme), []))
+            for theme in THEMES  # scorecard order; a theme the sector lacks is skipped
+            if theme in by_theme
+        ]
+        themes.extend(deferred)
+        sectors.append(
+            SectorThemeScores(group=group, group_label=sic2_label(group), themes=themes)
+        )
+
+    return SectorThemeScoreList(
+        fiscal_year=resolved_year or 0,
+        fiscal_period=period,
+        peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
+        normalization=_THEME_SCORE_NORMALIZATION,
+        caveats=_THEME_SCORE_CAVEATS,
+        sectors=sectors,
     )
 
 

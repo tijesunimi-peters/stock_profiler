@@ -1,66 +1,60 @@
 # Active delivery task
-task_slug: sector-lifecycle-trends
-request: Deliverable #5 from docs/ROADMAP_SECTOR_ANALYTICS.md — DIO/DSO/DPO asset-lifecycle trends on the sector page. Add canonical metrics dio + dpo (mirroring _dso), derive CCC = dio+dso−dpo (N/A if any leg N/A), materialize a per-(SIC group, period) sector aggregate via the sector_dupont DuckDB-over-SQLite batch pattern, expose a per-sector FY-series endpoint, and render a multi-line lifecycle trend in the sector-page expand-detail. CUT the alpha claim; carry standard sector caveats; N/A never 0; Track 1. Verify on a scratch re-ingested copy (prod re-ingest deferred to DevOps).
-branch: sector-lifecycle-trends (off master)
+task_slug: sector-theme-scores
+request: Phase 0 of docs/REDESIGN_SECTOR_OVERVIEW.md — composite sector theme-scoring model. Materialized sector_theme_scores table + DuckDB-over-SQLite batch (mirror peer_ranks.py/peer_distribution.py, never live path) + cache-aside GET /v1/sectors/theme-scores. Score 5 backable themes (Profitability, Growth, Financial health, Cash & investment, Operating efficiency): equal-weight constituents, z-score of per-sector medians across qualifying sectors, cross-sector rank badge, prior-FY trend delta, per-constituent decomposition (00 §9a). Defer Accounting quality + Structure & activity as "not yet scored". Caveats; N/A never 0. Backend-only phase (no UI).
+branch: sector-theme-scores (off master)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-21
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (14 ACs; scope gate PASS Track 1; alpha claim cut;
-      no new raw concept — mapping already has inventory/accounts_payable/cost_of_revenue.
-      3 design decisions flagged for architect: all-legs membership for CCC, new table vs extend,
-      endpoint shape. No AskUserQuestion needed. Verify on scratch re-ingested copy; prod = DevOps.)
-- [x] 2 Principal Architect   -> 2-architecture.md (near-exact clone of the DuPont D1 scaffold.
-      3 decisions RESOLVED: (1) require ALL 5 legs for CCC membership -> ccc=dio+dso-dpo exact on one
-      set; (2) NEW tables lifecycle_components + sector_lifecycle (+ repos) not an extension;
-      (3) endpoint = GET /v1/sectors/{group}/lifecycle FY-series. Company metrics dio/dpo/ccc added
-      to registry (mirror _dso; ccc composes+propagates N/A). Aggregate = ratio-of-sums via DuckDB
-      batch analytical/sector_lifecycle.py, cache-aside read, DuckDB never live. approx_count carries
-      the period-end-balance flag. Frontend: new multi-line sectorLifecycleTrend in app.js consumed
-      in sectors.js expand-detail. Files B1-B9 backend, F1-F4 frontend. ACs mapped to checks.)
-- [x] 3 Backend  -> 3-implementation.md (dio/dpo/ccc metrics mirror _dso; ccc composes+propagates
-      N/A; lifecycle_components all-5-legs; sector_lifecycle DuckDB ratio-of-sums batch; new repos +
-      tables; GET /v1/sectors/{group}/lifecycle cache-aside (no DuckDB on route); schema + main
-      wiring; docs. pytest 489 pass (+16 new, no regress). REAL-DATA verify on scratch re-ingested
-      copy: lifecycle_backfill 16,892 CIKs/76,037 rows; sector_lifecycle 1,910 rows; AC-14 parity
-      44-46 sectors/FY (up from ~0), dio/dpo/dso/ccc all present, identity holds, negative CCC honest
-      (SIC73 -4.9), 0 null legs. Endpoint 200 w/ 17 FY points, caveats, no-alpha check pass. NOTE:
-      ~60 in brief was net_margin breadth; 44-46 is the honest all-5-legs count (non-inventory
-      sectors correctly excluded). Prod re-ingest + 2 new batches = DEFERRED DevOps.)
-- [x] 3 Frontend -> 3-implementation.md (appended). app.js sectorLifecycleTrend (multi-line
-      DIO/DSO/DPO + CCC-as-hero-line, ruleY(0) so negative CCC honest, break-on-gap, legend, days
-      axis); sectors.js paintDetail fetches /sectors/{group}/lifecycle -> "Cash conversion cycle"
-      section w/ ~approximate badge + descriptive lede (no alpha) + caveats disclosure + honest
-      empty; sectors.css; seed_fixture _seed_sector_lifecycle (banks=empty, 73=negative CCC, 28=gap,
-      latest year approx); headless_check +sectors-lifecycle shot. e2e 25 pages errors=0; eyeballed
-      lifecycle (neg CCC below 0, badge) + expanded (banks empty state). pytest 489 green.
-- [x] 4 QA Tester             -> 4-qa.md (PASS — all 14 ACs independently verified by driving the
-      running feature. Real flow on scratch re-ingested copy: WMT dio 41.5/dpo 41.2/dso 4.8/ccc 5.1
-      days (ok, identity holds); JPM bank dio/dpo/ccc na value=None (N/A never 0). AC-5 no duckdb on
-      route. AC-8 pytest 489. AC-9 6/6 caveats. AC-10 no-alpha scan clean. AC-11 ~approx badge in
-      screenshot. AC-12 e2e 25 pages errors=0. AC-13 docs. AC-14 44-46 sectors/FY (honest all-5-legs
-      count; ~60 was net_margin breadth), negative CCC honest. No defects. UNCOMMITTED, NOT deployed.)
+- [x] 1 Product Manager       -> 1-brief.md (15 ACs; scope gate PASS Track 1; backend-only, no UI.
+      KEY FINDING: no higherIsBetter/favorability registry exists — must be created (D1, honesty-
+      critical, defaults proposed). Deferred 2 themes emit scored:false, never 0.)
+- [x] 2 Principal Architect   -> 2-architecture.md (backend-only. Resolved D1-D4 + added D3/D5:
+      D1 direction map -> METRIC_DIRECTION in metrics.py (incl. dio=False). D3 SCALE-FREE-ONLY rule:
+      dollar levels (fcf, net_debt) EXCLUDED from scoring -> Cash&inv=fcf_margin+ocf_growth (2),
+      Fin health=d/e+int_cov+current+quick (4, net_debt dropped). D2 score=round(clamp(50+15*z,
+      0,100)), 50=avg, percentile line separate. D4 MIN_SECTORS_FOR_ZSCORE=3, theme needs
+      >=max(2,ceil(n/2)) constituents. D5 batch is PURE-PYTHON not DuckDB (input metric_distributions
+      already aggregated; offline/never-live regardless). New: normalize/themes.py, analytical/
+      sector_theme_scores.py, storage/sector_theme_score_repository.py (+sqlite), parent+child tables
+      sector_theme_scores/sector_theme_components, GET /v1/sectors/theme-scores, 4 schema models.
+      Deferred themes injected scored:false at serve layer, not materialized. AC->check table done.)
+- [x] 3 Backend  -> 3-implementation.md (branch sector-theme-scores. New: normalize/themes.py,
+      analytical/sector_theme_scores.py (PURE-PYTHON, no DuckDB), storage/sector_theme_score_repo
+      (+sqlite: sector_theme_scores + sector_theme_components tables), 4 schema models,
+      GET /v1/sectors/theme-scores (declared BEFORE /sectors/{group}), METRIC_DIRECTION map +
+      higher_is_better in metrics.py, list_for_metric_all_periods on dist repo, main.py wiring, docs
+      (DATA_MODEL/ROADMAP/REDESIGN/CLAUDE). pytest 506 pass (+17, no regress). ruff clean on my
+      lines (pre-existing B008/1 E501 only). REAL-DATA (AC-14) on scratch granular_verify.db: batch
+      -> 21,053 scores + 75,771 components; latest FY 2025 (2026 skipped); all 5 themes populate;
+      deferred=0 rows; ranks dense 0 violations; hand spot-check sector 60 profitability score 76
+      reproduces; endpoint 200, banks correctly OMIT operating_efficiency (AC-6). Prod batch=DEFERRED
+      DevOps.)
+- [x] 4 QA Tester             -> 4-qa.md (PASS — all 15 ACs independently verified by exercising the
+      running feature over the hydrated scratch DB. pytest 506 pass, ruff clean. AC-11 statics clean
+      (no duckdb in api/, no raw SQL in routes). Real endpoint drive: AC-7 scored:false==exactly the
+      2 deferred themes; AC-6 banks OMIT operating_efficiency (absent, not 0/scored:false); AC-4
+      earliest FY 2007 all-null delta (420 legit 0.0 distinct); AC-2 debt_to_equity orientation
+      correct on real data; AC-1 banks profitability 76 reproduces by hand; AC-8 0 scored w/o
+      distributions; AC-9 empty-db honest 200. Batch idempotent re-run. 1 non-blocking observation
+      O-1: negative-equity d/e artifact -> favorable z (Phase 2 UI copy note, not a data defect).
+      No UI (backend-only). UNCOMMITTED, NOT deployed. Prod batch run = deferred DevOps.)
 
 ## Deploy note
-- 2026-07-21: committed (30be878) -> merged master (aca6b8c) -> pushed origin. Part A CODE DEPLOYED
-  to prod (clearyfi.com) + verified: verify_deployment 11/11, 38 routes, company-level dio/dpo/ccc
-  live on real data (AAPL ok). Sector aggregates honest-empty (Part B pending). See 5-deploy.md +
-  DEPLOYMENT_DO.md §6b.
-- INCIDENT during deploy: prod root disk was 100% full (daily 7.3G backups, no retention). Freed to
-  16G (pruned old/corrupt backups + docker cache, kept Jul18/19/latest). Live DB intact.
-- OPEN (awaiting operator): (1) URGENT backup retention — refills disk in ~2 days without it;
-  (2) Part B data home — granular raw_facts ~57G doesn't fit the 48G droplet; operator weighing a
-  separate DB resource. Until Part B, sector aggregates stay empty (honest).
-- Scratch DB data/granular_scratch/granular_verify.db (54G, has lifecycle tables) retained; could be
-  the seed for Part B (ship-a-backup path) depending on the DB-home decision.
+- PASS unlocks a deploy REQUEST, not a deploy. Code deployable on sector-theme-scores branch; prod
+  /v1/sectors/theme-scores stays honest-empty until DevOps runs
+  `python -m secfin.analytical.sector_theme_scores` on a volume with metric_distributions populated
+  (needs bulk companyfacts backfill + peer_distribution first) — same posture as sibling sector
+  batches. Operator next: commit branch and/or /devops-engineer.
 
 ## Notes / open loops
-- Full-stack task. Backend first (mirror _dso; reuse sector_dupont scaffold — DuckDB-over-SQLite
-  batch, never live path), then frontend.
-- DATA: granular inputs (inventory/accounts_payable/cost_of_revenue) lit up market-wide by the
-  granular-concept-coverage backfill, but PROD re-ingest is DEFERRED DevOps. Verify on scratch
-  hydrated+re-ingested copy (data/backups/secfin-latest.db). Prior task left a re-ingested scratch
-  DB at data/granular_scratch/granular_verify.db (54G) — reuse it if still present.
-- HONESTY: cut alpha/timing/edge language; descriptive working-capital structure only. CCC N/A if
-  any leg N/A (never 0). Standard sector caveats + approximate flag visible on period-end balances.
+- Backend-only. No frontend stage (UI is Phases 1-3 of REDESIGN_SECTOR_OVERVIEW.md, separate tasks).
+- Reuse: metric_distributions (per-(peer_group,fy,period,metric) five-number summary + peer_count;
+  secfin_peer_min_size=5). Clone sector_dupont.py / peer_distribution.py DuckDB-over-SQLite scaffold.
+  _PEER_CAVEATS / _SECTOR_CAVEATS vocabulary in routes.py.
+- ARCHITECT must resolve D2/D3/D4 and confirm D1; label the normalization method in the payload.
+- DATA: real data in backup; build/verify on hydrated Docker volume (no local pip/venv). Prod batch
+  = DEFERRED DevOps (like other sector-analytics batches).
+- HONESTY: N/A excluded never 0; deferred themes scored:false; below-min sectors absent; DuckDB never
+  live path; no good/bad claim beyond favorability/orientation.

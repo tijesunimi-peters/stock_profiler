@@ -903,6 +903,67 @@ class SectorSpreadProfile(BaseModel):
     metrics: list[MetricSpread] = Field(default_factory=list)
 
 
+# --- Composite sector theme scores (sector-overview redesign Phase 0) -----------------
+# (analytical/sector_theme_scores.py)
+#
+# A 0-100 composite health score per (SIC group, period) for each of five backable THEMES, plus the
+# cross-sector rank/percentile that give a single sector context, the prior-FY trend delta, and the
+# score DECOMPOSITION (guide 00 §9a). Scores are POSITIONS vs other sectors, not good/bad verdicts:
+# each is the equal-weight mean of its constituents' z-scored, favorability-ORIENTED per-sector
+# medians, mapped 50 + 15*z clamped [0, 100] (50 = cross-sector average). N/A is never a low value:
+# an unavailable constituent is excluded from the average and absent from the decomposition, and a
+# theme with too few constituents is absent for that sector. The two themes we cannot honestly score
+# yet (accounting quality, structure & activity) are surfaced as scored:false markers, never a 0.
+
+
+class ThemeConstituent(BaseModel):
+    """One metric's contribution to a theme score (decomposition, guide 00 §9a)."""
+
+    metric: str
+    label: str
+    higher_is_better: bool  # orientation (drives the sign of oriented_z), NOT a color
+    median: float  # the sector median that fed the z-score
+    oriented_z: float  # signed so a higher value is always more favorable
+
+
+class SectorThemeScore(BaseModel):
+    """One theme's composite for one sector. When `scored` is False (a deferred theme) the numeric
+    fields are None and `reason` explains why -- never a fabricated 0."""
+
+    theme: str  # a THEMES / DEFERRED_THEMES key, e.g. "profitability"
+    theme_label: str
+    scored: bool
+    score: int | None = None  # 0-100, 50 = cross-sector average
+    percentile: float | None = None  # position of this sector vs all scored sectors on the theme
+    rank: int | None = None  # 1 = most favorable
+    rank_of: int | None = None  # scored sectors for this theme+period
+    delta_vs_prior_fy: float | None = None  # score change vs prior FY; None if no prior
+    constituents: list[ThemeConstituent] = Field(default_factory=list)
+    reason: str | None = None  # set only when scored is False
+
+
+class SectorThemeScores(BaseModel):
+    """One sector and its ordered theme list (five scored, then the two deferred markers)."""
+
+    group: str  # the SIC prefix scored within, e.g. "35"
+    group_label: str  # readable SIC major-group name (falls back to the bare code)
+    themes: list[SectorThemeScore] = Field(default_factory=list)
+
+
+class SectorThemeScoreList(BaseModel):
+    """Every scored sector's theme scores for one period (the scorecard's data source).
+
+    Empty `sectors` is a valid, honest result: nothing has been materialized yet, or no sector met
+    the constituent thresholds (`caveats` spells this out)."""
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    peer_basis: str  # e.g. "SIC 2-digit"
+    normalization: str  # one-line statement of how the 0-100 score is built (guide 00 §9a)
+    caveats: list[str] = Field(default_factory=list)
+    sectors: list[SectorThemeScores] = Field(default_factory=list)
+
+
 # --- Metric history & trend signals (Phase 1b, normalize/metrics.py) ----------------
 #
 # One metric run across a company's whole history (Tier 1: the series) plus derived

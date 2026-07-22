@@ -838,6 +838,51 @@ METRIC_LABELS = {k: label for k, (label, _unit) in _METRIC_META.items()}
 METRIC_UNITS = {k: unit for k, (_label, unit) in _METRIC_META.items()}
 
 
+# Favorability direction per metric: True = a HIGHER value is more favorable (guide 00 §5).
+# Stored with the metric definitions so every downstream page inherits one source of truth --
+# color/"good-bad" affordances and the composite-score z-orientation are driven by this flag,
+# never by raw rank. Only metrics that actually enter a composite theme (see normalize/themes.py)
+# need an entry; a themed metric with no direction must fail loudly (see `higher_is_better`),
+# never default silently. Dollar-LEVEL metrics (fcf, net_debt) are deliberately absent -- an
+# absolute magnitude is not a favorability signal on its own and is excluded from scoring.
+METRIC_DIRECTION: dict[str, bool] = {
+    # higher is better
+    "gross_margin": True,
+    "operating_margin": True,
+    "net_margin": True,
+    "roa": True,
+    "roe": True,
+    "roic": True,
+    "revenue_growth_yoy": True,
+    "earnings_growth_yoy": True,
+    "ocf_growth_yoy": True,
+    "growth_acceleration": True,
+    "interest_coverage": True,
+    "current_ratio": True,
+    "quick_ratio": True,
+    "asset_turnover": True,
+    "inventory_turnover": True,
+    "fcf_margin": True,
+    # lower is better (more leverage / longer cash tied up / larger accruals = less favorable)
+    "debt_to_equity": False,
+    "dso": False,
+    "dio": False,
+    "dpo": False,
+    "ccc": False,
+    "accruals": False,
+}
+
+
+def higher_is_better(metric: str) -> bool:
+    """Whether a higher value of `metric` is more favorable (guide 00 §5).
+
+    Raises `KeyError` for a metric with no defined direction -- intentional: a metric that
+    feeds a composite score MUST declare its favorability, so a missing entry fails loudly at
+    build time rather than silently defaulting to "higher is better".
+    """
+    return METRIC_DIRECTION[metric]
+
+
 def compute_metrics(
     facts: list[RawFact], cik: int, fiscal_year: int, fiscal_period: FiscalPeriod
 ) -> CompanyMetrics:

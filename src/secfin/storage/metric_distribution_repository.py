@@ -65,6 +65,12 @@ class MetricDistributionRepository(ABC):
         absent, never a zero box."""
 
     @abstractmethod
+    def list_for_metric_all_periods(self, metric: str) -> list[MetricDistributionRow]:
+        """Every qualifying SIC group's distribution for ONE metric across ALL (year, period) --
+        the read primitive the sector theme-scoring batch buckets by period. Only groups the batch
+        materialized (>= min size) are returned; below-min groups are absent, never zero-filled."""
+
+    @abstractmethod
     def latest_fy_year(self, metric: str) -> int | None:
         """The most recent materialized annual (FY) fiscal year for one metric, or None if the
         metric has no rows. The default period for the cross-sector read when none is given."""

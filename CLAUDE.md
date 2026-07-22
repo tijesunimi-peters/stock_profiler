@@ -143,7 +143,10 @@ src/secfin/
                                #   stateOrCountry (state/other/unknown) for the holder choropleth
     screening.py                # SCREENABLE_CONCEPTS + frames<->RawFact reconciliation (M4)
     metrics.py                  # fundamental metrics over RawFact history -> MetricValue
-                               #   (period_end-anchored, TTM/as-of, status+reason; R1-R8)
+                               #   (period_end-anchored, TTM/as-of, status+reason; R1-R8) +
+                               #   METRIC_DIRECTION favorability map (higher_is_better)
+    themes.py                   # composite-health THEMES (theme -> constituent metrics) +
+                               #   DEFERRED_THEMES; source of truth for the sector theme scores
   storage/                     # all SQLite impls: WAL mode, own connection, same db file
     repository.py              # abstract RawFactRepository
     sqlite_repository.py       # RawFact SQLite impl: idempotent upsert, checkpoint
@@ -163,11 +166,16 @@ src/secfin/
     sqlite_metric_value_repository.py
     metric_rank_repository.py           # abstract precomputed peer-rank store (Metrics Phase 2)
     sqlite_metric_rank_repository.py
+    sector_theme_score_repository.py    # abstract composite theme-score + decomposition store
+    sqlite_sector_theme_score_repository.py  # sector_theme_scores + sector_theme_components tables
     backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
     restore.py                 # hydrate a fresh volume from a backup
   analytical/                  # analytical-layer BATCH jobs (DuckDB over the SQLite file) --
                                #   never on the live request path (see guardrail 6)
     peer_ranks.py              # Metrics Phase 2: per-SIC-group percentile/z-score -> metric_ranks
+    sector_theme_scores.py     # composite 0-100 theme scores from metric_distributions ->
+                               #   sector_theme_scores (+ decomposition). PURE-PYTHON (input
+                               #   already aggregated, no DuckDB); still offline, never live path
   ingest/
     downloader.py              # resumable download of SEC bulk zips
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
@@ -183,7 +191,8 @@ src/secfin/
     main.py                    # FastAPI app + wiring + upstream-SEC-error handlers
     routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
                                #   insider, 13D/G, 13F manager + issuer-centric (holders,
-                               #   activity, holdings-series, holder-geography),
+                               #   activity, holdings-series, holder-geography), sector DuPont +
+                               #   spreads + lifecycle + theme-scores (composite health),
                                #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
     static/                    # server-rendered UI: index, company hub (absorbed the data
                                #   explorer, /explorer redirects there),
@@ -290,6 +299,11 @@ pip install -e ".[analytical]"
 python -m secfin.ingest.sic_backfill          # cik -> SIC into company_profiles
 python -m secfin.ingest.metrics_backfill      # materialize metrics into metric_values (no network)
 python -m secfin.analytical.peer_ranks        # DuckDB: percentile/z-score -> metric_ranks
+
+# composite sector theme scores (sector-overview redesign, Phase 0): reads metric_distributions
+# (materialized by peer_distribution) and z-scores per-sector medians across sectors. PURE PYTHON
+# (no DuckDB / no analytical extra) -- still an offline batch, never the live path.
+python -m secfin.analytical.sector_theme_scores
 ```
 
 Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must
