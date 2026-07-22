@@ -230,6 +230,22 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-cmp-cardline { display: grid; grid-template-columns: 18px 1fr 68px; align-items: center; gap: 9px; margin-top: 5px; }
 .pa-cmp-cardcap { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); margin-top: 10px; }
 
+/* ---- Qualitative view (altitude 4): an honest "Coming — Track 2" placeholder. Tokens that
+   RESOLVE (the page does not load app.css, so --ext is undefined); NO favorability color; nothing
+   here is data. ---- */
+.pa-qual-banner { border: 1px dashed var(--border-strong); background: var(--bg-tint); border-radius: 12px; padding: 18px 20px; margin-top: 6px; }
+.pa-qual-flag { display: inline-block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); background: var(--bg-badge); border: 1px solid var(--border-strong); border-radius: 6px; padding: 4px 9px; }
+.pa-qual-why { margin: 12px 0 0; max-width: 76ch; font-size: 13px; line-height: 1.65; color: var(--ink-body); }
+.pa-qual-why strong { color: var(--ink); font-weight: 700; }
+.pa-qual-planned-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); margin: 24px 0 10px; }
+.pa-qual-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.pa-qual-card { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 13px 15px; background: transparent; }
+.pa-qual-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.pa-qual-card-name { font-size: 13.5px; font-weight: 600; color: var(--ink-muted); }
+.pa-qual-planned { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 6px; flex: none; }
+.pa-qual-card-desc { font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
+.pa-qual-foot { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); margin-top: 16px; }
+
 /* ---- responsive ---- */
 @media (max-width: 900px) {
   .pa-side { display: none; }
@@ -241,6 +257,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-co-body { grid-template-columns: 1fr; }
   .pa-co-rail { position: static; }
   .pa-cmp-cards { grid-template-columns: 1fr; }
+  .pa-qual-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .pa-main { padding: 14px 16px 60px; }

@@ -1,54 +1,53 @@
 # Active delivery task
-task_slug: sector-app-compare
-request: Phase 3 of docs/REDESIGN_SECTOR_APP.md — COMPARE view (altitude 3) of the /sector-analytics paper-terminal app. Sector-vs-sector: paired composite theme-score bars + sector metric-median cards. NO winner, NO favorability color, A=accent / B=GAAP-blue categorical identity only. Stacked on Phase 2 (sector-app-company 329388d).
-branch: not yet branched
-branch: sector-app-compare (stacked on Phase 2 / sector-app-company 329388d)
+task_slug: sector-app-qualitative
+request: Phase 4 (FINAL) of docs/REDESIGN_SECTOR_APP.md — QUALITATIVE view (altitude 4) of the /sector-analytics paper-terminal app. An honest "Coming — Track 2" STUB view frame (banner + why + labeled "planned" preview), NO fabricated data. Replaces the current inert inline stub. Stacked on Phase 3 (sector-app-compare fc7f7f1).
+branch: sector-app-qualitative (stacked on Phase 3 / sector-app-compare fc7f7f1)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-22
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (11 ACs; scope gate PASS Track 1 — pure read/re-shape of
-      shipped sector aggregates. Sector-vs-sector, NOT company /compare. Likely FRONTEND-ONLY (app
-      already loads theme-scores all-sectors + per-group DuPont/spreads). R1 endpoint-sufficiency
-      fork, R2 metric set, R3 same-sector/unset-B, R4 gap-emphasis non-verdict, R5 fixture ≥2 scored
-      sectors. NO winner, NO favorability color, A=accent/B=gaap identity only.)
-- [x] 2 Principal Architect   -> 2-architecture.md (VERDICT: FRONTEND-ONLY — no backend/endpoint/
-      schema. R1 RESOLVED: reuse state.themeScores (all sectors, per-theme score 0-100 + deferred)
-      + state.spreads[g].metrics (median/label/unit) — both already loaded; client direction map for
-      "lower is better" (MetricSpread has no higher_is_better). R2 cards = spreads.metrics
-      intersection of A&B. R3 B-unset->prompt, A==B allowed, default A=current. R4 gap = ink weight
-      only (|gap|>=10 full ink), true-length bars, no winner. R5 NO fixture change — _THEME_SCORE_DEMO
-      already seeds 73(5 themes)/60(4)/35(3)/28(3) + 28 has no spreads => covers not-scored/N/A. Files:
-      sectorapp.js (URL presets ?view=compare&a=&b=, rewire #paPin togglePin, renderCompareView +
-      wireCompareView, derived composite labeled), sectorapp.css (.pa-cmp-*, A=--accent/B=--gaap,
-      mobile reflow), headless_check.js (+4 compare shots), REDESIGN doc. Owner: senior-frontend-engineer.)
+- [x] 1 Product Manager       -> 1-brief.md (8 ACs; scope gate PASS — the task IS the honest
+      placeholder, does NOT implement Track 2. Frame = "Track 2 · not yet derived from filings"
+      banner + why (structured-only/Track 1, per-token later decision) + planned-category labels
+      (labels + one-liners ONLY, no fabricated figures/counts/●/chips/matrices). R1 frontend-only?
+      R2 keep preview to plain "planned" cards not the prototype matrix. R3 copy from CLAUDE guardrail
+      1 + ROADMAP, no invented date. NO favorability color, persists across views, mobile.)
+- [x] 2 Principal Architect   -> 2-architecture.md (VERDICT: FRONTEND-ONLY — current stub fetches
+      nothing; new frame is static. R1 yes (no routes/schema/pytest). R2 plain "planned" category
+      cards (5 from prototype §5, labels+one-liners), NOT the matrix/chips/●. R3 copy anchored in
+      CLAUDE guardrail 1 + ROADMAP (Track 2 = free-text narrative + per-token LLM, deferred), no date.
+      DESIGN NOTE: page doesn't load app.css so --ext is undefined -> banner must use resolving tokens
+      (--ink/--mono-muted/--border-strong/--bg-tint/--accent), reuse deferred-tile muted look, no
+      favorability trio. Files: sectorapp.js (replace renderStub qual branch w/ renderQualView),
+      sectorapp.css (.pa-qual-* + mobile), keep sectorapp-stub e2e shot, REDESIGN doc BUILT (app
+      complete). Owner: senior-frontend-engineer.)
 - [ ] 2 Principal Architect   -> 2-architecture.md
-- [x] 3 Backend  — N/A (architect verdict FRONTEND-ONLY; no backend/endpoint/schema change)
-- [x] 3 Frontend -> 3-implementation.md (Compare view in sectorapp.js: URL presets ?view=compare&
-      a=&b=, rewired #paPin togglePin (sets compareA + view=compare), ensureSpreads/ensureCompareData,
-      renderCompareView (A/B <select>s A=--accent B=--pa-b#3d6a8a identity-only; derived composite +
-      per-theme TRUE-LENGTH paired bars w/ signed ink-weight gap; "not scored" for deferred/absent
-      never 0; metric-median cards union A&B, per-metric normalized, "lower is better" text marker,
-      N/A cells), wireCompareView. sectorapp.css .pa-cmp-* tokens-only (no --positive/caution/negative;
-      self-contained --pa-b since app doesn't load app.css -> fixed invisible-B-bar bug found in
-      self-verify), mobile reflow. headless_check +4 shots. REDESIGN doc BUILT. pytest 511 pass/6 skip
-      (no regress); e2e PASS errors=0; EYEBALLED 73v60 (B blue bars, +17 full ink, op-eff not-scored
-      for banks, N/A metric cells, lower-is-better on D/E, composite derived), B-unset prompt, pin flow.)
-- [x] 4 QA Tester             -> 4-qa.md (PASS — all AC-1..AC-11 met. pytest 511 pass/6 skip (no
-      regress, frontend-only); e2e PASS errors=0 + eyeballed; scripted driving 19/19 PASS. Confirmed:
-      A=terracotta rgb(192,112,58)/B=blue rgb(61,106,138) identity-only no green/red; true-length bars
-      (FH A61=448px > B44=323px); NO winner language; composite derived; 2 deferred + op-eff-for-banks
-      "not scored" ZERO-width never 0; N/A metric cells (banks/28) never 0; "lower is better" text on
-      D/E; selector recompute; compareA/B persist Compare→Sector→Company→Compare; pin flow; mobile
-      390px overflow=0; /sectors + Sector view intact. Engineer fixed invisible-B-bar bug (app doesn't
-      load app.css -> --gaap-color undefined -> self-contained --pa-b). Ready to deploy (operator-gated).)
+- [x] 3 Backend  — N/A (architect verdict FRONTEND-ONLY; nothing to fetch, no backend change)
+- [x] 3 Frontend -> 3-implementation.md (renderQualView replaces the inert renderStub qual branch:
+      section head + prominent "Track 2 · not yet derived from filings" banner + why (structured-only/
+      Track 1, free-text later decision, "Nothing here is fabricated") + grid of 5 PLANNED category
+      cards (labels+one-liners ONLY, no figures/counts/●/chips/matrices) + "Nothing on this view is
+      derived from filings or estimated." static, no fetch/state. sectorapp.css .pa-qual-* tokens-only
+      (avoids --ext since app.css not loaded; no favorability trio), mobile grid->1col. headless shot
+      sectorapp-stub -> sectorapp-qual (waits .pa-qual-banner). REDESIGN doc BUILT + app COMPLETE.
+      pytest 511 pass/6 skip (no regress); e2e PASS errors=0; EYEBALLED honest frame (banner + 5
+      planned cards + no data).)
+- [x] 4 QA Tester             -> 4-qa.md (PASS — all AC-1..AC-8 met. pytest 511 pass/6 skip (no
+      regress, frontend-only); e2e PASS errors=0 + eyeballed; scripted driving 11/11 PASS. HONESTY
+      LANDMINE CLOSED: banner "Track 2 · not yet derived"; why=structured-only/free-text-later, NO
+      date; 5 planned cards (labels+one-liners, "planned" markers); after stripping "Track 2"/"13F"
+      names NO digit/count/●/%/data-plot element anywhere; honest foot line; flag color accent
+      rgb(138,90,47) not green/red; focal persists Company→Qualitative→Company; mobile 390px
+      overflow=0. Ready to deploy (operator-gated). THE FOUR-VIEW APP IS COMPLETE.)
 
 ## Notes / open loops
-- Sector-vs-sector compare (prototype's real intent), NOT the company-vs-company /compare page.
-- Reuse /v1/sectors/theme-scores (both sectors' composite + 5 scored themes) + /sectors/{group}
-  (DuPont medians) + /sectors/{group}/spreads (metric medians). Prefer NO new endpoint.
-- HONESTY: 5 backable themes scored (2 "not scored"); no winner; no fabricated coverage; theme
-  scores provisional; N/A never 0; "lower is better" text marker on inverted metrics.
-- Stacked on Phase 2 branch (sector-app-company 329388d); extends sectorapp.js. App LIGHT-ONLY,
-  CSP-safe, tokens only.
+- LOCKED (REDESIGN honesty flag 1): a "Coming — Track 2" STUB, NOT the prototype's fabricated
+  risk-matrix/going-concern/litigation. Frame = prominent "Track 2 · not yet derived from filings"
+  banner + WHY (structured-data-only / Track 1; per-token cost is a deliberate later call, CLAUDE.md
+  guardrail 1) + labeled "planned / not yet available" preview of what Track 2 would cover — NO
+  fabricated figures/counts/●-flags/direction chips.
+- SCOPE GATE: does NOT implement Track 2 (no free-text ingestion, no LLM). Sanctioned honest
+  placeholder. Flag if any step drifts toward real extraction.
+- Frontend-only, stacked on Phase 3; replaces the renderStub Qualitative branch in sectorapp.js.
+  headless_check already has a sectorapp-stub shot (clicks the Qualitative rail) — keep/update it.

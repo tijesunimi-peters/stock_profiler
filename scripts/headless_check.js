@@ -74,7 +74,7 @@ const PAGES = process.env.PAGES
       // clicks the Qualitative rail to show the honest "Coming — Track 2" placeholder.
       ["sectorapp", "/sector-analytics"],
       ["sectorapp-decomp", "/sector-analytics"],
-      ["sectorapp-stub", "/sector-analytics"],
+      ["sectorapp-qual", "/sector-analytics"],
       // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
       // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
       ["sectorapp-company-empty", "/sector-analytics?view=company"],
@@ -163,10 +163,12 @@ const PAGES = process.env.PAGES
         await page.waitForSelector(".pa-cmp-bar", { timeout: 8000 });
         await new Promise((r) => setTimeout(r, 400));
       }
-      if (name === "sectorapp-stub") {
-        // Click the Qualitative view rail -> the honest "Coming — Track 2" stub (no fabricated data).
+      if (name === "sectorapp-qual") {
+        // Click the Qualitative view rail -> the honest "Coming — Track 2" placeholder frame
+        // (banner + planned-category labels, NO fabricated data).
         await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
         await page.click('.pa-rail-btn[data-view="qual"]');
+        await page.waitForSelector('.pa-qual-banner');
         await new Promise((r) => setTimeout(r, 300));
       }
       if (name === "sectors-decomp") {

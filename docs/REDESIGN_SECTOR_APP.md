@@ -94,9 +94,17 @@ via ↑/↓). Provisional banner on the scorecard, as in the prototype.
    normalized bars, raw value at bar end, "lower is better" text marker on inverted). Deferred/
    absent themes render "not scored"; a sector missing a metric renders **N/A** — never 0. The
    control-bar "pin to compare" jumps here with A pinned. **No winner, no favorability color.**
-4. **Qualitative view** — per the honesty decision (stub vs illustrative).
+4. **Qualitative view** — **BUILT** (`sector-app-qualitative`, stacked on Phase 3): the honest
+   **"Coming — Track 2" placeholder** frame in `sectorapp.js` (replaces the inert stub) —
+   **frontend-only**. A prominent "Track 2 · not yet derived from filings" banner + a plain-language
+   "why" (structured-data-only / Track 1; free-text narrative is a deliberate later decision) + a
+   grid of **planned-category cards** (risk-theme landscape, emerging risks, going-concern watch,
+   litigation, per-filer signals) as **labels + one-liners only** — **no fabricated figures, counts,
+   ● flags, chips, or matrices**. The locked honesty decision (flag 1) realized: unmistakably
+   "coming", never presented as data.
 
-Phase 1 is the natural first `/deliver` and delivers the actual sector page; 2–4 complete the app.
+**The four-view app is now complete** (Sector · Company · Compare · Qualitative). Phase 1 delivered
+the actual sector page; 2–4 completed the app.
 
 ## What this supersedes / preserves
 

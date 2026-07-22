@@ -343,14 +343,45 @@
     if (state.view === "sector") return renderSectorView(vp);
     if (state.view === "company") return renderCompanyView(vp);
     if (state.view === "compare") return renderCompareView(vp);
-    return renderStub(vp, "Qualitative disclosures",
-      "Risk-factor themes, going-concern, and litigation signals. Coming — Track 2 · not yet derived from filings. This product ingests structured data only; nothing here is fabricated.");
+    return renderQualView(vp);
   }
 
-  function renderStub(vp, title, body) {
+  // ---------- Qualitative view (altitude 4): an honest "Coming — Track 2" placeholder ----------
+  //
+  // HONESTY LANDMINE (CLAUDE.md guardrail 1 / REDESIGN honesty flag 1): this product ingests
+  // STRUCTURED SEC data only (Track 1). Qualitative disclosures are free-text narrative -- a
+  // deliberate later decision, NOT a gap we fill with estimates. This view renders NOTHING derived
+  // and NOTHING fabricated: category labels + one-liners only, no figures/counts/●-flags/chips.
+
+  var QUAL_PLANNED = [
+    ["Risk-theme landscape", "How a sector's risk-factor themes shift year over year."],
+    ["Emerging risks", "Themes appearing or intensifying this filing cycle."],
+    ["Going-concern watch", "Filers using substantial-doubt language in their disclosures."],
+    ["Litigation & regulatory", "Material legal and regulatory disclosures."],
+    ["Per-filer signal matrix", "A per-company roll-up of the signals above."],
+  ];
+
+  function renderQualView(vp) {
+    var cards = QUAL_PLANNED.map(function (c) {
+      return (
+        '<div class="pa-qual-card"><div class="pa-qual-card-head">' +
+        '<span class="pa-qual-card-name">' + P.esc(c[0]) + "</span>" +
+        '<span class="pa-qual-planned">planned</span></div>' +
+        '<div class="pa-qual-card-desc">' + P.esc(c[1]) + "</div></div>"
+      );
+    }).join("");
     vp.innerHTML =
-      '<div class="pa-stub"><div class="pa-stub-title">' + P.esc(title) + "</div>" +
-      '<div class="pa-stub-body">' + P.esc(body) + "</div></div>";
+      '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Qualitative disclosures</h2></div>' +
+      '<div class="pa-sec-sub">The narrative side of filings — risk factors, going-concern, litigation. Not yet available.</div>' +
+      '<div class="pa-qual-banner"><span class="pa-qual-flag">Track 2 · not yet derived from filings</span>' +
+      "<p class=\"pa-qual-why\">ClearyFi ingests <strong>structured</strong> SEC data only — the numbers in " +
+      "financial statements, ownership forms, and 13F tables. Qualitative disclosures (risk factors, " +
+      "going-concern language, litigation) are <strong>free-text narrative</strong>; extracting them is a " +
+      "deliberate later decision, not a gap we paper over with estimates. <strong>Nothing here is " +
+      "fabricated</strong> — when it ships, every signal will trace to a filing, like the rest of the app.</p></div>" +
+      '<div class="pa-qual-planned-label">What Track 2 would cover</div>' +
+      '<div class="pa-qual-grid">' + cards + "</div>" +
+      '<div class="pa-qual-foot">Nothing on this view is derived from filings or estimated.</div>';
   }
 
   // ---------- Sector view ----------
