@@ -199,23 +199,27 @@ detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metere
   already full. **Fix:** pruned the old dailies (Jul 15/16/17) + the two corrupt partials,
   **kept Jul 18, Jul 19, and `secfin-latest.db`** (last known-good = Jul 19), + `docker builder
   prune`. Freed to 33G/48G (16G free). Live volume DB verified intact throughout (AAPL metrics
-  served real data the whole time). **RECURRENCE RISK — still open:** with no retention, the next
-  daily backup re-accumulates ~7.3G/day and will refill the disk in ~2 days. Must add retention
-  (keep last N) or pause `secfin-backup.timer`, and is coupled to the off-droplet DB/backup
-  decision below.
+  served real data the whole time).
+- **2026-07-21 — RECURRENCE FIXED (deployed).** Root cause: `run-backup.sh`'s retention was
+  **time-based (`find -mtime +14`)**, which at 7.3G/snapshot could never trigger before a week
+  overran the 48G disk. Replaced with **count-based** retention in `storage/backup.py` (`--keep N`,
+  prunes to newest N; `secfin-latest.db` never pruned; orphaned sidecars cleaned). `run-backup.sh`
+  now passes `--keep "${SECFIN_BACKUP_KEEP:-7}"`. Droplet interim set to **`keep=2`** via a systemd
+  drop-in (`/etc/systemd/system/secfin-backup.service.d/override.conf`, `Environment=SECFIN_BACKUP_KEEP=2`)
+  because 48G can't hold more. Verified live: a timer-equivalent run wrote a fresh snapshot, pruned
+  to 2, disk steady at 15G free. Raise `keep` back to 7 once the data moves to a bigger Volume.
 
 ## 7. Open items (tracked in docs/product/LAUNCH_READINESS.md)
 
-- **Backup retention (NEW, 2026-07-21) — the backup job has no retention and refilled the disk
-  (see §6b).** Interim: prune to last-2 by hand or pause the timer; permanent: retention in
-  `storage/backup.py` (keep last N) or move backups off-droplet.
-- **Granular data + sector aggregates need a bigger data home (Part B, deferred 2026-07-21).**
-  The whole-market granular `raw_facts` is ~57G — it does NOT fit the 48G droplet. Operator is
-  weighing moving the DB to a **separate resource** (droplet = app serving only). Until decided,
-  the sector aggregates (`sector_dupont`, `sector_lifecycle`, `metric_distributions`) stay
-  unmaterialized on prod and the sector views show honest empty states. On the target volume,
-  after the bulk companyfacts backfill: run `metrics_backfill → peer_ranks → peer_distribution →
-  dupont_backfill → sector_dupont → lifecycle_backfill → sector_lifecycle`.
+- ~~Backup retention~~ — **FIXED & deployed 2026-07-21** (count-based `--keep`, droplet `keep=2`).
+  See §6b. Raise to `keep=7` after Part B moves the data to a bigger Volume.
+- **Granular data + sector aggregates need a bigger data home (Part B, in planning 2026-07-21).**
+  The whole-market granular `raw_facts` is ~57G — it does NOT fit the 48G droplet. Decision taken:
+  move the DB to a **DO Block Storage Volume** (droplet = app serving only). Scoped in
+  **`docs/DEPLOYMENT_BLOCK_STORAGE.md`** (sizing/cost/migration) — awaiting the operator's
+  volume-size + backup-location call, then `doctl volume create/attach`. Until then the sector
+  aggregates (`sector_dupont`, `sector_lifecycle`, `metric_distributions`) stay unmaterialized on
+  prod and the sector views show honest empty states.
 - Off-droplet backup destination -- backups currently live only on the droplet's
   own disk; operator deliberately deferred the decision (Spaces+rclone hourly vs.
   Litestream were the assessed options, 2026-07-14). **Now also the disk-fill cause (§6b).**
