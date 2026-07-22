@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # volume, so a backup survives even `docker compose down -v`.
     secfin_backup_dir: str = "./data/backups"
 
+    # How many timestamped snapshots `storage/backup.py` keeps. Each snapshot is a full copy of
+    # the DB (multi-GB at market scale), so without a cap the daily backup timer fills the disk --
+    # this happened on prod 2026-07-21 (DEPLOYMENT_DO.md §6b). `secfin-latest.db` is a separate
+    # pointer and is never counted or pruned. 0 disables pruning (keep everything -- old behavior).
+    secfin_backup_retention: int = 7
+
     # SEC fair-access throttle. Do not raise above the SEC limit (verified 2026-07-03:
     # SEC's published guideline is 10 req/s per IP; 8 keeps a safety margin under it).
     sec_max_rps: int = 8
