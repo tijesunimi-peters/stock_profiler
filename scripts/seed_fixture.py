@@ -641,6 +641,85 @@ def _seed_sector_lifecycle(db_path: str) -> None:
         repo.close()
 
 
+# Composite sector THEME SCORES for the /sectors scorecard (redesign Phase 2). Written DIRECTLY via
+# the Phase 0 repo (the offline scoring batch runs over a hydrated volume, exercised separately).
+# Mirrors the real shapes so the render check is representative: group "73" (Business Services, the
+# default landing) has all five themes with a MIX of deltas -- positive, negative, flat, and a NULL
+# (no prior FY) -- plus a decomposition; group "60" (banks) OMITS operating_efficiency (banks have no
+# inventory/COGS, exactly as Phase 0 omits it); groups "28"/"52" are left UNSEEDED so a selected
+# sector with no scores exercises the honest empty-scorecard state. The two deferred themes
+# (accounting_quality / structure_activity) are NOT seeded -- the endpoint injects them as
+# scored:false markers. delta None => "no prior FY" (never a 0). score = 50 + 15*z (50 = avg).
+#
+# group -> theme -> (score, delta, rank, rank_of, percentile, [(metric, median, oriented_z), ...])
+_THEME_SCORE_DEMO = {
+    "73": {
+        "profitability": (68, 5.0, 2, 11, 82.0, [
+            ("net_margin", 0.11, 0.9), ("roe", 0.19, 1.2), ("roa", 0.06, 0.4), ("roic", 0.10, 0.6)]),
+        "growth": (54, -3.0, 5, 11, 55.0, [
+            ("revenue_growth_yoy", 0.08, 0.3), ("earnings_growth_yoy", 0.05, -0.1)]),
+        "financial_health": (61, None, 3, 10, 70.0, [
+            ("debt_to_equity", 1.2, 0.5), ("current_ratio", 1.8, 0.7),
+            ("interest_coverage", 6.0, 0.4), ("quick_ratio", 1.3, 0.6)]),
+        "cash_investment": (47, 1.0, 6, 9, 44.0, [
+            ("fcf_margin", 0.09, -0.2), ("ocf_growth_yoy", 0.06, 0.1)]),
+        "operating_efficiency": (38, -6.0, 9, 11, 20.0, [
+            ("inventory_turnover", 6.5, -0.8), ("asset_turnover", 0.78, -0.5),
+            ("dso", 64.0, -0.9), ("dio", 20.0, 0.3), ("dpo", 89.0, 0.7), ("ccc", -5.0, 0.6)]),
+    },
+    "60": {  # banks: OMIT operating_efficiency (no inventory/COGS)
+        "profitability": (71, 2.0, 1, 11, 90.0, [
+            ("net_margin", 0.23, 1.5), ("roe", 0.13, 0.4), ("roa", 0.01, -0.3)]),
+        "growth": (58, 4.0, 4, 11, 66.0, [
+            ("revenue_growth_yoy", 0.06, 0.2), ("earnings_growth_yoy", 0.09, 0.5)]),
+        "financial_health": (44, -2.0, 7, 10, 40.0, [
+            ("debt_to_equity", 6.5, -0.4), ("interest_coverage", 5.5, 0.0),
+            ("current_ratio", 1.0, -0.3), ("quick_ratio", 0.9, -0.2)]),
+        "cash_investment": (60, None, 2, 9, 88.0, [
+            ("fcf_margin", 0.18, 0.7), ("ocf_growth_yoy", 0.04, 0.1)]),
+    },
+}
+
+
+def _seed_sector_theme_scores(db_path: str) -> None:
+    from secfin.normalize.metrics import higher_is_better
+    from secfin.storage.sector_theme_score_repository import (
+        SectorThemeComponentRow,
+        SectorThemeScoreRow,
+    )
+    from secfin.storage.sqlite_sector_theme_score_repository import (
+        SQLiteSectorThemeScoreRepository,
+    )
+
+    year = max(_SECTOR_YEARS)
+    parents, components = [], []
+    for group, themes in _THEME_SCORE_DEMO.items():
+        for theme, (score, delta, rank, rank_of, pctile, cons) in themes.items():
+            parents.append(
+                SectorThemeScoreRow(
+                    peer_group=group, fiscal_year=year, fiscal_period="FY", theme=theme,
+                    peer_count=max(1, len(cons) * 3), constituent_count=len(cons),
+                    composite_z=(score - 50) / 15.0, score=score, percentile=pctile,
+                    rank=rank, rank_of=rank_of, delta_vs_prior_fy=delta,
+                )
+            )
+            for metric, median, oz in cons:
+                components.append(
+                    SectorThemeComponentRow(
+                        peer_group=group, fiscal_year=year, fiscal_period="FY", theme=theme,
+                        metric=metric, higher_is_better=higher_is_better(metric),
+                        median_value=median, oriented_z=oz,
+                    )
+                )
+    repo = SQLiteSectorThemeScoreRepository(db_path)
+    try:
+        repo.clear()
+        repo.bulk_upsert(parents, components)
+        print(f"seeded sector theme scores: {len(parents)} scores + {len(components)} components")
+    finally:
+        repo.close()
+
+
 def _seed_api_key(db_path: str) -> None:
     repo = SQLiteApiKeyRepository(db_path)
     try:
@@ -692,6 +771,7 @@ def main() -> None:
     _seed_sector_dupont(db_path)
     _seed_metric_distributions(db_path)
     _seed_sector_lifecycle(db_path)
+    _seed_sector_theme_scores(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
 

@@ -30,6 +30,9 @@
     series: {}, // group -> SectorSeries payload (lazy)
     groupSpreads: {}, // group -> SectorSpreadProfile payload (lazy)
     lifecycle: {}, // group -> SectorLifecycleSeries payload (lazy)
+    themeScores: null, // the /v1/sectors/theme-scores payload (fetched ONCE, all sectors)
+    themeScoresErr: false, // the theme-scores fetch failed (scorecard shows a scoped error)
+    decompTheme: null, // the theme whose decomposition is currently open (one at a time)
   };
 
   function normalizeRange(r) {
@@ -78,6 +81,7 @@
 
     if (!d.sectors || !d.sectors.length) {
       $("sectorbar").innerHTML = "";
+      $("scorecard").innerHTML = "";
       $("aggregation").innerHTML = "";
       $("view").innerHTML = P.states.empty({
         title: "No sectors to show",
@@ -92,7 +96,9 @@
     state.notFound = initial.notFound;
     if (state.group) pushMRU(state.group); // record the landing sector as most-recent/last-viewed
     renderSectorBar();
+    renderScorecard();
     renderBody();
+    ensureThemeScores(); // fetch the composite scores once, then repaint the scorecard
   }
 
   // The load-bearing honesty banner: what these numbers are (and are not), plus the full caveats.
@@ -135,9 +141,11 @@
     if (!code || code === state.group) { return closeMenus(); }
     state.group = code;
     state.notFound = null; // an explicit choice clears the not-found note
+    state.decompTheme = null; // close any open decomposition when the subject changes
     pushMRU(code);
     syncURL();
     renderSectorBar();
+    renderScorecard();
     renderBody();
   }
 
@@ -280,6 +288,196 @@
       if (i !== active) { active = i; paint(); }
     });
     input.addEventListener("blur", function () { setTimeout(close, 120); });
+  }
+
+  // ---------- composite scorecard (the hero): 7 theme tiles + inline decomposition ----------
+  //
+  // Reads the Phase 0 GET /v1/sectors/theme-scores (fetched ONCE -- it carries every sector) and
+  // renders the SELECTED sector's themes. Five backable themes are scored (0-100, 50 = cross-sector
+  // average); the two deferred themes render as honest "not yet scored" tiles, never a fabricated 0.
+  // Favorability COLOR (guide 00 §5) is restrained: the score number stays neutral, a thin band
+  // accent + the trend-delta chip carry direction -- the score is a POSITION vs other sectors, not a
+  // good/bad or buy verdict (the surfaced caveats say so).
+
+  // Constituent median formatting: percent-ish metrics read as %, the working-capital days-metrics
+  // as "Nd", everything else as a multiple. Display-only (the API owns the numbers).
+  var PERCENT_DECOMP = {
+    gross_margin: 1, operating_margin: 1, net_margin: 1, roa: 1, roe: 1, roic: 1,
+    revenue_growth_yoy: 1, earnings_growth_yoy: 1, ocf_growth_yoy: 1, growth_acceleration: 1,
+    fcf_margin: 1,
+  };
+  var DAYS_DECOMP = { dso: 1, dio: 1, dpo: 1, ccc: 1 };
+  function metricFmt(metric, v) {
+    if (v === null || v === undefined) return "—"; // never 0 for a missing value
+    if (PERCENT_DECOMP[metric]) return P.fmt.pct(v);
+    if (DAYS_DECOMP[metric]) return Math.round(v) + "d";
+    return P.fmt.mult(v);
+  }
+
+  function ensureThemeScores() {
+    if (state.themeScores || state.themeScoresErr) return; // fetch once; switching sector re-picks
+    P.api("/sectors/theme-scores")
+      .then(function (res) { state.themeScores = res; renderScorecard(); })
+      .catch(function () { state.themeScoresErr = true; renderScorecard(); });
+  }
+
+  function themeEntryFor(group) {
+    var p = state.themeScores;
+    if (!p || !p.sectors) return null;
+    return p.sectors.filter(function (s) { return s.group === group; })[0] || null;
+  }
+
+  function renderScorecard() {
+    var mount = $("scorecard");
+    if (!mount) return;
+    if (state.themeScoresErr) {
+      mount.innerHTML =
+        '<div class="scorecard-wrap">' +
+        P.states.error({ copy: "Couldn't load the sector health scores. The rest of the page is unaffected." }) +
+        "</div>";
+      return;
+    }
+    if (!state.themeScores) {
+      mount.innerHTML = '<div class="scorecard-wrap">' + P.states.loading({ title: "Loading sector health scores", note: "" }) + "</div>";
+      return;
+    }
+    var entry = themeEntryFor(state.group);
+    var sel = findSector(state.group);
+    var label = entry ? entry.group_label : sel ? sel.group_label : "this sector";
+    if (!entry || !entry.themes || !entry.themes.length) {
+      mount.innerHTML =
+        '<section class="scorecard-wrap">' +
+        scorecardHead() +
+        P.states.empty({
+          title: "Sector health scores aren’t available yet",
+          copy: "Composite theme scores for " + label + " haven’t been materialized — they " +
+            "appear once the scoring batch runs across enough sectors. This is sparse coverage, not zero.",
+        }) +
+        "</section>";
+      return;
+    }
+    var tiles = entry.themes
+      .map(function (t) { return t.scored ? scoreTile(t) : deferredTile(t); })
+      .join("");
+    mount.innerHTML =
+      '<section class="scorecard-wrap">' +
+      scorecardHead() +
+      '<div class="scorecard-grid">' + tiles + "</div>" +
+      '<div id="scorecard-decomp"></div>' +
+      scorecardCaveats() +
+      "</section>";
+    wireScorecard();
+    renderDecomp(); // restore an open decomposition if one is set
+  }
+
+  function scorecardHead() {
+    return (
+      '<div class="scorecard-head">' +
+      '<h2 class="scorecard-title">Composite health</h2>' +
+      '<p class="scorecard-lede">Each theme rolls its constituent metrics into a 0–100 score — a ' +
+      "sector’s <strong>position vs the other sectors</strong> (50 = cross-sector average), not a " +
+      "good/bad or buy verdict. Open a score to see what drove it.</p>" +
+      "</div>"
+    );
+  }
+
+  function favBand(score) {
+    // Restrained: the score number stays neutral; only a thin band accent is tinted.
+    if (score >= 60) return "pos";
+    if (score >= 40) return "cau";
+    return "neg";
+  }
+
+  function deltaChip(d) {
+    if (d === null || d === undefined) {
+      return '<span class="sc-delta sc-delta-none">no prior FY</span>'; // never 0
+    }
+    var band = d >= 2 ? "pos" : d <= -2 ? "neg" : "cau";
+    var glyph = d >= 2 ? "▲" : d <= -2 ? "▼" : "▬";
+    var txt = d > 0 ? "+" + d : d < 0 ? String(d) : "±0";
+    return '<span class="sc-delta sc-delta-' + band + '"><span class="sc-delta-glyph" aria-hidden="true">' + glyph + "</span>" + P.esc(txt) + "</span>";
+  }
+
+  function scoreTile(t) {
+    var band = favBand(t.score);
+    var pct = t.percentile === null || t.percentile === undefined ? "—" : "P" + Math.round(t.percentile);
+    var rank = t.rank && t.rank_of ? t.rank + " of " + t.rank_of : "—";
+    return (
+      '<div class="sc-tile sc-band-' + band + (state.decompTheme === t.theme ? " sc-open" : "") + '">' +
+      '<div class="sc-theme">' + P.esc(t.theme_label) + "</div>" +
+      '<button type="button" class="sc-score" data-theme="' + P.esc(t.theme) + '" aria-expanded="' + (state.decompTheme === t.theme) + '" title="Show what drove this score">' +
+      P.esc(String(t.score)) + "</button>" +
+      '<div class="sc-meta">' + deltaChip(t.delta_vs_prior_fy) +
+      '<span class="sc-rank" title="Rank vs all scored sectors on this theme">' + P.esc(rank) + "</span></div>" +
+      '<div class="sc-pctile">' + P.esc(pct) + " · vs all sectors</div>" +
+      "</div>"
+    );
+  }
+
+  function deferredTile(t) {
+    return (
+      '<div class="sc-tile sc-deferred">' +
+      '<div class="sc-theme">' + P.esc(t.theme_label) + "</div>" +
+      '<div class="sc-notscored">Not yet scored</div>' +
+      '<div class="sc-reason">' + P.esc(t.reason || "") + "</div>" +
+      "</div>"
+    );
+  }
+
+  function scorecardCaveats() {
+    var p = state.themeScores;
+    var notes = [p.normalization].concat(p.caveats || []).filter(Boolean);
+    var lis = notes.map(function (c) { return "<li>" + P.esc(c) + "</li>"; }).join("");
+    return (
+      '<details class="disclosure scorecard-caveats"><summary>How these scores are built (' +
+      notes.length + " notes)</summary><ul>" + lis + "</ul></details>"
+    );
+  }
+
+  function wireScorecard() {
+    $("scorecard").querySelectorAll(".sc-score").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var th = btn.getAttribute("data-theme");
+        state.decompTheme = state.decompTheme === th ? null : th; // toggle; one open at a time
+        renderScorecard();
+      });
+    });
+  }
+
+  function renderDecomp() {
+    var mount = $("scorecard-decomp");
+    if (!mount) return;
+    if (!state.decompTheme) { mount.innerHTML = ""; return; }
+    var entry = themeEntryFor(state.group);
+    var t = entry && (entry.themes || []).filter(function (x) { return x.theme === state.decompTheme; })[0];
+    if (!t || !t.scored) { mount.innerHTML = ""; return; }
+    var cons = t.constituents || [];
+    var maxZ = cons.reduce(function (m, c) { return Math.max(m, Math.abs(c.oriented_z || 0)); }, 1);
+    var rows = cons
+      .map(function (c) {
+        var z = c.oriented_z || 0;
+        var band = z >= 0.25 ? "pos" : z <= -0.25 ? "neg" : "cau";
+        var w = Math.min(100, (Math.abs(z) / maxZ) * 100);
+        return (
+          '<div class="sc-crow">' +
+          '<span class="sc-cname">' + P.esc(c.label) + "</span>" +
+          '<span class="sc-cmed">' + P.esc(metricFmt(c.metric, c.median)) + "</span>" +
+          '<span class="sc-cbar"><span class="sc-cfill sc-fill-' + band + '" style="width:' + w.toFixed(0) + '%"></span></span>' +
+          '<span class="sc-cz">' + (z >= 0 ? "+" : "") + z.toFixed(2) + "σ</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    mount.innerHTML =
+      '<div class="sc-decomp">' +
+      '<div class="sc-decomp-head">' + P.esc(t.theme_label) + " · score decomposition</div>" +
+      '<p class="sc-decomp-note">Equal-weight mean of ' + cons.length +
+      " constituent" + (cons.length === 1 ? "" : "s") + ". Each bar is the constituent’s " +
+      "favorability-oriented z-score (its position vs other sectors, signed so higher = more " +
+      "favorable). A constituent with no comparable value is excluded, never counted as zero.</p>" +
+      '<div class="sc-crows">' + rows + "</div>" +
+      '<p class="sc-decomp-norm">' + P.esc(state.themeScores.normalization) + "</p>" +
+      "</div>";
   }
 
   // ---------- sector body: DuPont tree + ROE trend + per-sector spreads + lifecycle ----------

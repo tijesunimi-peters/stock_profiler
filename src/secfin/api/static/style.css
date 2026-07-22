@@ -16,6 +16,17 @@
   --accent-hover: #a85f30;
   --accent-ink: #8a5a2f;
 
+  /* Favorability trio (sector scorecard, redesign Phase 2). Muted, earthy tones harmonized with
+   * the warm palette -- a moss green, a warm amber, a brick rust -- NOT a primary green/red
+   * stoplight. Used ONLY to signal favorability of direction/position (the score is a POSITION vs
+   * other sectors, not a good/bad or buy verdict). See docs/STYLE_GUIDE.md. */
+  --positive: #5e7d4f;
+  --positive-wash: #e6ecdd;
+  --caution: #a97c2c;
+  --caution-wash: #f2e7cf;
+  --negative: #a8432e;
+  --negative-wash: #f1dcd4;
+
   --panel-bg: #211e19;
   --panel-border: #2e2a23;
   --panel-border-2: #34302a;

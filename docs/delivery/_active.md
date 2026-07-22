@@ -1,64 +1,70 @@
 # Active delivery task
-task_slug: sector-overview-shell
-request: Phase 1 of docs/REDESIGN_SECTOR_OVERVIEW.md — single-sector page shell + sidebar submenu for /sectors. Frontend-only (all endpoints exist; do NOT consume /sectors/theme-scores — that's Phase 2). Re-home today's per-sector analytics (DuPont tree, ROE trend, per-sector spreads, lifecycle) under a searchable single-sector selector (combobox + recently-viewed pills; default largest by peer_count, ?group= overrides, last-viewed in localStorage) replacing the all-sectors table. Shared header (breadcrumb, peer-count pill, as-of FY). Sidebar: flat Sectors link -> expandable parent with Overview -> /sectors as its only child now; top-level entries untouched. Cross-page state via URL params + localStorage. Remove the cross-sector #spreads section (returns as Phase 3 peer strip). N/A never 0; honest states; theme-aware/CSP-safe.
-branch: sector-overview-shell (STACKED on sector-theme-scores, not master — Phase 0 unmerged; code is independent, rebases clean once P0 merges)
+task_slug: sector-scorecard
+request: Phase 2 of docs/REDESIGN_SECTOR_OVERVIEW.md — composite scorecard hero for /sectors. Mostly frontend (consumes GET /v1/sectors/theme-scores from Phase 0) + fixture seeding. Seven-tile scorecard from the selected sector's themes[] (5 scored: score/trend-delta chip/percentile/rank badge; 2 deferred "not yet scored"); score click -> inline decomposition; scorecard becomes the hero above the DuPont body. FULL favorability color (new positive/caution/negative token trio). N/A never 0; position-not-verdict framing; caveats surfaced.
+branch: sector-scorecard (stacked on sector-overview-shell / Phase 1)
 next_stage: done
 qa_cycles: 0
-updated: 2026-07-21
+updated: 2026-07-22
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (14 ACs; scope gate PASS Track 1; FRONTEND-ONLY. Locked:
-      re-home per-sector analytics; sidebar Overview-only. KEY scope call: cross-sector #spreads
-      REMOVED (returns as Phase 3 peer strip).)
-- [x] 2 Principal Architect   -> 2-architecture.md (frontend-only. Resolved R1-R4: R1 REMOVE
-      cross-sector #spreads (per-sector spreads stay, move into body); R2 no period picker, as-of FY
-      metadata only, no year/period param threaded; R3 nested-parent submenu expanded-by-default,
-      real button aria-expanded, keyboard; R4 UPDATE scripts/headless_check.js PAGES -- drop the 3
-      ?metric= cross-spread shots, keep/adapt sectors + ?group=60/73, add selector-open + unknown-
-      group shots. State model = client-side filter over /sectors list; state{group,range}; resolve
-      ?group= -> localStorage secfin:lastSector -> default largest peer_count; history.replaceState
-      like compare.js. sectors.js: KEEP dupontTree/paintTrend/paintDetailSpreads/paintLifecycle,
-      REMOVE table+cross-spread, ADD renderSectorBar/selectSector/renderBody. Files: sectors.html/js/
-      css, script.js (nested GROUPS children + .side-parent/.side-children CSS in style.css),
-      headless_check.js. NO backend/schema/DATA_MODEL change. suggest.js NOT reused (server ticker
-      widget). AC->check table done.)
-- [x] 3 Frontend  -> 3-implementation.md (branch sector-overview-shell, STACKED on Phase 0.
-      script.js nested GROUPS children + .side-parent/.side-children submenu (Sectors -> Overview,
-      expandable, keyboard); sectors.html #sectorbar (removed #spreads); sectors.js SPINE REWRITE --
-      removed table + cross-sector spread, re-homed dupontTree/paintTrend/paintDetailSpreads/
-      paintLifecycle, added state+localStorage MRU (secfin:lastSector/sectorMRU), resolveInitialGroup
-      (?group=->last-viewed->default largest peer_count), renderSectorBar (breadcrumb+pills+combobox+
-      recent pills+not-found note), self-contained combobox, selectSector (history.replaceState, no
-      reload), renderBody; sectors.css sb-* styles (dropped table/cross-spread); headless_check.js
-      PAGES per R4 (dropped 3 ?metric= shots, added sectors-selector + sectors-unknown-group). pytest
-      506 pass (no regress). e2e PASS errors=0, EYEBALLED 4 shots: default lands on Business Services
-      (73, largest peer_count) w/ full body + submenu; combobox filters "in" w/ counts; unknown ?group
-      =99 -> muted fallback note; banks (60) lifecycle HONEST EMPTY (not zero). N/A never 0 confirmed.)
-- [x] 4 QA Tester             -> 4-qa.md (PASS — all 14 ACs verified by exercising the running
-      feature. pytest 506 pass; e2e HEADLESS CHECK PASS errors=0; scripted interaction drive 20/20
-      PASS. AC-1 default->Business Services (largest peer_count), no table; AC-3 combobox filter +
-      in-place select + URL ?group=60 + localStorage last/MRU; AC-4 last-viewed restore; AC-8
-      expandable submenu, Overview .current, top-level intact, keyboard Enter collapse/expand; AC-9
-      banks lifecycle honest empty "not zero"; AC-11 intercepted empty /v1/sectors -> honest empty;
-      AC-12 app is LIGHT-ONLY (no dark theme exists; new CSS token-driven), mobile 390px overflow=0.
-      Cross-sector #spreads + ?metric= confirmed gone. No defects. UNCOMMITTED, NOT deployed. Branch
-      STACKED on Phase 0.)
+- [x] 1 Product Manager       -> 1-brief.md (14 ACs; scope gate PASS Track 1; mostly frontend +
+      seed_fixture addition. Locked: full favorability color, scorecard-on-top, inline decomposition.
+      KEY honesty tension: score color must read as POSITION not verdict.)
+- [x] 2 Principal Architect   -> 2-architecture.md (frontend-only, SINGLE stage. Resolved R1-R5 +
+      D-ownership: R1 RESTRAINED score color = neutral score number + thin favorability band-accent
+      by score band (>=60 pos / 40-59 caution / <40 neg); delta chip is the loud signal. R2 delta:
+      >=+2 pos/up, <=-2 neg/down, |d|<2 flat, null="no prior FY" never 0. R3 new --positive/--caution/
+      --negative(+wash) tokens in style.css :root, hues finalized by design pass (anchor off syntax
+      greens/amber + terracotta), documented in STYLE_GUIDE. R4 fixture: group 73 all-5 themes mixed
+      +/-/null deltas + decomposition, group 60 OMIT operating_efficiency, 28/52 unseeded=empty case.
+      R5 fetch /sectors/theme-scores ONCE -> state.themeScores, pick by group, no refetch on switch.
+      D-ownership: seed_fixture.py + headless_check.js assigned to FRONTEND engineer (test fixture,
+      reuses Phase 0 repos) -> single frontend stage, no backend. Layout: new #scorecard mount between
+      #sectorbar and #aggregation; DuPont body (#view) stays below. Files: sectors.html/js/css,
+      style.css (tokens), STYLE_GUIDE, seed_fixture.py, headless_check.js. NO src/secfin change.
+      e2e: add sectors-decomp + sectors-scorecard-empty shots. AC->check table done.)
+- [x] 3 Frontend  -> 3-implementation.md (branch sector-scorecard, stacked on Phase 1. New
+      favorability tokens --positive/--caution/--negative (moss/amber/brick) in style.css +
+      STYLE_GUIDE; #scorecard mount; sectors.js scorecard hero (fetch /sectors/theme-scores ONCE ->
+      state.themeScores, pick by group, re-render on switch) — scoreTile (neutral score + delta chip
+      + percentile + rank + band accent), deferredTile, deltaChip (>=+2 pos/<=-2 neg/flat/null="no
+      prior FY" never 0), inline renderDecomp (constituents + median + oriented-z bars + equal-weight
+      + normalization); sectors.css; seed_fixture.py _seed_sector_theme_scores (73 all-5 mixed deltas
+      +decomp, 60 omit op-eff, 28/52 unseeded=empty); headless_check.js +sectors-decomp +sectors-
+      scorecard-empty. Found+FIXED a &amp; double-escape in the empty state (P.esc into states.empty
+      which re-escapes). pytest 506 pass; e2e PASS errors=0; EYEBALLED 4 scorecard shots (populated
+      73 5+2, decomp open, banks 60 4+2 op-eff omitted, empty 52). No src/secfin change.)
+- [x] 4 QA Tester             -> 4-qa.md (PASS — all 14 ACs verified by exercising the feature.
+      pytest 506 pass; e2e HEADLESS CHECK PASS errors=0; scripted interaction drive 18/18 PASS.
+      AC-1 scorecard hero above DuPont (7 tiles 5+2); AC-3 delta chips pos/neg/flat + null="no prior
+      FY" never 0; AC-5 inline decomp toggles one-at-a-time (constituents+note+normalization); AC-7
+      in-page switch does NOT refetch theme-scores (3->3 requests); AC-8 empty (group 52 + intercepted
+      sectors:[]) honest, DuPont still renders; AC-9 banks omit operating_efficiency (4 scored+2
+      deferred); AC-10 position-not-verdict copy, no affirmative buy/alpha; AC-11 score neutral ink,
+      favorability tokens only in sectors.css; AC-12 mobile 390px overflow=0. &amp; escape fix
+      confirmed clean. 2 non-blocking observations: O-1 score click re-renders scorecard -> focus
+      resets (minor a11y); O-2 "no prior FY" chip may wrap (acceptable). No defects. UNCOMMITTED,
+      branch STACKED on P1->P0.)
 
 ## Deploy note
-- PASS unlocks a deploy REQUEST, not a deploy. Frontend/static-only change; deploy = rebuild api
-  image + ship. Branch STACKED on Phase 0 (sector-theme-scores, unmerged) -- merge Phase 0 first (or
-  both together); Phase 1 code is independent and rebases clean. Operator next: commit branch and/or
-  /devops-engineer.
+- PASS unlocks a deploy REQUEST, not a deploy. Frontend/static-only; deploy = rebuild api image +
+  ship. Branch STACKED P0->P1->P2 (all unmerged) -- merge in order or together. Scorecard is honest-
+  empty on prod until DevOps runs `python -m secfin.analytical.sector_theme_scores`. Operator next:
+  commit branch and/or /devops-engineer.
 
 ## Notes / open loops
-- Frontend-only. Owner senior-frontend-engineer. No backend stage.
-- Reuse EXISTING endpoints: /sectors (selector list + peer_count + as-of FY), /sectors/{group}
-  (DuPont tree + ROE trend), /sectors/{group}/spreads (per-sector box-per-metric), /sectors/{group}/
-  lifecycle (CCC trend). Do NOT touch /sectors/theme-scores (Phase 2).
-- Files: static/sectors.html, sectors.js, sectors.css, script.js (sidebar GROUPS + expandable
-  affordance), app.css/style.css (side-group/side-link tokens). Mirror compare.js for URL-param
-  state; reuse app.js guarded localStorage try/catch pattern.
-- Verify: Docker e2e headless render check (screenshots eyeballed) + pytest green.
-- HONESTY: N/A never 0 (broken DuPont leg / empty spread / trend gap breaks line, not 0); per-panel
-  honest empty/loading/error; failed enhancement degrades without blanking page; theme-aware tokens;
-  CSP-safe (no new external assets).
+- Mostly frontend. Owner senior-frontend-engineer (static/). Small scripts/seed_fixture.py addition
+  (seed sector_theme_scores + sector_theme_components) -- architect assigns ownership.
+- Consumes existing GET /v1/sectors/theme-scores (Phase 0). Response = SectorThemeScoreList in
+  normalize/schema.py: sectors[{group, group_label, themes[{theme,theme_label,scored,score,
+  percentile,rank,rank_of,delta_vs_prior_fy,constituents[{metric,label,higher_is_better,median,
+  oriented_z}],reason}]}], + normalization + caveats. Fetch once, pick state.group's entry.
+- Files: static/sectors.html (scorecard mount above body), sectors.js (fetch + render scorecard +
+  decomposition + re-render on sector switch), sectors.css (tiles + favorability), style.css or
+  app.css (new positive/caution/negative tokens), STYLE_GUIDE (document tokens), scripts/
+  seed_fixture.py (seed theme scores), scripts/headless_check.js (scorecard shots).
+- Branch STACKS on Phase 1 (sector-overview-shell); Phase 0+1 unmerged. Note for operator.
+- HONESTY: N/A never 0; deferred themes never fabricated; caveats + normalization surfaced; score =
+  position not verdict despite color; favorability color only for favorability; light-only theme.
+- Verify: pytest green + e2e headless render check, EYEBALL shots (populated scorecard, empty,
+  decomposition open, deferred tiles, mobile).

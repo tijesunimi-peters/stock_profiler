@@ -109,9 +109,48 @@ Phase 0 `/sectors/theme-scores` endpoint is **not** consumed yet (that's Phase 2
 
 ## Phase 2 — Scorecard hero + decomposition
 
-Seven theme tiles (5 live, 2 "not yet scored"), each with score, favorability-colored trend
-chip, cross-sector percentile line, and rank badge; clicking the score opens the `00 §9a`
-decomposition. Depends on Phase 0 sign-off.
+**Built** (`sector-scorecard` branch, stacked on Phase 1): the seven-theme scorecard hero + inline
+decomposition + the favorability token trio. Adds the seven-theme composite scorecard (guide
+`01 §3`) to the single-sector page, consuming the Phase 0 `GET /v1/sectors/theme-scores`. **Mostly
+frontend**, plus a small fixture-seeding addition.
+
+**Locked decisions (operator, 2026-07-21):**
+- **Full favorability color** (`00 §5`): the trend-delta chip and a score affordance carry
+  positive/caution/negative color. This is a **deliberate departure** from the sectors page's prior
+  "descriptive, no good/bad coloring" stance — the operator chose legibility here. **Consequence:**
+  the project has **no favorability color tokens today**, so Phase 2 **introduces a
+  positive/caution/negative token trio**, hues chosen to harmonize with the warm ClearyFi palette
+  (muted sage / amber / brick — not primary green/red), documented as a new addition to the token
+  system (`STYLE_GUIDE`). The score itself stays framed as a **position, not a verdict** (the
+  endpoint caveats still say so, and are surfaced).
+- **Scorecard on top, DuPont below:** the scorecard becomes the page hero directly under the sector
+  bar; the DuPont tree + ROE trend + per-sector spreads + lifecycle move **below** it as the deeper
+  per-sector analytics (guide: judgments up top, raw metrics one click deeper). Demotes the DuPont
+  signature — accepted.
+- **Decomposition = inline expand** (not a modal), matching the existing `.disclosure`/`details`
+  pattern.
+
+**Scope:**
+- A **scorecard grid** of seven tiles (`01 §3`), rendered from the selected sector's `themes[]`:
+  - five **scored** tiles: theme name, **0–100 score** (large), a **trend-delta chip**
+    (`delta_vs_prior_fy`, favorability-colored + up/down/flat glyph), a **percentile line**
+    ("82nd pctile vs all sectors"), and a **rank badge** ("3rd of 11" from `rank`/`rank_of`);
+  - two **"not yet scored"** tiles (the deferred themes) — muted, no number, the `reason` as caption.
+- **Score click → inline decomposition** (`00 §9a`): the constituents with each one's `median` +
+  favorability-oriented `oriented_z` contribution, the **equal-weight** note, and the one-line
+  **normalization** string from the payload.
+- **Data flow:** fetch `/sectors/theme-scores` once; pick `state.group`'s entry; re-render on sector
+  switch from the same payload (no refetch). Honest empty/loading/error per the shared states; when
+  the batch hasn't run (prod today), the scorecard shows an **honest empty state**, never fabricated
+  tiles.
+- **Fixture:** seed a few `sector_theme_scores` + `sector_theme_components` rows in
+  `scripts/seed_fixture.py` so the e2e render check exercises a **populated** scorecard *and* the
+  empty state (a sector with no theme scores, and the two deferred tiles).
+- **Not in Phase 2:** the tile-body click → theme drill-down expansion and the peer-strip
+  re-pointing are **Phase 3**; in Phase 2 only the **score** is interactive (opens decomposition).
+
+**Verify:** Docker e2e headless render check (screenshots eyeballed — scorecard populated, empty,
+decomposition open, deferred tiles) + `pytest`.
 
 ## Phase 3 — Peer strip · biggest-shifts · theme drill-down
 

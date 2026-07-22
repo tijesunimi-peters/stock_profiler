@@ -65,6 +65,23 @@ introduce new hues. Reference them as CSS variables; never hard-code hexes in a 
 | Accent ink | `--accent-ink` | `#8A5A2F` | Accent text on wash, open-provenance label |
 | Accent wash | `--accent-wash` | `#F3E4D5` | Active pill fill, revealed-value highlight |
 
+### Favorability — the sector scorecard exception (redesign Phase 2)
+| Token | Var | Hex | Use |
+|---|---|---|---|
+| Positive | `--positive` / `--positive-wash` | `#5E7D4F` / `#E6ECDD` | Improving/favorable direction on a sector theme score |
+| Caution | `--caution` / `--caution-wash` | `#A97C2C` / `#F2E7CF` | Flat/mid (cross-sector-average) band |
+| Negative | `--negative` / `--negative-wash` | `#A8432E` / `#F1DCD4` | Worsening/unfavorable direction |
+
+A **deliberate, scoped exception** to "terracotta is the only chromatic accent" and to §7's
+"status is never conveyed by color alone." The sector overview scorecard (`/sectors`, guide
+`layout_guides/00 §5`) uses this muted, earthy trio (moss / amber / brick — **not** a primary
+green/red stoplight) to signal **favorability of direction/position**. Rules: (1) use it **only**
+for favorability on the scorecard (the trend-delta chip and a thin score-band accent) — **not** as a
+general good/bad palette elsewhere; (2) it is always paired with a **glyph** (▲/▬/▼) and a **number**,
+so meaning never rests on color alone; (3) the **score is a POSITION vs other sectors, not a good/bad
+or buy/sell verdict** — the scorecard's caveats say so and the score number itself stays neutral
+`--ink`, never a saturated fill.
+
 ### Audit badges (data provenance — from `app.css`)
 | Token | Var | Hex | Use |
 |---|---|---|---|

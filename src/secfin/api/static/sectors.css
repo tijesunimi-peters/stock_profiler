@@ -135,6 +135,130 @@
 }
 .sb-recent:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ---- composite scorecard (the hero) ---- */
+.scorecard-wrap { margin: 2px 0 22px; }
+.scorecard-head { margin: 0 0 12px; }
+.scorecard-title {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.scorecard-lede { margin: 6px 0 0; max-width: 68ch; font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+.scorecard-lede strong { color: var(--ink); font-weight: 600; }
+
+.scorecard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+/* a tile shares the DuPont leg card family; favorability shows only as a thin left band accent */
+.sc-tile {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 11px 13px 12px;
+}
+.sc-band-pos { border-left-color: var(--positive); }
+.sc-band-cau { border-left-color: var(--caution); }
+.sc-band-neg { border-left-color: var(--negative); }
+.sc-tile.sc-open { box-shadow: 0 0 0 1.5px var(--accent-wash-border); }
+
+.sc-theme { font-size: 12px; font-weight: 700; color: var(--ink-soft); line-height: 1.3; min-height: 2.1em; }
+.sc-score {
+  display: inline-block;
+  margin: 4px 0 2px;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink); /* neutral -- the score is a position, not a verdict */
+}
+.sc-score:hover { color: var(--accent); }
+.sc-score:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.sc-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.sc-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.sc-delta-glyph { font-size: 8px; }
+.sc-delta-pos { color: var(--positive); background: var(--positive-wash); }
+.sc-delta-cau { color: var(--caution); background: var(--caution-wash); }
+.sc-delta-neg { color: var(--negative); background: var(--negative-wash); }
+.sc-delta-none { color: var(--ink-soft); background: var(--bg-badge); font-weight: 500; }
+.sc-rank { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-soft); }
+.sc-pctile { margin-top: 6px; font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); }
+
+/* deferred (not-yet-scored) tiles: muted, dashed, never a fabricated number */
+.sc-deferred { border-left-color: var(--border-strong); border-style: dashed; background: transparent; }
+.sc-notscored {
+  margin: 6px 0 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.sc-reason { font-size: 11px; line-height: 1.45; color: var(--mono-muted); }
+
+.scorecard-caveats { margin: 6px 0 0; }
+
+/* inline decomposition (one theme at a time, below the grid) */
+.sc-decomp {
+  margin: 8px 0 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-tint);
+}
+.sc-decomp-head {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+.sc-decomp-note { margin: 0 0 10px; max-width: 70ch; font-size: 12px; line-height: 1.5; color: var(--ink-body); }
+.sc-crows { display: flex; flex-direction: column; gap: 5px; }
+.sc-crow {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) 62px minmax(80px, 2fr) 56px;
+  align-items: center;
+  gap: 10px;
+}
+.sc-cname { font-size: 12.5px; color: var(--ink); }
+.sc-cmed { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-soft); text-align: right; }
+.sc-cbar { height: 8px; background: var(--bg-badge); border-radius: 4px; overflow: hidden; }
+.sc-cfill { display: block; height: 100%; border-radius: 4px; }
+.sc-fill-pos { background: var(--positive); }
+.sc-fill-cau { background: var(--caution); }
+.sc-fill-neg { background: var(--negative); }
+.sc-cz { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); text-align: right; }
+.sc-decomp-norm { margin: 10px 0 0; font-size: 11px; line-height: 1.5; color: var(--mono-muted); }
+
+@media (max-width: 560px) {
+  .sc-crow { grid-template-columns: 1fr 54px; grid-auto-rows: auto; row-gap: 2px; }
+  .sc-cbar { grid-column: 1 / -1; }
+  .sc-cz { grid-column: 2; grid-row: 1; }
+}
+
 /* ---- DuPont identity tree (the signature) ---- */
 .dupont {
   display: flex;

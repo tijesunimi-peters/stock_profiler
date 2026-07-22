@@ -47,6 +47,8 @@ const PAGES = process.env.PAGES
       // largest sector's DuPont tree), a sector selected via ?group= (tree + 5Y trend + per-sector
       // spreads), the lifecycle trend, the selector combobox OPEN, and an unknown ?group= that
       // falls back to the default with a muted note (never a broken page).
+      // sectors (group 73) now leads with the composite scorecard (5 scored + 2 deferred tiles)
+      // above the DuPont body; group 60 (banks) shows 4 scored + 2 deferred (op-efficiency omitted).
       ["sectors", "/sectors"],
       ["sectors-selected", "/sectors?group=60&range=5y"],
       // A working-capital sector selected to the DIO/DSO/DPO/CCC lifecycle trend -- group 73
@@ -56,6 +58,10 @@ const PAGES = process.env.PAGES
       ["sectors-selector", "/sectors"],
       // Unknown group -> honest fallback to the default sector with the "not found" note.
       ["sectors-unknown-group", "/sectors?group=99"],
+      // Click a score to open its inline decomposition (constituents + oriented-z contributions).
+      ["sectors-decomp", "/sectors?group=73"],
+      // A sector with NO theme scores -> the honest empty-scorecard state (DuPont still below).
+      ["sectors-scorecard-empty", "/sectors?group=52"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];
@@ -104,6 +110,12 @@ const PAGES = process.env.PAGES
         // the regression guard would only ever render the Holders group and silently rot.
         await page.click('#inst-subtabs button[data-inst-group="geography"]');
         await new Promise((r) => setTimeout(r, 1200));
+      }
+      if (name === "sectors-decomp") {
+        // Open a score's inline decomposition (constituent oriented-z bars). Any JS error in the
+        // toggle/render fails the check; the screenshot captures the expanded panel.
+        await page.click(".sc-score");
+        await new Promise((r) => setTimeout(r, 400));
       }
       if (name === "sectors-selector") {
         // Open the sector combobox (client-side filter over the loaded sector list): focus the
