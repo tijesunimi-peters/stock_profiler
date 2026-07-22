@@ -290,6 +290,13 @@ async def data_coverage() -> FileResponse:
     return FileResponse(STATIC_DIR / "coverage.html")
 
 
+@app.get("/sector-analytics", include_in_schema=False)
+async def sector_analytics_app() -> FileResponse:
+    # The "paper terminal" single-page Sector Analytics app (docs/REDESIGN_SECTOR_APP.md). Served
+    # alongside the existing /sectors page until the 4-view app is complete + approved.
+    return FileResponse(STATIC_DIR / "sector-analytics.html")
+
+
 @app.get("/robots.txt", include_in_schema=False)
 async def robots_txt() -> FileResponse:
     # Crawlers are welcome on the marketing/docs pages but kept off /v1/ -- API

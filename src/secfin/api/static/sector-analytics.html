@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClearyFi — Sector analytics</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'%3E%3Crect width='26' height='26' rx='7' fill='%231c1a16'/%3E%3Crect x='8.5' y='8.5' width='9' height='9' rx='2' fill='%23c0703a'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- style.css supplies the :root design tokens (identical to the prototype's palette). The new
+       app has its OWN self-contained CSS/JS -- it does NOT load app.css/company.css/sectors.css or
+       script.js (the shared shell); it builds the paper-terminal shell itself. -->
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/sectorapp.css">
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- vendored (CSP-safe) charting for the drill-down box-whisker tracks -->
+  <script src="/static/vendor/d3.min.js"></script>
+  <script src="/static/vendor/plot.umd.min.js"></script>
+  <!-- app.js provides the window.ClearyFi.* helpers (api, esc, fmt, measuredWidth, boxWhiskerChart,
+       states). It is the shared component library; the shell renderer (script.js) is intentionally
+       NOT loaded here. -->
+  <script src="/static/app.js"></script>
+  <script src="/static/sectorapp.js"></script>
+</body>
+</html>

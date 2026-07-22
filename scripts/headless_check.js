@@ -69,6 +69,12 @@ const PAGES = process.env.PAGES
       ["sectors-drilldown-empty", "/sectors?group=73"],
       ["coverage", "/coverage"],
       ["components", "/components"],
+      // New "paper terminal" Sector Analytics app (/sector-analytics) -- shell + Sector view on real
+      // data (NO favorability color). The decomp shot opens a score's decomposition; the stub shot
+      // clicks the Qualitative rail to show the honest "Coming — Track 2" placeholder.
+      ["sectorapp", "/sector-analytics"],
+      ["sectorapp-decomp", "/sector-analytics"],
+      ["sectorapp-stub", "/sector-analytics"],
     ];
 
 (async () => {
@@ -115,6 +121,18 @@ const PAGES = process.env.PAGES
         // the regression guard would only ever render the Holders group and silently rot.
         await page.click('#inst-subtabs button[data-inst-group="geography"]');
         await new Promise((r) => setTimeout(r, 1200));
+      }
+      if (name === "sectorapp-decomp") {
+        // Open a theme score's decomposition (contribution bars, single accent, arrow sign).
+        await page.waitForSelector(".pa-tile-score");
+        await page.click(".pa-tile-score");
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      if (name === "sectorapp-stub") {
+        // Click the Qualitative view rail -> the honest "Coming — Track 2" stub (no fabricated data).
+        await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
+        await page.click('.pa-rail-btn[data-view="qual"]');
+        await new Promise((r) => setTimeout(r, 300));
       }
       if (name === "sectors-decomp") {
         // Open a score's inline decomposition (constituent oriented-z bars). Any JS error in the
