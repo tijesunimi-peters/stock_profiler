@@ -43,19 +43,19 @@ const PAGES = process.env.PAGES
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
       ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
-      // Sector overview grid (+ default net_margin cross-sector spread), a sector auto-expanded
-      // (?group=) to the DuPont tree + 5Y trend + per-sector spread panel, and the cross-sector
-      // box chart on a liquidity/solvency metric (?metric=).
+      // Single-sector overview (redesign Phase 1): the DEFAULT landing (selector spine + the
+      // largest sector's DuPont tree), a sector selected via ?group= (tree + 5Y trend + per-sector
+      // spreads), the lifecycle trend, the selector combobox OPEN, and an unknown ?group= that
+      // falls back to the default with a muted note (never a broken page).
       ["sectors", "/sectors"],
-      ["sectors-expanded", "/sectors?group=60&range=5y"],
-      // A working-capital sector expanded to the DIO/DSO/DPO/CCC lifecycle trend -- group 73
+      ["sectors-selected", "/sectors?group=60&range=5y"],
+      // A working-capital sector selected to the DIO/DSO/DPO/CCC lifecycle trend -- group 73
       // (services) has a NEGATIVE CCC, and the "all" range shows the ~ approximate affordance.
       ["sectors-lifecycle", "/sectors?group=73&range=all"],
-      ["sectors-spreads", "/sectors?metric=debt_to_equity"],
-      // Long-tailed metric -> exercises the honest whisker-clipping path (▸ markers + caption).
-      ["sectors-spreads-clip", "/sectors?metric=interest_coverage"],
-      // A metric with no qualifying sectors -> the honest empty state (never a zero box).
-      ["sectors-spreads-empty", "/sectors?metric=quick_ratio"],
+      // Open the sector combobox (exercises the client-side filter + keyboard-less render path).
+      ["sectors-selector", "/sectors"],
+      // Unknown group -> honest fallback to the default sector with the "not found" note.
+      ["sectors-unknown-group", "/sectors?group=99"],
       ["coverage", "/coverage"],
       ["components", "/components"],
     ];
@@ -104,6 +104,14 @@ const PAGES = process.env.PAGES
         // the regression guard would only ever render the Holders group and silently rot.
         await page.click('#inst-subtabs button[data-inst-group="geography"]');
         await new Promise((r) => setTimeout(r, 1200));
+      }
+      if (name === "sectors-selector") {
+        // Open the sector combobox (client-side filter over the loaded sector list): focus the
+        // input and type a partial name -- the screenshot captures the open menu, and any JS error
+        // in the widget fails the check like any other page error.
+        await page.focus("#sbInput");
+        await page.type("#sbInput", "in", { delay: 40 });
+        await new Promise((r) => setTimeout(r, 500));
       }
       if (name === "company") {
         // Exercise the company autocomplete (suggest.js) via the shell's topbar search:

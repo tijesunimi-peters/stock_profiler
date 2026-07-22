@@ -72,14 +72,40 @@ coarse/dated; below-min groups dropped; **N/A excluded, never counted as 0**; sc
 with the equal-weight + z-score-of-medians normalization in one line of `text.muted`; the two
 deferred themes render as explicit "not yet scored" tiles, never as 0 or a fabricated number.
 
-## Phase 1 — Single-sector page shell
+## Phase 1 — Single-sector page shell + sidebar submenu
 
-- Replace the all-sectors table with the guide's spine: a **searchable sector selector**
-  (combobox + most-recently-viewed pill cluster) driving one-sector-at-a-time.
-- **Shared header** (`00 §6`): peer-count pill, as-of FY. **Filing-coverage % and same-store
-  logic don't exist yet** — ship without them; add coverage as a follow-up rather than fake it.
+**Almost entirely frontend** (`static/`): every endpoint it needs already exists
+(`/sectors`, `/sectors/{group}`, `/sectors/{group}/spreads`, `/sectors/{group}/lifecycle`). The
+Phase 0 `/sectors/theme-scores` endpoint is **not** consumed yet (that's Phase 2).
+
+**Locked decisions (operator, 2026-07-21):**
+- **Body = re-home the existing analytics.** Replace the all-sectors table with the guide's spine,
+  and drive **today's per-sector detail** (DuPont tree, ROE trend, per-sector spreads, lifecycle)
+  off the selected sector instead of table-row expansion. Nothing regresses; the page is shippable
+  and testable on its own. Phase 2 (scorecard hero) and Phase 3 (peer strip / biggest-shifts /
+  drill-down tiles) layer on top.
+- **Sidebar submenu = Overview only, rest deferred.** Convert the flat `Sectors` link
+  (`static/script.js` `GROUPS`) into an **expandable parent** whose only child for now is
+  **Overview → /sectors**. Company / Compare / Qualitative are added as children **only when** their
+  dedicated sector-altitude views are built (later phases). The existing top-level Company hub /
+  Compare / Screen entries are **left untouched** (no move, no duplication) this phase.
+
+**Scope:**
+- **Searchable sector selector** — combobox + a most-recently-viewed pill cluster (the ~70-sector
+  decision). Selecting a sector re-derives the page and updates `?group=` + `localStorage`.
+- **Default sector on load:** largest by `peer_count` on first visit; `?group=` URL param overrides;
+  last-viewed persisted in `localStorage` (reuse app.js's guarded try/catch pattern).
+- **Shared header** (`00 §6`): breadcrumb, peer-count pill, as-of FY. **Filing-coverage % and
+  same-store logic don't exist yet** — ship without them, don't fake them.
+- **Sidebar submenu affordance** — a new expandable-group mechanism (none exists today; extends the
+  token-driven `side-group` / `side-link` CSS). Overview marked `current` on `/sectors`.
+- **Cross-page state** (`00 §7`, `§11.2`): selected sector + as-of period carried via URL params
+  (mirroring `compare.js`) + `localStorage` for last-viewed.
 - **Acknowledged trade-off:** the single-sector model removes today's at-a-glance cross-sector
-  DuPont table; the **peer strip** (Phase 3) is the intended substitute (one theme at a time).
+  DuPont table; the **peer strip** (Phase 3) is the intended substitute (one theme at a time). No
+  cross-sector overview exists between the Phase 1 ship and Phase 3.
+
+**Verify:** Docker e2e headless render check (real UI change → screenshots, eyeballed) + `pytest`.
 
 ## Phase 2 — Scorecard hero + decomposition
 

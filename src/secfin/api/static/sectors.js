@@ -1,12 +1,17 @@
-/* Sector performance overview — /sectors. A sector-first entry point over the Sector Analytics
- * endpoints:
- *   GET /v1/sectors            → every qualifying SIC-2 sector's asset-weighted DuPont aggregate
- *   GET /v1/sectors/{group}    → one sector's FY aggregate series (the trend)
+/* Sector performance overview — /sectors. A SINGLE-SECTOR surface (redesign Phase 1): the sector
+ * selector is the spine, one sector fills the page, and the reader steps between sectors. Over the
+ * Sector Analytics endpoints:
+ *   GET /v1/sectors                    → the sector list (selector) + as-of FY + honesty caveats
+ *   GET /v1/sectors/{group}            → one sector's FY DuPont aggregate series (tree + ROE trend)
+ *   GET /v1/sectors/{group}/spreads    → the sector's per-metric box spreads
+ *   GET /v1/sectors/{group}/lifecycle  → the sector's DIO/DSO/DPO/CCC trend
  *
- * Built from the shared ClearyFi components. The numbers are ASSET-WEIGHTED SECTOR AGGREGATES
- * (ΣNI/ΣRev × ΣRev/ΣAssets × ΣAssets/ΣEquity), NOT medians — the always-present `caveats` and the
- * `aggregation` label are rendered verbatim. Descriptive only: no good/bad coloring, no "winner",
- * no alpha/price/timing claim. A missing value is never drawn as 0.
+ * The numbers are ASSET-WEIGHTED SECTOR AGGREGATES (ΣNI/ΣRev × ΣRev/ΣAssets × ΣAssets/ΣEquity),
+ * NOT medians — the always-present `caveats` and the `aggregation` label are rendered verbatim.
+ * Descriptive only: no good/bad coloring, no "winner". A missing value is never drawn as 0.
+ *
+ * (Phase 2 adds the composite scorecard from /v1/sectors/theme-scores; Phase 3 the peer strip that
+ * restores a cross-sector view. Neither is consumed here.)
  */
 (function () {
   "use strict";
@@ -14,44 +19,15 @@
   var $ = function (id) { return document.getElementById(id); };
   var params = new URLSearchParams(location.search);
 
-  // Columns: [key, label, kind]. `kind` picks the formatter + sort comparator.
-  var COLS = [
-    ["group_label", "Sector", "text"],
-    ["peer_count", "Companies", "int"],
-    ["roe", "ROE", "pct"],
-    ["net_margin", "Net margin", "pct"],
-    ["asset_turnover", "Asset turnover", "mult"],
-    ["equity_multiplier", "Equity multiplier", "mult"],
-  ];
-
-  // Metrics offered as box-and-whisker SPREADS, grouped for the selector. Two families: the
-  // profitability/efficiency ratios are populated across most sectors today; the liquidity/solvency
-  // ratios depend on granular balance-sheet concepts still sparsely ingested, so they often show an
-  // honest empty state and fill in as coverage improves. Matches api/routes.py `_SPREAD_METRICS`.
-  var SPREAD_GROUPS = [
-    ["Profitability & efficiency", [
-      ["net_margin", "Net margin"], ["roe", "ROE"], ["roa", "ROA"],
-      ["asset_turnover", "Asset turnover"], ["revenue_growth_yoy", "Revenue growth"],
-      ["earnings_growth_yoy", "Earnings growth"],
-    ]],
-    ["Liquidity & solvency", [
-      ["current_ratio", "Current ratio"], ["quick_ratio", "Quick ratio"],
-      ["debt_to_equity", "Debt / equity"], ["interest_coverage", "Interest coverage"],
-    ]],
-  ];
-  var SPREAD_METRICS = SPREAD_GROUPS.reduce(function (acc, g) {
-    return acc.concat(g[1].map(function (m) { return m[0]; }));
-  }, []);
+  var LS_LAST = "secfin:lastSector"; // last-viewed sector code
+  var LS_MRU = "secfin:sectorMRU"; // recently-viewed sector codes, newest first
 
   var state = {
-    data: null, // the /v1/sectors payload
-    sortCol: "roe",
-    sortDir: "desc",
-    expanded: params.get("group") || null,
+    data: null, // the /v1/sectors payload (sector list + fiscal_year + caveats)
+    group: null, // the selected SIC-2 code
+    notFound: null, // a ?group= that didn't resolve (shown as a muted note, then default is used)
     range: normalizeRange(params.get("range")) || "5y",
     series: {}, // group -> SectorSeries payload (lazy)
-    spreadMetric: normalizeMetric(params.get("metric")) || "net_margin",
-    spreads: {}, // metric -> SectorSpreadList payload (lazy)
     groupSpreads: {}, // group -> SectorSpreadProfile payload (lazy)
     lifecycle: {}, // group -> SectorLifecycleSeries payload (lazy)
   };
@@ -60,16 +36,19 @@
     return r === "1y" || r === "5y" || r === "all" ? r : null;
   }
 
-  function normalizeMetric(m) {
-    return SPREAD_METRICS.indexOf(m) !== -1 ? m : null;
-  }
+  // ---------- guarded localStorage (reuses app.js's try/catch pattern) ----------
 
-  function fmtCell(kind, v) {
-    if (v === null || v === undefined) return "—"; // never 0 for a missing value
-    if (kind === "pct") return P.fmt.pct(v);
-    if (kind === "mult") return P.fmt.mult(v);
-    if (kind === "int") return String(v);
-    return P.esc(String(v));
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+  function getMRU() {
+    try { var a = JSON.parse(lsGet(LS_MRU) || "[]"); return Array.isArray(a) ? a : []; }
+    catch (e) { return []; }
+  }
+  function pushMRU(code) {
+    var m = getMRU().filter(function (c) { return c !== code; });
+    m.unshift(code);
+    lsSet(LS_MRU, JSON.stringify(m.slice(0, 6)));
+    lsSet(LS_LAST, code);
   }
 
   // ---------- chrome ----------
@@ -91,14 +70,29 @@
       eyebrow: "Sector analytics",
       title: "Sector performance overview",
       lede:
-        "Return on equity, decomposed, across every SIC-2 industry that meets the minimum size — " +
-        "each an asset-weighted aggregate you can open into its DuPont drivers and history.",
+        "Pick an industry to read its return on equity decomposed into the DuPont drivers, its " +
+        "multi-year history, and its working-capital structure — each an asset-weighted aggregate, " +
+        "not a median.",
       meta: ["Fiscal year " + d.fiscal_year, d.peer_basis + " · " + d.sectors.length + " sectors"],
     });
+
+    if (!d.sectors || !d.sectors.length) {
+      $("sectorbar").innerHTML = "";
+      $("aggregation").innerHTML = "";
+      $("view").innerHTML = P.states.empty({
+        title: "No sectors to show",
+        copy: "No SIC group met the minimum size for this period, or the sector aggregates aren't materialized yet.",
+      });
+      return;
+    }
+
     $("aggregation").innerHTML = aggregationBlock(d);
-    renderGrid();
-    renderSpreads();
-    maybeAutoExpand();
+    var initial = resolveInitialGroup(d.sectors);
+    state.group = initial.group;
+    state.notFound = initial.notFound;
+    if (state.group) pushMRU(state.group); // record the landing sector as most-recent/last-viewed
+    renderSectorBar();
+    renderBody();
   }
 
   // The load-bearing honesty banner: what these numbers are (and are not), plus the full caveats.
@@ -115,103 +109,201 @@
     );
   }
 
-  // ---------- overview grid ----------
+  // ---------- sector selection ----------
 
-  function sortedSectors() {
-    var rows = (state.data.sectors || []).slice();
-    var col = state.sortCol, dir = state.sortDir === "asc" ? 1 : -1;
-    rows.sort(function (a, b) {
-      var x = a[col], y = b[col];
-      if (typeof x === "string") return dir * x.localeCompare(y);
-      return dir * ((x || 0) - (y || 0));
-    });
-    return rows;
+  function sectorList() { return state.data.sectors || []; }
+  function findSector(code) {
+    return sectorList().filter(function (s) { return s.group === code; })[0] || null;
   }
 
-  function renderGrid() {
-    if (!state.data.sectors || !state.data.sectors.length) {
-      $("view").innerHTML = P.states.empty({
-        title: "No sectors to show",
-        copy: "No SIC group met the minimum size for this period, or the sector aggregates aren't materialized yet.",
+  // Resolution order: ?group= (valid) → localStorage last-viewed → default = largest by peer_count.
+  // An explicit but unknown ?group= skips localStorage and lands on the default, carrying a note.
+  function resolveInitialGroup(list) {
+    var has = function (c) { return list.some(function (s) { return s.group === c; }); };
+    var byParam = params.get("group");
+    if (byParam && has(byParam)) return { group: byParam, notFound: null };
+    var notFound = byParam && !has(byParam) ? byParam : null;
+    if (!notFound) {
+      var last = lsGet(LS_LAST);
+      if (last && has(last)) return { group: last, notFound: null };
+    }
+    var def = list.slice().sort(function (a, b) { return (b.peer_count || 0) - (a.peer_count || 0); })[0];
+    return { group: def ? def.group : null, notFound: notFound };
+  }
+
+  function selectSector(code) {
+    if (!code || code === state.group) { return closeMenus(); }
+    state.group = code;
+    state.notFound = null; // an explicit choice clears the not-found note
+    pushMRU(code);
+    syncURL();
+    renderSectorBar();
+    renderBody();
+  }
+
+  // Update ?group= in place, no reload (keeps the trend range if the user set a non-default one).
+  function syncURL() {
+    var q = new URLSearchParams();
+    if (state.group) q.set("group", state.group);
+    if (state.range && state.range !== "5y") q.set("range", state.range);
+    var qs = q.toString();
+    history.replaceState(null, "", location.pathname + (qs ? "?" + qs : ""));
+  }
+
+  function closeMenus() {
+    var menu = $("sbMenu");
+    if (menu) { menu.hidden = true; var i = $("sbInput"); if (i) i.setAttribute("aria-expanded", "false"); }
+  }
+
+  // ---------- sector bar: breadcrumb + header pills + selector ----------
+
+  function renderSectorBar() {
+    var d = state.data;
+    var sel = findSector(state.group);
+    var breadcrumb =
+      '<nav class="sb-crumb" aria-label="Breadcrumb">Sectors <span class="sb-sep" aria-hidden="true">›</span> ' +
+      '<span class="sb-current">' + (sel ? P.esc(sel.group_label) : "—") + "</span></nav>";
+    var pills =
+      '<div class="sb-pills">' +
+      (sel ? '<span class="sb-pill">' + sel.peer_count + " filers</span>" : "") +
+      '<span class="sb-pill sb-pill-muted">FY' + d.fiscal_year + "</span>" +
+      "</div>";
+    var note = state.notFound
+      ? '<p class="sb-note">Sector “' + P.esc(state.notFound) + "” wasn’t found — showing " +
+        (sel ? P.esc(sel.group_label) : "the default sector") + ".</p>"
+      : "";
+    $("sectorbar").innerHTML =
+      '<div class="sb-head">' + breadcrumb + pills + "</div>" +
+      '<div class="sb-select">' +
+      '<div class="sb-combo">' +
+      '<input type="text" id="sbInput" class="sb-input" placeholder="Search sectors…" autocomplete="off" ' +
+      'spellcheck="false" role="combobox" aria-expanded="false" aria-controls="sbMenu" aria-label="Search and select a sector">' +
+      '<div class="sb-menu" id="sbMenu" role="listbox" hidden></div>' +
+      "</div>" +
+      recentPillsHtml() +
+      "</div>" +
+      note;
+    wireCombo();
+    wireRecent();
+  }
+
+  function recentPillsHtml() {
+    var mru = getMRU().filter(function (c) { return findSector(c); });
+    if (!mru.length) return "";
+    var pills = mru
+      .map(function (c) {
+        var s = findSector(c);
+        return (
+          '<button type="button" class="sb-recent' + (c === state.group ? " on" : "") +
+          '" data-group="' + P.esc(c) + '"' + (c === state.group ? ' aria-current="true"' : "") + ">" +
+          P.esc(s.group_label) + "</button>"
+        );
+      })
+      .join("");
+    return '<div class="sb-recent-row"><span class="sb-recent-label">Recent</span>' + pills + "</div>";
+  }
+
+  function wireRecent() {
+    $("sectorbar").querySelectorAll(".sb-recent").forEach(function (btn) {
+      btn.addEventListener("click", function () { selectSector(btn.getAttribute("data-group")); });
+    });
+  }
+
+  // Self-contained combobox filtering the already-loaded sector list (no server round-trip).
+  function wireCombo() {
+    var input = $("sbInput");
+    var menu = $("sbMenu");
+    var matches = [];
+    var active = -1;
+
+    function all() {
+      return sectorList().slice().sort(function (a, b) { return a.group_label.localeCompare(b.group_label); });
+    }
+    function filter(q) {
+      q = (q || "").trim().toLowerCase();
+      if (!q) return all();
+      return all().filter(function (s) {
+        return s.group_label.toLowerCase().indexOf(q) !== -1 || s.group.indexOf(q) !== -1;
       });
+    }
+    function paint() {
+      if (!matches.length) { menu.innerHTML = '<div class="sb-empty">No sectors match</div>'; return; }
+      menu.innerHTML = matches
+        .map(function (s, i) {
+          return (
+            '<div class="sb-opt' + (i === active ? " active" : "") + '" role="option" data-i="' + i +
+            '" aria-selected="' + (i === active) + '">' +
+            '<span class="sb-opt-name">' + P.esc(s.group_label) + "</span>" +
+            '<span class="sb-opt-count">' + s.peer_count + "</span></div>"
+          );
+        })
+        .join("");
+    }
+    function open(list) {
+      matches = list.slice(0, 60);
+      active = matches.length ? 0 : -1;
+      paint();
+      menu.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    }
+    function close() {
+      menu.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      active = -1;
+    }
+    function choose(i) {
+      var s = matches[i];
+      if (!s) return;
+      close();
+      input.value = "";
+      selectSector(s.group);
+    }
+
+    input.addEventListener("focus", function () { open(filter(input.value)); });
+    input.addEventListener("input", function () { open(filter(input.value)); });
+    input.addEventListener("keydown", function (e) {
+      if (menu.hidden) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); active = Math.min(active + 1, matches.length - 1); paint(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); paint(); }
+      else if (e.key === "Enter") { if (active >= 0) { e.preventDefault(); choose(active); } }
+      else if (e.key === "Escape") { close(); }
+    });
+    // mousedown (not click) so the input's blur doesn't tear the menu down first.
+    menu.addEventListener("mousedown", function (e) {
+      var opt = e.target.closest(".sb-opt");
+      if (opt) { e.preventDefault(); choose(parseInt(opt.getAttribute("data-i"), 10)); }
+    });
+    menu.addEventListener("mousemove", function (e) {
+      var opt = e.target.closest(".sb-opt");
+      if (!opt) return;
+      var i = parseInt(opt.getAttribute("data-i"), 10);
+      if (i !== active) { active = i; paint(); }
+    });
+    input.addEventListener("blur", function () { setTimeout(close, 120); });
+  }
+
+  // ---------- sector body: DuPont tree + ROE trend + per-sector spreads + lifecycle ----------
+
+  function renderBody() {
+    var view = $("view");
+    if (!state.group) {
+      view.innerHTML = P.states.empty({ title: "No sector selected", copy: "Choose a sector above to see its analytics." });
       return;
     }
-    var head = COLS.map(function (c) {
-      var active = c[0] === state.sortCol;
-      var arrow = active ? (state.sortDir === "asc" ? " ▲" : " ▼") : "";
-      var aligned = c[2] === "text" ? "" : " num";
-      return (
-        '<th class="' + aligned.trim() + (active ? " sorted" : "") + '">' +
-        '<button class="th-sort" data-col="' + c[0] + '">' + P.esc(c[1]) + P.esc(arrow) + "</button></th>"
-      );
-    }).join("");
-
-    var body = sortedSectors().map(function (s) {
-      var cells = COLS.map(function (c) {
-        var cls = c[2] === "text" ? "sector-name" : "num mono";
-        return '<td class="' + cls + '">' + fmtCell(c[2], s[c[0]]) + "</td>";
-      }).join("");
-      var open = state.expanded === s.group;
-      var rowHtml =
-        '<tr class="sector-row' + (open ? " open" : "") + '" data-group="' + P.esc(s.group) + '" tabindex="0" role="button" aria-expanded="' + open + '">' +
-        cells +
-        "</tr>";
-      var detailHtml = open
-        ? '<tr class="sector-detail"><td colspan="' + COLS.length + '"><div class="detail-mount" id="detail-' + P.esc(s.group) + '"></div></td></tr>'
-        : "";
-      return rowHtml + detailHtml;
-    }).join("");
-
-    $("view").innerHTML =
-      '<div class="sector-table-wrap"><table class="sector-table"><thead><tr>' +
-      head +
-      "</tr></thead><tbody>" +
-      body +
-      "</tbody></table></div>";
-
-    wireGrid();
-    if (state.expanded) renderDetail(state.expanded);
-  }
-
-  function wireGrid() {
-    $("view").querySelectorAll(".th-sort").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var col = btn.getAttribute("data-col");
-        if (state.sortCol === col) {
-          state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
-        } else {
-          state.sortCol = col;
-          state.sortDir = col === "group_label" ? "asc" : "desc";
-        }
-        renderGrid();
+    var g = state.group;
+    if (state.series[g]) { paintBody(view, state.series[g]); return; }
+    view.innerHTML = P.states.loading({ title: "Loading sector", note: "" });
+    P.api("/sectors/" + encodeURIComponent(g))
+      .then(function (res) {
+        state.series[g] = res;
+        if (state.group === g) paintBody(view, res); // ignore a stale response if the user switched
+      })
+      .catch(function () {
+        if (state.group === g) view.innerHTML = P.states.error({ copy: "Couldn't load this sector's detail." });
       });
-    });
-    $("view").querySelectorAll(".sector-row").forEach(function (row) {
-      function toggle() {
-        var g = row.getAttribute("data-group");
-        state.expanded = state.expanded === g ? null : g;
-        renderGrid();
-      }
-      row.addEventListener("click", toggle);
-      row.addEventListener("keydown", function (e) {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
-      });
-    });
   }
 
-  // ---------- per-sector detail: DuPont tree + trend ----------
-
-  function renderDetail(group) {
-    var mount = $("detail-" + group);
-    if (!mount) return;
-    if (state.series[group]) { paintDetail(mount, state.series[group]); return; }
-    mount.innerHTML = P.states.loading({ title: "Loading sector detail", note: "" });
-    P.api("/sectors/" + encodeURIComponent(group))
-      .then(function (res) { state.series[group] = res; if (state.expanded === group) paintDetail(mount, res); })
-      .catch(function () { mount.innerHTML = P.states.error({ copy: "Couldn't load this sector's detail." }); });
-  }
-
-  function paintDetail(mount, series) {
+  function paintBody(mount, series) {
     mount.innerHTML = "";
     var pts = (series.points || []).slice(); // FY, oldest first
     if (!pts.length) {
@@ -230,28 +322,28 @@
 
     // Per-sector box/whisker: this sector's spread for each offered metric (a small-multiple, one
     // mini box per metric because scales differ). A metric with too few companies is omitted, never
-    // a zero box. Loads lazily; on failure it just skips (an enhancement, never breaks the detail).
+    // a zero box. Loads lazily; on failure it just skips (an enhancement, never breaks the body).
     var spreadMount = document.createElement("div");
     spreadMount.className = "detail-spreads";
     mount.appendChild(spreadMount);
     paintDetailSpreads(spreadMount, series.group);
 
     // Asset-lifecycle trend: DIO/DSO/DPO and their synthesis CCC over the FY series. Loads lazily;
-    // on failure it just skips (an enhancement, never breaks the detail).
+    // on failure it just skips (an enhancement, never breaks the body).
     var lifecycleMount = document.createElement("div");
     lifecycleMount.className = "detail-lifecycle";
     mount.appendChild(lifecycleMount);
     paintLifecycle(lifecycleMount, series.group);
   }
 
-  // ---------- per-sector detail: asset-lifecycle trend (DIO/DSO/DPO/CCC) ----------
+  // ---------- per-sector asset-lifecycle trend (DIO/DSO/DPO/CCC) ----------
 
   function paintLifecycle(mount, group) {
     if (state.lifecycle[group]) { drawLifecycle(mount, state.lifecycle[group]); return; }
     mount.innerHTML = P.states.loading({ title: "Loading lifecycle", note: "" });
     P.api("/sectors/" + encodeURIComponent(group) + "/lifecycle")
       .then(function (res) { state.lifecycle[group] = res; drawLifecycle(mount, res); })
-      .catch(function () { mount.innerHTML = ""; }); // skip silently — the rest of the detail stands
+      .catch(function () { mount.innerHTML = ""; }); // skip silently — the rest of the body stands
   }
 
   function drawLifecycle(mount, res) {
@@ -356,98 +448,6 @@
     });
   }
 
-  // ---------- cross-sector spreads: a box per SIC sector for one metric ----------
-
-  function renderSpreads() {
-    var mount = $("spreads");
-    mount.innerHTML =
-      '<div class="spread-head">' +
-      '<h2 class="spread-title">Spread within each sector</h2>' +
-      '<p class="spread-lede">How dispersed one metric is across the companies inside each SIC-2 ' +
-      "sector: the box spans the middle half (p25–p75), the line marks the median, the whiskers " +
-      "reach the full min–max. A wider box means the peers are more dispersed — not a better or " +
-      "worse sector." +
-      "</p>" +
-      "</div>" +
-      '<div class="spread-picker" id="spread-picker"></div>' +
-      '<div class="spread-chart" id="spread-chart"></div>' +
-      '<div id="spread-caveats"></div>';
-    renderPicker();
-    wirePicker();
-    paintSpread();
-  }
-
-  function renderPicker() {
-    var html = SPREAD_GROUPS.map(function (grp) {
-      var buttons = grp[1].map(function (m) {
-        var on = state.spreadMetric === m[0] ? ' class="on"' : "";
-        return '<button data-metric="' + P.esc(m[0]) + '"' + on + ">" + P.esc(m[1]) + "</button>";
-      }).join("");
-      return (
-        '<div class="spread-group"><span class="spread-group-label">' + P.esc(grp[0]) + "</span>" +
-        '<div class="segmented spread-seg">' + buttons + "</div></div>"
-      );
-    }).join("");
-    $("spread-picker").innerHTML = html;
-  }
-
-  function wirePicker() {
-    $("spread-picker").querySelectorAll(".spread-seg button").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        state.spreadMetric = btn.getAttribute("data-metric");
-        $("spread-picker").querySelectorAll(".spread-seg button").forEach(function (b) { b.classList.remove("on"); });
-        btn.classList.add("on");
-        paintSpread();
-      });
-    });
-  }
-
-  function paintSpread() {
-    var metric = state.spreadMetric;
-    var chart = $("spread-chart");
-    if (state.spreads[metric]) { drawSpread(chart, state.spreads[metric]); return; }
-    chart.innerHTML = P.states.loading({ title: "Loading spread", note: "" });
-    P.api("/sectors/spreads?metric=" + encodeURIComponent(metric) + "&year=" + state.data.fiscal_year)
-      .then(function (res) { state.spreads[metric] = res; if (state.spreadMetric === metric) drawSpread(chart, res); })
-      .catch(function (err) { chart.innerHTML = P.states.error({ copy: "Couldn't load the spread (" + (err.status || "network") + ")." }); });
-  }
-
-  function drawSpread(chart, res) {
-    $("spread-caveats").innerHTML = spreadCaveatsBlock(res);
-    chart.innerHTML = "";
-    var boxes = (res.spreads || []).map(function (s) {
-      return { label: s.group_label, peer_count: s.peer_count, min: s.min, p25: s.p25, median: s.median, p75: s.p75, max: s.max };
-    });
-    if (!boxes.length) {
-      chart.innerHTML = P.states.empty({
-        title: "No sector spread to show yet",
-        copy: "No SIC sector has enough companies reporting " + res.label + " for fiscal year " +
-          res.fiscal_year + " to plot a spread. This fills in as more filings are ingested — it is not zero.",
-      });
-      return;
-    }
-    var width = P.measuredWidth(chart, 720);
-    chart.appendChild(P.boxWhiskerChart(boxes, {
-      width: width,
-      height: Math.max(120, boxes.length * 22 + 40),
-      title: res.label + " · FY" + res.fiscal_year,
-      metric: res.metric,
-      unit: res.unit,
-      caption:
-        "Each box is one SIC-2 sector’s spread across its companies (min · p25 · median · p75 · max), " +
-        "ordered by median — descriptive, not a ranking of quality. N/A companies are excluded, never counted as zero.",
-    }));
-  }
-
-  function spreadCaveatsBlock(res) {
-    var caveats = (res.caveats || []).map(function (c) { return "<li>" + P.esc(c) + "</li>"; }).join("");
-    if (!caveats) return "";
-    return (
-      '<details class="disclosure spread-caveats"><summary>How to read these spreads (' +
-      (res.caveats || []).length + " notes)</summary><ul>" + caveats + "</ul></details>"
-    );
-  }
-
   // The signature: the DuPont identity shown literally, ROE = margin × turnover × leverage.
   function dupontTree(pt, label) {
     var legs = [
@@ -519,17 +519,10 @@
         state.range = btn.getAttribute("data-range");
         mount.querySelectorAll(".range-toggle button").forEach(function (b) { b.classList.remove("on"); });
         btn.classList.add("on");
+        syncURL();
         paintTrend(chartWrap, pts);
       });
     });
-  }
-
-  function maybeAutoExpand() {
-    // ?group=<2-digit> auto-opens a sector (used by the e2e render check). Scroll it into view.
-    if (state.expanded) {
-      var row = $("view").querySelector('.sector-row[data-group="' + state.expanded + '"]');
-      if (row) row.scrollIntoView({ block: "center" });
-    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

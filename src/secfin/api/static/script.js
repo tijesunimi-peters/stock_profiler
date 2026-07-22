@@ -21,8 +21,13 @@
     var current = document.body.getAttribute("data-shell") || "";
 
     var GROUPS = [
+      // "Sectors" is the sector-analytics altitude group: a nested parent whose children are the
+      // altitudes. Phase 1 ships Overview only; Company / Compare / Qualitative join as their
+      // sector-scoped views are built (docs/REDESIGN_SECTOR_OVERVIEW.md).
       { label: "Overview", items: [
-        { key: "sectors", label: "Sectors", href: "/sectors" },
+        { key: "sectors", label: "Sectors", href: "/sectors", children: [
+          { key: "sectors", label: "Overview", href: "/sectors" },
+        ] },
       ] },
       { label: "Data", items: [
         { key: "company", label: "Company hub", href: "/company/AAPL" },
@@ -42,21 +47,37 @@
       '<span class="logo-mark"><span class="logo-dot"></span></span>' +
       '<span class="logo-word">ClearyFi</span></a>';
 
+    function sideLink(it) {
+      var cur = it.key === current;
+      return (
+        '<a class="side-link' + (cur ? " current" : "") + '" href="' + it.href + '"' +
+        (cur ? ' aria-current="page"' : "") + ">" + it.label +
+        (it.hint ? '<span class="side-hint">' + it.hint + "</span>" : "") +
+        "</a>"
+      );
+    }
+    function sideItem(it) {
+      if (!it.children) return sideLink(it);
+      // A nested altitude group: a keyboard-reachable parent button + its indented children.
+      // Expanded by default; the parent reads as active when it (or a child) matches the page.
+      var active = it.key === current || it.children.some(function (c) { return c.key === current; });
+      return (
+        '<div class="side-nest">' +
+        '<button type="button" class="side-parent' + (active ? " ancestor" : "") + '" aria-expanded="true">' +
+        '<span class="side-caret" aria-hidden="true">▾</span>' + it.label +
+        "</button>" +
+        '<div class="side-children">' + it.children.map(sideLink).join("") + "</div>" +
+        "</div>"
+      );
+    }
+
     side.innerHTML =
       logo +
       GROUPS.map(function (g) {
         return (
           '<nav class="side-group" aria-label="' + g.label + '">' +
           '<div class="side-group-label">' + g.label + "</div>" +
-          g.items.map(function (it) {
-            var cur = it.key === current;
-            return (
-              '<a class="side-link' + (cur ? " current" : "") + '" href="' + it.href + '"' +
-              (cur ? ' aria-current="page"' : "") + ">" + it.label +
-              (it.hint ? '<span class="side-hint">' + it.hint + "</span>" : "") +
-              "</a>"
-            );
-          }).join("") +
+          g.items.map(sideItem).join("") +
           "</nav>"
         );
       }).join("") +
@@ -117,6 +138,12 @@
     });
     if (scrim) scrim.addEventListener("click", function () { setDrawer(false); });
     side.addEventListener("click", function (e) {
+      var parent = e.target.closest(".side-parent");
+      if (parent) {
+        // Toggle the nested altitude group (the <button> handles Enter/Space natively).
+        parent.setAttribute("aria-expanded", parent.getAttribute("aria-expanded") === "true" ? "false" : "true");
+        return; // a parent toggle must not also close the mobile drawer
+      }
       if (e.target.closest("a")) setDrawer(false);
     });
   }
