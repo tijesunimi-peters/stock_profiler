@@ -34,7 +34,10 @@ updated: 2026-07-22
       SIC peers re-focuses; context pill 10 peers·SIC 35 + FY2025; ticker pill only on ticker search
       (AAPL), cleared on dot-click; composite real P + 'not a ranked position' + 'trend — to be
       defined' placeholder + click-decompose; dots neutral/diamond accent no color; mobile overflow=0;
-      Sector/old-sectors intact. Manual click-through pending operator.)
+      Sector/old-sectors intact. MANUAL UI VERIFICATION COMPLETE (operator 2026-07-22, 4/4): step 3
+      found a dead-end (dataless-ticker search had no way back) -> fixed in-cycle (cycle 1) with a
+      "← Back to a default filer" button + name label fix (33c68da); re-confirmed. Verdict: PASS,
+      ready to deploy.)
 
 ## Notes / open loops
 - Second fidelity iteration (Sector done: sector-fidelity 10cf5ba). Company view ONLY.
