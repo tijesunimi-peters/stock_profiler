@@ -132,7 +132,9 @@ the actual sector page; 2–4 completed the app.
 
 - **Supersedes:** the `/sectors` UI shipped in `REDESIGN_SECTOR_OVERVIEW.md` Phases 1–3 (single-
   sector shell, scorecard-with-color, peer strip/shifts/drill-down). Kept on `master`'s history but
-  replaced on the page.
+  replaced on the page. **The actual `/sectors` → app migration is planned in
+  `docs/ROADMAP_SECTOR_MIGRATION.md`** (parity port of the DuPont tree + trends + lifecycle, then the
+  routing swap).
 - **Preserves:** all backend from Phase 0 (theme scores + batch + endpoint) and the DuPont/spreads/
   lifecycle endpoints. No `src/secfin/` change expected except possibly one new read endpoint for
   the Company dot-plot (Phase 2).
