@@ -5,6 +5,13 @@ feature** — full suite, static honesty/CSP checks, the Docker e2e headless ren
 puppeteer **interaction drive** (15 assertions, all pass), and eyeballing every screenshot incl.
 mobile. Branch: `sector-app-shell` (off `master`).
 
+> Retrofit note (2026-07-22): the review questionnaire + manual UI verification sections were added
+> after the QA-Tester skill gained those requirements. The operator ran the manual click-through on
+> 2026-07-22 against the seeded `:8001` instance — the built behaviour is confirmed (incl. the honest
+> empty-scorecard state); steps 2 & 7 surfaced **change requests** (add favorability color; tile-click
+> shows the decomposition; sub-industry pill), deferred to `docs/delivery/sector-app-followups.md`
+> **F4/F5/F6** — not Phase 1 defects.
+
 `pytest` **506 passed, 6 skipped** (the `main.py` route). e2e **HEADLESS CHECK: PASS**, `errors=0`.
 Interaction drive **QA-APP: ALL PASS**. No favorability tokens used; no CDN/Tailwind/React;
 `sectors.*` unchanged.
@@ -28,6 +35,45 @@ Interaction drive **QA-APP: ALL PASS**. No favorability tokens used; no CDN/Tail
 | AC-13 CSP-safe + mobile reflow | **PASS** | `sector-analytics.html`: no CDN/Tailwind/React. Mobile 390px: `scrollWidth−clientWidth=0` on both the populated (`qa-app-mobile-populated`) and honest-empty (`qa-app-mobile`) states; sidebar hidden, rail wraps, scorecard 2-col, shifts/drill-down stack — eyeballed. |
 | AC-14 `/sectors` still serves the OLD page | **PASS** | Runtime: `GET /sectors` returns markup with `#sectorbar` (old page); `GET /sector-analytics` returns `#app` + `sectorapp.js`. `sectors.*` diff vs master = empty. |
 | AC-15 pytest green | **PASS** | 506 passed, 6 skipped. |
+
+## Review questionnaire
+
+1. **What shipped.** A "paper-terminal" sector page at **`/sector-analytics`**: opens on a sector's
+   composite-health **scorecard** (7 tiles = 5 scored + 2 "not yet scored"), each with a 0–100 score,
+   an **↑/↓/→ delta** vs last FY, a "vs all sectors" percentile + rank. Click a score → its
+   **decomposition**; click a tile → its **peer strip** + dispersion **drill-down**. A **biggest-shifts**
+   list flags the largest standardized moves. Sidebar + sticky header + sector control bar + a
+   Sector/Company/Compare/Qualitative **view rail** frame it. The old `/sectors` page is untouched.
+2. **Surfaces touched.** **Frontend-only.** New route `/sector-analytics` (one-line `FileResponse` in
+   `api/main.py`); new self-contained `static/sector-analytics.html` + `sectorapp.js` + `sectorapp.css`
+   (reuse `style.css` tokens + `app.js` helpers; do **not** load `app.css`/`sectors.*`). Consumes the
+   existing `/v1/sectors`, `/sectors/theme-scores`, `/sectors/{group}`, `/spreads`, `/lifecycle`
+   endpoints. No schema/normalize/storage change.
+3. **AC → evidence.** All **15 ACs PASS** (per-AC table above), each tied to a driven assertion or
+   screenshot: `sectorapp.png`, `sectorapp-decomp.png`, the 15-assertion interaction drive, the
+   `/sectors`-vs-`/sector-analytics` markup check (AC-14), neutral computed delta color (AC-10).
+   Re-confirmed on `:8001`: group 73 = 5 scored + 2 deferred; `profitability` score 68, P82, rank 2/11,
+   delta +5, 4 constituents.
+4. **States exercised.** Populated scorecard (73: 5+2; 60: 4+2); loading until `theme-scores` resolves;
+   decomposition open/close; tile-expand → peer strip + drill-down; populated drill-down
+   (financial_health) vs honest empty drill-down; **honest empty scorecard** for an unscored sector
+   (group 52) — code path, later confirmed live in the manual step.
+5. **Edge cases probed.** N/A-never-0: null delta → "→ no prior FY"; deferred themes → "not yet scored";
+   omitted drill-down constituents omitted (not zeroed) with an honest empty state. Unknown `?group=`
+   → falls back to the largest sector. 13F/restatement/multi-class/429/upstream-502 — **N/A** (reads
+   materialized sector aggregates; no per-filing/13F/upstream-SEC on the request path).
+6. **Honesty contract.** No favorability color (grep clean; neutral computed delta color; direction via
+   ↑/↓/→ + position + single terracotta accent); deferred themes as honest "not yet scored"; provisional
+   banner + "a position, not a good/bad or buy verdict"; **no** fabricated coverage %/sub-industry/feed;
+   no buy/sell/alpha copy. *(NB: the operator has since reversed the no-color stance — see F4.)*
+7. **Deltas from the brief.** None material — all 15 ACs met. Automation gaps: (a) the **new app's**
+   honest empty-scorecard state was never given its own e2e screenshot (only the old `/sectors` had one)
+   — **closed** by the manual step below; (b) felt shell interactions (dropdown open, sticky header on
+   scroll) only partially driven — covered in the manual step.
+8. **Residual risk.** A human should confirm the empty-scorecard renders cleanly (not a broken/partial
+   scorecard), the dropdown/scroll/decomposition/drill-down feel, and mobile reflow — all **run in the
+   manual step below**. Biggest worry (an unscored sector showing a broken partial scorecard) — **not
+   observed**; the honest empty state renders.
 
 ## UI/UX review
 
@@ -54,9 +100,38 @@ Interaction drive **QA-APP: ALL PASS**. No favorability tokens used; no CDN/Tail
 - **O-2:** Full re-render on each interaction (state cached; box-whisker nodes remounted). Fine at
   this scale.
 
+## Manual UI verification (operator-run, 2026-07-22)
+
+Run against the seeded `:8001` instance (`docker compose run -d --rm --name secfin-verify -e
+SECFIN_ANON_RATE_LIMIT_PER_SEC=1000 --publish 8001:8000 e2e-app`). Eight hands-on steps:
+
+1. **Shell** (`/sector-analytics`) — sidebar + sticky header + control bar (dropdown + meta + legend)
+   + view rail (Sector active). → **Confirmed.** *(operator note: no sub-industry pill → CR-A / F6.)*
+2. **Scorecard** — 7 tiles (5 scored + 2 "not yet scored"), no favorability color. → **Confirmed as
+   built.** *(operator change requests: add up/down delta **color** → CR-B / F4; make "what drove the
+   score" reachable from the tile → CR-C / F5.)*
+3. **Sector dropdown** re-derives the whole view. → **Confirmed.**
+4. **Score click → decomposition** opens/closes; tile not expanded. → **Confirmed.**
+5. **Tile-body click → peer strip + drill-down** (populated + honest empty). → **Confirmed.**
+6. **Empty scorecard** (`?group=52`, unscored) → honest "scores aren’t available yet", not
+   broken/partial. → **Confirmed** (closes the questionnaire's automation gap #7a).
+7. **Biggest-shifts** — arrow glyphs + basis, no color. → **Confirmed as built.** *(operator: add
+   color → CR-B / F4.)*
+8. **Mobile 390px** — clean reflow, no horizontal scroll. → **Confirmed.**
+
+**Outcome:** the built behaviour is confirmed on every step; no defect against the Phase 1 brief.
+Three **change requests** surfaced (not defects — the operator wants different behaviour than the
+agreed brief), logged for follow-up iterations after Phases 1–4:
+- **F4** — reintroduce favorability **color** on deltas + biggest shifts (and across views).
+  **Reverses** the locked "no favorability color" decision; recorded in REDESIGN_SECTOR_APP.md +
+  STYLE_GUIDE §1. Color must **accompany** the arrow/position (never color alone); score stays neutral.
+- **F5** — a **tile click** surfaces **both** the decomposition and the peer strip/drill-down.
+- **F6** — **sub-industry** (SIC-4) in the control bar — needs real backend data first (do not fabricate).
+
 ## Handoff
 
-**Verdict: PASS — no defects.** This is Phase 1 of the new 4-view Sector Analytics app (the "sector
+**Verdict: PASS — no defects.** (Manual UI verification complete 2026-07-22; the three items above are
+deferred enhancements/reversals, not blockers.) This is Phase 1 of the new 4-view Sector Analytics app (the "sector
 page from scratch"), at **`/sector-analytics`**, with `/sectors` untouched.
 
 **Ready to deploy (frontend):** static assets + one static route; deploy = rebuild the `api` image +

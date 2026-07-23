@@ -17,6 +17,13 @@ Status: **scoping (2026-07-22).** Not yet handed to `/deliver`.
   position only**, single terracotta accent. This **reverts the Phase 2 favorability trio**
   (`--positive/--caution/--negative`) and restores the original `STYLE_GUIDE §7` "never color alone"
   rule. The favorability tokens are removed from the new sector UI.
+  - **⚠ REVERSED (operator, 2026-07-22 — Phase 1 manual UI verification):** favorability color is
+    coming **back**. The `--positive/--caution/--negative` trio (the documented `STYLE_GUIDE §1`
+    scorecard exception) will signal up/down direction on the score **deltas + biggest shifts** (and
+    consistently across views), **always paired with the arrow glyph/position** (never color alone),
+    with the score/value kept a neutral `--ink` (still a **position, not a verdict**). The decision is
+    recorded here + in honesty-flag 3 below; the code + full doc rewrite are deferred to **followup
+    F4** (`docs/delivery/sector-app-followups.md`).
 - **Keep the backend** — reuse the shipped Track-1 endpoints; do **not** fabricate the synthetic
   parts of the prototype. Where the backend can't honestly fill a prototype element, omit/defer it
   or mark it unmistakably illustrative (see per-view mapping).
@@ -67,7 +74,10 @@ via ↑/↓). Provisional banner on the scorecard, as in the prototype.
    an honest placeholder. (Phase 4.)
 2. **No fabricated coverage % / sub-industry / filing feed** — omit or mark illustrative; never show
    a made-up "94% filed".
-3. **No favorability color anywhere** in the new sector UI (revert Phase 2).
+3. ~~**No favorability color anywhere** in the new sector UI (revert Phase 2).~~ **REVERSED
+   (operator, 2026-07-22):** favorability color returns per the locked-decisions note above —
+   direction color on deltas + biggest shifts (and across views), **paired** with the arrow/position
+   (never color alone), score kept neutral. Implementation deferred to **followup F4**.
 4. Everything real stays traceable + carries the status vocabulary (OK / ≈ approx / ∅ N/A / ~ N/M).
 
 ## Proposed phasing (each a `/deliver` run, branched, stacked)

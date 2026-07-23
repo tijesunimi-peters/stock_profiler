@@ -65,7 +65,7 @@ introduce new hues. Reference them as CSS variables; never hard-code hexes in a 
 | Accent ink | `--accent-ink` | `#8A5A2F` | Accent text on wash, open-provenance label |
 | Accent wash | `--accent-wash` | `#F3E4D5` | Active pill fill, revealed-value highlight |
 
-### Favorability — the sector scorecard exception (redesign Phase 2)
+### Favorability — the sector scorecard exception (redesign Phase 2; extended to the sector app 2026-07-22)
 | Token | Var | Hex | Use |
 |---|---|---|---|
 | Positive | `--positive` / `--positive-wash` | `#5E7D4F` / `#E6ECDD` | Improving/favorable direction on a sector theme score |
@@ -81,6 +81,14 @@ general good/bad palette elsewhere; (2) it is always paired with a **glyph** (�
 so meaning never rests on color alone; (3) the **score is a POSITION vs other sectors, not a good/bad
 or buy/sell verdict** — the scorecard's caveats say so and the score number itself stays neutral
 `--ink`, never a saturated fill.
+
+> **Extended to the `/sector-analytics` app (operator decision, 2026-07-22).** The paper-terminal
+> app originally shipped **color-free** (arrow glyphs only). The operator reversed that during Phase 1
+> manual UI verification: the **same trio + same three rules above** now also apply to the app's
+> score **deltas + biggest shifts** (and, consistently, wherever direction is shown across its views).
+> Color **accompanies** the arrow/position — never color alone. Implementation is tracked as
+> **followup F4** in `docs/delivery/sector-app-followups.md`; until it lands, the app is still
+> color-free in code.
 
 ### Audit badges (data provenance — from `app.css`)
 | Token | Var | Hex | Use |

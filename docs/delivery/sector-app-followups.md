@@ -77,6 +77,76 @@ Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
   identity** — we key the focal on CIK and store `name`, not ticker, so the pill is only available on
   a ticker search, not on dot-click re-focus.
 
+## F4 — Reintroduce favorability color across the sector app (REVERSES a locked decision) — OPEN
+
+- **Source:** Phase 1 (`sector-app-shell`) **manual UI verification** — operator, 2026-07-22 (steps 2
+  & 7: "add colors" for deltas + biggest shifts).
+- **Decision:** the operator **reversed** the locked "no favorability color" premise of the redesign
+  (REDESIGN_SECTOR_APP.md locked decisions + honesty-flag 3, both now annotated as reversed; the
+  STYLE_GUIDE §1 favorability exception is extended to the app). Favorability color is coming **back**.
+- **Request:** apply the documented `--positive`/`--caution`/`--negative` trio to signal up/down
+  **direction** on the score **deltas + biggest shifts** in the Sector view, and — consistently —
+  wherever direction is shown across the app's views (Company, Compare).
+- **Honesty rails (carry these into the implementation):**
+  - Color **accompanies** the arrow glyph (↑/↓/→) + track position — **never color alone** (a11y +
+    STYLE_GUIDE §7). The arrow stays; color is additive.
+  - The **score/value stays neutral `--ink`** (a saturated fill is not the score) — the score is a
+    **POSITION vs other sectors, not a good/bad or buy/sell verdict**; keep that caveat visible.
+  - Use the **muted earthy trio** (moss / amber / brick), **not** a primary green/red stoplight.
+- **Scope:** frontend across `sectorapp.js`/`sectorapp.css` (re-add the `--positive/--caution/--negative`
+  tokens — note they live in `style.css`, so no new tokens needed) + finish the **doc rewrite**
+  (REDESIGN honesty-flag 3, the STYLE_GUIDE note, and the per-phase "no favorability color" lines)
+  once the code lands, so code and docs match.
+
+## F5 — Sector view: clicking a tile surfaces BOTH the decomposition and the peer strip/drill-down — OPEN
+
+- **Source:** Phase 1 manual UI verification — operator, 2026-07-22 (step 2: "selecting the scorecard
+  should display what drove the score also"; chosen resolution: **tile click shows both**).
+- **Today:** clicking the small dashed **score number** opens the decomposition ("what drove the
+  score"); clicking the **tile body** re-points the peer strip + drill-down. Two targets, two results.
+- **Request:** a **tile click** should surface **both** — the decomposition *and* the peer strip +
+  drill-down — together, so "what drove the score" is discoverable without hunting the small number.
+- **Scope:** frontend-only (`sectorapp.js` interaction wiring + `sectorapp.css` layout for showing
+  both panels); keep the score number as a secondary affordance if useful.
+
+## F6 — Sub-industry in the sector control bar (needs backend data) — OPEN
+
+- **Source:** Phase 1 manual UI verification — operator, 2026-07-22 (step 1: "I don't see the
+  sub-industry in the control bar").
+- **Context:** sub-industry pills were **deliberately omitted** (Phase 1 AC-4) because there is **no
+  SIC-4 sub-industry grouping in the backend** — omitting beats fabricating.
+- **Request:** show sub-industry (SIC-4) in the control bar.
+- **Honesty gate — needs data first:** this is **not** frontend-only. It requires materializing a
+  real SIC-4 sub-industry axis (grouping + peer sets + likely scores/spreads at that granularity)
+  before any pill can be shown. **Do not fabricate** sub-industry labels/counts. Route the data work
+  through the PM/architect when picked up.
+
+## F7 — Sector view: match the prototype's column layout more closely — OPEN
+
+- **Source:** prototype Sector-view design comparison vs. Phase 1 — operator, 2026-07-22
+  (`docs/design/sector-app-prototype/prototype.dc.html` altitude-1 block vs. `sectorapp.js`/`.css`).
+- **Context:** the shell + scorecard are already a pixel-accurate rebuild (sidebar 210px, rail 132px,
+  main 1440px, scorecard `repeat(auto-fit,minmax(158px,1fr))`, tiles). These two lower rows diverge.
+- **Sub-items (frontend-only, cosmetic/fidelity):**
+  1. **Drill-down bottom row → the prototype's `grid-template-columns: 3fr 2fr` proportion.** The
+     prototype puts the drill-down in the left **3fr** with a **2fr** column on the right; ours
+     collapses to a **single full-width** drill-down because the prototype's right-hand column was a
+     **filing-event feed** we deliberately dropped. Constrain the drill-down to the ~3/5 width and
+     leave the 2fr space empty **or** repurpose it with **real Track-1 content only**.
+     **HONESTY GATE:** do **not** re-introduce the filing-event feed / any fabricated "What's moving"
+     data (Track-2, no backend — Phase 1 AC-4 / REDESIGN honesty flag 2). If nothing honest fills the
+     2fr column, leaving the drill-down full-width is an acceptable alternative — operator's call at
+     pick-up.
+  2. **Match the decomposition + biggest-shifts column widths to the prototype.** Decomposition row:
+     prototype `200px · 60px · 1fr · 52px` vs ours `minmax(140px,220px) · 48px · 1fr · 64px`.
+     Biggest-shifts row: prototype flexbox `glyph 14px · name flex:1 · flag-chip · delta 80px ·
+     basis 150px` vs ours grid `16px · minmax(120,1.6fr) · 90px · minmax(120,1.4fr)` (no dedicated
+     flag column). Align the exact widths (and add the shift "flag" column) if pixel-fidelity is
+     wanted — note ours is currently more responsive, so weigh fidelity vs. the `minmax()` behaviour.
+- **Also noted (tiny, may fold in):** the provisional banner uses `var(--ext)`, undefined on this page
+  (app doesn't load `app.css`), so it renders without the prototype's rust tint — same class of
+  pre-existing token gap flagged for F3/Compare.
+
 ---
 
 *Add further deferred items below as they arise, with their source (phase + how found) and date.*
