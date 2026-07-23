@@ -107,6 +107,10 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-tile-score:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .pa-tile-score:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pa-tile-delta { font-family: var(--font-mono); font-size: 12px; color: var(--ink-soft); display: inline-flex; align-items: baseline; gap: 3px; }
+/* Favorability trio on the trend-delta chip ONLY (STYLE_GUIDE §1 exception); color accompanies the
+   arrow glyph inside the chip -- never color alone. The score number stays neutral --ink. */
+.pa-tile-delta.pos { color: var(--positive); background: var(--positive-wash); border-radius: 6px; padding: 1px 6px; }
+.pa-tile-delta.neg { color: var(--negative); background: var(--negative-wash); border-radius: 6px; padding: 1px 6px; }
 .pa-glyph { font-family: var(--font-mono); }
 .pa-tile-pctile { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
 .pa-tile-rank { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); border-top: 1px solid var(--rule); padding-top: 5px; }
@@ -124,7 +128,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-decomp-title { font-weight: 800; font-size: 16px; color: var(--ink); }
 .pa-decomp-close { cursor: pointer; font-family: var(--font-mono); font-size: 11px; color: var(--accent-ink); background: none; border: none; }
 .pa-decomp-method { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin: 4px 0 12px; line-height: 1.5; }
-.pa-decomp-row { display: grid; grid-template-columns: minmax(140px, 220px) 48px 1fr 64px; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--rule); }
+.pa-decomp-row { display: grid; grid-template-columns: 200px 60px 1fr 52px; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--rule); }
 .pa-decomp-label { font-size: 13px; color: var(--ink-body); }
 .pa-decomp-weight { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
 .pa-decomp-bar { height: 8px; background: var(--bg-badge); border-radius: 4px; overflow: hidden; }
@@ -138,15 +142,31 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-ps-bar.focal { background: var(--accent); }
 
 /* ---- biggest shifts ---- */
-.pa-shift-row { display: grid; grid-template-columns: 16px minmax(120px, 1.6fr) 90px minmax(120px, 1.4fr); align-items: baseline; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); }
-.pa-shift-glyph { font-family: var(--font-mono); font-size: 15px; color: var(--ink-soft); text-align: center; }
-.pa-shift-name { font-size: 13.5px; color: var(--ink-body); }
-.pa-shift-delta { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); }
-.pa-shift-basis { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); text-align: right; }
+/* prototype flex row: glyph 14px | name flex:1 | flag chip | delta 80px | basis 150px */
+.pa-shift-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); }
+.pa-shift-glyph { font-family: var(--font-mono); font-size: 15px; color: var(--ink-soft); width: 14px; text-align: center; flex: none; }
+.pa-shift-name { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink-body); }
+.pa-shift-flag { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ext); background: var(--ext-bg); border: 1px solid var(--ext-border); border-radius: 6px; padding: 2px 7px; flex: none; }
+.pa-shift-delta { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); width: 80px; text-align: right; flex: none; }
+.pa-shift-basis { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); width: 150px; text-align: right; flex: none; }
 
 /* ---- drill-down ---- */
 .pa-drill-cover { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
 .pa-drill-boxes .plot-chart { margin: 2px 0 6px; }
+
+/* prototype's 3fr 2fr bottom row: drill-down (left) + placeholder feed (right) */
+.pa-drill-row { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; margin-top: 16px; }
+.pa-drill-row .pa-drill { margin-top: 0; }
+
+/* Honest placeholders (never mistakable for data): dashed, muted, with a "placeholder" micro-label. */
+.pa-ph { color: var(--mono-muted); }
+.pa-meta-item.pa-ph { color: var(--mono-muted); font-style: italic; }
+.pa-subind { display: flex; align-items: center; gap: 9px; margin-top: 10px; }
+.pa-subind-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-ph-pill { font-size: 12px; color: var(--mono-muted); background: var(--bg-tint); border: 1px dashed var(--border-strong); border-radius: 999px; padding: 3px 11px; }
+.pa-ph-tag { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); border: 1px dashed var(--border-strong); border-radius: 6px; padding: 2px 7px; }
+.pa-feed.pa-ph { background: var(--bg-tint); border-style: dashed; border-color: var(--border-strong); }
+.pa-feed-body { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
 
 /* ---- Company view (altitude 2): peer dot-plots ---- */
 .pa-co-head { display: flex; align-items: baseline; gap: 8px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; flex-wrap: wrap; }
@@ -191,6 +211,9 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
    The app is self-contained (it does not load app.css), so B's blue is a LOCAL named token here --
    the same slate blue app.css names --gaap-color -- not app.css's token. ---- */
 .pa-app { --pa-b: #3d6a8a; }
+/* Self-contained ext (rust) tokens -- the page doesn't load app.css, so var(--ext*) would be
+   undefined. Same values as app.css; used by the provisional banner, approx chip, and shift flag. */
+.pa-app { --ext: #b04a3a; --ext-bg: #f5e2da; --ext-border: #e8c4b4; }
 .pa-cmp-idA { --pa-cmp: var(--accent); }
 .pa-cmp-idB { --pa-cmp: var(--pa-b); }
 
@@ -258,14 +281,16 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-co-rail { position: static; }
   .pa-cmp-cards { grid-template-columns: 1fr; }
   .pa-qual-grid { grid-template-columns: 1fr; }
+  .pa-drill-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .pa-main { padding: 14px 16px 60px; }
   .pa-decomp-row { grid-template-columns: 1fr 56px; grid-auto-rows: auto; row-gap: 2px; }
   .pa-decomp-bar { grid-column: 1 / -1; }
   .pa-decomp-weight { display: none; }
-  .pa-shift-row { grid-template-columns: 16px 1fr auto; }
-  .pa-shift-basis { grid-column: 2 / -1; text-align: left; }
+  .pa-shift-row { flex-wrap: wrap; }
+  .pa-shift-name { flex: 1 1 60%; }
+  .pa-shift-basis { width: auto; flex: 1 1 100%; text-align: left; order: 5; }
   .pa-dd-btn { min-width: 0; }
   .pa-cmp-selects { flex-direction: column; gap: 8px; }
   .pa-cmp-select { min-width: 0; width: 100%; }

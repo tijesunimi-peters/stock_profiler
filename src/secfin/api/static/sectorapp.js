@@ -213,7 +213,8 @@
     ensureSectorData();
   }
   function setView(v) { state.view = v; renderApp(); }
-  function expandTheme(theme) { state.expandedTheme = theme; renderApp(); }
+  // A tile click opens BOTH the decomposition (what drove the score) AND the peer strip + drill-down.
+  function expandTheme(theme) { state.expandedTheme = theme; state.decompTheme = theme; renderApp(); }
   function toggleDecomp(theme) { state.decompTheme = state.decompTheme === theme ? null : theme; renderApp(); }
   function togglePin() {
     // Pin the current sector as A and jump into the Compare view (the operator picks B there).
@@ -304,7 +305,9 @@
     var meta = state.sectors
       ? '<span class="pa-meta-item">' + (sel ? sel.peer_count + " filers" : "—") + "</span>" +
         '<span class="pa-meta-item">FY' + state.sectors.fiscal_year + "</span>" +
-        '<span class="pa-meta-item">full peer set</span>'
+        '<span class="pa-meta-item">full peer set</span>' +
+        // coverage is not tracked yet -> an honest placeholder, never a fabricated "% filed"
+        '<span class="pa-meta-item pa-ph">coverage — to be defined</span>'
       : '<span class="pa-meta-item">loading…</span>';
     return (
       '<section class="pa-ctrl">' +
@@ -313,6 +316,9 @@
       '<div class="pa-dd"><button class="pa-dd-btn" id="paDdBtn">' +
       '<span>' + (sel ? P.esc(sel.group_label) : "Select a sector") + "</span>" +
       '<span class="pa-dd-caret' + (state.ddOpen ? " open" : "") + '">▾</span></button>' + menu + "</div>" +
+      // Sub-industry (SIC-4) is not materialized yet -> an honest placeholder pill, no fabricated names.
+      '<div class="pa-subind"><span class="pa-subind-label">Sub-industry</span>' +
+      '<span class="pa-ph-pill">to be defined</span></div>' +
       '<div class="pa-meta">' + meta +
       '<span class="pa-meta-spacer"></span>' +
       '<span class="pa-legend">' +
@@ -397,6 +403,13 @@
     if (d === 0) return "±0";
     return (d > 0 ? "+" : "") + d;
   }
+  // Favorability of the trend-delta chip (STYLE_GUIDE §1 exception): a higher theme score is always
+  // more favorable, so delta>0 is positive, delta<0 negative; flat/null stays neutral (no color).
+  // Color ACCOMPANIES the arrow glyph (never color alone); the score number itself stays neutral.
+  function deltaClass(d) {
+    if (d === null || d === undefined || d === 0) return "";
+    return d > 0 ? " pos" : " neg";
+  }
 
   function renderSectorView(vp) {
     var g = selectedGroup();
@@ -422,7 +435,8 @@
       (state.decompTheme ? decompHtml(entry) : "") +
       peerStripHtml() +
       shiftsHtml(g) +
-      drilldownHtml(entry, g);
+      // prototype's 3fr 2fr row: drill-down (left) + an honest placeholder where its filing feed was
+      '<div class="pa-drill-row">' + drilldownHtml(entry, g) + feedPlaceholderHtml() + "</div>";
     wireSectorView();
     mountDrilldown(entry, g);
   }
@@ -430,7 +444,7 @@
   function secHead() {
     return (
       '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Health scorecard</h2></div>' +
-      '<div class="pa-sec-sub">Seven composite themes · click a score to open its decomposition · click a tile to expand its peers &amp; dispersion</div>'
+      '<div class="pa-sec-sub">Seven composite themes · click a tile to open its decomposition, peers &amp; dispersion</div>'
     );
   }
 
@@ -450,7 +464,7 @@
         '<div class="pa-tile-name">' + P.esc(t.theme_label) + "</div>" +
         '<div class="pa-tile-scorerow">' +
         '<button class="pa-tile-score" data-score-theme="' + P.esc(t.theme) + '" title="Show what drove this score">' + P.esc(String(t.score)) + "</button>" +
-        '<span class="pa-tile-delta"><span class="pa-glyph">' + deltaGlyph(t.delta_vs_prior_fy) + "</span>" + P.esc(deltaLabel(t.delta_vs_prior_fy)) + "</span>" +
+        '<span class="pa-tile-delta' + deltaClass(t.delta_vs_prior_fy) + '"><span class="pa-glyph">' + deltaGlyph(t.delta_vs_prior_fy) + "</span>" + P.esc(deltaLabel(t.delta_vs_prior_fy)) + "</span>" +
         "</div>" +
         '<div class="pa-tile-pctile">' + P.esc(pct) + " · vs all sectors</div>" +
         '<div class="pa-tile-rank">' + P.esc(rank) + "</div>" +
@@ -531,10 +545,13 @@
         body = cands.map(function (r) {
           var glyph = r.change > 0 ? "↑" : r.change < 0 ? "↓" : "→";
           var val = (r.change > 0 ? "+" : "") + metricFmt(r.metric, r.change).replace(/^-/, "−");
+          // "notable" is a real threshold on the standardized move (|z| >= 1.5), not fabricated.
+          var flag = Math.abs(r.z) >= 1.5 ? '<span class="pa-shift-flag">notable</span>' : "";
           return (
             '<div class="pa-shift-row">' +
             '<span class="pa-shift-glyph">' + glyph + "</span>" +
             '<span class="pa-shift-name">' + P.esc(SHIFT_LABELS[r.metric] || r.metric) + "</span>" +
+            flag +
             '<span class="pa-shift-delta">' + P.esc(val) + "</span>" +
             '<span class="pa-shift-basis">' + (r.z >= 0 ? "+" : "−") + Math.abs(r.z).toFixed(1) + "σ vs its own history</span>" +
             "</div>"
@@ -570,6 +587,19 @@
         '<div class="pa-empty-inline">No peer distribution for this theme’s constituents yet — sparse coverage, not zero. See the score decomposition for the full constituent set.</div></div>';
     }
     return '<div class="pa-card pa-drill">' + head + cover + '<div class="pa-drill-boxes" id="paDrillBoxes"></div></div>';
+  }
+
+  // The prototype's right-hand 2fr column was a synthetic "What's moving" filing-event feed (8-K /
+  // Form 4 / S-1) -- Track 2, not ingested. Honest placeholder, never fabricated items.
+  function feedPlaceholderHtml() {
+    return (
+      '<div class="pa-card pa-feed pa-ph"><div class="pa-card-head">' +
+      '<span class="pa-card-title">What’s moving</span>' +
+      '<span class="pa-ph-tag">placeholder</span></div>' +
+      '<div class="pa-feed-body">A filing-event feed (8-K / Form 4 / S-1) would sit here — that’s ' +
+      'Track 2 (free-text / filing metadata) we don’t ingest yet. To be defined; nothing here is ' +
+      "fabricated.</div></div>"
+    );
   }
 
   function mountDrilldown(entry, g) {

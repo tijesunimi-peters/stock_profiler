@@ -136,10 +136,12 @@ const PAGES = process.env.PAGES
         await new Promise((r) => setTimeout(r, 1200));
       }
       if (name === "sectorapp-decomp") {
-        // Open a theme score's decomposition (contribution bars, single accent, arrow sign).
-        await page.waitForSelector(".pa-tile-score");
-        await page.click(".pa-tile-score");
-        await new Promise((r) => setTimeout(r, 400));
+        // Click a scorecard TILE -> opens BOTH the decomposition AND the peer strip + drill-down
+        // (the 3fr/2fr drill row with the placeholder feed on the right). Captures the colored
+        // trend-delta chip + the placeholder columns too.
+        await page.waitForSelector(".pa-tile[data-theme]");
+        await page.click(".pa-tile[data-theme]");
+        await new Promise((r) => setTimeout(r, 500));
       }
       if (name === "sectorapp-company" || name === "sectorapp-company-refocus") {
         // Wait for the dot-plots to load; the refocus shot then clicks a peer dot to re-focus.

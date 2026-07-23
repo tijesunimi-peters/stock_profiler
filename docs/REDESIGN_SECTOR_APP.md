@@ -71,9 +71,21 @@ via ↑/↓). Provisional banner on the scorecard, as in the prototype.
 1. **Qualitative view is Track 2** (CLAUDE.md guardrail 1). **LOCKED (operator 2026-07-22): a
    "Coming — Track 2" stub view** — build the view's frame with a prominent "Track 2 · not yet
    derived from filings" message and **no fabricated figures**. The rail entry stays; the panel is
-   an honest placeholder. (Phase 4.)
-2. **No fabricated coverage % / sub-industry / filing feed** — omit or mark illustrative; never show
-   a made-up "94% filed".
+   an honest placeholder. (Phase 4 — shipped as the stub.)
+   - **UPDATED (operator, 2026-07-22 — prototype-fidelity directive):** the view will be rebuilt to
+     the **prototype's full Qualitative layout** (risk matrix / going-concern / litigation / per-filer
+     signals), with **every cell an empty, clearly-labeled placeholder** — **still no fabricated
+     figures** (the Track-2 rule holds; the layout is replicated, the data is a placeholder). Tracked
+     as a followup; **do this last** (Sector → Company → Compare → Qualitative). The prominent "Track
+     2 · not yet derived from filings" framing must remain so the placeholder grid can't be mistaken
+     for imminent data.
+2. **No fabricated coverage % / sub-industry / filing feed** — ~~omit or mark illustrative~~; never
+   show a made-up "94% filed". **REFRAMED (operator, 2026-07-22 — prototype-fidelity directive):**
+   these are no longer *omitted* — the app now matches the prototype's layout and renders each as a
+   **clearly-labeled EMPTY placeholder** ("placeholder — to be defined"), which the operator fills
+   later. The rule that survives unchanged: **never a fabricated value** — a placeholder must be
+   unmistakably empty, never dressed as real data. See the governing directive in
+   `docs/delivery/sector-app-followups.md`.
 3. ~~**No favorability color anywhere** in the new sector UI (revert Phase 2).~~ **REVERSED
    (operator, 2026-07-22):** favorability color returns per the locked-decisions note above —
    direction color on deltas + biggest shifts (and across views), **paired** with the arrow/position

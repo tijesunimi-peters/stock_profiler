@@ -7,6 +7,27 @@ against the phase it came from — the phase met its own brief; these change or 
 Pick these up as their own `/deliver` iterations (new briefs/branches) once Phases 1–4 are merged.
 Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
 
+## Governing directive — prototype fidelity with honest placeholders (operator, 2026-07-22)
+
+The operator decided the app should match the prototype's **layout exactly**, across **all views**.
+This **reframes** the earlier honesty posture (REDESIGN honesty flag 2, "omit fabricated
+coverage %/sub-industry/feed") from *omit* → **replicate the layout, but fill any element the
+prototype populated with synthetic data with a clearly-labeled EMPTY placeholder**, which the operator
+fills/decides later.
+
+**Non-negotiable honesty rail:** a placeholder must be **unmistakably a placeholder** ("placeholder —
+to be defined" / empty-state styling) — **never** dressed as, or mistakable for, real data. No
+fabricated numbers, counts, %, ● flags, feed items, ranks, or trends. An honest empty placeholder is
+fine; a fake value is not. This keeps the data-honesty brand intact while matching the layout.
+
+Applies to (at least): the Sector **filing-event feed** (drill-down 2fr column), **sub-industry
+pills** + **coverage %** in the control bar, the Company **composite rank** + **"vs last FY" trend**,
+and the **Qualitative** view (build the prototype's risk-matrix/going-concern/litigation **layout**
+with every cell an empty placeholder — operator chose this over keeping the Track-2 stub). Where a
+followup below said "omit" or "needs backend data first", it is now **"placeholder now, real data
+later"** under this directive (F6 especially). Start order: **Sector view first**, then Company,
+then a Compare fidelity check, then Qualitative.
+
 ---
 
 ## F1 — Company view: default to a focal company on load (replace the empty state) — OPEN
@@ -77,7 +98,7 @@ Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
   identity** — we key the focal on CIK and store `name`, not ticker, so the pill is only available on
   a ticker search, not on dot-click re-focus.
 
-## F4 — Reintroduce favorability color across the sector app (REVERSES a locked decision) — OPEN
+## F4 — Reintroduce favorability color across the sector app (REVERSES a locked decision) — SECTOR DONE / Company+Compare OPEN
 
 - **Source:** Phase 1 (`sector-app-shell`) **manual UI verification** — operator, 2026-07-22 (steps 2
   & 7: "add colors" for deltas + biggest shifts).
@@ -98,7 +119,7 @@ Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
   (REDESIGN honesty-flag 3, the STYLE_GUIDE note, and the per-phase "no favorability color" lines)
   once the code lands, so code and docs match.
 
-## F5 — Sector view: clicking a tile surfaces BOTH the decomposition and the peer strip/drill-down — OPEN
+## F5 — Sector view: clicking a tile surfaces BOTH the decomposition and the peer strip/drill-down — DONE (sector-fidelity)
 
 - **Source:** Phase 1 manual UI verification — operator, 2026-07-22 (step 2: "selecting the scorecard
   should display what drove the score also"; chosen resolution: **tile click shows both**).
@@ -109,7 +130,7 @@ Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
 - **Scope:** frontend-only (`sectorapp.js` interaction wiring + `sectorapp.css` layout for showing
   both panels); keep the score number as a secondary affordance if useful.
 
-## F6 — Sub-industry in the sector control bar (needs backend data) — OPEN
+## F6 — Sub-industry in the sector control bar (needs backend data) — PLACEHOLDER DONE (sector-fidelity) / real data OPEN
 
 - **Source:** Phase 1 manual UI verification — operator, 2026-07-22 (step 1: "I don't see the
   sub-industry in the control bar").
@@ -121,7 +142,7 @@ Status legend: **OPEN** (not started) · **IN PROGRESS** · **DONE**.
   before any pill can be shown. **Do not fabricate** sub-industry labels/counts. Route the data work
   through the PM/architect when picked up.
 
-## F7 — Sector view: match the prototype's column layout more closely — OPEN
+## F7 — Sector view: match the prototype's column layout more closely — DONE (sector-fidelity)
 
 - **Source:** prototype Sector-view design comparison vs. Phase 1 — operator, 2026-07-22
   (`docs/design/sector-app-prototype/prototype.dc.html` altitude-1 block vs. `sectorapp.js`/`.css`).
