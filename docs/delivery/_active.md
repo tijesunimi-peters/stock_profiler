@@ -3,7 +3,7 @@ task_slug: company-fidelity
 request: Company-view PROTOTYPE FIDELITY pass for /sector-analytics — match the prototype's altitude-2 layout (header ticker/context/basis, "Peer distribution" heading + affordance, composite card + placeholder trend, default focal, breadcrumb dropdown), honest placeholders for synthetic elements. Frontend-only. Bundles F1/F2/F3 (+ F4-Company = color-free). Governing directive: docs/delivery/sector-app-followups.md.
 branch: not yet branched
 next_stage: done
-qa_cycles: 0
+qa_cycles: 1
 updated: 2026-07-22
 
 ## Progress

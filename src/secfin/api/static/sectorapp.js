@@ -759,15 +759,24 @@
     return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
   }
   function focalLabel() {
-    if (state.focalName) return state.focalName;
-    return state.focalCik ? "CIK " + state.focalCik : "the focal filer";
+    return state.focalName || state.focalTicker || (state.focalCik ? "CIK " + state.focalCik : "the focal filer");
+  }
+  // Recovery from a dead-end (a searched filer with no peer group, or an error): clear the focal and
+  // re-resolve the default so the user is never stuck.
+  function clearFocalToDefault() {
+    state.focalCik = null; state.focalGroup = null; state.focalName = null;
+    state.focalTicker = null; state.focalPeers = null; state.companyErr = false;
+    state.defaultFocalTried = false;
+    renderApp();
+    resolveDefaultFocal();
   }
   // favorability-adjusted percentile: raw for higher-is-better, inverted for lower-is-better.
   function adjPct(metric, p) { return CO_DIR[metric] === 0 ? 100 - p : p; }
 
   function renderCompanyView(vp) {
     if (state.companyErr) {
-      vp.innerHTML = coHead() + '<div class="pa-card">' + P.states.error({ copy: "Couldn't resolve that company." }) + "</div>";
+      vp.innerHTML = coHead() + '<div class="pa-card">' + P.states.error({ copy: "Couldn't resolve that company." }) +
+        '<div class="pa-co-back"><button class="pa-co-backbtn" id="coBackBtn">← Back to a default filer</button></div></div>';
       return;
     }
     if (!state.focalCik) {
@@ -779,7 +788,9 @@
     if (!state.focalGroup) {
       vp.innerHTML = coHead() +
         '<div class="pa-card"><div class="pa-empty-inline">' + P.esc(focalLabel()) +
-        " has no SIC peer group with enough filers to place it against — sparse coverage, not zero.</div></div>";
+        " has no SIC peer group with enough filers to place it against — sparse coverage, not zero. " +
+        "Search another company, or go back to a default filer.</div>" +
+        '<div class="pa-co-back"><button class="pa-co-backbtn" id="coBackBtn">← Back to a default filer</button></div></div>';
       return;
     }
     vp.innerHTML = coHead() +
@@ -1139,6 +1150,8 @@
     document.querySelectorAll(".pa-rail-btn").forEach(function (b) {
       b.addEventListener("click", function () { setView(b.getAttribute("data-view")); });
     });
+    var back = $("coBackBtn"); // recovery from a dead-end Company state
+    if (back) back.addEventListener("click", clearFocalToDefault);
   }
 
   function wireSectorView() {

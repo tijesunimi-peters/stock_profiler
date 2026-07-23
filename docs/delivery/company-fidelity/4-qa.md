@@ -1,7 +1,7 @@
 # QA — Company view prototype-fidelity pass
 
 Stage 4 (QA Tester). Branch: **`company-fidelity`** (off `master`; uncommitted).
-Verdict: **PASS — pending manual UI verification** (operator-gated).
+Verdict: **PASS — ready to deploy** (operator-gated). Manual UI verification complete 2026-07-22 (one defect found + fixed in-cycle).
 
 Tested against AC-1…AC-9 in `1-brief.md`, the design in `2-architecture.md`, and the engineer
 handoff in `3-implementation.md`.
@@ -95,11 +95,25 @@ Run against a seeded instance of this branch (I can publish it on `:8001`):
    diamond (no green/red).
 6. 390px → header pills + rail stack, **no horizontal scroll**.
 
-**Operator outcome:** ☐ pending. Record here: confirmed + date, or a discrepancy (→ defect, loop back).
+**Operator outcome (2026-07-22, `:8001`):** steps **1, 2, 4 confirmed**. **Step 3 found a defect** →
+fixed in-cycle (QA→frontend, cycle 1):
+
+- **Defect:** searching a ticker whose company has **no peer group with data** (e.g. JPM/WMT in the
+  fixture — only SIC-35 is materialized) dropped the user into the honest "no SIC peer group" state
+  with **no obvious way back** (recovery only via searching a *valid* ticker), and the header showed
+  "CIK 19617" instead of "JPM". The default-focal change made this dead-end more jarring.
+- **Fix:** `focalLabel()` now prefers name → ticker → CIK (shows "JPM"); the **no-peer-group and
+  error states get a "← Back to a default filer" button** (`clearFocalToDefault` → re-resolves the
+  default) so the user is never stuck. Copy adds "Search another company, or go back to a default
+  filer." Re-verified: search JPM → shows "JPM" + the Back button → click → recovers to a populated
+  default (Machinery Co 1).
+- **Re-check ☑ (operator, 2026-07-22):** step 3 recovery **confirmed** — the "no peer group" state
+  shows the Back button and clicking it returns to a populated default; a valid ticker (AAPL) still
+  resolves to a working Company view. **All 4 manual steps now confirmed, no open issues.**
 
 ## Handoff
 
-**Verdict: PASS — pending manual UI verification.** All 9 acceptance criteria met on automated
+**Verdict: PASS — ready to deploy.** Manual UI verification complete (operator, 2026-07-22 — 4/4 steps; step 3 found a dead-end recovery gap, fixed in-cycle and re-confirmed). All 9 acceptance criteria met on automated
 evidence; `pytest` green; e2e green + eyeballed; the honesty rail holds (no fabricated ticker/rank/
 trend; composite a labeled derived position; color-free). Frontend-only; Sector/Compare/Qualitative +
 `/sectors` untouched. Once the operator runs the manual script, the verdict advances to "ready to

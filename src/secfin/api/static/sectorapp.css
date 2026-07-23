@@ -181,6 +181,9 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-co-ctx { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); background: var(--bg-tint); border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; }
 .pa-co-basis { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
 .pa-co-sech { font-family: var(--font-sans); font-weight: 800; font-size: 16px; color: var(--ink); margin-bottom: 6px; }
+.pa-co-back { margin-top: 12px; }
+.pa-co-backbtn { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent-ink); background: var(--bg-tint); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 13px; }
+.pa-co-backbtn:hover { background: var(--bg-badge); }
 .pa-co-afford { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-top: 9px; }
 .pa-co-body { display: grid; grid-template-columns: 200px 1fr; gap: 18px; margin-top: 16px; align-items: start; }
 .pa-co-rail { position: sticky; top: 74px; }
