@@ -77,7 +77,9 @@ const PAGES = process.env.PAGES
       ["sectorapp-qual", "/sector-analytics"],
       // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
       // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
-      ["sectorapp-company-empty", "/sector-analytics?view=company"],
+      // No ?symbol= now resolves a DEFAULT focal (first-alpha company in the largest sector) so the
+      // Company view opens POPULATED; the honest empty state is only a no-resolve fallback.
+      ["sectorapp-company-default", "/sector-analytics?view=company"],
       ["sectorapp-company", "/sector-analytics?view=company&symbol=900001"],
       ["sectorapp-company-refocus", "/sector-analytics?view=company&symbol=900001"],
       // Compare view (altitude 3): sector-vs-sector paired theme bars + metric-median cards.
@@ -143,9 +145,19 @@ const PAGES = process.env.PAGES
         await page.click(".pa-tile[data-theme]");
         await new Promise((r) => setTimeout(r, 500));
       }
+      if (name === "sectorapp-company-default") {
+        // The default focal resolves asynchronously (largest sector -> first-alpha filer).
+        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 400));
+      }
       if (name === "sectorapp-company" || name === "sectorapp-company-refocus") {
         // Wait for the dot-plots to load; the refocus shot then clicks a peer dot to re-focus.
         await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        if (name === "sectorapp-company") {
+          // Exercise the composite decompose toggle (the header dropdown is captured statically).
+          const cbtn = await page.$("#coCompBtn");
+          if (cbtn) { await cbtn.click(); await new Promise((r) => setTimeout(r, 250)); }
+        }
         if (name === "sectorapp-company-refocus") {
           await page.click(".pa-dp-track .pa-dot");
           await new Promise((r) => setTimeout(r, 600));

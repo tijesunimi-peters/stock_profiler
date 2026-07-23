@@ -30,7 +30,7 @@ then a Compare fidelity check, then Qualitative.
 
 ---
 
-## F1 — Company view: default to a focal company on load (replace the empty state) — OPEN
+## F1 — Company view: default to a focal company on load (replace the empty state) — DONE (company-fidelity)
 
 - **Source:** Phase 2 (`sector-app-company`) **manual UI verification** — operator, 2026-07-22.
 - **Request:** Opening the Company view (`/sector-analytics?view=company` with no `?symbol=`) should
@@ -52,7 +52,7 @@ then a Compare fidelity check, then Qualitative.
   Company-view entry); a small read to enumerate/first-sort companies may be needed depending on the
   set chosen above.
 
-## F2 — Company view: selectable breadcrumb dropdown (switch focal among SIC peers) — OPEN
+## F2 — Company view: selectable breadcrumb dropdown (switch focal among SIC peers) — DONE (company-fidelity)
 
 - **Source:** Phase 2 (`sector-app-company`) **manual UI verification** — operator, 2026-07-22.
 - **Request:** The **company name in the breadcrumb** (`SIC group › Company Name`) becomes a
@@ -65,7 +65,7 @@ then a Compare fidelity check, then Qualitative.
 - **Honesty note:** the dropdown lists the real peer filers only; ordering is display-only (e.g.
   alphabetical or by value), not a ranking/verdict.
 
-## F3 — Company view: align closer with the prototype (header context + peer-distribution framing + composite decomposition) — OPEN
+## F3 — Company view: align closer with the prototype (header context + peer-distribution framing + composite decomposition) — DONE (company-fidelity; trend=placeholder, ticker=when-known)
 
 - **Source:** prototype review vs. implementation — operator, 2026-07-22
   (`docs/design/sector-app-prototype/` §5/§7/§8 + the Company block of `prototype.dc.html`).

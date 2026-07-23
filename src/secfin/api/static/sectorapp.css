@@ -169,10 +169,19 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-feed-body { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
 
 /* ---- Company view (altitude 2): peer dot-plots ---- */
-.pa-co-head { display: flex; align-items: baseline; gap: 8px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; flex-wrap: wrap; }
+.pa-co-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; flex-wrap: wrap; }
+.pa-co-crumbwrap { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .pa-co-crumb { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
 .pa-co-sep { color: var(--mono-muted); }
 .pa-co-name { font-weight: 800; font-size: 21px; color: var(--ink); }
+/* breadcrumb name as a selectable dropdown of SIC peers (prototype: click-through name) */
+.pa-co-sel { font-family: var(--font-sans); font-weight: 800; font-size: 21px; color: var(--ink); background: transparent; border: none; border-bottom: 1.5px dashed var(--mono-muted); padding: 0 18px 1px 0; cursor: pointer; max-width: 100%; }
+.pa-co-ticker { font-family: var(--font-mono); font-size: 12px; color: var(--bg-page); background: var(--ink); border-radius: 6px; padding: 2px 7px; }
+.pa-co-headright { display: flex; align-items: center; gap: 10px; }
+.pa-co-ctx { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); background: var(--bg-tint); border: 1px solid var(--border); border-radius: 7px; padding: 3px 9px; }
+.pa-co-basis { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+.pa-co-sech { font-family: var(--font-sans); font-weight: 800; font-size: 16px; color: var(--ink); margin-bottom: 6px; }
+.pa-co-afford { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-top: 9px; }
 .pa-co-body { display: grid; grid-template-columns: 200px 1fr; gap: 18px; margin-top: 16px; align-items: start; }
 .pa-co-rail { position: sticky; top: 74px; }
 .pa-co-rail .pa-rail-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); padding: 0 0 9px; }
@@ -185,8 +194,10 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-rail-fill { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
 .pa-co-comp { background: var(--bg-tint); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; margin-top: 14px; }
 .pa-co-comp-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mono-muted); }
-.pa-co-comp-val { font-family: var(--font-mono); font-weight: 600; font-size: 22px; color: var(--ink); margin: 4px 0 2px; }
+.pa-co-comp-val { display: block; font-family: var(--font-mono); font-weight: 600; font-size: 22px; color: var(--ink); margin: 4px 0 2px; background: none; border: none; border-bottom: 1.5px dashed var(--mono-muted); padding: 0 0 1px; cursor: pointer; }
 .pa-co-comp-note { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); }
+.pa-co-comp-decomp { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--ink-soft); margin-top: 6px; }
+.pa-co-comp-trend { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); font-style: italic; margin-top: 6px; border-top: 1px dashed var(--border-strong); padding-top: 6px; }
 .pa-co-legend { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-bottom: 8px; line-height: 1.5; }
 .pa-dp { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 13px 16px; margin-bottom: 12px; }
 .pa-dp-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -291,6 +302,8 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-shift-row { flex-wrap: wrap; }
   .pa-shift-name { flex: 1 1 60%; }
   .pa-shift-basis { width: auto; flex: 1 1 100%; text-align: left; order: 5; }
+  .pa-co-headright { width: 100%; }
+  .pa-co-sel { font-size: 18px; }
   .pa-dd-btn { min-width: 0; }
   .pa-cmp-selects { flex-direction: column; gap: 8px; }
   .pa-cmp-select { min-width: 0; width: 100%; }

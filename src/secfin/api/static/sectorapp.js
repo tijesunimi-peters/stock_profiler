@@ -34,8 +34,11 @@
     // Company view (altitude 2) state
     focalCik: null, // the focal filer's CIK (int); identity for the Company view
     focalName: null,
+    focalTicker: null, // set ONLY from a ticker search; drives the header ticker pill (never faked)
     focalGroup: null, // the focal's SIC peer group (e.g. "35")
     focalPeers: null, // /companies/{cik}/peers payload (per-metric percentiles -> derived rail)
+    defaultFocalTried: false, // guard: resolve a default focal (largest sector, first-alpha) once
+    coCompOpen: false, // composite card decomposition toggle
     companyErr: false,
     coValues: {}, // "group|metric" -> SectorCompanyValueList payload (the dot-cloud, cached)
   };
@@ -137,6 +140,7 @@
         ensureSectorData();
         var sym = params.get("symbol"); // ?symbol= presets the Company view focal (used by e2e)
         if (sym && !state.focalCik) selectFocal(sym);
+        else if (state.view === "company" && !state.focalCik) resolveDefaultFocal();
       })
       .catch(function () {
         $("app").innerHTML = P.states.error({ copy: "Couldn't load sectors. Please try again." });
@@ -212,7 +216,7 @@
     renderApp();
     ensureSectorData();
   }
-  function setView(v) { state.view = v; renderApp(); }
+  function setView(v) { state.view = v; renderApp(); if (v === "company" && !state.focalCik) resolveDefaultFocal(); }
   // A tile click opens BOTH the decomposition (what drove the score) AND the peer strip + drill-down.
   function expandTheme(theme) { state.expandedTheme = theme; state.decompTheme = theme; renderApp(); }
   function toggleDecomp(theme) { state.decompTheme = state.decompTheme === theme ? null : theme; renderApp(); }
@@ -669,6 +673,8 @@
     state.view = "company";
     state.companyErr = false;
     state.focalPeers = null; state.focalName = null;
+    // a ticker search sets the ticker pill; a raw-CIK search does not (we never fabricate a ticker)
+    state.focalTicker = /^\d+$/.test(symbol) ? null : symbol.toUpperCase();
     P.api("/companies/" + encodeURIComponent(symbol) + "/peers?year=" + focalYear() + "&period=FY")
       .then(function (res) {
         state.focalCik = res.cik;
@@ -684,9 +690,47 @@
     if (cik === state.focalCik) return;
     state.focalCik = cik;
     state.focalName = name || null;
+    state.focalTicker = null; // a cik/dot-click/default focal has no known ticker
     P.api("/companies/" + cik + "/peers?year=" + focalYear() + "&period=FY")
       .then(function (res) { if (state.focalCik === cik) { state.focalPeers = res; renderApp(); } })
       .catch(function () { /* keep the dots; the rail just won't update */ renderApp(); });
+  }
+
+  // Default the Company view to the first company (alphabetically) in the largest sector by filer
+  // count -- so the view opens populated instead of empty. Honest empty/error state is the fallback.
+  function resolveDefaultFocal() {
+    if (state.focalCik || state.defaultFocalTried) return;
+    var list = (state.sectors && state.sectors.sectors) || [];
+    if (!list.length) return;
+    state.defaultFocalTried = true;
+    // largest sector by filer count first, falling through to the next-largest that actually has
+    // company-level values (a sector can be scored but have no materialized per-company metrics).
+    var ordered = list.slice().sort(function (a, b) { return (b.peer_count || 0) - (a.peer_count || 0); });
+    var i = 0;
+    function tryNext() {
+      if (i >= ordered.length || i >= 6) { renderApp(); return; } // give up -> honest empty state
+      var g = ordered[i++].group;
+      P.api("/sectors/" + encodeURIComponent(g) + "/net_margin/companies?year=" + focalYear() + "&period=FY")
+        .then(function (r) {
+          var cos = (r.companies || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+          if (cos.length && !state.focalCik) { state.focalGroup = g; selectFocalCik(cos[0].cik, cos[0].name); ensureCompanyData(); }
+          else if (!state.focalCik) tryNext();
+        })
+        .catch(tryNext);
+    }
+    tryNext();
+  }
+  // The focal's SIC peers (for the breadcrumb dropdown) -- the real filers already loaded as dots.
+  function focalPeerList() {
+    var g = state.focalGroup;
+    if (!g) return [];
+    var seen = {}, out = [];
+    CO_METRICS.forEach(function (m) {
+      ((state.coValues[g + "|" + m] || {}).companies || []).forEach(function (c) {
+        if (!seen[c.cik]) { seen[c.cik] = 1; out.push({ cik: c.cik, name: c.name }); }
+      });
+    });
+    return out.sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
   }
 
   function ensureCompanyData() {
@@ -741,18 +785,41 @@
     vp.innerHTML = coHead() +
       '<div class="pa-co-body"><div class="pa-co-rail">' + coRailHtml() + "</div>" +
       '<div class="pa-co-main">' +
+      '<div class="pa-co-sech">Peer distribution</div>' +
       '<div class="pa-co-legend">each dot a filer · band = IQR · line = median · ◆ = ' + P.esc(focalLabel()) +
       " · percentiles favorability-adjusted, N/A · N/M excluded</div>" +
       CO_METRICS.map(coDotPlotHtml).join("") +
+      '<div class="pa-co-afford">Click any peer dot to make it the focal filer.</div>' +
       "</div></div>";
     wireCompanyView();
   }
 
   function coHead() {
     var g = state.focalGroup ? sicLabelOf(state.focalGroup) : "";
+    // breadcrumb name is a dropdown of the focal's SIC peers when we have a focal + a loaded peer set
+    var peers = state.focalCik ? focalPeerList() : [];
+    var nameNode;
+    if (peers.length > 1) {
+      nameNode = '<select class="pa-co-sel" id="coFocalSel" aria-label="Focal company">' +
+        peers.map(function (p) {
+          return '<option value="' + p.cik + '"' + (p.cik === state.focalCik ? " selected" : "") + ">" + P.esc(p.name || ("CIK " + p.cik)) + "</option>";
+        }).join("") + "</select>";
+    } else {
+      nameNode = '<span class="pa-co-name">' + P.esc(focalLabel()) + "</span>";
+    }
+    var ticker = state.focalTicker ? '<span class="pa-co-ticker">' + P.esc(state.focalTicker) + "</span>" : "";
+    var right = "";
+    if (state.focalGroup) {
+      var n = peers.length;
+      var ctx = n ? n + " peers · SIC " + P.esc(state.focalGroup) : "SIC " + P.esc(state.focalGroup);
+      right = '<span class="pa-co-ctx">' + ctx + "</span>" +
+        '<span class="pa-co-basis">FY' + focalYear() + "</span>";
+    }
     return (
-      '<div class="pa-co-head"><span class="pa-co-crumb">' + P.esc(g) + '</span><span class="pa-co-sep">›</span>' +
-      '<span class="pa-co-name">' + P.esc(focalLabel()) + "</span></div>"
+      '<div class="pa-co-head"><div class="pa-co-crumbwrap">' +
+      '<span class="pa-co-crumb">' + P.esc(g) + '</span><span class="pa-co-sep">›</span>' +
+      nameNode + ticker + "</div>" +
+      '<div class="pa-co-headright">' + right + "</div></div>"
     );
   }
   function sicLabelOf(group) {
@@ -783,10 +850,22 @@
       return '<div class="pa-rail-row"><div class="pa-rail-rowhead"><span class="pa-rail-name">' + P.esc(t[0]) + '</span><span class="pa-rail-p pa-rail-ns">not scored</span></div></div>';
     }).join("");
     var comp = themePcts.length ? Math.round(themePcts.reduce(function (a, b) { return a + b; }, 0) / themePcts.length) : null;
+    // decomposition: the scored themes that feed the average (already computed above)
+    var scoredNames = [];
+    CO_THEMES.forEach(function (t) {
+      var vals = t[1].map(function (m) { return byMetric[m] === undefined ? null : adjPct(m, byMetric[m]); }).filter(function (v) { return v !== null; });
+      if (vals.length) scoredNames.push(t[0] + " P" + Math.round(vals.reduce(function (a, b) { return a + b; }, 0) / vals.length));
+    });
+    var decomp = state.coCompOpen
+      ? '<div class="pa-co-comp-decomp">= mean of ' + P.esc(scoredNames.join(" · ")) + "</div>"
+      : "";
     var card =
       '<div class="pa-co-comp"><div class="pa-co-comp-label">Composite percentile</div>' +
-      '<div class="pa-co-comp-val">' + (comp === null ? "—" : "P" + comp) + "</div>" +
-      '<div class="pa-co-comp-note">derived · avg of the theme percentiles above (not a ranked position)</div></div>';
+      '<button class="pa-co-comp-val" id="coCompBtn" title="Show what feeds this">' + (comp === null ? "—" : "P" + comp) + "</button>" +
+      '<div class="pa-co-comp-note">derived · avg of the theme percentiles above (not a ranked position)</div>' +
+      decomp +
+      // the prototype's "vs last FY" trend is not materialized per-company -> honest placeholder
+      '<div class="pa-co-comp-trend pa-ph">trend — to be defined</div></div>';
     return '<div class="pa-rail-label">Percentile vs peers</div>' + rows + deferred + card;
   }
 
@@ -843,6 +922,13 @@
         selectFocalCik(parseInt(dot.getAttribute("data-cik"), 10), dot.getAttribute("data-name"));
       });
     });
+    var sel = $("coFocalSel");
+    if (sel) sel.addEventListener("change", function () {
+      var opt = sel.options[sel.selectedIndex];
+      selectFocalCik(parseInt(sel.value, 10), opt ? opt.textContent : null);
+    });
+    var cbtn = $("coCompBtn");
+    if (cbtn) cbtn.addEventListener("click", function () { state.coCompOpen = !state.coCompOpen; renderApp(); });
   }
 
   // ---------- Compare view (altitude 3): sector vs sector ----------
