@@ -1,8 +1,13 @@
 # QA — Sector Analytics app: Qualitative view (Phase 4, final)
 
 Stage 4 (QA Tester). Branch: **`sector-app-qualitative`** (stacked on Phase 3 `sector-app-compare`
-`fc7f7f1`; uncommitted). Verdict: **PASS — ready to deploy** (operator-gated). **Completes the
-four-view app.**
+`fc7f7f1`; uncommitted). Verdict: **PASS — ready to deploy** (automated + manual UI verification
+complete; operator-gated). **Completes the four-view app.**
+
+> Retrofit note (2026-07-22): the review questionnaire + manual UI verification sections were added
+> after the QA-Tester skill gained those requirements. The operator ran the manual click-through on
+> 2026-07-22 against the seeded `:8001` instance — **all 4 steps confirmed, no change requests**
+> (crucially: nothing on the view reads as real/derived data — the honesty landmine stays closed).
 
 Tested against AC-1…AC-8 in `1-brief.md`, the design in `2-architecture.md`, and the engineer
 handoff in `3-implementation.md`. The central concern is the **honesty landmine** — a Track-2
@@ -47,6 +52,35 @@ placeholder must present **nothing** as real or derived. Evidence is from the ru
 - **AC-8 — build → e2e passes (eyeballed) + pytest green.** **PASS.** `docker compose build api` →
   e2e PASS errors=0; `sectorapp-qual` eyeballed; pytest 511/6.
 
+## Review questionnaire
+
+1. **What shipped.** The app's fourth view, **Qualitative** — an honest **"Coming — Track 2"
+   placeholder** (replaces the inert stub). Deliberately **data-free**: a "Track 2 · not yet derived
+   from filings" banner, a plain-language "why" (structured-only; free text is a later decision;
+   "Nothing here is fabricated"), and a grid of **5 "planned" category cards** (labels + one-liners),
+   closing with "Nothing on this view is derived from filings or estimated."
+2. **Surfaces touched.** **Frontend-only.** `renderQualView` in `sectorapp.js` (replaces the
+   `renderStub` branch; static `QUAL_PLANNED` list, no fetch/state) + `.pa-qual-*` in `sectorapp.css`
+   (tokens that resolve — avoids the undefined `--ext`; no favorability trio). No backend/endpoint/
+   schema. The `sectorapp-stub` e2e shot was renamed `sectorapp-qual`.
+3. **AC → evidence.** All **8 ACs PASS** (per-AC table). Artifacts: `sectorapp-qual.png` (the frame);
+   the **11/11** scripted driving pass; the no-fabricated-data assertion (after stripping the only
+   legit digit-bearing names "Track 2"/"13F", the frame body has **no digit**, no `●`/`%`, and **zero**
+   data-plot elements); the accent-ink banner flag color `rgb(138,90,47)`.
+4. **States exercised.** There is one intended state — the placeholder — and it renders on the rail
+   click. No loading/populated/error states by design (nothing is fetched).
+5. **Edge cases probed.** The relevant "edge case" here is the **honesty landmine itself**: no number
+   reads as a metric/count, no synthetic company/issuer, no coverage %, no `●` presence flags, no
+   direction chips, no chart/bar. N/A-vs-0, 13F, restatements, 429, upstream-502 — **N/A** (static view).
+6. **Honesty contract.** The defining property: **nothing is data.** The banner states Track-2 status;
+   the copy promises **no date**; the planned categories are labels only; no favorability color; the
+   accent-ink flag confirms tokens resolve.
+7. **Deltas from the brief.** None — all 8 ACs met. No automation gap of substance (the view is
+   static); the manual step below simply confirms the placeholder renders and reads as "coming", not
+   "here".
+8. **Residual risk.** Minimal — a static frame. The only thing worth a human's eye is that it can't be
+   mistaken for a real disclosure surface; **confirmed** in the manual step (nothing reads as data).
+
 ## UI/UX review
 
 - **States.** There is only one honest state and it renders intentionally: a "coming" placeholder,
@@ -71,9 +105,27 @@ placeholder must present **nothing** as real or derived. Evidence is from the ru
   `.pa-chip.approx` reference the undefined `--ext` and degrade to no color. The new Qualitative
   block deliberately avoids `--ext` and is unaffected.
 
+## Manual UI verification (operator-run, 2026-07-22)
+
+Run against the seeded `:8001` instance (reached via the **Qualitative** view-rail entry — no `?view=`
+deep link). Note: this view is **data-free by design**, so the check confirms the honest placeholder,
+not any data. Four hands-on steps — **all confirmed, no change requests:**
+
+1. **Placeholder** — clicking the Qualitative rail renders the section head + a prominent "Track 2 ·
+   not yet derived from filings" banner. → **Confirmed.**
+2. **Why + planned cards** — the structured-only/free-text-later explanation + 5 "planned" category
+   cards (labels + one-liners). → **Confirmed.**
+3. **No fake data (the important one)** — **nothing** reads as real/derived: no number, count, `●`,
+   chart/bar, `%`, or named company finding. → **Confirmed.** *(Honesty landmine stays closed.)*
+4. **Mobile 390px** — banner + cards reflow cleanly, no horizontal scroll. → **Confirmed.**
+
+**Outcome:** the honest placeholder renders exactly as intended; **no defects, no change requests**.
+The operator confirmed the view cannot be mistaken for real data — the whole point of the phase.
+
 ## Handoff
 
-**Verdict: PASS.** All 8 acceptance criteria met; full suite green; e2e green + eyeballed; the
+**Verdict: PASS.** (Manual UI verification complete 2026-07-22 — all 4 steps confirmed, no change
+requests; nothing reads as data.) All 8 acceptance criteria met; full suite green; e2e green + eyeballed; the
 honesty contract holds — the Qualitative view presents **nothing** as real or derived, promises no
 date, and carries no favorability color. Frontend-only — no backend/endpoint/schema change, no new
 remote dependency; the Sector/Company/Compare views and `/sectors` are untouched. **The four-view
