@@ -82,12 +82,16 @@ against a seeded instance of this branch (I can publish it on `:8001`). Steps:
 5. Biggest shifts → a **"notable"** flag chip on large moves; the row is **not** color-coded.
 6. Resize to **390px** → everything stacks, **no horizontal scroll**.
 
-**Operator outcome:** ☐ pending. Record here: confirmed + date, or a discrepancy (→ defect, loop back).
+**Operator outcome:** ☑ **run by the operator, 2026-07-22 (branch published on `:8001`) — all 6 steps
+confirmed, no change requests.** Placeholders read as clearly empty (1); delta chips colored with
+neutral score numbers + uncolored null (2); tile click opens decomposition + peer strip/drill-down
+together (3); `3fr 2fr` drill row with a clear placeholder feed (4); "notable" flag chip + neutral
+shift row (5); clean 390px reflow (6).
 
 ## Handoff
 
-**Verdict: PASS — pending manual UI verification.** All 11 acceptance criteria met on automated
-evidence; `pytest` green; e2e green + eyeballed; the honesty rail holds (placeholders never fabricate;
-color only on the delta chip, paired with the arrow, score neutral). Frontend-only; Company/Compare/
-Qualitative + `/sectors` untouched. Once the operator runs the manual script above, the verdict
-advances to "ready to deploy". No automated defects require a loop back.
+**Verdict: PASS — ready to deploy** (operator-gated). All 11 acceptance criteria met; `pytest` green;
+e2e green + eyeballed; **manual UI verification complete (operator, 2026-07-22 — 6/6 steps, no change
+requests).** The honesty rail holds (placeholders never fabricate; color only on the delta chip, paired
+with the arrow, score neutral). Frontend-only; Company/Compare/Qualitative + `/sectors` untouched. No
+defects require a loop back.
