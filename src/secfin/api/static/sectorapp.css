@@ -231,6 +231,19 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-cmp-idA { --pa-cmp: var(--accent); }
 .pa-cmp-idB { --pa-cmp: var(--pa-b); }
 
+/* prototype header: [swatch] A-name  vs  [swatch] B-name  …  counts */
+.pa-cmp-head2 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-bottom: 2px solid var(--ink); padding-bottom: 12px; }
+.pa-cmp-sw { width: 11px; height: 11px; border-radius: 3px; background: var(--pa-cmp); flex: none; }
+.pa-cmp-aname { font-family: var(--font-sans); font-weight: 800; font-size: 18px; color: var(--ink); }
+.pa-cmp-aname-ph { color: var(--mono-muted); font-weight: 600; }
+.pa-cmp-vs { font-family: var(--font-mono); font-size: 12px; color: var(--mono-muted); margin: 0 4px; }
+.pa-cmp-headspacer { flex: 1; }
+.pa-cmp-counts { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); }
+
+/* prototype composite-scores card: rows of name | paired bars | gap (170px 1fr 84px) */
+.pa-cmp-scorecard { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 18px; margin-top: 16px; }
+.pa-cmp-scorecard-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mono-muted); padding: 10px 0 4px; }
+
 .pa-cmp-selects { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 4px; }
 .pa-cmp-sel { display: inline-flex; align-items: center; gap: 8px; }
 .pa-cmp-id { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 5px; font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; color: #fff; background: var(--pa-cmp); flex: none; }
@@ -240,14 +253,13 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 
 .pa-cmp-sec { margin-top: 22px; }
 .pa-cmp-sec-head { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); margin-bottom: 10px; }
-.pa-cmp-rows { display: flex; flex-direction: column; gap: 4px; }
-.pa-cmp-row { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; }
-.pa-cmp-row.composite { border-color: var(--border-strong); background: var(--bg-tint); }
-.pa-cmp-row.notscored { background: transparent; border-style: dashed; }
-.pa-cmp-rowhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
-.pa-cmp-theme { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.pa-cmp-row { display: grid; grid-template-columns: 170px 1fr 84px; gap: 16px; align-items: center; padding: 11px 0; border-top: 1px solid var(--rule); }
+.pa-cmp-row.composite .pa-cmp-theme { font-weight: 700; }
+.pa-cmp-row.notscored .pa-cmp-theme { color: var(--ink-muted); }
+.pa-cmp-bars { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.pa-cmp-theme { font-size: 13.5px; font-weight: 600; color: var(--ink-body); }
 .pa-cmp-derived { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); margin-left: 7px; }
-.pa-cmp-gap { font-family: var(--font-mono); font-size: 11px; }
+.pa-cmp-gap { font-family: var(--font-mono); font-size: 11px; text-align: right; }
 .pa-cmp-gap.strong { color: var(--ink); font-weight: 600; }
 .pa-cmp-gap.soft { color: var(--mono-muted); }
 .pa-cmp-nsreason { font-size: 11px; color: var(--ink-soft); margin: -2px 0 7px; line-height: 1.45; }
@@ -259,8 +271,8 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-cmp-ns { color: var(--mono-muted); font-size: 10.5px; }
 .pa-cmp-na { color: var(--mono-muted); }
 
-.pa-cmp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.pa-cmp-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.pa-cmp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.pa-cmp-card { background: var(--bg-tint); border: 1px solid var(--border); border-radius: 11px; padding: 13px 15px; }
 .pa-cmp-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .pa-cmp-metric { font-size: 13px; font-weight: 600; color: var(--ink); }
 .pa-cmp-lib { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mono-muted); border: 1px solid var(--border-strong); border-radius: 5px; padding: 2px 5px; }
@@ -311,4 +323,6 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-cmp-selects { flex-direction: column; gap: 8px; }
   .pa-cmp-select { min-width: 0; width: 100%; }
   .pa-cmp-sel { width: 100%; }
+  .pa-cmp-row { grid-template-columns: 1fr auto; gap: 6px 12px; }
+  .pa-cmp-bars { grid-column: 1 / -1; }
 }

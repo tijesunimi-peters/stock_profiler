@@ -965,7 +965,7 @@
     ensureCompareData();
     var A = state.compareA, B = state.compareB;
     vp.innerHTML =
-      cmpHead() +
+      cmpHead(A, B) +
       cmpSelectorsHtml(A, B) +
       (!A
         ? '<div class="pa-card"><div class="pa-empty-inline">Pick a sector to compare.</div></div>'
@@ -975,10 +975,25 @@
     wireCompareView();
   }
 
-  function cmpHead() {
+  function sectorPeerCount(group) {
+    if (!group) return null;
+    var s = ((state.sectors && state.sectors.sectors) || []).filter(function (x) { return x.group === group; })[0];
+    return s ? s.peer_count : null;
+  }
+  function cmpHead(A, B) {
+    var an = A ? P.esc(sectorLabel(A)) : '<span class="pa-cmp-aname-ph">Sector A</span>';
+    var bn = B ? P.esc(sectorLabel(B)) : '<span class="pa-cmp-aname-ph">Sector B</span>';
+    var ca = sectorPeerCount(A), cb = sectorPeerCount(B);
+    var counts = (ca != null || cb != null)
+      ? (ca != null ? ca : "—") + " vs " + (cb != null ? cb : "—") + " filers"
+      : "";
     return (
-      '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Sector compare</h2></div>' +
-      '<div class="pa-sec-sub">Two sectors on the same theme spine · A and B are colors of identity, not a ranking · no winner is declared</div>'
+      '<div class="pa-cmp-head2">' +
+      '<span class="pa-cmp-sw pa-cmp-idA"></span><span class="pa-cmp-aname">' + an + "</span>" +
+      '<span class="pa-cmp-vs">vs</span>' +
+      '<span class="pa-cmp-sw pa-cmp-idB"></span><span class="pa-cmp-aname">' + bn + "</span>" +
+      '<span class="pa-cmp-headspacer"></span>' +
+      '<span class="pa-cmp-counts">' + counts + "</span></div>"
     );
   }
 
@@ -1027,13 +1042,14 @@
       var sB = tB && tB.scored ? tB.score : null;
       // a theme that is a deferred marker for whichever sector has it, or absent for both -> not scored
       var deferred = (tA && !tA.scored) || (tB && !tB.scored);
-      if (sA === null && sB === null) return cmpNotScoredRow(ref.theme_label, deferred, tA, tB);
+      if (sA === null && sB === null) return cmpNotScoredRow(ref.theme_label, deferred);
       return cmpScoreRow(ref.theme_label, sA, sB, A, B, false);
     }).join("");
 
     return (
-      '<section class="pa-cmp-sec"><div class="pa-cmp-sec-head">Composite theme spine</div>' +
-      '<div class="pa-cmp-rows">' + rows + "</div>" +
+      '<section class="pa-cmp-sec">' +
+      '<div class="pa-cmp-scorecard"><div class="pa-cmp-scorecard-label">Composite scores · shared 0–100 scale</div>' +
+      rows + "</div>" +
       '<div class="pa-provisional">≈ Scores provisional — each is a position vs other sectors (50 = cross-sector average), not a good/bad or buy verdict. Composite is derived (mean of scored themes), not a ranked position.</div>' +
       "</section>"
     );
@@ -1052,8 +1068,9 @@
     }
     return (
       '<div class="pa-cmp-row' + (isComposite ? " composite" : "") + '">' +
-      '<div class="pa-cmp-rowhead"><span class="pa-cmp-theme">' + P.esc(label) + (isComposite ? '<span class="pa-cmp-derived">derived</span>' : "") + "</span>" + gap + "</div>" +
-      cmpBar("A", sA) + cmpBar("B", sB) +
+      '<span class="pa-cmp-theme">' + P.esc(label) + (isComposite ? '<span class="pa-cmp-derived">derived</span>' : "") + "</span>" +
+      '<div class="pa-cmp-bars">' + cmpBar("A", sA) + cmpBar("B", sB) + "</div>" +
+      gap +
       "</div>"
     );
   }
@@ -1067,14 +1084,12 @@
       '<span class="pa-cmp-val">' + val + "</span></div>"
     );
   }
-  function cmpNotScoredRow(label, deferred, tA, tB) {
-    var reason = (tA && tA.reason) || (tB && tB.reason) || "";
+  function cmpNotScoredRow(label, deferred) {
     return (
       '<div class="pa-cmp-row notscored">' +
-      '<div class="pa-cmp-rowhead"><span class="pa-cmp-theme">' + P.esc(label) + "</span>" +
-      '<span class="pa-cmp-gap soft">' + (deferred ? "not yet scored" : "not scored") + "</span></div>" +
-      (reason ? '<div class="pa-cmp-nsreason">' + P.esc(reason) + "</div>" : "") +
-      cmpBar("A", null) + cmpBar("B", null) +
+      '<span class="pa-cmp-theme">' + P.esc(label) + "</span>" +
+      '<div class="pa-cmp-bars">' + cmpBar("A", null) + cmpBar("B", null) + "</div>" +
+      '<span class="pa-cmp-gap soft">' + (deferred ? "not yet scored" : "not scored") + "</span>" +
       "</div>"
     );
   }

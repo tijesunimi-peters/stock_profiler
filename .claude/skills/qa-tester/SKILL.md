@@ -101,18 +101,35 @@ questionnaire` heading.
 The e2e render check catches console/page errors, and eyeballing screenshots catches static layout —
 but **neither exercises the *felt* behaviour of interacting**: click/tap response, keyboard and
 focus order, hover, transitions, scroll, back/forward, real typed input, and how it all holds
-together in a live browser. So for **any UI change, a QA pass is not complete until a human has
-driven the feature by hand.** This is a blocking gate, not a nicety.
+together in a live browser.
+
+**Which changes need the operator hands-on step vs. QA-tester-level acceptance** (operator policy,
+2026-07-22):
+
+- **Interactive / logic changes → operator hands-on is required.** Anything that changes behaviour,
+  interaction, state, data flow, or a new/altered control (a new view, a re-focus, a default resolver,
+  a dropdown that recomputes, an error/recovery path). A human must drive it by hand before the
+  verdict advances — this gate has caught real defects the scripts passed over (e.g. the
+  `company-fidelity` dead-end recovery bug). This is a **blocking** gate for these changes.
+- **Pure-layout / CSS-only changes → QA-tester level may stand in.** If the change is *only* layout/
+  styling with **no** interaction or logic change, the QA-tester's own **scripted driving pass +
+  eyeballed screenshots** may serve as the manual verification (record it as "accepted at the
+  QA-tester level"). Still write the manual script; just note it was satisfied at the QA-tester level.
+- **You classify the change and say which applies in the report.** When in doubt, treat it as
+  interactive and request the operator hands-on. The operator can always accept at the QA-tester
+  level, but you should not skip the hands-on for an interactive change on your own judgment.
 
 - **Write a numbered manual-verification script** in `4-qa.md` under `## Manual UI verification`: the
   exact hands-on click-through for a person to run — the URL to open, each interaction in order, and
   the **expected result** of each. Cover the primary flow plus the key states and edge cases from the
   questionnaire (empty, error, N/A-not-0, the risky interaction). Keep it concrete and short enough
   to run in a few minutes.
-- **Gate the verdict on it.** Until the operator has run the script and confirmed, the verdict is
-  **"PASS — pending manual UI verification"**, never "ready to deploy". Record the operator's outcome
-  in the doc (confirmed + date, or the discrepancy they found). **Do not** hand off "ready to deploy"
-  on automated evidence alone — surface the pending manual step to the operator explicitly.
+- **Gate the verdict on it (interactive changes).** Until the operator has run the script and
+  confirmed, the verdict is **"PASS — pending manual UI verification"**, never "ready to deploy".
+  Record the operator's outcome in the doc (confirmed + date, or the discrepancy they found). **Do
+  not** hand off "ready to deploy" on automated evidence alone for an interactive change — surface the
+  pending manual step to the operator explicitly. (Pure-layout changes accepted at the QA-tester level
+  may go straight to "ready to deploy" — say so in the report.)
 - If a manual step contradicts the automated result, that's a **defect** → loop back to the owning
   engineer (below), don't wave it through.
 - **Backend-only changes** (no rendered surface) are exempt from the manual UI step — say so in the
