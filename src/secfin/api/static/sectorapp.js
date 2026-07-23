@@ -363,23 +363,59 @@
   // deliberate later decision, NOT a gap we fill with estimates. This view renders NOTHING derived
   // and NOTHING fabricated: category labels + one-liners only, no figures/counts/●-flags/chips.
 
-  var QUAL_PLANNED = [
-    ["Risk-theme landscape", "How a sector's risk-factor themes shift year over year."],
-    ["Emerging risks", "Themes appearing or intensifying this filing cycle."],
-    ["Going-concern watch", "Filers using substantial-doubt language in their disclosures."],
-    ["Litigation & regulatory", "Material legal and regulatory disclosures."],
-    ["Per-filer signal matrix", "A per-company roll-up of the signals above."],
+  // The 7 real theme LABELS (not data) used as the risk-factor-theme row labels in the placeholder
+  // layout (mirrors CO_THEMES + CO_DEFERRED, hardcoded to avoid init-order coupling). Every value
+  // beside them is a placeholder -- see renderQualView.
+  var QUAL_THEMES = [
+    "Profitability & returns", "Growth", "Financial health", "Cash & investment",
+    "Operating efficiency", "Accounting quality", "Structure & activity",
   ];
+  // The prototype's right-column cards + the per-filer matrix columns -- rendered as EMPTY placeholders.
+  var QUAL_SIDE = [
+    ["Emerging this year", "Risk themes appearing or intensifying this filing cycle."],
+    ["Going-concern watch", "Filers using substantial-doubt language."],
+    ["Material litigation", "Material legal & regulatory disclosures."],
+  ];
+  var QUAL_MATRIX_COLS = ["Filer", "Risk factors", "New", "Going concern", "Litigation"];
 
   function renderQualView(vp) {
-    var cards = QUAL_PLANNED.map(function (c) {
+    // --- Risk-factor themes (left, 3fr): 7 real theme labels, every data cell a placeholder ---
+    var rtRows = QUAL_THEMES.map(function (name) {
       return (
-        '<div class="pa-qual-card"><div class="pa-qual-card-head">' +
-        '<span class="pa-qual-card-name">' + P.esc(c[0]) + "</span>" +
-        '<span class="pa-qual-planned">planned</span></div>' +
-        '<div class="pa-qual-card-desc">' + P.esc(c[1]) + "</div></div>"
+        '<div class="pa-qual-rtrow"><span class="pa-qual-rtname">' + P.esc(name) + "</span>" +
+        '<span class="pa-qual-rtmid"><span class="pa-qual-rtbar"></span><span class="pa-qual-dash">—</span></span>' +
+        '<span class="pa-qual-planned">planned</span></div>'
       );
     }).join("");
+    var rtCard =
+      '<div class="pa-card pa-qual-rt"><div class="pa-qual-cardhead">' +
+      '<span class="pa-qual-cardname">Risk-factor themes</span>' +
+      '<span class="pa-qual-cardnote">share of filers citing · YoY direction</span></div>' +
+      rtRows +
+      '<div class="pa-qual-rtfoot">Track 2 — the share-of-filers coverage + YoY direction here will come ' +
+      "from risk-factor <strong>narrative</strong> we don’t ingest yet. Placeholder; nothing shown.</div></div>";
+
+    // --- right column (2fr): 3 placeholder cards ---
+    var sideCards = QUAL_SIDE.map(function (c) {
+      return (
+        '<div class="pa-card pa-qual-sidecard"><div class="pa-qual-cardhead">' +
+        '<span class="pa-qual-cardname">' + P.esc(c[0]) + "</span><span class=\"pa-qual-dash\">—</span></div>" +
+        '<div class="pa-qual-phbody">' + P.esc(c[1]) + ' <span class="pa-qual-phtag">to be defined · no filers shown</span></div></div>'
+      );
+    }).join("");
+
+    // --- per-filer signals matrix: column headers + a placeholder body (no fabricated rows) ---
+    var mhead = QUAL_MATRIX_COLS.map(function (c, i) {
+      return '<span class="pa-qual-mcol' + (i === 0 ? " first" : "") + '">' + P.esc(c) + "</span>";
+    }).join("");
+    var matrix =
+      '<div class="pa-card pa-qual-matrix"><div class="pa-qual-cardhead">' +
+      '<span class="pa-qual-cardname">Per-filer signals</span>' +
+      '<span class="pa-qual-cardnote">flags derived from narrative sections · discrete, not distributions</span></div>' +
+      '<div class="pa-qual-mhead">' + mhead + "</div>" +
+      '<div class="pa-qual-phbody pa-qual-mbody">Per-filer flags will list here — <span class="pa-qual-phtag">to be defined</span>. ' +
+      "No filers are shown; nothing here is fabricated.</div></div>";
+
     vp.innerHTML =
       '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Qualitative disclosures</h2></div>' +
       '<div class="pa-sec-sub">The narrative side of filings — risk factors, going-concern, litigation. Not yet available.</div>' +
@@ -389,8 +425,10 @@
       "going-concern language, litigation) are <strong>free-text narrative</strong>; extracting them is a " +
       "deliberate later decision, not a gap we paper over with estimates. <strong>Nothing here is " +
       "fabricated</strong> — when it ships, every signal will trace to a filing, like the rest of the app.</p></div>" +
-      '<div class="pa-qual-planned-label">What Track 2 would cover</div>' +
-      '<div class="pa-qual-grid">' + cards + "</div>" +
+      '<div class="pa-qual-planned-label">The layout Track 2 would fill — every cell a placeholder</div>' +
+      '<div class="pa-qual-cols"><div class="pa-qual-colL">' + rtCard + "</div>" +
+      '<div class="pa-qual-colR">' + sideCards + "</div></div>" +
+      matrix +
       '<div class="pa-qual-foot">Nothing on this view is derived from filings or estimated.</div>';
   }
 

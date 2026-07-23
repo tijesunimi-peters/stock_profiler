@@ -295,6 +295,27 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-qual-card-desc { font-size: 12px; line-height: 1.5; color: var(--ink-soft); }
 .pa-qual-foot { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); margin-top: 16px; }
 
+/* Qualitative placeholder LAYOUT (prototype altitude-4) -- every data cell is an empty placeholder. */
+.pa-qual-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 18px; align-items: start; }
+.pa-qual-colR { display: flex; flex-direction: column; gap: 14px; }
+.pa-qual-cardhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.pa-qual-cardname { font-family: var(--font-sans); font-weight: 800; font-size: 15px; color: var(--ink); }
+.pa-qual-cardnote { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+.pa-qual-dash { font-family: var(--font-mono); font-size: 12px; color: var(--mono-muted); }
+.pa-qual-rtrow { display: grid; grid-template-columns: 1fr 130px 74px; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+.pa-qual-rtname { font-size: 13.5px; color: var(--ink-muted); }
+.pa-qual-rtmid { display: flex; align-items: center; gap: 8px; }
+.pa-qual-rtbar { flex: 1; height: 8px; border: 1px dashed var(--border-strong); border-radius: 4px; background: transparent; } /* empty -- no fill, never reads as data */
+.pa-qual-rtfoot { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--rule); }
+.pa-qual-rtfoot strong { color: var(--ink-soft); }
+.pa-qual-phbody { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
+.pa-qual-phtag { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mono-muted); border: 1px dashed var(--border-strong); border-radius: 5px; padding: 2px 6px; white-space: nowrap; }
+.pa-qual-matrix { margin-top: 18px; }
+.pa-qual-mhead { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 7px 0; border-bottom: 2px solid var(--ink); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-qual-mcol { text-align: right; }
+.pa-qual-mcol.first { text-align: left; }
+.pa-qual-mbody { margin-top: 12px; }
+
 /* ---- responsive ---- */
 @media (max-width: 900px) {
   .pa-side { display: none; }
@@ -307,6 +328,9 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-co-rail { position: static; }
   .pa-cmp-cards { grid-template-columns: 1fr; }
   .pa-qual-grid { grid-template-columns: 1fr; }
+  .pa-qual-cols { grid-template-columns: 1fr; }
+  .pa-qual-mhead { font-size: 8px; gap: 4px; }
+  .pa-qual-rtrow { grid-template-columns: 1fr 90px 60px; gap: 8px; }
   .pa-drill-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
