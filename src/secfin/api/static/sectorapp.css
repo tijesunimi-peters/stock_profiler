@@ -248,10 +248,52 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-co-comp-trend { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); font-style: italic; margin-top: 6px; border-top: 1px dashed var(--border-strong); padding-top: 6px; }
 .pa-co-legend { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-bottom: 8px; line-height: 1.5; }
 .pa-dp { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 13px 16px; margin-bottom: 12px; }
-.pa-dp-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.pa-dp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.pa-dp-namewrap { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .pa-dp-name { font-size: 14px; font-weight: 700; color: var(--ink); }
-.pa-dp-lib { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); border: 1px solid var(--border-strong); border-radius: 5px; padding: 1px 6px; }
-.pa-dp-focal { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); }
+.pa-dp-lib { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); border: 1px solid var(--border-strong); border-radius: 5px; padding: 1px 6px; flex: none; }
+.pa-dp-headright { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.pa-dp-focal { font-family: var(--font-mono); font-size: 12px; color: var(--accent-ink); white-space: nowrap; }
+
+/* Per-metric trailing sparkline (P.sparkline) + a neutral trend label; click opens the trend panel.
+   The .spark svg is styled in app.css (NOT loaded here) -> style it locally. NO favorability color:
+   neutral --ink-soft line, the single last-point dot in --accent (ties "latest" to the focal diamond). */
+.pa-dp-spark { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: none; border: none; padding: 2px 4px; border-radius: 6px; }
+.pa-dp-spark:hover { background: var(--bg-badge); }
+.pa-dp-spark:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.spark { width: 108px; height: 26px; display: block; }
+.spark polyline { fill: none; stroke: var(--ink-soft); stroke-width: 1.5; }
+.spark circle { fill: var(--accent); stroke: none; }
+.pa-dp-trendlabel { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); }
+.pa-dp-notrend { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); font-style: italic; }
+
+/* Click-to-expand trailing 8-quarter trend panel (P.trendChart). trendChart's .trend-* classes live in
+   app.css (NOT loaded here) -> style locally; neutral line, --accent last dot. */
+.pa-dp-trend { background: var(--bg-tint); border: 1px solid var(--border-tint); border-radius: 9px; padding: 10px 12px; margin-top: 10px; }
+.pa-dp-trend-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); margin-bottom: 6px; }
+.trend-chart { min-width: 0; }
+.trend-empty { font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); padding: 8px 0; }
+.trend-plot { display: flex; gap: 8px; align-items: stretch; }
+.trend-yaxis { display: flex; flex-direction: column; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; color: var(--mono-muted); }
+/* Subtle grid behind the trend line (horizontal value bands + per-quarter verticals) so points are
+   readable against reference lines -- consistent with the box-whisker dot-plots' gridlines. */
+.trend-svg { flex: 1; min-width: 0; height: 90px; overflow: visible;
+  background-image:
+    repeating-linear-gradient(to bottom, var(--rule) 0, var(--rule) 1px, transparent 1px, transparent 25%),
+    repeating-linear-gradient(to right, var(--rule) 0, var(--rule) 1px, transparent 1px, transparent 14.285%);
+  background-position: left top; }
+.trend-svg polyline { fill: none; stroke: var(--ink-soft); stroke-width: 1.5; }
+.trend-svg circle { fill: var(--accent); stroke: none; }
+.trend-xaxis { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 9px; color: var(--mono-muted); margin-top: 3px; }
+.trend-caption { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); margin-top: 7px; line-height: 1.5; }
+
+/* P2 placeholder cards (segment/geo mix · filing history) — honest, dashed, no fabricated data. */
+.pa-sg.pa-ph, .pa-fh.pa-ph { background: var(--bg-tint); border-style: dashed; border-color: var(--border-strong); margin-top: 16px; }
+.pa-sg-body { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 4px; }
+.pa-sg-collabel { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mono-muted); margin-bottom: 8px; }
+.pa-sg-ph { font-style: italic; }
+.pa-ph-note { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin-top: 12px; }
+.pa-fh-body { padding: 4px 0; }
 .pa-dp-track { position: relative; height: 34px; margin: 2px 6px; border-bottom: 1px solid var(--border-tint-rule); }
 .pa-dp-iqr { position: absolute; top: 50%; transform: translateY(-50%); height: 16px; background: var(--accent-wash); border: 1px solid var(--accent-wash-border); border-radius: 4px; }
 .pa-dp-median { position: absolute; top: 50%; transform: translateY(-50%); width: 2px; height: 20px; background: var(--ink); }
@@ -393,6 +435,8 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-shift-basis { width: auto; flex: 1 1 100%; text-align: left; order: 5; }
   .pa-co-headright { width: 100%; }
   .pa-co-sel { font-size: 18px; }
+  .pa-sg-body { grid-template-columns: 1fr; gap: 14px; }
+  .pa-dp-headright { flex-wrap: wrap; }
   .pa-dd-btn { min-width: 0; }
   .pa-cmp-selects { flex-direction: column; gap: 8px; }
   .pa-cmp-select { min-width: 0; width: 100%; }

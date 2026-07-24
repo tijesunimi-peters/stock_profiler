@@ -86,6 +86,11 @@ const PAGES = process.env.PAGES
       ["sectorapp-company-default", "/sector-analytics?view=company"],
       ["sectorapp-company", "/sector-analytics?view=company&symbol=900001"],
       ["sectorapp-company-refocus", "/sector-analytics?view=company&symbol=900001"],
+      // v2 P2: sparklines + click-to-expand 8-quarter trend. ?symbol=320193 (AAPL, which HAS real
+      // companyfacts history and shares the SIC-35 group) -> a POPULATED sparkline; the shot clicks it
+      // to open the trailing-8 trend panel. (900001 above is synthetic -> its sparklines honestly read
+      // "no trend yet" -- the honest-degradation case in the same view.)
+      ["sectorapp-company-trend", "/sector-analytics?view=company&symbol=320193"],
       // Compare view (altitude 3): sector-vs-sector paired theme bars + metric-median cards.
       // 73 vs 60 (60 omits operating-efficiency -> honest "not scored" on B); 73 alone (B unset ->
       // prompt); 73 vs 28 (28 has no liquidity/solvency spreads -> metric-card N/A cells); and the
@@ -172,6 +177,14 @@ const PAGES = process.env.PAGES
           await page.click(".pa-dp-track .pa-dot");
           await new Promise((r) => setTimeout(r, 600));
         }
+      }
+      if (name === "sectorapp-company-trend") {
+        // Wait for the focal's sparklines to load, then click one to expand its 8-quarter trend panel.
+        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        await page.waitForSelector(".pa-dp-spark[data-metric]", { timeout: 8000 });
+        await page.click(".pa-dp-spark[data-metric]");
+        await page.waitForSelector(".pa-dp-trend", { timeout: 5000 });
+        await new Promise((r) => setTimeout(r, 500));
       }
       if (name === "sectorapp-compare" || name === "sectorapp-compare-na") {
         // Wait for the paired theme bars to render.

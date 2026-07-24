@@ -1,23 +1,21 @@
 # Active delivery task
-task_slug: sector-v2
-request: v2 P0+P1 — Shell v2 (960px content cap + sticky right rail: Sector snapshot + What's moving feed PLACEHOLDER + how-to-read) and Sector view v2 re-arch (3 scopes: 01 scorecard+peer-strip+geo/insider placeholders; 02 decomp full-width open-by-default + shifts; 03 Distribution with [This theme]/[All metrics] toggle). Keep F4 color. Frontend-only. See docs/ROADMAP_SECTOR_APP_V2.md P0/P1.
-branch: sector-v2 (off master; sector-parity/M1 abandoned, not merged)
+task_slug: sector-v2-company
+request: v2 P2 — Company view. Evolve the shipped /sector-analytics Company view (altitude 2) to the v2 prototype: per-metric sparklines (REAL, click-to-expand 8-quarter trend), segment & geographic mix (PLACEHOLDER — ASC 280 not ingested), filing history & flags (dates real per CIK; restatement/material-weakness flags Track-2 PLACEHOLDER). Carry F1/F2/F3 follow-ups. Keep F4 color + honesty rails. Frontend-only, branch off master (stacked on sector-v2). See docs/ROADMAP_SECTOR_APP_V2.md P2.
+branch: sector-v2-company (off sector-v2; stacked)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-24
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (7 ACs; scope gate PASS — re-arrange real blocks + honest placeholders; keep F4 color; no backend.)
-- [x] 2 Principal Architect   -> 2-architecture.md (FRONTEND-ONLY; 3-col shell + right rail; 3-scope Sector re-arch; distribution toggle; geo/insider/feed placeholders.)
-- [x] 3 Backend  — N/A (FRONTEND-ONLY)
-- [x] 3 Frontend             -> 3-implementation.md (shell v2 + Sector 3-scope re-arch + distribution toggle + geo/insider/feed placeholders; F4 color kept; drilldown/feed removed from flow.)
-- [x] 4 QA Tester             -> 4-qa.md (PASS at QA-tester level; pytest 511 passed; e2e HEADLESS CHECK PASS + eyeballed. PENDING operator hands-on manual UI verification — interactive gate.)
+- [x] 1 Product Manager       -> 1-brief.md (scope gate PASS; Track 1, frontend-only; filing history = placeholder per operator)
+- [x] 2 Principal Architect   -> 2-architecture.md (FRONTEND-ONLY confirmed; reuse P.sparkline + P.trendChart; .spark/.trend-* need local CSS; 2 placeholder cards; real context pill)
+- [x] 3 Backend  — N/A (FRONTEND-ONLY confirmed by architect)
+- [x] 3 Frontend             -> 3-implementation.md (sparklines + click-to-expand trend REAL; 2 placeholder cards; real context pill; .spark/.trend-* local CSS; AAPL added to fixture group; pytest 511, e2e PASS + eyeballed)
+- [x] 4 QA Tester             -> 4-qa.md (PASS at QA-tester level; pytest 511, e2e PASS, AAPL history 11 pts w/ 2 gaps never 0, placeholders honest, no favorability color. PENDING operator hands-on manual UI verification.)
 
 ## Notes / open loops
-- BRANCH FIX (2026-07-24): sector-v2 was mistakenly stacked on sector-parity (M1); re-based cleanly off
-  master (cherry-picked the v2 docs commit -> master 06a29ea). M1/sector-parity ABANDONED, not merged.
-- Base = master (fidelity; NO M1 DuPont/lifecycle). Keep F4 delta color.
-- v2 P0 shell (960 cap + right rail) + P1 Sector 3 scopes + distribution toggle + geo/insider/feed
-  PLACEHOLDERS shipped. All verified green EXCEPT the operator hands-on manual UI verification
-  (interactive gate) — required before commit. NOT yet committed.
-- Next in the v2 sequence after commit + manual sign-off: P2 (Company view v2).
+- P0/P1 (sector-v2) committed (438c79e) on branch sector-v2 off master. P2 stacks on it.
+- v2 P2 reference: docs/ROADMAP_SECTOR_APP_V2.md P2 + docs/design/sector-app-prototype-v2/ altitude 2.
+- Classifications: sparklines = Track-1 REAL; segment/geo mix = Track-1 not ingested -> PLACEHOLDER;
+  filing dates = REAL where available; restatement/material-weakness flags = Track-2 -> PLACEHOLDER.
+- Keep F4 delta-color deviation; NO fabricated data; N/A never 0.

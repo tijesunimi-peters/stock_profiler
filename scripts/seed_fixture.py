@@ -792,10 +792,19 @@ def _seed_app_company_group(db_path: str) -> None:
             if not na:
                 rrows.append(MetricRankRow(cik, 2025, "FY", metric, "35", n,
                                            round(i / (n - 1) * 100, 1), 0.0))
+    # AAPL (320193) has REAL companyfacts history, and its real SIC 3571 shares the "35" 2-digit group.
+    # Add it as an 11th dot-cloud filer (metric_values only -- NOT ranks, so we don't clobber the
+    # company-hub peer ranks _seed_peer_ranks writes for AAPL) so ?symbol=320193 renders a populated
+    # dot-cloud AND real trailing sparklines/trend. Dot values are synthetic (position only); the
+    # sparkline is computed from AAPL's real history by the metric-history endpoint, not from these.
+    for j, metric in enumerate(_APP_COMPANY_METRICS):
+        base = 0.07 + (j % 7) * 0.02
+        val = round(base * (5 if metric in ("roe", "current_ratio", "inventory_turnover", "debt_to_equity") else 1), 4)
+        vrows.append(MetricValueRow(320193, 2025, "FY", metric, val, "ok", "ratio"))
     try:
         values.bulk_upsert(vrows)
         ranks.bulk_upsert(rrows)
-        print(f"seeded app company group: {n} SIC-35 filers, {len(vrows)} values, {len(rrows)} ranks")
+        print(f"seeded app company group: {n} SIC-35 filers + AAPL, {len(vrows)} values, {len(rrows)} ranks")
     finally:
         profiles.close()
         values.close()

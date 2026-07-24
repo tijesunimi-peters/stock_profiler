@@ -42,6 +42,8 @@
     coCompOpen: false, // composite card decomposition toggle
     companyErr: false,
     coValues: {}, // "group|metric" -> SectorCompanyValueList payload (the dot-cloud, cached)
+    coHistory: {}, // "cik|metric" -> MetricHistory payload (the focal's trailing trend, cached)
+    coTrendOpen: {}, // metric -> bool: the per-metric 8-quarter trend expand state (reset on focal change)
   };
   if (params.get("view") === "company") state.view = "company";
   if (params.get("view") === "compare") state.view = "compare";
@@ -243,9 +245,10 @@
       '<main class="pa-main">' +
       titleHtml() +
       controlBarHtml() +
-      // v2 shell: view rail · viewport (960px cap) · Sector-view-only right rail (snapshot + feed + how-to-read)
+      // v2 shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
+      // Company: focal filer snapshot + how-to). Compare/Qualitative have no rail (own phases).
       '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div>' +
-      (state.view === "sector" ? rightRailHtml() : "") + "</div>" +
+      (state.view === "sector" || (state.view === "company" && state.focalCik) ? rightRailHtml() : "") + "</div>" +
       "</main></div></div>";
     renderViewport();
     wireShell();
@@ -352,6 +355,7 @@
   // ---------- right rail (Sector view only): snapshot · "What's moving" feed placeholder · how-to-read ----------
 
   function rightRailHtml() {
+    if (state.view === "company") return companyRailHtml();
     var sel = selectedSector();
     var name = sel ? sel.group_label : "—";
     // Snapshot k/v rows — real where we have it (filers · period), honest placeholder for coverage;
@@ -385,6 +389,33 @@
       '<div class="pa-rr-how">Scores are a position vs other sectors, not a good/bad or buy verdict. ' +
       "Every number is traceable — click a score to open its decomposition.</div>" +
       '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
+      "</aside>"
+    );
+  }
+
+  // Company view right rail: a snapshot of the FOCAL filer (its own SIC peer context -- never the
+  // dropdown sector, which can differ from the focal's group), plus a how-to-read note. All real.
+  function companyRailHtml() {
+    var peers = state.focalCik ? focalPeerList() : [];
+    var rows = [
+      ["Ticker", state.focalTicker || "—"],
+      ["Peer group", state.focalGroup ? "SIC " + state.focalGroup : "—"],
+      ["Peers", peers.length ? peers.length + "" : "—"],
+      ["Period", "FY" + focalYear()],
+    ].map(function (kv) {
+      var isPh = kv[1] === "—";
+      return '<div class="pa-snap-row"><span class="pa-snap-k">' + P.esc(kv[0]) + "</span>" +
+        '<span class="pa-snap-v' + (isPh ? " pa-ph" : "") + '">' + P.esc(kv[1]) + "</span></div>";
+    }).join("");
+    return (
+      '<aside class="pa-rrail">' +
+      '<div class="pa-rr-card"><div class="pa-rr-label">Filer snapshot</div>' +
+      '<div class="pa-rr-name">' + P.esc(focalLabel()) + "</div>" +
+      '<div class="pa-snap">' + rows + "</div></div>" +
+      '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
+      '<div class="pa-rr-how">Each dot is a filer in this SIC peer group; the ◆ is this filer. ' +
+      "Percentiles are favorability-adjusted and exclude N/A · N/M filers. Click a sparkline for the " +
+      "trailing 8-quarter trend.</div></div>" +
       "</aside>"
     );
   }
@@ -805,6 +836,7 @@
     state.view = "company";
     state.companyErr = false;
     state.focalPeers = null; state.focalName = null;
+    state.coTrendOpen = {}; // a new focal -> collapse any open trend (it belonged to the prior filer)
     // a ticker search sets the ticker pill; a raw-CIK search does not (we never fabricate a ticker)
     state.focalTicker = /^\d+$/.test(symbol) ? null : symbol.toUpperCase();
     P.api("/companies/" + encodeURIComponent(symbol) + "/peers?year=" + focalYear() + "&period=FY")
@@ -823,6 +855,7 @@
     state.focalCik = cik;
     state.focalName = name || null;
     state.focalTicker = null; // a cik/dot-click/default focal has no known ticker
+    state.coTrendOpen = {}; // a new focal -> collapse any open trend
     P.api("/companies/" + cik + "/peers?year=" + focalYear() + "&period=FY")
       .then(function (res) { if (state.focalCik === cik) { state.focalPeers = res; renderApp(); } })
       .catch(function () { /* keep the dots; the rail just won't update */ renderApp(); });
@@ -885,6 +918,21 @@
     });
   }
 
+  // Fetch the focal's per-metric quarterly history (the row sparklines + the 8-quarter trend panel).
+  // Cache-aside, keyed by (cik|metric); a fetch failure caches an empty series so we render an honest
+  // "no trend yet" affordance, never a fabricated line. Re-renders as each metric's history arrives.
+  function ensureCompanyHistory(cik) {
+    if (!cik) return;
+    CO_METRICS.forEach(function (m) {
+      var key = cik + "|" + m;
+      if (state.coHistory[key]) return;
+      state.coHistory[key] = { points: [] }; // mark in-flight so we don't refetch; overwritten on arrival
+      P.api("/companies/" + cik + "/metrics/" + encodeURIComponent(m) + "/history?frequency=quarterly")
+        .then(function (r) { state.coHistory[key] = r; if (state.focalCik === cik) renderApp(); })
+        .catch(function () { /* keep the empty series -> honest "no trend yet" */ });
+    });
+  }
+
   function quant(sorted, p) {
     if (!sorted.length) return null;
     var i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
@@ -898,7 +946,7 @@
   function clearFocalToDefault() {
     state.focalCik = null; state.focalGroup = null; state.focalName = null;
     state.focalTicker = null; state.focalPeers = null; state.companyErr = false;
-    state.defaultFocalTried = false;
+    state.defaultFocalTried = false; state.coTrendOpen = {};
     renderApp();
     resolveDefaultFocal();
   }
@@ -925,6 +973,7 @@
         '<div class="pa-co-back"><button class="pa-co-backbtn" id="coBackBtn">← Back to a default filer</button></div></div>';
       return;
     }
+    ensureCompanyHistory(state.focalCik); // load the focal's per-metric trailing history (sparklines)
     vp.innerHTML = coHead() +
       '<div class="pa-co-body"><div class="pa-co-rail">' + coRailHtml() + "</div>" +
       '<div class="pa-co-main">' +
@@ -932,9 +981,40 @@
       '<div class="pa-co-legend">each dot a filer · band = IQR · line = median · ◆ = ' + P.esc(focalLabel()) +
       " · percentiles favorability-adjusted, N/A · N/M excluded</div>" +
       CO_METRICS.map(coDotPlotHtml).join("") +
-      '<div class="pa-co-afford">Click any peer dot to make it the focal filer.</div>' +
+      '<div class="pa-co-afford">Click any peer dot to make it the focal filer. Click a sparkline to open its trailing 8-quarter trend.</div>' +
+      segGeoPlaceholderHtml() +
+      filingHistoryPlaceholderHtml() +
       "</div></div>";
     wireCompanyView();
+  }
+
+  // Segment & geographic revenue mix (ASC 280) — Track 1 but NOT ingested / no endpoint. Honest
+  // placeholder matching the prototype's two-column (by-segment / by-region) shape. No fabricated data.
+  function segGeoPlaceholderHtml() {
+    var col = function (label) {
+      return '<div class="pa-sg-col"><div class="pa-sg-collabel">' + label + "</div>" +
+        '<div class="pa-ph-body pa-sg-ph">— to be defined; no figures shown</div></div>';
+    };
+    return (
+      '<div class="pa-card pa-sg pa-ph"><div class="pa-card-head">' +
+      '<span class="pa-card-title">Segment &amp; geographic mix</span>' +
+      '<span class="pa-card-hint">ASC 280 segment disclosure</span></div>' +
+      '<div class="pa-sg-body">' + col("By segment") + col("By region") + "</div>" +
+      '<div class="pa-ph-note">Segment (ASC 280) revenue by line of business and region isn’t ingested yet — placeholder, nothing fabricated.</div></div>'
+    );
+  }
+
+  // Filing history & flags — no per-CIK filings endpoint (and 8-K isn't ingested); restatement /
+  // material-weakness flags are Track-2. Honest placeholder matching the prototype's list shape.
+  function filingHistoryPlaceholderHtml() {
+    return (
+      '<div class="pa-card pa-fh pa-ph"><div class="pa-card-head">' +
+      '<span class="pa-card-title">Filing history &amp; flags</span>' +
+      '<span class="pa-ph-tag">flags — placeholder</span></div>' +
+      '<div class="pa-fh-body pa-ph-body">A filing timeline (10-K / 10-Q / 8-K / Form 4 · date) plus ' +
+      "restatement / material-weakness flags would sit here — per-filer filing history isn’t served yet " +
+      "and the flags are Track-2. To be defined; no filings shown, nothing fabricated.</div></div>"
+    );
   }
 
   function coHead() {
@@ -1021,9 +1101,10 @@
     var cos = payload.companies || [];
     var hib = payload.higher_is_better;
     var head =
-      '<div class="pa-dp-head"><span class="pa-dp-name">' + P.esc(payload.label || metric) + "</span>" +
-      (hib === false ? '<span class="pa-dp-lib">lower is better</span>' : "") +
-      focalValueLabel(cos, payload) + "</div>";
+      '<div class="pa-dp-head">' +
+      '<span class="pa-dp-namewrap"><span class="pa-dp-name">' + P.esc(payload.label || metric) + "</span>" +
+      (hib === false ? '<span class="pa-dp-lib">lower is better</span>' : "") + "</span>" +
+      '<span class="pa-dp-headright">' + coSparkHtml(metric) + focalValueLabel(cos, payload) + "</span></div>";
     if (cos.length < 2) {
       return '<div class="pa-dp">' + head + '<div class="pa-empty-inline">No peer distribution for this metric yet — sparse coverage, not zero.</div></div>';
     }
@@ -1047,7 +1128,49 @@
       '<span class="pa-dp-median" style="left:' + med.toFixed(1) + '%"></span>' +
       dots + diamond + "</div>";
     var cap = '<div class="pa-dp-cap">' + cos.length + " filers · min " + fmtCo(metric, min) + " · median " + fmtCo(metric, quant(sorted, 0.5)) + " · max " + fmtCo(metric, max) + "</div>";
-    return '<div class="pa-dp">' + head + track + cap + "</div>";
+    return '<div class="pa-dp">' + head + track + cap + coTrendPanelHtml(metric) + "</div>";
+  }
+
+  // The trailing window (<=8 quarters) of the focal's history for one metric, oldest-first, mapped to
+  // the {value, status} shape P.sparkline / P.trendChart expect. na/nm stay as gap points (value null).
+  function coTrailing(metric) {
+    var h = state.coHistory[state.focalCik + "|" + metric];
+    if (!h || !h.points) return null;
+    return { hist: h, pts: h.points.slice(-8) };
+  }
+  // Sparkline + a neutral trend label in the metric row header. Honest states: nothing while the
+  // history is loading, "no trend yet" when <2 comparable points (never a flat/fake line).
+  function coSparkHtml(metric) {
+    var t = coTrailing(metric);
+    if (!t) return ""; // not fetched yet -> no sparkline (appears when it arrives)
+    var svg = P.sparkline(t.pts);
+    if (!svg) return '<span class="pa-dp-notrend">no trend yet</span>';
+    return '<button class="pa-dp-spark" data-metric="' + P.esc(metric) + '" title="Show the trailing 8-quarter trend">' +
+      svg + '<span class="pa-dp-trendlabel">' + coTrendLabel(t.pts) + "</span></button>";
+  }
+  // Neutral trend descriptor (R3): direction glyph from first-vs-last COMPARABLE value + window length.
+  // NEVER a color and never a verdict.
+  function coTrendLabel(pts) {
+    var present = pts.filter(function (p) { return p && p.value !== null && p.value !== undefined && p.status !== "na" && p.status !== "nm"; });
+    if (present.length < 2) return "";
+    var d = present[present.length - 1].value - present[0].value;
+    var glyph = d > 0 ? "↑" : d < 0 ? "↓" : "→";
+    return glyph + " " + pts.length + "q";
+  }
+  // The click-to-expand trend panel. Reuses P.trendChart (self-scaling line, honest gaps + empty
+  // state) on the trailing-8 slice; signals dropped so the window and the annotations can't disagree.
+  function coTrendPanelHtml(metric) {
+    if (!state.coTrendOpen[metric]) return "";
+    var t = coTrailing(metric);
+    if (!t) return "";
+    var sliced = {
+      points: t.pts, signals: [], unit: t.hist.unit, metric: t.hist.metric,
+      restatement_basis: t.hist.restatement_basis, frequency: t.hist.frequency || "quarterly",
+    };
+    return (
+      '<div class="pa-dp-trend"><div class="pa-dp-trend-label">Trailing 8-quarter trend</div>' +
+      P.trendChart(sliced) + "</div>"
+    );
   }
 
   function focalValueLabel(cos, payload) {
@@ -1072,6 +1195,14 @@
     });
     var cbtn = $("coCompBtn");
     if (cbtn) cbtn.addEventListener("click", function () { state.coCompOpen = !state.coCompOpen; renderApp(); });
+    // click a metric's sparkline -> toggle its trailing 8-quarter trend panel
+    document.querySelectorAll(".pa-dp-spark[data-metric]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var m = b.getAttribute("data-metric");
+        state.coTrendOpen[m] = !state.coTrendOpen[m];
+        renderApp();
+      });
+    });
   }
 
   // ---------- Compare view (altitude 3): sector vs sector ----------
