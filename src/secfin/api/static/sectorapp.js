@@ -44,6 +44,9 @@
     coValues: {}, // "group|metric" -> SectorCompanyValueList payload (the dot-cloud, cached)
     coHistory: {}, // "cik|metric" -> MetricHistory payload (the focal's trailing trend, cached)
     coTrendOpen: {}, // metric -> bool: the per-metric 8-quarter trend expand state (reset on focal change)
+    // Qualitative view (altitude 4) state -- both drive wired-but-EMPTY placeholder reveals (P4).
+    qualThemeOpen: null, // theme label whose representative-language panel is expanded (single-open)
+    qualFilerOpen: {}, // { affordanceId: true } -> revealed filer-count panels (multi-open, empty states)
   };
   if (params.get("view") === "company") state.view = "company";
   if (params.get("view") === "compare") state.view = "compare";
@@ -246,9 +249,10 @@
       titleHtml() +
       controlBarHtml() +
       // v2 shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
-      // Company: focal filer snapshot + how-to; Compare: A/B snapshot + how-to). Qualitative has no rail.
+      // Company: focal filer snapshot + how-to; Compare: A/B snapshot + how-to; Qualitative: Track-2
+      // how-to note, no data). The rail hides < 1240px (CSS) so the content keeps its room.
       '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div>' +
-      (state.view === "sector" || (state.view === "company" && state.focalCik) || state.view === "compare" ? rightRailHtml() : "") + "</div>" +
+      (state.view === "sector" || (state.view === "company" && state.focalCik) || state.view === "compare" || state.view === "qual" ? rightRailHtml() : "") + "</div>" +
       "</main></div></div>";
     renderViewport();
     wireShell();
@@ -357,6 +361,7 @@
   function rightRailHtml() {
     if (state.view === "company") return companyRailHtml();
     if (state.view === "compare") return compareRailHtml();
+    if (state.view === "qual") return qualRailHtml();
     var sel = selectedSector();
     var name = sel ? sel.group_label : "—";
     // Snapshot k/v rows — real where we have it (filers · period), honest placeholder for coverage;
@@ -389,6 +394,27 @@
       '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
       '<div class="pa-rr-how">Scores are a position vs other sectors, not a good/bad or buy verdict. ' +
       "Every number is traceable — click a score to open its decomposition.</div>" +
+      '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
+      "</aside>"
+    );
+  }
+
+  // Qualitative view right rail: NO data (this whole view is a Track-2 placeholder) — just an honest
+  // "what this is" note + a "how to read this" card, so the rail matches the other views' shell and
+  // the far-right column isn't left blank. Nothing here is derived or fabricated.
+  function qualRailHtml() {
+    return (
+      '<aside class="pa-rrail">' +
+      '<div class="pa-rr-card"><div class="pa-rr-label">Qualitative disclosures</div>' +
+      '<div class="pa-rr-name">Track 2</div>' +
+      '<div class="pa-rr-how pa-ph">The narrative side of filings — risk factors, going-concern, ' +
+      "litigation, CAMs, cybersecurity, auditor changes. We ingest <strong>structured</strong> SEC " +
+      "data only, so this free-text isn’t derived yet; every cell here is a placeholder.</div></div>" +
+      '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
+      '<div class="pa-rr-how">Nothing on this view is derived from filings or estimated. Each row and ' +
+      "block shows the <em>shape</em> Track 2 will fill — expand a theme or “reveal the filers” to see " +
+      "the honest empty state. When it ships, every signal will trace to a filing, like the rest of " +
+      "the app.</div>" +
       '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
       "</aside>"
     );
@@ -458,12 +484,15 @@
     return renderQualView(vp);
   }
 
-  // ---------- Qualitative view (altitude 4): an honest "Coming — Track 2" placeholder ----------
+  // ---------- Qualitative view (altitude 4): honest Track-2 placeholder LAYOUT (v2, P4) ----------
   //
   // HONESTY LANDMINE (CLAUDE.md guardrail 1 / REDESIGN honesty flag 1): this product ingests
   // STRUCTURED SEC data only (Track 1). Qualitative disclosures are free-text narrative -- a
-  // deliberate later decision, NOT a gap we fill with estimates. This view renders NOTHING derived
-  // and NOTHING fabricated: category labels + one-liners only, no figures/counts/●-flags/chips.
+  // deliberate later decision, NOT a gap we fill with estimates. This view renders the FULL SHAPE
+  // of what Track 2 will deliver, but NOTHING derived and NOTHING fabricated: labels + one-line
+  // source notes only, and every data cell (bar/chip/count/●/excerpt/ticker) is an unmistakable
+  // placeholder. The click-to-expand (themes) and click-to-reveal (filer counts) affordances are
+  // WIRED, but every revealed panel is an honest empty state -- never data. (See wireQualView.)
 
   // The 7 real theme LABELS (not data) used as the risk-factor-theme row labels in the placeholder
   // layout (mirrors CO_THEMES + CO_DEFERRED, hardcoded to avoid init-order coupling). Every value
@@ -479,20 +508,58 @@
     ["Material litigation", "Material legal & regulatory disclosures."],
   ];
   var QUAL_MATRIX_COLS = ["Filer", "Risk factors", "New", "Going concern", "Litigation"];
+  // Disclosure-landscape blocks (prototype §5.4): [title, what-it-will-show + SEC source]. LABELS
+  // ONLY -- descriptions say what the block WILL show, never a value. `reveal` blocks carry a
+  // click-to-reveal "which filers" affordance that opens an honest empty state (no tickers shown).
+  var QUAL_DISCLOSURE = [
+    ["Cybersecurity", "Material incidents + governance — 10-K Item 1C · 8-K Item 1.05", true],
+    ["Critical Audit Matters", "Auditor-flagged CAMs — auditor’s report (PCAOB AS 3101)", false],
+    ["Auditor landscape", "Auditor share · changes · tenure — 10-K signature · 8-K Item 4.01", true],
+    ["Risk-factor volume", "Item 1A word-count trend + net-new — 10-K/10-Q Item 1A", false],
+    ["Non-GAAP & charges", "Non-GAAP usage + reconciliations — 8-K Item 2.02 · MD&A", false],
+    ["Late & deficient filings", "Late notices · ICFR weakness · restatements — NT · Item 9A · 8-K 4.02", true],
+    ["Human-capital & climate", "Workforce metrics + voluntary climate — 10-K Item 1", false],
+  ];
+
+  // A wired-but-empty click-to-reveal control + (when open) an honest empty panel. `id` keys
+  // state.qualFilerOpen; the revealed panel NEVER lists a ticker -- it says none is shown.
+  function qualReveal(id, label) {
+    var open = !!state.qualFilerOpen[id];
+    var btn =
+      '<button type="button" class="pa-qual-reveal" data-qual-filer="' + P.esc(id) + '"' +
+      ' aria-expanded="' + (open ? "true" : "false") + '"><span class="pa-qual-caret">' +
+      (open ? "▾" : "▸") + "</span>" + P.esc(label) + "</button>";
+    var panel = open
+      ? '<div class="pa-qual-filerpanel">The specific filers behind this will list here — ' +
+        '<span class="pa-qual-phtag">to be defined · none shown</span>. No tickers are fabricated.</div>'
+      : "";
+    return btn + panel;
+  }
 
   function renderQualView(vp) {
-    // --- Risk-factor themes (left, 3fr): 7 real theme labels, every data cell a placeholder ---
+    // --- Risk-factor themes (left, 3fr): 7 real theme labels; each row click-to-expand its
+    //     representative language into an HONEST EMPTY panel; a persistent inert "Filings →" stub. ---
     var rtRows = QUAL_THEMES.map(function (name) {
-      return (
-        '<div class="pa-qual-rtrow"><span class="pa-qual-rtname">' + P.esc(name) + "</span>" +
+      var open = state.qualThemeOpen === name;
+      var row =
+        '<div class="pa-qual-rtrow' + (open ? " is-open" : "") + '" role="button" tabindex="0"' +
+        ' aria-expanded="' + (open ? "true" : "false") + '" data-qual-theme="' + P.esc(name) + '">' +
+        '<span class="pa-qual-rtname">' + P.esc(name) + "</span>" +
         '<span class="pa-qual-rtmid"><span class="pa-qual-rtbar"></span><span class="pa-qual-dash">—</span></span>' +
-        '<span class="pa-qual-planned">planned</span></div>'
-      );
+        '<span class="pa-qual-rtend"><span class="pa-qual-planned">planned</span>' +
+        '<button type="button" class="pa-qual-filings" data-qual-filings="' + P.esc(name) + '">Filings →</button>' +
+        "</span></div>";
+      var lang = open
+        ? '<div class="pa-qual-langpanel">Representative language will appear here — a verbatim excerpt, ' +
+          'its source filing, and “Open filings in ClearyFi”. <span class="pa-qual-phtag">to be defined · ' +
+          "no filing text shown</span>. Nothing is quoted or paraphrased from a filing yet.</div>"
+        : "";
+      return row + lang;
     }).join("");
     var rtCard =
       '<div class="pa-card pa-qual-rt"><div class="pa-qual-cardhead">' +
       '<span class="pa-qual-cardname">Risk-factor themes</span>' +
-      '<span class="pa-qual-cardnote">share of filers citing · YoY direction</span></div>' +
+      '<span class="pa-qual-cardnote">share of filers citing · YoY direction · click a row for language</span></div>' +
       rtRows +
       '<div class="pa-qual-rtfoot">Track 2 — the share-of-filers coverage + YoY direction here will come ' +
       "from risk-factor <strong>narrative</strong> we don’t ingest yet. Placeholder; nothing shown.</div></div>";
@@ -516,7 +583,28 @@
       '<span class="pa-qual-cardnote">flags derived from narrative sections · discrete, not distributions</span></div>' +
       '<div class="pa-qual-mhead">' + mhead + "</div>" +
       '<div class="pa-qual-phbody pa-qual-mbody">Per-filer flags will list here — <span class="pa-qual-phtag">to be defined</span>. ' +
-      "No filers are shown; nothing here is fabricated.</div></div>";
+      "No filers are shown; nothing here is fabricated.<div class=\"pa-qual-revealrow\">" +
+      qualReveal("matrix", "Reveal the filers behind these signals") + "</div></div></div>";
+
+    // --- Disclosure landscape (§5.4): 7 placeholder blocks; some carry a click-to-reveal filers stub ---
+    var blocks = QUAL_DISCLOSURE.map(function (b, i) {
+      var reveal = b[2]
+        ? '<div class="pa-qual-revealrow">' + qualReveal("dl" + i, "Reveal the filers") + "</div>"
+        : "";
+      return (
+        '<div class="pa-qual-block"><div class="pa-qual-block-head">' +
+        '<span class="pa-qual-block-name">' + P.esc(b[0]) + "</span>" +
+        '<span class="pa-qual-planned">planned</span></div>' +
+        '<div class="pa-qual-block-src">' + P.esc(b[1]) + "</div>" +
+        '<div class="pa-qual-phbody">What it will show is mapped; the counts are ' +
+        '<span class="pa-qual-phtag">to be defined</span>.</div>' + reveal + "</div>"
+      );
+    }).join("");
+    var landscape =
+      '<div class="pa-sec-head"><span class="pa-sec-num">02</span><h2 class="pa-sec-h2">Disclosure landscape</h2></div>' +
+      '<div class="pa-sec-sub">Signals we can source from specific SEC sections once narrative parsing ships — ' +
+      "each block a placeholder for now.</div>" +
+      '<div class="pa-qual-grid pa-qual-landscape">' + blocks + "</div>";
 
     vp.innerHTML =
       '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Qualitative disclosures</h2></div>' +
@@ -531,7 +619,36 @@
       '<div class="pa-qual-cols"><div class="pa-qual-colL">' + rtCard + "</div>" +
       '<div class="pa-qual-colR">' + sideCards + "</div></div>" +
       matrix +
+      landscape +
       '<div class="pa-qual-foot">Nothing on this view is derived from filings or estimated.</div>';
+
+    wireQualView();
+  }
+
+  function wireQualView() {
+    // Risk-theme row -> toggle its representative-language panel (single-open). Keyboard-operable.
+    document.querySelectorAll(".pa-qual-rtrow[data-qual-theme]").forEach(function (row) {
+      var name = row.getAttribute("data-qual-theme");
+      function toggle() { state.qualThemeOpen = (state.qualThemeOpen === name) ? null : name; renderApp(); }
+      row.addEventListener("click", toggle);
+      row.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+    // "Filings →" -> inert stub: the Filings view (P5) isn't built. No navigation, no error.
+    document.querySelectorAll(".pa-qual-filings[data-qual-filings]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); e.preventDefault(); });
+    });
+    // Click-to-reveal filer counts -> toggle an honest empty panel (never tickers).
+    document.querySelectorAll("[data-qual-filer]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var id = b.getAttribute("data-qual-filer");
+        if (state.qualFilerOpen[id]) delete state.qualFilerOpen[id];
+        else state.qualFilerOpen[id] = true;
+        renderApp();
+      });
+    });
   }
 
   // ---------- Sector view ----------

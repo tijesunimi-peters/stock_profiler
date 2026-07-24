@@ -1,38 +1,54 @@
 # Active delivery task
-task_slug: sector-v2-compare
-request: v2 P3 — Compare view. Evolve the shipped /sector-analytics Compare view (altitude 3, sector-vs-sector) to the v2 prototype: add the 7-theme composite PROFILE RADAR (real, from theme scores) + an overlaid IQR SPREAD per metric (real, from spreads); keep the v1 paired theme bars + metric-median cards, NO winner declared, A/B color = categorical identity only (A=--accent, B=--pa-b). Keep honesty rails (N/A never 0, no fabricated data, no favorability color). Frontend-only, branch off sector-v2-company (stacked). See docs/ROADMAP_SECTOR_APP_V2.md P3 + docs/design/sector-app-prototype-v2/ altitude 3.
-branch: sector-v2-compare (off sector-v2-company / master head fe3b122)
-next_stage: done (QA PASS; manual UI gate satisfied via operator-directed interactive driving)
+task_slug: sector-v2-qualitative
+request: v2 P4 — Qualitative view. Expand the shipped /sector-analytics Qualitative view (altitude 4) from the honest "Coming — Track 2" placeholder frame to the v2 prototype's fuller placeholder LAYOUT: representative-language rows, the Disclosure landscape blocks (cyber / CAMs / auditor / RF-volume / non-GAAP / late / human-capital), a per-filer matrix, and click-to-reveal — ALL honest placeholders (Track 2, not yet derived). Never fabricate a figure, filer, count, %, ●, or excerpt. Frontend-only, branch off sector-v2-compare (stacked). See docs/ROADMAP_SECTOR_APP_V2.md P4 + docs/design/sector-app-prototype-v2/ altitude 4.
+branch: sector-v2-qualitative (created off sector-v2-compare; engineer stage will use it)
+next_stage: done
 qa_cycles: 0
 updated: 2026-07-24
 
 ## Progress
 - [x] 1 Product Manager       -> 1-brief.md
 - [x] 2 Principal Architect   -> 2-architecture.md
-- [x] 3 Backend  — N/A (architect confirmed frontend-only; no endpoint/schema/dep change)
+- [x] 3 Backend  — N/A (architect confirmed: no Python/route/repo change; frontend-only)
 - [x] 3 Frontend              -> 3-implementation.md
-- [x] 4 QA Tester             -> 4-qa.md  (PASS — manual gate: 6/6 steps via interactive automation)
+- [x] 4 QA Tester             -> 4-qa.md  (PASS — accepted at QA-tester level)
+- [x] 4b Operator manual verification -> 4b-manual-verification.md  (CONFIRMED, 2026-07-24)
 
 ## Notes / open loops
-- v2 sequence: P0/P1 (sector-v2, committed 438c79e) -> P2 (sector-v2-company, committed 2301754) -> P3.
-- P3 branch off sector-v2-company (stacked); frontend-only per the roadmap.
-- PM verdict: scope gate PASS (Track 1, frontend-only, reuses served endpoints; no backend, no new dep).
-- Two additions: (1) 7-theme composite profile radar from state.themeScores (NEW SVG renderer — no
-  ClearyFi radar helper exists yet); (2) overlaid IQR spread per metric-median card from state.spreads
-  (p25/median/p75 per metric). Everything else in the shipped Compare view preserved.
-- Open decisions for architect: R1 not-scored theme convention on radar (never plot 0); R2 radar helper
-  location (ClearyFi.radarChart vs local); R3 per-metric shared IQR axis normalization (no flipped fill).
-- Classifications: both additions Track-1 REAL. Keep A/B categorical color (NOT favorability); no winner;
-  N/A never 0.
-- INTERACTIVE view -> operator hands-on manual UI verification gate applies (like P1/P2).
-- Frontend done: all 5 sectorapp-compare* e2e pages errors=0; 390px no overflow. Radar + IQR verified
-  in sectorapp-compare.png. See 3-implementation.md.
-- ⚠︎ PRE-EXISTING BASELINE (not P3): e2e overall FAILs on the Company view P2 cases (sectorapp-company
-  / -refocus, symbol=900001 -> 502 on metric-history cache-miss). Reproduced on the clean base with P3
-  stashed -> environmental/P2, out of P3 scope. QA/operator to decide separately; not a P3 regression.
-- MANUAL GATE DONE (operator, Zen, 2026-07-24): all 6 steps confirmed PASS. Two pre-existing P0-shell
-  observations surfaced: (a) no Compare right rail, (b) URL doesn't update on view-switch.
-- FOLLOW-ON on this branch: operator elected to ADD a Compare right rail now -> implemented
-  (compareRailHtml: A/B snapshot + how-to-read honesty note). e2e all compare pages errors=0; empty
-  state degrades honestly. URL-sync (b) logged as deferred follow-up in sector-app-followups.md.
-- Branch ready to commit (not committed). Uncommitted: sectorapp.js/.css (radar+IQR+rail) + delivery docs.
+- v2 sequence: P0/P1 (438c79e) -> P2 (2301754) -> P3 (55285f7, Compare radar+IQR+rail) -> P4.
+- PM done (1-brief.md): frontend-only, Track-2 -> honest placeholders. Key additions vs shipped view:
+  NEW Disclosure-landscape 7-block section (cyber/CAMs/auditor/RF-volume/non-GAAP/late/human-capital),
+  wired-but-empty click-to-expand representative language (themes) + click-to-reveal filer counts
+  (both reveal honest "to be defined / none shown" empty states, NEVER data), "Filings →" inert stub
+  (P5 not built). AC-1..AC-10; AC-2 (no fabricated data anywhere, incl. expanded states) is load-bearing.
+- Placeholder/layout-only -> MAY be accepted at QA-tester level (no operator hands-on gate). Architect confirms.
+- Reference: docs/ROADMAP_SECTOR_APP_V2.md P4 + HANDOFF.md §5.4/§6 + renderQualView/pa-qual-* in
+  sectorapp.js/.css (shipped view is banner + partial layout; evolve to fuller placeholder shape).
+- Architect done (2-architecture.md): 2 files — sectorapp.js (rewrite renderQualView, add
+  QUAL_DISCLOSURE 7-block const, add wireQualView + state.qualThemeOpen/qualFilerOpen) + sectorapp.css
+  (extend pa-qual-*). Backend N/A. AC→check table in the doc. Interactions wired but reveal honest
+  empty states only. "Filings →" = preventDefault no-op (P5 not built).
+- Frontend done (3-implementation.md): sectorapp.js (renderQualView rewrite + wireQualView +
+  QUAL_DISCLOSURE 7 blocks + qualReveal helper + 2 state fields), sectorapp.css (pa-qual-* additions,
+  no color, theme tokens), headless_check.js (qual step now drives expand+reveal). Self-verified:
+  e2e sectorapp-qual errors=0; screenshot eyeballed (light) — all honest placeholders, no fabrication.
+- KNOWN: overall e2e exit non-zero from PRE-EXISTING Company-view 502 baseline (symbol=900001),
+  documented in sector-v2-compare/4-qa.md; NOT from this qual-only change. Don't read raw exit as P4 defect.
+- QA done (4-qa.md): PASS, accepted at QA-tester level (placeholder/wired-empty view -> no operator
+  hands-on gate required). Evidence: pytest 511 passed/6 skipped (P2/P3 baseline); e2e sectorapp-qual
+  + all Sector/Compare pages errors=0; scripted end-to-end drive (7 rows expanded + 4 reveals opened)
+  -> all honest empty states, NO fabricated data (%/●/direction chip/ticker) anywhere. Light-only app
+  (no dark theme by design); CSS additions token-only, no color. Filings-> inert (P5 will wire it).
+- KNOWN pre-existing (NOT P4): Company-view 502 (symbol=900001) keeps raw e2e exit non-zero; documented.
+- NEW required gate (institutionalized 2026-07-24): after the QA report, the QA stage emits an
+  operator-fillable questionnaire `4b-manual-verification.md`; the pipeline PAUSES at next_stage:
+  manual until the operator hand-runs it and signs off. Questionnaire is GENERATED and awaiting the
+  operator (app running at http://localhost:8001/sector-analytics, container secfin-manual).
+- Operator hand-ran the questionnaire interactively (13/13 ✅), verdict CONFIRMED (2026-07-24).
+- FOLLOW-UP (post-acceptance): operator chose to FIX the empty far-right — added a Qualitative right
+  rail (qualRailHtml: "Track 2" note + "how to read" card, no data; reused pa-rr-* classes, no CSS).
+  Wired via rightRailHtml dispatch + renderApp shell condition. e2e sectorapp-qual errors=0; rail
+  eyeballed. Tradeoff: rail narrows content ~1240-1280px so some theme names wrap (graceful, no clip).
+  Operator ACCEPTED the rail as-is (2026-07-24) — wrapping deemed acceptable.
+- DONE (incl. rail follow-up). Branch NOT committed (working tree). Operator options: commit the
+  branch / request a deploy (/devops-engineer, operator-gated) / proceed to P5 (Filings view).

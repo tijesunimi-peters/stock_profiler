@@ -433,7 +433,13 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-qual-cardname { font-family: var(--font-sans); font-weight: 800; font-size: 15px; color: var(--ink); }
 .pa-qual-cardnote { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
 .pa-qual-dash { font-family: var(--font-mono); font-size: 12px; color: var(--mono-muted); }
-.pa-qual-rtrow { display: grid; grid-template-columns: 1fr 130px 74px; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+.pa-qual-rtrow { display: grid; grid-template-columns: 1fr 120px auto; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); cursor: pointer; border-radius: 6px; transition: background 0.12s ease; }
+.pa-qual-rtrow:hover, .pa-qual-rtrow.is-open { background: var(--bg-tint); }
+.pa-qual-rtrow:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -2px; }
+.pa-qual-rtend { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.pa-qual-filings { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.04em; color: var(--mono-muted); background: transparent; border: 0; border-bottom: 1px dashed var(--border-strong); padding: 1px 0; cursor: pointer; white-space: nowrap; }
+.pa-qual-filings:hover { color: var(--ink-soft); }
+.pa-qual-langpanel { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--bg-tint); padding: 11px 13px; margin: 2px 0 4px; }
 .pa-qual-rtname { font-size: 13.5px; color: var(--ink-muted); }
 .pa-qual-rtmid { display: flex; align-items: center; gap: 8px; }
 .pa-qual-rtbar { flex: 1; height: 8px; border: 1px dashed var(--border-strong); border-radius: 4px; background: transparent; } /* empty -- no fill, never reads as data */
@@ -446,6 +452,21 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-qual-mcol { text-align: right; }
 .pa-qual-mcol.first { text-align: left; }
 .pa-qual-mbody { margin-top: 12px; }
+
+/* click-to-reveal filer counts -> honest empty panel (never tickers). Muted, not an action color. */
+.pa-qual-revealrow { margin-top: 10px; }
+.pa-qual-reveal { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em; color: var(--mono-muted); background: transparent; border: 1px dashed var(--border-strong); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+.pa-qual-reveal:hover { color: var(--ink-soft); }
+.pa-qual-reveal[aria-expanded="true"] { color: var(--ink-soft); }
+.pa-qual-caret { font-size: 9px; line-height: 1; }
+.pa-qual-filerpanel { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--bg-tint); padding: 10px 12px; margin-top: 8px; }
+
+/* Disclosure landscape (§5.4): 7 placeholder blocks -- dashed blueprint cards, no data. */
+.pa-qual-landscape { margin-top: 10px; }
+.pa-qual-block { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 13px 15px; background: transparent; display: flex; flex-direction: column; gap: 7px; }
+.pa-qual-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.pa-qual-block-name { font-family: var(--font-sans); font-weight: 700; font-size: 13.5px; color: var(--ink-muted); }
+.pa-qual-block-src { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); }
 
 /* ---- responsive ---- */
 /* The right rail is supplementary (snapshot + feed placeholder + how-to-read) — hide it below 1240px
@@ -466,7 +487,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-qual-grid { grid-template-columns: 1fr; }
   .pa-qual-cols { grid-template-columns: 1fr; }
   .pa-qual-mhead { font-size: 8px; gap: 4px; }
-  .pa-qual-rtrow { grid-template-columns: 1fr 90px 60px; gap: 8px; }
+  .pa-qual-rtrow { grid-template-columns: 1fr 70px auto; gap: 8px; }
   .pa-drill-row, .pa-geo-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {

@@ -201,11 +201,18 @@ const PAGES = process.env.PAGES
         await new Promise((r) => setTimeout(r, 400));
       }
       if (name === "sectorapp-qual") {
-        // Click the Qualitative view rail -> the honest "Coming — Track 2" placeholder frame
-        // (banner + planned-category labels, NO fabricated data).
+        // Click the Qualitative view rail -> the honest Track-2 placeholder LAYOUT (v2 P4): banner +
+        // risk-factor rows + Disclosure-landscape blocks, NO fabricated data. Then exercise the
+        // wired-but-empty interactions (expand a theme's language, reveal a filer-count panel) so a
+        // JS error in either handler fails the check; the screenshot captures the expanded state.
         await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
         await page.click('.pa-rail-btn[data-view="qual"]');
         await page.waitForSelector('.pa-qual-banner');
+        await page.waitForSelector('.pa-qual-landscape .pa-qual-block');
+        await page.click('.pa-qual-rtrow[data-qual-theme]');
+        await page.waitForSelector('.pa-qual-langpanel');
+        await page.click('[data-qual-filer]');
+        await page.waitForSelector('.pa-qual-filerpanel');
         await new Promise((r) => setTimeout(r, 300));
       }
       if (name === "sectors-decomp") {
