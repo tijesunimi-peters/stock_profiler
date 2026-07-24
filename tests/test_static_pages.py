@@ -128,6 +128,46 @@ def test_favicon_serves_for_default_browser_requests(tmp_path, monkeypatch):
     assert "svg" in svg.headers["content-type"]
 
 
+def test_sectors_serves_the_v2_app(tmp_path, monkeypatch):
+    # M2 routing swap: /sectors is canonical and now serves the v2 Sector Analytics app
+    # (sector-analytics.html: #app shell + sectorapp.js), NOT the old sectors.js page.
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/sectors")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    body = resp.text
+    assert 'id="app"' in body
+    assert "/static/sectorapp.js" in body
+    assert "/static/sectors.js" not in body  # must be the app shell, not the old page
+
+
+def test_sector_analytics_redirects_to_sectors_preserving_params(tmp_path, monkeypatch):
+    # /sector-analytics 301-redirects to the canonical /sectors, carrying the full query
+    # string (the app honors ?group=&view=&symbol=&a=&b= identically at the new URL).
+    with _client(tmp_path, monkeypatch) as client:
+        bare = client.get("/sector-analytics", follow_redirects=False)
+        deep = client.get(
+            "/sector-analytics?group=73&view=company&symbol=320193&a=73&b=60",
+            follow_redirects=False,
+        )
+    assert bare.status_code == 301
+    assert bare.headers["location"] == "/sectors"
+    assert deep.status_code == 301
+    assert deep.headers["location"] == "/sectors?group=73&view=company&symbol=320193&a=73&b=60"
+
+
+def test_sectors_legacy_serves_the_old_page(tmp_path, monkeypatch):
+    # Rollback path: the pre-v2 single-sector page is kept reachable at /sectors-legacy
+    # (sectors.js), not the app -- and sectors.* is NOT deleted (that's M3).
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/sectors-legacy")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    body = resp.text
+    assert "/static/sectors.js" in body
+    assert "/static/sectorapp.js" not in body
+
+
 def test_support_channel_is_reachable_from_every_page_footer(tmp_path, monkeypatch):
     # LAUNCH_READINESS §6: the feedback/support channel (GitHub issues) must be
     # linked from docs and the site footer -- assert the link, not just the page.

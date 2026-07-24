@@ -43,68 +43,50 @@ const PAGES = process.env.PAGES
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
       ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
-      // Single-sector overview (redesign Phase 1): the DEFAULT landing (selector spine + the
-      // largest sector's DuPont tree), a sector selected via ?group= (tree + 5Y trend + per-sector
-      // spreads), the lifecycle trend, the selector combobox OPEN, and an unknown ?group= that
-      // falls back to the default with a muted note (never a broken page).
-      // sectors (group 73) now leads with the composite scorecard (5 scored + 2 deferred tiles)
-      // above the DuPont body; group 60 (banks) shows 4 scored + 2 deferred (op-efficiency omitted).
-      ["sectors", "/sectors"],
-      ["sectors-selected", "/sectors?group=60&range=5y"],
-      // A working-capital sector selected to the DIO/DSO/DPO/CCC lifecycle trend -- group 73
-      // (services) has a NEGATIVE CCC, and the "all" range shows the ~ approximate affordance.
-      ["sectors-lifecycle", "/sectors?group=73&range=all"],
-      // Open the sector combobox (exercises the client-side filter + keyboard-less render path).
-      ["sectors-selector", "/sectors"],
-      // Unknown group -> honest fallback to the default sector with the "not found" note.
-      ["sectors-unknown-group", "/sectors?group=99"],
-      // Click a score to open its inline decomposition (constituents + oriented-z contributions).
-      ["sectors-decomp", "/sectors?group=73"],
-      // A sector with NO theme scores -> the honest empty-scorecard state (DuPont still below).
-      ["sectors-scorecard-empty", "/sectors?group=52"],
-      // Expand a theme (tile body) -> peer strip + drill-down follow it. Financial health = a
-      // POPULATED drill-down (4/4 constituents have a distribution); Cash & investment = the honest
-      // EMPTY drill-down (its constituents have no distribution).
-      ["sectors-drilldown-fh", "/sectors?group=73"],
-      ["sectors-drilldown-empty", "/sectors?group=73"],
+      // M2 routing swap (2026-07-24): /sectors is now the v2 Sector Analytics app (the sectorapp*
+      // shots below drive it at the canonical URL). The pre-v2 single-sector page (sectors.js) lives
+      // on at /sectors-legacy for one release as the rollback path -- one shot proves it still renders
+      // (M3 later deletes both the legacy route and this shot).
+      ["sectors-legacy", "/sectors-legacy"],
       ["coverage", "/coverage"],
       ["components", "/components"],
-      // "Paper terminal" Sector Analytics app v2 (/sector-analytics) -- 3-col shell (960px cap + right
-      // rail: snapshot + "What's moving" Track-2 feed PLACEHOLDER + how-to-read) and the Sector view's
-      // three scopes: 01 scorecard (F4 delta color kept) + peer strip + geo/insider PLACEHOLDERS; 02
-      // decomposition (full-width, open by default) + biggest shifts; 03 Distribution (this-theme /
+      // "Paper terminal" Sector Analytics app v2 -- now canonical at /sectors (M2 swap; the URLs below
+      // exercise the app at its canonical route, incl. deep-links, post-swap). 3-col shell (960px cap +
+      // right rail: snapshot + "What's moving" Track-2 feed PLACEHOLDER + how-to-read) and the Sector
+      // view's three scopes: 01 scorecard (F4 delta color kept) + peer strip + geo/insider PLACEHOLDERS;
+      // 02 decomposition (full-width, open by default) + biggest shifts; 03 Distribution (this-theme /
       // all-metric toggle). The decomp shot re-points the decomposition by clicking a tile; the
       // dist-all shot flips the Distribution scope to All metrics; the qual shot opens the Track-2 stub.
-      ["sectorapp", "/sector-analytics"],
-      ["sectorapp-decomp", "/sector-analytics"],
-      ["sectorapp-dist-all", "/sector-analytics"],
-      ["sectorapp-qual", "/sector-analytics"],
+      ["sectorapp", "/sectors"],
+      ["sectorapp-decomp", "/sectors"],
+      ["sectorapp-dist-all", "/sectors"],
+      ["sectorapp-qual", "/sectors"],
       // v2 P5: the Filings view (5th) -- an on-site theme DRILL reached from the Qualitative
       // "Filings →" stub. Honest Track-2 placeholder LAYOUT: breadcrumb + coverage/direction chip +
       // count + representative-language + form-type tabs + paginated list, all "to be defined"; the
       // range label is "— of —" (never a fabricated "1–6 of 14"). The shot opens the drill and flips
       // a form tab; a JS error in the drill/tab/pager wiring fails the check.
-      ["sectorapp-filings", "/sector-analytics"],
+      ["sectorapp-filings", "/sectors"],
       // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
       // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
       // No ?symbol= now resolves a DEFAULT focal (first-alpha company in the largest sector) so the
       // Company view opens POPULATED; the honest empty state is only a no-resolve fallback.
-      ["sectorapp-company-default", "/sector-analytics?view=company"],
-      ["sectorapp-company", "/sector-analytics?view=company&symbol=900001"],
-      ["sectorapp-company-refocus", "/sector-analytics?view=company&symbol=900001"],
+      ["sectorapp-company-default", "/sectors?view=company"],
+      ["sectorapp-company", "/sectors?view=company&symbol=900001"],
+      ["sectorapp-company-refocus", "/sectors?view=company&symbol=900001"],
       // v2 P2: sparklines + click-to-expand 8-quarter trend. ?symbol=320193 (AAPL, which HAS real
       // companyfacts history and shares the SIC-35 group) -> a POPULATED sparkline; the shot clicks it
       // to open the trailing-8 trend panel. (900001 above is synthetic -> its sparklines honestly read
       // "no trend yet" -- the honest-degradation case in the same view.)
-      ["sectorapp-company-trend", "/sector-analytics?view=company&symbol=320193"],
+      ["sectorapp-company-trend", "/sectors?view=company&symbol=320193"],
       // Compare view (altitude 3): sector-vs-sector paired theme bars + metric-median cards.
       // 73 vs 60 (60 omits operating-efficiency -> honest "not scored" on B); 73 alone (B unset ->
       // prompt); 73 vs 28 (28 has no liquidity/solvency spreads -> metric-card N/A cells); and the
       // pin-to-compare flow (land on a sector, click Pin, then pick B). NO favorability color.
-      ["sectorapp-compare", "/sector-analytics?view=compare&a=73&b=60"],
-      ["sectorapp-compare-nab", "/sector-analytics?view=compare&a=73"],
-      ["sectorapp-compare-na", "/sector-analytics?view=compare&a=73&b=28"],
-      ["sectorapp-compare-pin", "/sector-analytics?group=73"],
+      ["sectorapp-compare", "/sectors?view=compare&a=73&b=60"],
+      ["sectorapp-compare-nab", "/sectors?view=compare&a=73"],
+      ["sectorapp-compare-na", "/sectors?view=compare&a=73&b=28"],
+      ["sectorapp-compare-pin", "/sectors?group=73"],
     ];
 
 (async () => {
@@ -237,28 +219,6 @@ const PAGES = process.env.PAGES
         // Flip a form tab (real control over the empty placeholder list).
         await page.click('.pa-fil-tab[data-fil-form="10-K"]');
         await new Promise((r) => setTimeout(r, 300));
-      }
-      if (name === "sectors-decomp") {
-        // Open a score's inline decomposition (constituent oriented-z bars). Any JS error in the
-        // toggle/render fails the check; the screenshot captures the expanded panel.
-        await page.click(".sc-score");
-        await new Promise((r) => setTimeout(r, 400));
-      }
-      if (name === "sectors-drilldown-fh" || name === "sectors-drilldown-empty") {
-        // Expand a theme by clicking the tile BODY (not the score). Financial health -> a populated
-        // drill-down; Cash & investment -> the honest empty drill-down. Wait for the spread fetch.
-        const theme = name === "sectors-drilldown-fh" ? "financial_health" : "cash_investment";
-        await page.waitForSelector(`.sc-tile[data-focus-theme="${theme}"]`);
-        await page.click(`.sc-tile[data-focus-theme="${theme}"]`);
-        await new Promise((r) => setTimeout(r, 900));
-      }
-      if (name === "sectors-selector") {
-        // Open the sector combobox (client-side filter over the loaded sector list): focus the
-        // input and type a partial name -- the screenshot captures the open menu, and any JS error
-        // in the widget fails the check like any other page error.
-        await page.focus("#sbInput");
-        await page.type("#sbInput", "in", { delay: 40 });
-        await new Promise((r) => setTimeout(r, 500));
       }
       if (name === "company") {
         // Exercise the company autocomplete (suggest.js) via the shell's topbar search:

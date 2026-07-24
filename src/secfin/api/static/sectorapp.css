@@ -1,4 +1,5 @@
-/* Sector Analytics app (/sector-analytics) — "paper terminal" design (docs/REDESIGN_SECTOR_APP.md).
+/* Sector Analytics app (canonical /sectors; /sector-analytics 301s in) — "paper terminal" design
+ * (docs/REDESIGN_SECTOR_APP.md).
  * Self-contained: uses ONLY the design tokens from style.css (:root). NO favorability color — the
  * --positive/--caution/--negative tokens are never referenced; direction is arrow glyphs + track
  * position, single terracotta accent. Prototype reference: docs/design/sector-app-prototype/. */
