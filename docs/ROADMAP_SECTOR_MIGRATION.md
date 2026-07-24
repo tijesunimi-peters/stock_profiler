@@ -1,5 +1,11 @@
 # Roadmap — migrate `/sectors` to the Sector Analytics app
 
+> **SUPERSEDED IN PART (2026-07-24):** the app is being updated to **v2**
+> (`docs/ROADMAP_SECTOR_APP_V2.md`). **Phase M1 (parity port) is obsolete** — the operator decided to
+> **drop** the DuPont tree / ROE trend / lifecycle to match v2's Sector layout, so the `sector-parity`
+> branch will **not** be merged. **M2 (routing swap) + M3 (decommission) still stand**, but run
+> **after** the v2 build (see the v2 roadmap's P7).
+
 Status: **planning (2026-07-22).** Owner: operator + delivery pipeline.
 Related: `docs/REDESIGN_SECTOR_APP.md` (the new app), `docs/delivery/sector-app-followups.md`
 (fidelity backlog, now DONE across all four views).

@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-page:#F6F3EE; --bg-card:#FDFBF7; --bg-tint:#EFE9DE; --bg-badge:#F0E4D6;
+    --ink:#1C1A16; --ink-body:#544F46; --ink-muted:#5C574D; --ink-soft:#6B6459; --mono-muted:#8B8579;
+    --border:#E7E0D3; --border-strong:#D8D1C4; --border-tint:#E2DACB; --rule:#E5DFD3;
+    --accent:#C0703A; --accent-hover:#A85F30; --accent-ink:#8A5A2F; --accent-wash:#F3E4D5;
+    --gaap:#3D6A8A; --gaap-bg:#E4EDF2; --gaap-border:#CDDCE4;
+    --ext:#B04A3A; --ext-bg:#F5E2DA; --ext-border:#E8C4B4;
+    --shadow:0 18px 40px -26px rgba(40,30,15,0.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg-page);color:var(--ink);font-family:"Hanken Grotesk",system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+  ::selection{background:#E9C9A9;}
+  a{color:var(--accent);text-decoration:none;}
+  a:hover{color:var(--accent-hover);}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:var(--border-strong);border-radius:6px;border:2px solid var(--bg-page);}
+  @media (max-width:1240px){.right-rail{display:none !important;}}
+</style>
+</helmet>
+<div style="display:flex;min-height:100vh;background:var(--bg-page);">
+
+  <aside style="width:210px;flex:none;background:var(--bg-card);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 14px;position:sticky;top:0;height:100vh;">
+    <div style="display:flex;align-items:baseline;gap:7px;padding:0 6px 16px;">
+      <span style="font-family:'Hanken Grotesk';font-weight:900;font-size:19px;letter-spacing:-0.02em;color:var(--ink);">ClearyFi</span>
+      <span style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.1em;color:var(--mono-muted);text-transform:uppercase;">SEC data</span>
+    </div>
+    <div style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);padding:6px 8px 4px;">Data</div>
+    <sc-for list="{{ navData }}" as="n" hint-placeholder-count="4">
+      <a href="#" onClick="{{ n.noop }}" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink-muted);background:{{ n.bg }};">{{ n.label }}</a>
+    </sc-for>
+    <div style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);padding:14px 8px 4px;">Reference</div>
+    <a href="#" onClick="{{ noop }}" style="padding:7px 9px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink-muted);">Docs &amp; guide</a>
+    <a href="#" onClick="{{ noop }}" style="padding:7px 9px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink-muted);">Methodology</a>
+    <a href="#" onClick="{{ noop }}" style="padding:7px 9px;border-radius:8px;font-size:13.5px;font-weight:500;color:var(--ink-muted);">API reference</a>
+    <div style="margin-top:auto;padding:12px 8px 0;font-family:'IBM Plex Mono';font-size:9.5px;line-height:1.5;color:var(--mono-muted);border-top:1px solid var(--rule);">Data, not investment advice.</div>
+  </aside>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;">
+
+    <header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:16px;padding:11px 28px;background:rgba(246,243,238,0.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);">
+      <div style="flex:1;max-width:440px;display:flex;align-items:center;gap:9px;padding:8px 12px;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:8px;">
+        <span style="color:var(--mono-muted);font-family:'IBM Plex Mono';font-size:12px;">⌕</span>
+        <span style="flex:1;font-size:13px;color:var(--mono-muted);">Search ticker or CIK…</span>
+        <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);border:1px solid var(--border-strong);border-radius:5px;padding:1px 5px;">⌘K</span>
+      </div>
+      <a href="#" onClick="{{ noop }}" style="font-family:'IBM Plex Mono';font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent-ink);border:1px solid var(--accent-wash);background:var(--accent-wash);padding:6px 11px;border-radius:8px;">API reference ↗</a>
+    </header>
+
+    <main style="padding:16px 28px 72px;max-width:1440px;width:100%;">
+
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          <h1 style="margin:0;font-family:'Hanken Grotesk';font-weight:800;font-size:30px;letter-spacing:-0.02em;line-height:1.05;color:var(--ink);">Sector analytics</h1>
+          <div style="margin-top:5px;font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">Built entirely from SEC-filed data · as of latest filing, not real-time</div>
+        </div>
+        <div style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);text-align:right;">{{ meta.right }}</div>
+      </div>
+      <div style="height:1px;background:var(--rule);margin:12px 0 18px;"></div>
+
+      <!-- SECTOR CONTROL BAR (persistent, all altitudes) -->
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px;margin-bottom:18px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;">
+          <span style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);">Sector</span>
+          <button onClick="{{ onPin }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:{{ pin.color }};background:{{ pin.bg }};border:1px solid {{ pin.border }};border-radius:7px;padding:5px 10px;">{{ pin.label }}</button>
+        </div>
+        <div style="position:relative;display:inline-block;">
+          <button onClick="{{ toggleSectorMenu }}" style="cursor:pointer;display:flex;align-items:center;gap:10px;min-width:240px;justify-content:space-between;font-size:14px;font-weight:700;color:var(--ink);background:var(--bg-card);border:1.5px solid var(--border-strong);border-radius:9px;padding:9px 13px;">
+            <span>{{ sectorMenu.current }}</span>
+            <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);transform:{{ sectorMenu.caret }};">▾</span>
+          </button>
+          <sc-if value="{{ sectorMenu.open }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:calc(100% + 5px);left:0;z-index:40;min-width:240px;max-height:320px;overflow:auto;background:var(--bg-card);border:1px solid var(--border-strong);border-radius:10px;box-shadow:var(--shadow);padding:5px;">
+            <sc-for list="{{ sectors }}" as="s" hint-placeholder-count="6">
+              <button onClick="{{ s.select }}" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;width:100%;text-align:left;font-size:13.5px;font-weight:{{ s.weight }};color:{{ s.color }};background:{{ s.bg }};border:none;border-radius:7px;padding:8px 11px;">
+                <span>{{ s.name }}</span>
+                <sc-if value="{{ s.checked }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--accent);">✓</span></sc-if>
+              </button>
+            </sc-for>
+          </div>
+          </sc-if>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:10px;">
+          <span style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mono-muted);margin-right:2px;">Sub-industry</span>
+          <sc-for list="{{ subs }}" as="su" hint-placeholder-count="6">
+            <button onClick="{{ su.select }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:{{ su.color }};background:{{ su.bg }};border:1px solid {{ su.border }};border-radius:7px;padding:4px 10px;">{{ su.name }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin-top:12px;padding-top:11px;border-top:1px solid var(--rule);">
+          <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ meta.peerCount }}</span>
+          <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ meta.asOf }}</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--accent);"></span>{{ meta.coverage }}
+          </span>
+          <div style="flex:1;"></div>
+          <div style="display:flex;gap:9px;align-items:center;">
+            <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--border-strong);border-radius:6px;padding:2px 6px;">● OK</span>
+            <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ext);background:var(--ext-bg);border:1px solid var(--ext-border);border-radius:6px;padding:2px 6px;">≈ APPROX</span>
+            <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);background:var(--bg-badge);border:1.5px solid var(--border-strong);border-radius:6px;padding:2px 6px;">∅ N/A</span>
+            <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-soft);border:1.5px dashed var(--mono-muted);border-radius:6px;padding:2px 6px;">~ N/M</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:20px;align-items:flex-start;">
+
+        <!-- LEFT RAIL: view switcher -->
+        <nav style="width:132px;flex:none;position:sticky;top:74px;">
+          <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);padding:0 4px 8px;">View</div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <sc-for list="{{ views }}" as="v" hint-placeholder-count="4">
+              <button onClick="{{ v.go }}" style="cursor:pointer;text-align:left;font-size:13.5px;font-weight:600;color:{{ v.color }};background:{{ v.bg }};border:1px solid {{ v.border }};border-radius:8px;padding:8px 11px;">{{ v.label }}</button>
+            </sc-for>
+          </div>
+          <div style="height:1px;background:var(--rule);margin:12px 4px;"></div>
+          <div style="font-family:'IBM Plex Mono';font-size:9.5px;line-height:1.5;color:var(--mono-muted);padding:0 4px;">{{ meta.railNote }}</div>
+        </nav>
+
+        <div style="flex:1;min-width:0;max-width:960px;">
+
+          <!-- ===================== ALTITUDE 1: SECTOR ===================== -->
+          <sc-if value="{{ isSector }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px;">
+              <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:var(--accent);">01</span>
+              <h2 style="margin:0;font-family:'Hanken Grotesk';font-weight:800;font-size:20px;color:var(--ink);">Health scorecard</h2>
+            </div>
+            <div style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);margin-bottom:2px;border-bottom:2px solid var(--ink);padding-bottom:9px;">Seven composite themes · percentile-averaged (provisional) · click a tile to focus it below; the peer strip shows where this sector stands</div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:12px;margin-top:16px;">
+              <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="7">
+                <div onClick="{{ t.expand }}" style="cursor:pointer;background:{{ t.cardBg }};border:1px solid {{ t.cardBorder }};border-radius:12px;box-shadow:var(--shadow);padding:13px 14px;display:flex;flex-direction:column;gap:6px;">
+                  <div style="font-family:'Hanken Grotesk';font-weight:600;font-size:13px;color:var(--ink-muted);line-height:1.2;min-height:32px;">{{ t.name }}</div>
+                  <div style="display:flex;align-items:baseline;gap:8px;">
+                    <button onClick="{{ t.openDecomp }}" style="cursor:pointer;background:none;border:none;padding:0;font-family:'IBM Plex Mono';font-weight:600;font-size:27px;letter-spacing:-0.01em;color:var(--ink);border-bottom:1.5px dashed var(--mono-muted);line-height:1;">{{ t.score }}</button>
+                    <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-soft);">{{ t.deltaLabel }}</span>
+                  </div>
+                  <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">{{ t.pctileLabel }}</div>
+                  <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);border-top:1px solid var(--rule);padding-top:5px;">{{ t.rankLabel }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--ext);background:var(--ext-bg);border:1px solid var(--ext-border);border-radius:8px;padding:7px 11px;margin-top:12px;display:inline-block;">≈ Scores provisional — final weighting/normalization not defined (see methodology §9). Every number is traceable and openable.</div>
+
+            <!-- Peer strip (now closes section 01: cross-sector standing) -->
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;margin-top:16px;">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-family:'Hanken Grotesk';font-weight:600;font-size:13px;color:var(--ink-muted);">Where this sector sits</span>
+                <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">{{ peerStrip.caption }}</span>
+              </div>
+              <div>{{ peerStrip.node }}</div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:3fr 2fr;gap:16px;margin-top:16px;align-items:start;">
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:600;font-size:13px;color:var(--ink-muted);">Geographic revenue mix</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">ASC 280 segment disclosure · asset-weighted</span>
+                </div>
+                <div>{{ geo.bar }}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:11px;">
+                  <sc-for list="{{ geo.segments }}" as="g" hint-placeholder-count="4">
+                    <span style="display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-body);">
+                      <span style="width:9px;height:9px;border-radius:2px;background:{{ g.color }};"></span>{{ g.label }} <span style="color:var(--ink);font-weight:600;">{{ g.pct }}</span>
+                    </span>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:600;font-size:13px;color:var(--ink-muted);">Insider flow</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">Forms 3/4/5</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:9px;">
+                  <span style="font-family:'IBM Plex Mono';font-size:15px;color:var(--ink-soft);">{{ insider.glyph }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-weight:600;font-size:26px;color:var(--ink);letter-spacing:-0.01em;line-height:1;">{{ insider.ratioLabel }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">net buy/sell ($)</span>
+                </div>
+                <div>{{ insider.bar }}</div>
+                <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--ink-soft);margin-top:8px;">{{ insider.basis }}</div>
+                <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:3px;">{{ insider.note }}</div>
+              </div>
+            </div>
+
+            <!-- ===== 02 · WHAT DRIVES IT ===== -->
+            <div style="display:flex;align-items:baseline;gap:10px;margin:30px 0 4px;">
+              <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:var(--accent);">02</span>
+              <h2 style="margin:0;font-family:'Hanken Grotesk';font-weight:800;font-size:20px;color:var(--ink);">What drives it</h2>
+            </div>
+            <div style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);margin-bottom:2px;border-bottom:2px solid var(--ink);padding-bottom:9px;">Constituent decomposition of the focused theme · then the largest standardized moves vs the sector's own history</div>
+
+            <!-- Decomposition panel (full width) -->
+            <sc-if value="{{ decomp.open }}" hint-placeholder-val="{{ true }}">
+            <div style="background:var(--bg-card);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow);padding:16px 18px;margin-top:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="font-family:'Hanken Grotesk';font-weight:800;font-size:16px;color:var(--ink);">{{ decomp.title }}</div>
+                <button onClick="{{ decomp.close }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:var(--accent-ink);background:none;border:none;">− close</button>
+              </div>
+              <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin:4px 0 12px;">{{ decomp.method }}</div>
+              <sc-for list="{{ decomp.rows }}" as="d" hint-placeholder-count="4">
+                <div style="display:grid;grid-template-columns:200px 60px 1fr 52px;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--rule);">
+                  <span style="font-size:13px;color:var(--ink-body);">{{ d.label }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ d.weightLabel }}</span>
+                  <div>{{ d.bar }}</div>
+                  <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ink);text-align:right;">{{ d.contribLabel }}</span>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+
+            <!-- Biggest shifts -->
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;margin-top:16px;">
+              <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                <span style="font-family:'Hanken Grotesk';font-weight:600;font-size:13px;color:var(--ink-muted);">Biggest shifts</span>
+                <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">largest standardized change vs own history</span>
+              </div>
+              <sc-for list="{{ shifts }}" as="sh" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--rule);">
+                  <span style="font-family:'IBM Plex Mono';font-size:15px;color:var(--ink-soft);width:14px;text-align:center;">{{ sh.glyph }}</span>
+                  <span style="flex:1;font-size:13.5px;color:var(--ink-body);">{{ sh.name }}</span>
+                  <sc-if value="{{ sh.flag }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--ext);background:var(--ext-bg);border:1px solid var(--ext-border);border-radius:6px;padding:2px 7px;">{{ sh.flagLabel }}</span></sc-if>
+                  <span style="font-family:'IBM Plex Mono';font-size:13px;color:var(--ink);width:80px;text-align:right;">{{ sh.deltaLabel }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);width:150px;text-align:right;">{{ sh.basis }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- ===== 03 · DISTRIBUTION ===== -->
+            <div style="display:flex;align-items:baseline;gap:10px;margin:30px 0 4px;">
+              <span style="font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:var(--accent);">03</span>
+              <h2 style="margin:0;font-family:'Hanken Grotesk';font-weight:800;font-size:20px;color:var(--ink);">Distribution</h2>
+            </div>
+            <div style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);margin-bottom:2px;border-bottom:2px solid var(--ink);padding-bottom:9px;">How spread out the filers are · band = IQR · tick = median</div>
+
+            <!-- Dispersion (full width) with scope toggle -->
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:15px 16px;margin-top:16px;">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap;">
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">{{ drill.heading }}</span>
+                <div style="display:flex;gap:4px;background:var(--bg-tint);border:1px solid var(--border);border-radius:8px;padding:3px;">
+                  <sc-for list="{{ drill.scopes }}" as="sc" hint-placeholder-count="2">
+                    <button onClick="{{ sc.select }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:10.5px;letter-spacing:0.04em;color:{{ sc.color }};background:{{ sc.bg }};border:none;border-radius:6px;padding:4px 10px;">{{ sc.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <sc-for list="{{ drill.tiles }}" as="dt" hint-placeholder-count="4">
+                <div style="padding:12px 0;border-top:1px solid var(--rule);">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:7px;">
+                    <span style="font-size:13.5px;font-weight:600;color:var(--ink-body);">{{ dt.name }}</span>
+                    <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">median {{ dt.medianLabel }}</span>
+                  </div>
+                  <div>{{ dt.track }}</div>
+                  <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:6px;">{{ dt.caption }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ===================== ALTITUDE 2: COMPANY ===================== -->
+          <sc-if value="{{ isCompany }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:10px;">
+              <div style="display:flex;align-items:baseline;gap:8px;">
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ company.sector }}</span>
+                <span style="color:var(--mono-muted);">›</span>
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:21px;color:var(--ink);">{{ company.name }}</span>
+                <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--bg-page);background:var(--ink);border-radius:6px;padding:2px 7px;">{{ company.ticker }}</span>
+              </div>
+              <div style="display:flex;gap:12px;align-items:center;">
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);background:var(--bg-tint);border:1px solid var(--border);border-radius:7px;padding:3px 9px;">{{ company.contextPill }}</span>
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ company.filingBasis }}</span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:196px 1fr;gap:18px;margin-top:16px;align-items:start;">
+              <div style="position:sticky;top:74px;">
+                <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:9px;">Percentile vs peers</div>
+                <sc-for list="{{ company.pctRail }}" as="p" hint-placeholder-count="7">
+                  <div style="margin-bottom:11px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                      <span style="font-size:12px;color:var(--ink-muted);">{{ p.name }}</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ p.pLabel }}</span>
+                    </div>
+                    <div>{{ p.bar }}</div>
+                  </div>
+                </sc-for>
+                <div style="background:var(--bg-tint);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-top:14px;">
+                  <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mono-muted);">Composite rank</div>
+                  <button onClick="{{ company.openRank }}" style="cursor:pointer;background:none;border:none;padding:4px 0 2px;font-family:'IBM Plex Mono';font-weight:600;font-size:22px;color:var(--ink);border-bottom:1.5px dashed var(--mono-muted);">{{ company.rankLabel }}</button>
+                  <div style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--ink-soft);margin-top:6px;">{{ company.rankMove }}</div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:16px;color:var(--ink);">Peer distribution</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">each dot a filer · band = IQR · line = median · ◆ = {{ company.ticker }}</span>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:4px 16px;">
+                  <sc-for list="{{ company.dist }}" as="r" hint-placeholder-count="6">
+                    <div style="padding:14px 0;border-top:1px solid var(--rule);">
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:9px;">
+                        <span style="display:flex;align-items:center;gap:8px;">
+                          <span style="font-size:14px;font-weight:700;color:var(--ink);">{{ r.name }}</span>
+                          <sc-if value="{{ r.dirTag }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--border-strong);border-radius:5px;padding:1px 6px;">lower is better</span></sc-if>
+                        </span>
+                        <span style="display:flex;align-items:center;gap:12px;">
+                          <span style="display:flex;align-items:center;gap:6px;">{{ r.spark }}<span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">{{ r.trendLabel }}</span></span>
+                          <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-body);">{{ r.valueLabel }}</span>
+                        </span>
+                      </div>
+                      <div>{{ r.plot }}</div>
+                      <sc-if value="{{ r.sparkOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="background:var(--bg-tint);border:1px solid var(--border-tint);border-radius:9px;padding:10px 12px;margin-top:10px;">
+                        <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:6px;">Trailing 8-quarter trend</div>
+                        <div>{{ r.trend }}</div>
+                        <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--ink-soft);margin-top:6px;">{{ r.trendCaption }}</div>
+                      </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:9px;">Click any peer dot to make it the focal filer. Click a sparkline to expand this filer's trailing trend. Percentiles are favorability-adjusted (§5) and exclude N/A · N/M filers (§9).</div>
+
+                <!-- Segment & geographic breakdown -->
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:15px 16px;margin-top:16px;">
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:12px;">
+                    <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">Segment &amp; geographic mix</span>
+                    <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">ASC 280 · {{ company.ticker }} 10-K</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                    <div>
+                      <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:8px;">By segment</div>
+                      <div>{{ company.segBar }}</div>
+                      <div style="display:flex;flex-direction:column;gap:5px;margin-top:9px;">
+                        <sc-for list="{{ company.segments }}" as="s" hint-placeholder-count="3">
+                          <span style="display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-body);">
+                            <span style="width:9px;height:9px;border-radius:2px;background:{{ s.color }};"></span>{{ s.label }} <span style="color:var(--ink);font-weight:600;">{{ s.pct }}</span>
+                          </span>
+                        </sc-for>
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:8px;">By region</div>
+                      <div>{{ company.geoBar }}</div>
+                      <div style="display:flex;flex-direction:column;gap:5px;margin-top:9px;">
+                        <sc-for list="{{ company.geo }}" as="g" hint-placeholder-count="4">
+                          <span style="display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-body);">
+                            <span style="width:9px;height:9px;border-radius:2px;background:{{ g.color }};"></span>{{ g.label }} <span style="color:var(--ink);font-weight:600;">{{ g.pct }}</span>
+                          </span>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Filing history + flags -->
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:15px 16px;margin-top:16px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">Filing history &amp; flags</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                      <sc-for list="{{ company.flags }}" as="f" hint-placeholder-count="1">
+                        <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.05em;text-transform:uppercase;color:{{ f.color }};background:{{ f.bg }};border:1px solid {{ f.border }};border-radius:6px;padding:2px 7px;">{{ f.label }}</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <sc-for list="{{ company.filings }}" as="fl" hint-placeholder-count="5">
+                    <div style="display:grid;grid-template-columns:64px 1fr 96px;gap:12px;align-items:baseline;padding:8px 0;border-top:1px solid var(--rule);">
+                      <span style="font-family:'IBM Plex Mono';font-size:11px;font-weight:600;color:var(--accent-ink);">{{ fl.form }}</span>
+                      <span style="font-size:12.5px;color:var(--ink-body);">{{ fl.desc }}</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);text-align:right;">{{ fl.date }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ===================== ALTITUDE 3: COMPARE ===================== -->
+          <sc-if value="{{ isCompare }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:12px;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="width:11px;height:11px;border-radius:3px;background:var(--accent);"></span>
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:18px;color:var(--ink);">{{ compare.aName }}</span>
+              </div>
+              <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--mono-muted);">vs</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="width:11px;height:11px;border-radius:3px;background:var(--gaap);"></span>
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:18px;color:var(--ink);">{{ compare.bName }}</span>
+              </div>
+              <div style="flex:1;"></div>
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ compare.counts }}</span>
+            </div>
+
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;">
+              <span style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent-ink);margin-right:4px;">Sector A</span>
+              <sc-for list="{{ compare.aPills }}" as="a" hint-placeholder-count="6">
+                <button onClick="{{ a.select }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:{{ a.color }};background:{{ a.bg }};border:1px solid {{ a.border }};border-radius:7px;padding:4px 10px;">{{ a.name }}</button>
+              </sc-for>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px;">
+              <span style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--gaap);margin-right:4px;">Sector B</span>
+              <sc-for list="{{ compare.bPills }}" as="b" hint-placeholder-count="6">
+                <button onClick="{{ b.select }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:{{ b.color }};background:{{ b.bg }};border:1px solid {{ b.border }};border-radius:7px;padding:4px 10px;">{{ b.name }}</button>
+              </sc-for>
+            </div>
+
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:8px 18px;margin-top:16px;">
+              <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mono-muted);padding:10px 0 4px;">Composite scores · shared 0–100 scale</div>
+              <sc-for list="{{ compare.rows }}" as="c" hint-placeholder-count="7">
+                <div style="display:grid;grid-template-columns:170px 1fr 84px;gap:16px;align-items:center;padding:11px 0;border-top:1px solid var(--rule);">
+                  <span style="font-size:13.5px;color:var(--ink-body);">{{ c.name }}</span>
+                  <div>{{ c.bars }}</div>
+                  <span style="font-family:'IBM Plex Mono';font-size:12px;text-align:right;color:{{ c.gapColor }};">{{ c.gapLabel }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 16px;margin-top:16px;display:grid;grid-template-columns:minmax(0,300px) 1fr;gap:24px;align-items:center;">
+              <div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">Composite profile</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">shape across 7 themes</span>
+                </div>
+                <div>{{ compare.radar }}</div>
+              </div>
+              <div style="font-family:'IBM Plex Mono';font-size:11px;line-height:1.6;color:var(--ink-soft);">
+                <div style="font-size:9.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:8px;">Reading the shape</div>
+                The polygons trace each sector's 7 composite scores (per-theme gaps are in the table above). Where the two shapes pull apart, the sectors are structurally unlike; where they overlap, they behave similarly. Neither larger area means "better" — this is profile, not rank.
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:20px;">
+              <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:16px;color:var(--ink);">Metric medians &amp; spread</span>
+              <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">bar length normalized per metric · band = IQR · tick = median</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px;">
+              <sc-for list="{{ compare.cards }}" as="m" hint-placeholder-count="6">
+                <div style="background:var(--bg-tint);border:1px solid var(--border);border-radius:11px;padding:13px 15px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <span style="font-size:13.5px;font-weight:700;color:var(--ink);">{{ m.name }}</span>
+                    <sc-if value="{{ m.inverted }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--border-strong);border-radius:5px;padding:1px 6px;">lower is better</span></sc-if>
+                  </div>
+                  <div>{{ m.bars }}</div>
+                  <div style="margin-top:10px;">{{ m.spread }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:12px;">Bars are true-length; no winner is chosen (§9.2). Inverted metrics carry a "lower is better" marker rather than a flipped fill. A vs B color is categorical identity only — not a verdict.</div>
+          </div>
+          </sc-if>
+
+          <!-- ===================== ALTITUDE 4: QUALITATIVE ===================== -->
+          <sc-if value="{{ isQual }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:10px;">
+              <div style="display:flex;align-items:baseline;gap:8px;">
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ company.sector }}</span>
+                <span style="color:var(--mono-muted);">›</span>
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:20px;color:var(--ink);">Qualitative disclosures</span>
+              </div>
+              <div style="display:flex;gap:12px;align-items:center;">
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ qual.peerPill }}</span>
+                <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ qual.sections }}</span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:3fr 2fr;gap:18px;margin-top:16px;align-items:start;">
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:15px 16px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">Risk-factor themes</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">share of filers citing · YoY direction</span>
+                </div>
+                <sc-for list="{{ qual.themes }}" as="q" hint-placeholder-count="9">
+                  <div onClick="{{ q.open }}" style="cursor:pointer;display:grid;grid-template-columns:1fr 118px 130px;gap:12px;align-items:center;padding:9px 10px;margin:0 -10px;border-top:1px solid var(--rule);background:{{ q.rowBg }};border-radius:6px;">
+                    <span style="font-size:13.5px;color:var(--ink);">{{ q.name }}</span>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <div style="flex:1;">{{ q.bar }}</div>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);width:34px;text-align:right;">{{ q.coverageLabel }}</span>
+                    </div>
+                    <span style="justify-self:end;display:flex;align-items:center;gap:8px;">
+                      <span style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:{{ q.chipColor }};background:{{ q.chipBg }};border:1px solid {{ q.chipBorder }};border-radius:6px;padding:2px 7px;">{{ q.chipLabel }}</span>
+                      <a href="{{ q.filingsUrl }}" onClick="{{ q.openLink }}" title="View filings in ClearyFi" style="font-family:'IBM Plex Mono';font-size:10px;color:var(--accent);flex:none;">Filings →</a>
+                    </span>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ qual.themeLang.open }}" hint-placeholder-val="{{ false }}">
+                <div style="background:var(--bg-tint);border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-top:12px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                    <span style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--accent-ink);">Representative language · {{ qual.themeLang.name }}</span>
+                    <button onClick="{{ qual.themeLang.close }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:var(--accent-ink);background:none;border:none;">− close</button>
+                  </div>
+                  <div style="font-family:'Hanken Grotesk';font-size:14px;line-height:1.5;color:var(--ink-body);border-left:3px solid var(--accent);padding-left:12px;">“{{ qual.themeLang.quote }}”</div>
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:8px;">
+                    <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">{{ qual.themeLang.src }} · verbatim excerpt</span>
+                    <a href="{{ qual.themeLang.filingsUrl }}" onClick="{{ qual.themeLang.openFilings }}" style="font-family:'IBM Plex Mono';font-size:10px;">Open filings in ClearyFi →</a>
+                  </div>
+                </div>
+                </sc-if>
+                <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:10px;padding-top:9px;border-top:1px solid var(--rule);">Taxonomy frozen year-over-year so rising/new/fading reflect real disclosure change, not re-clustering. Click a theme to read representative filing language.</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:14px;">
+                <div style="background:var(--ext-bg);border:1px solid var(--ext-border);border-radius:12px;padding:14px 15px;">
+                  <div style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ext);margin-bottom:4px;">Emerging this year</div>
+                  <sc-for list="{{ qual.emerging }}" as="em" hint-placeholder-count="3">
+                    <div style="padding:8px 0;border-top:1px solid var(--ext-border);">
+                      <div style="font-size:13px;font-weight:700;color:var(--ink);line-height:1.3;">{{ em.title }}</div>
+                      <div style="display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono';font-size:10.5px;color:var(--ext);margin-top:4px;">{{ em.reveal }}<span>filers · {{ em.note }}</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="background:var(--bg-card);border:1px solid var(--ext);border-radius:12px;padding:14px 15px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;">
+                    <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Going-concern watch</span>
+                    <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ext);">{{ qual.gcCount }}</span>
+                  </div>
+                  <sc-for list="{{ qual.gc }}" as="g" hint-placeholder-count="2">
+                    <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--rule);">
+                      <span style="font-size:13px;font-weight:600;color:var(--ink);">{{ g.filer }}</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ g.nature }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:14px 15px;">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                    <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Material litigation</span>
+                    <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink);">{{ qual.litCountReveal }}</span>
+                  </div>
+                  <sc-for list="{{ qual.lit }}" as="l" hint-placeholder-count="3">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-top:1px solid var(--rule);">
+                      <span style="font-size:13px;color:var(--ink-body);">{{ l.name }}</span>
+                      <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ink);">{{ l.countReveal }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:15px 16px;margin-top:18px;">
+              <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:15px;color:var(--ink);">Per-filer signals</span>
+                <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">flags derived from narrative sections · discrete, not distributions</span>
+              </div>
+              <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;padding:7px 0;border-bottom:2px solid var(--ink);font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--mono-muted);">
+                <span>Filer</span><span style="text-align:right;">Risk factors</span><span style="text-align:right;">New</span><span style="text-align:center;">Going concern</span><span style="text-align:center;">Litigation</span>
+              </div>
+              <sc-for list="{{ qual.matrix }}" as="mx" hint-placeholder-count="8">
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:8px;padding:9px 0;border-top:1px solid var(--rule);align-items:center;">
+                  <span style="font-size:13px;font-weight:700;color:var(--ink);">{{ mx.filer }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ink-body);text-align:right;">{{ mx.rf }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:12px;text-align:right;color:{{ mx.newColor }};">{{ mx.newLabel }}</span>
+                  <span style="text-align:center;">{{ mx.gc }}</span>
+                  <span style="text-align:center;">{{ mx.lit }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <!-- Disclosure landscape: audit, controls & narrative sections -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin:26px 0 4px;border-bottom:2px solid var(--ink);padding-bottom:9px;">
+              <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:16px;color:var(--ink);">Disclosure landscape</span>
+              <span style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);">audit · controls · narrative sections · share of filers</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:14px;">
+
+              <!-- Cybersecurity (Item 1C) -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Cybersecurity</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">Item 1C · 8-K 1.05</span>
+                </div>
+                <sc-for list="{{ qual.cyberRows }}" as="c" hint-placeholder-count="3">
+                  <div style="margin-bottom:9px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--ink-body);">{{ c.label }}</span><span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ c.covLabel }}</span></div>
+                    <div>{{ c.bar }}</div>
+                  </div>
+                </sc-for>
+                <div style="display:flex;align-items:center;gap:7px;font-family:'IBM Plex Mono';font-size:9.5px;color:var(--ext);background:var(--ext-bg);border:1px solid var(--ext-border);border-radius:6px;padding:4px 8px;margin-top:4px;">{{ qual.cyberIncidentsReveal }}<span>filed 8-K Item 1.05 this year</span></div>
+              </div>
+
+              <!-- Critical Audit Matters -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Critical Audit Matters</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">auditor report</span>
+                </div>
+                <sc-for list="{{ qual.cams }}" as="c" hint-placeholder-count="5">
+                  <div style="margin-bottom:9px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--ink-body);">{{ c.name }}</span><span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ c.covLabel }}</span></div>
+                    <div>{{ c.bar }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Auditor landscape -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Auditor landscape</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">10-K · 8-K 4.01</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;">
+                  <sc-for list="{{ qual.auditors }}" as="a" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:center;gap:9px;">
+                      <span style="width:96px;font-size:12px;color:var(--ink-body);">{{ a.name }}</span>
+                      <div style="flex:1;height:10px;background:var(--bg-tint);border-radius:5px;overflow:hidden;border:1px solid var(--border-tint);"><div style="width:{{ a.width }};height:100%;background:{{ a.color }};"></div></div>
+                      <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--ink);width:32px;text-align:right;">{{ a.pct }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--rule);"><span style="display:flex;align-items:center;gap:6px;">{{ qual.auditorChangesReveal }}<span>changes (8-K 4.01)</span></span><span>{{ qual.auditorTenure }}</span></div>
+              </div>
+
+              <!-- Risk-factor language volume -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Risk-factor volume</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">Item 1A word count</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:9px;margin:4px 0 10px;">
+                  <span style="font-family:'IBM Plex Mono';font-weight:600;font-size:22px;color:var(--ink);">{{ qual.rfMedian }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ qual.rfYoy }}</span>
+                </div>
+                <div style="display:flex;align-items:flex-end;gap:6px;height:52px;">
+                  <sc-for list="{{ qual.rfBars }}" as="b" hint-placeholder-count="6">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                      <div style="width:100%;height:{{ b.height }};background:{{ b.barColor }};border-radius:3px 3px 0 0;"></div>
+                      <span style="font-family:'IBM Plex Mono';font-size:8px;color:var(--mono-muted);">{{ b.label }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);margin-top:8px;">{{ qual.rfNetNew }}</div>
+              </div>
+
+              <!-- Non-GAAP & charges -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Non-GAAP &amp; charges</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">8-K 2.02 · XBRL</span>
+                </div>
+                <sc-for list="{{ qual.nonGaapRows }}" as="c" hint-placeholder-count="3">
+                  <div style="margin-bottom:9px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--ink-body);">{{ c.label }}</span><span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ c.covLabel }}</span></div>
+                    <div>{{ c.bar }}</div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Late / deficient filings -->
+              <div style="background:var(--bg-card);border:1px solid var(--ext);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Late &amp; deficient filings</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">12b-25 · Item 9A</span>
+                </div>
+                <sc-for list="{{ qual.deficient }}" as="d" hint-placeholder-count="3">
+                  <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:8px 0;border-top:1px solid var(--rule);">
+                    <div><div style="font-size:12.5px;color:var(--ink-body);">{{ d.label }}</div><div style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">{{ d.basis }}</div></div>
+                    <span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--ext);flex:none;">{{ d.reveal }}</span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <!-- Human-capital & climate -->
+              <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:14px 15px;grid-column:1 / -1;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px;">
+                  <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">Human-capital &amp; climate disclosure</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);">Item 1 (Business) · voluntary climate</span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;">
+                  <sc-for list="{{ qual.hcRows }}" as="r" hint-placeholder-count="5">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;color:var(--ink-body);">{{ r.label }}</span><span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--ink);">{{ r.covLabel }}</span></div>
+                      <div>{{ r.bar }}</div>
+                      <div style="font-family:'IBM Plex Mono';font-size:9px;color:var(--mono-muted);margin-top:3px;">{{ r.basis }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          </sc-if>
+
+          <!-- ===================== FILINGS (on-site theme filings) ===================== -->
+          <sc-if value="{{ isFilings }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <button onClick="{{ filings.back }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:var(--accent-ink);background:none;border:none;padding:0;margin-bottom:10px;">← back to qualitative</button>
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:2px;">
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">{{ filings.sector }}</span>
+              <span style="color:var(--mono-muted);">›</span>
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--mono-muted);">Risk theme</span>
+              <span style="color:var(--mono-muted);">›</span>
+              <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:20px;color:var(--ink);">{{ filings.theme }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:2px solid var(--ink);padding-bottom:11px;">
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ filings.coverageLabel }}</span>
+              <span style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.05em;text-transform:uppercase;color:{{ filings.dirColor }};background:{{ filings.dirBg }};border:1px solid {{ filings.dirBorder }};border-radius:6px;padding:2px 7px;">{{ filings.dirLabel }}</span>
+              <div style="flex:1;"></div>
+              <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink);">{{ filings.count }} filings</span>
+            </div>
+
+            <div style="background:var(--bg-tint);border:1px solid var(--border);border-radius:11px;padding:13px 15px;margin-top:14px;">
+              <div style="font-family:'IBM Plex Mono';font-size:9.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:5px;">Representative language</div>
+              <div style="font-family:'Hanken Grotesk';font-size:14px;line-height:1.5;color:var(--ink-body);border-left:3px solid var(--accent);padding-left:12px;">“{{ filings.quote }}”</div>
+              <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:7px;">{{ filings.src }}</div>
+            </div>
+
+            <div style="display:flex;gap:6px;margin-top:16px;flex-wrap:wrap;">
+              <sc-for list="{{ filings.formTabs }}" as="f" hint-placeholder-count="4">
+                <button onClick="{{ f.select }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:{{ f.color }};background:{{ f.bg }};border:1px solid {{ f.border }};border-radius:7px;padding:5px 12px;">{{ f.label }}</button>
+              </sc-for>
+            </div>
+
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);margin-top:12px;overflow:hidden;">
+              <div style="display:grid;grid-template-columns:190px 70px 108px 1fr;gap:14px;padding:10px 16px;border-bottom:2px solid var(--ink);font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.06em;text-transform:uppercase;color:var(--mono-muted);">
+                <span>Filer</span><span>Form</span><span>Filed</span><span>Cited passage</span>
+              </div>
+              <sc-for list="{{ filings.rows }}" as="r" hint-placeholder-count="8">
+                <a href="{{ r.filingsUrl }}" onClick="{{ noop }}" style="display:grid;grid-template-columns:190px 70px 108px 1fr;gap:14px;padding:13px 16px;border-top:1px solid var(--rule);align-items:start;color:inherit;">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:7px;"><span style="font-family:'IBM Plex Mono';font-size:12px;color:var(--bg-page);background:var(--ink);border-radius:5px;padding:1px 6px;">{{ r.ticker }}</span></div>
+                    <div style="font-size:12px;color:var(--ink-body);margin-top:5px;">{{ r.name }}</div>
+                    <div style="font-family:'IBM Plex Mono';font-size:9px;color:var(--mono-muted);margin-top:3px;">{{ r.acc }}</div>
+                  </div>
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;color:{{ r.formColor }};background:{{ r.formBg }};border-radius:6px;padding:2px 7px;align-self:start;justify-self:start;">{{ r.form }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);">{{ r.date }}</span>
+                  <div>
+                    <div style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.04em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:4px;">{{ r.section }}</div>
+                    <div style="font-size:12.5px;line-height:1.45;color:var(--ink-body);">“{{ r.snippet }}”</div>
+                  </div>
+                </a>
+              </sc-for>
+            </div>
+            <sc-if value="{{ filings.hasPages }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap;">
+              <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">{{ filings.rangeLabel }}</span>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <button onClick="{{ filings.prev.go }}" disabled="{{ filings.prev.disabled }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);background:transparent;border:1px solid var(--border-strong);border-radius:7px;padding:5px 10px;">← prev</button>
+                <sc-for list="{{ filings.pager }}" as="p" hint-placeholder-count="3">
+                  <button onClick="{{ p.go }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:{{ p.color }};background:{{ p.bg }};border:1px solid {{ p.border }};border-radius:7px;min-width:30px;padding:5px 8px;">{{ p.label }}</button>
+                </sc-for>
+                <button onClick="{{ filings.next.go }}" disabled="{{ filings.next.disabled }}" style="cursor:pointer;font-family:'IBM Plex Mono';font-size:11px;color:var(--ink-soft);background:transparent;border:1px solid var(--border-strong);border-radius:7px;padding:5px 10px;">next →</button>
+              </div>
+            </div>
+            </sc-if>
+            <div style="font-family:'IBM Plex Mono';font-size:10px;color:var(--mono-muted);margin-top:10px;">All filings resolved within ClearyFi from cleaned EDGAR data. Excerpts are the passages our taxonomy matched to this theme. Accession numbers link to the parsed filing detail.</div>
+          </div>
+          </sc-if>
+
+        </div>
+
+        <aside class="right-rail" style="width:262px;flex:none;position:sticky;top:74px;display:flex;flex-direction:column;gap:14px;">
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:13px 15px;">
+            <div style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:8px;">Sector snapshot</div>
+            <div style="font-family:'Hanken Grotesk';font-weight:800;font-size:16px;color:var(--ink);letter-spacing:-0.01em;line-height:1.15;">{{ meta.right }}</div>
+            <div style="display:flex;flex-direction:column;gap:0;margin-top:10px;">
+              <sc-for list="{{ snapshot }}" as="s" hint-placeholder-count="4">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--rule);">
+                  <span style="font-family:'IBM Plex Mono';font-size:10px;letter-spacing:0.04em;text-transform:uppercase;color:var(--mono-muted);">{{ s.k }}</span>
+                  <span style="font-family:'IBM Plex Mono';font-size:11.5px;color:var(--ink);text-align:right;">{{ s.v }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background:var(--bg-tint);border:1px solid var(--border);border-radius:12px;padding:13px 15px;">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:2px;">
+              <span style="font-family:'Hanken Grotesk';font-weight:800;font-size:14px;color:var(--ink);">What's moving</span>
+              <span style="font-family:'IBM Plex Mono';font-size:8.5px;letter-spacing:0.06em;text-transform:uppercase;color:var(--mono-muted);border:1px solid var(--border-strong);border-radius:6px;padding:1px 6px;">Track 2</span>
+            </div>
+            <div style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);margin-bottom:2px;">Filing events · walled off from metrics</div>
+            <sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
+              <div style="display:flex;gap:9px;padding:9px 0;border-top:1px solid var(--rule);">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ e.dot }};margin-top:4px;flex:none;border:{{ e.dotBorder }};"></span>
+                <div style="min-width:0;">
+                  <div style="font-size:12px;font-weight:600;color:var(--ink);line-height:1.3;">{{ e.title }}</div>
+                  <div style="font-family:'IBM Plex Mono';font-size:9.5px;color:var(--mono-muted);margin-top:2px;">{{ e.source }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:13px 15px;">
+            <div style="font-family:'IBM Plex Mono';font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--mono-muted);margin-bottom:7px;">How to read this</div>
+            <div style="font-family:'IBM Plex Mono';font-size:10px;line-height:1.55;color:var(--ink-soft);">Scores are a position vs other sectors, not a good/bad or buy verdict. Every number is traceable — click a score to open its decomposition.</div>
+            <a href="#" onClick="{{ noop }}" style="display:inline-block;font-family:'IBM Plex Mono';font-size:10px;margin-top:8px;">Methodology §9 ↗</a>
+          </div>
+        </aside>
+      </div>
+
+      <div style="margin-top:40px;padding-top:14px;border-top:1px solid var(--rule);display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+        <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">ClearyFi · public SEC data, cleaned &amp; queryable</span>
+        <a href="#" onClick="{{ noop }}" style="font-family:'IBM Plex Mono';font-size:10.5px;">/coverage ↗</a>
+        <a href="#" onClick="{{ noop }}" style="font-family:'IBM Plex Mono';font-size:10.5px;">/docs ↗</a>
+        <span style="flex:1;"></span>
+        <span style="font-family:'IBM Plex Mono';font-size:10.5px;color:var(--mono-muted);">Data, not investment advice.</span>
+      </div>
+
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    const h = React.createElement;
+    // ---- static domain data ----
+    this.sectorNames = ['Semiconductors','Software','IT hardware','Biotech','Pharma','Banks','Retail','Energy','Utilities','Industrials','Media'];
+    this.sectorAbbr  = ['Semi','SW','HW','Bio','Pharma','Bank','Retail','Enrgy','Util','Indl','Media'];
+    this.subNames = ['Logic / foundry','Memory','Analog & mixed-signal','Equipment','EDA & IP','Fabless'];
+    this.subCounts = [14,9,17,11,7,19];
+
+    this.themes = [
+      {id:'prof',   name:'Profitability & returns'},
+      {id:'growth', name:'Growth'},
+      {id:'health', name:'Financial health'},
+      {id:'cash',   name:'Cash & investment'},
+      {id:'eff',    name:'Operating efficiency'},
+      {id:'acct',   name:'Accounting quality'},
+      {id:'struct', name:'Structure & activity'},
+    ];
+    // composite score per theme, per sector (index aligns with sectorNames); Semi = index 0
+    this.sectorScores = {
+      prof:  [71,78,55,49,63,60,52,45,58,66,54],
+      growth:[64,72,40,58,54,44,48,62,35,50,46],
+      health:[68,70,62,50,58,74,55,60,80,66,57],
+      cash:  [76,82,60,55,66,58,52,70,74,63,59],
+      eff:   [58,65,50,42,54,60,66,57,62,68,52],
+      acct:  [81,84,70,66,75,79,72,68,83,77,71],
+      struct:[62,68,52,70,55,48,58,64,46,54,60],
+    };
+    this.semiDelta = {prof:3,growth:9,health:1,cash:5,eff:-2,acct:4,struct:6};
+    // decomposition constituents for the focal sector (Semiconductors) — pctile is favorability-adjusted vs 11 sectors
+    this.constituents = {
+      prof:[['Gross margin',0.25,80],['Operating margin',0.25,72],['Net margin',0.20,70],['ROIC',0.30,63]],
+      growth:[['Revenue growth YoY',0.35,74],['Sequential growth',0.20,55],['3-yr revenue CAGR',0.30,66],['Growth dispersion',0.15,48]],
+      health:[['Debt / equity',0.25,66],['Net debt / EBITDA',0.30,75],['Interest coverage',0.25,64],['Current ratio',0.20,66]],
+      cash:[['Operating cash-flow margin',0.30,82],['Free cash flow',0.25,78],['FCF conversion',0.20,70],['Capex intensity',0.15,72],['R&D intensity',0.10,70]],
+      eff:[['Inventory turnover',0.20,52],['Days sales outstanding',0.20,55],['Cash conversion cycle',0.20,60],['Asset turnover',0.20,54],['Revenue / employee',0.20,68]],
+      acct:[['Restatement rate',0.30,85],['Material-weakness rate',0.30,78],['Late-filing rate',0.20,82],['Accruals ratio',0.20,78]],
+      struct:[['Net entrants (S-1)',0.25,58],['M&A activity',0.25,60],['Insider net buy',0.25,66],['Institutional flow',0.25,64]],
+    };
+    // per-theme drill-down tiles (sector dispersion): {name, median, lo,hi,q1,q3, caption}
+    this.themeDrill = {
+      prof:[
+        {name:'Operating margin',median:24.1,lo:2,hi:48,q1:15,q3:33,caption:'healthy central tendency; a long right tail of fab-light names.'},
+        {name:'ROIC',median:14.6,lo:-4,hi:34,q1:8,q3:22,caption:'wide spread — capital efficiency separates the sector.'},
+        {name:'Net margin',median:19.3,lo:1,hi:41,q1:11,q3:28,caption:'above cross-sector norm; concentrated at the top.'},
+      ],
+      growth:[
+        {name:'Revenue growth YoY',median:14.2,lo:-8,hi:46,q1:6,q3:24,caption:'wide spread — top-quartile names above 24% carry the sector.'},
+        {name:'3-yr revenue CAGR',median:11.8,lo:-5,hi:40,q1:5,q3:19,caption:'durable multi-year expansion in the core.'},
+        {name:'Growth dispersion (top vs bottom quartile)',median:18,lo:4,hi:40,q1:12,q3:27,caption:'dispersion elevated — growth is carried by a few names, not broad-based.'},
+        {name:'Sequential growth',median:2.4,lo:-12,hi:18,q1:-1,q3:7,caption:'quarter turned positive after two soft prints.'},
+      ],
+      health:[
+        {name:'Net debt / EBITDA',median:0.6,lo:-1,hi:3.4,q1:0.1,q3:1.4,caption:'conservatively levered vs most sectors.'},
+        {name:'Interest coverage',median:11.4,lo:1,hi:32,q1:5,q3:19,caption:'ample cushion in the core; thin at the bottom quartile.'},
+        {name:'Current ratio',median:2.3,lo:0.8,hi:5.5,q1:1.6,q3:3.2,caption:'strong short-term liquidity.'},
+      ],
+      cash:[
+        {name:'Operating cash-flow margin',median:26.8,lo:4,hi:48,q1:17,q3:35,caption:'cash generation is a sector strength.'},
+        {name:'FCF conversion',median:78,lo:20,hi:120,q1:58,q3:96,caption:'high conversion despite capex intensity.'},
+        {name:'Capex intensity',median:9.1,lo:2,hi:26,q1:5,q3:15,caption:'fab owners pull the upper tail sharply.'},
+      ],
+      eff:[
+        {name:'Inventory turnover',median:4.1,lo:2,hi:7.5,q1:3.1,q3:5.2,caption:'tight vs the broader tape; cyclical builds add noise.'},
+        {name:'Days sales outstanding',median:58,lo:30,hi:96,q1:46,q3:71,caption:'lengthening this period — see biggest shifts.'},
+        {name:'Cash conversion cycle',median:96,lo:40,hi:170,q1:74,q3:124,caption:'long cycle is structural for the sector.'},
+      ],
+      acct:[
+        {name:'Accruals ratio',median:3.2,lo:-6,hi:14,q1:0.5,q3:6.4,caption:'earnings well backed by cash; tight distribution.'},
+        {name:'Restatement rate',median:1.4,lo:0,hi:8,q1:0.4,q3:3.1,caption:'low relative to most sectors.'},
+        {name:'Material-weakness rate',median:4.1,lo:0,hi:12,q1:1.6,q3:6.5,caption:'elevated this period — flagged in biggest shifts.'},
+      ],
+      struct:[
+        {name:'Insider net buy/sell ratio',median:0.9,lo:0.1,hi:3,q1:0.5,q3:1.5,caption:'roughly balanced; a few names buying heavily.'},
+        {name:'M&A intensity (deals / 100 filers)',median:6.2,lo:0,hi:18,q1:3,q3:11,caption:'consolidation active in equipment & analog.'},
+        {name:'Net entrants (S-1 vs Form 15)',median:2,lo:-6,hi:9,q1:0,q3:4,caption:'modest net formation this year.'},
+      ],
+    };
+    this.biggestShifts = [
+      {name:'Material-weakness rate',delta:'+1.8pp',glyph:'↑',basis:'vs prior quarter',flag:true,flagLabel:'highest in 8q'},
+      {name:'Days sales outstanding',delta:'+6 days',glyph:'↑',basis:'vs prior quarter',flag:false},
+      {name:'R&D intensity',delta:'+2.1pp',glyph:'↑',basis:'vs prior quarter',flag:false},
+      {name:'Net debt / EBITDA',delta:'−0.3x',glyph:'↓',basis:'vs prior quarter',flag:false},
+      {name:'Inventory turnover',delta:'−0.4x',glyph:'↓',basis:'vs prior quarter',flag:false},
+    ];
+    // geographic revenue mix (ASC 280 segment disclosure) — % of sector revenue by region, per sector
+    this.geoMix = {
+      // [Americas, China, Rest of Asia, EMEA]
+      0:[32,29,24,15], 1:[54,8,18,20], 2:[41,22,25,12], 3:[58,6,20,16], 4:[49,11,22,18],
+      5:[71,3,9,17], 6:[63,7,18,12], 7:[44,9,14,33], 8:[88,1,4,7], 9:[52,12,18,18], 10:[66,5,15,14],
+    };
+    this.geoLabels=['Americas','China','Rest of Asia','EMEA'];
+    this.geoColors=['var(--accent)','var(--gaap)','#8B8579','var(--border-strong)'];
+    // insider transactions (Forms 3/4/5) — sector net buy/sell
+    this.insider = {
+      // netRatio (buys$/sells$), buyers, sellers, direction vs prior quarter
+      0:{ratio:1.4,buyers:18,sellers:31,dir:'up',note:'net buying at an 8-quarter high'},
+      1:{ratio:0.7,buyers:12,sellers:44,dir:'down',note:'sellers outweigh buyers'},
+      2:{ratio:1.1,buyers:15,sellers:22,dir:'flat',note:'roughly balanced'},
+      3:{ratio:0.9,buyers:9,sellers:19,dir:'down',note:'mild net selling'},
+      4:{ratio:1.2,buyers:11,sellers:17,dir:'up',note:'net buying picking up'},
+      5:{ratio:1.6,buyers:24,sellers:20,dir:'up',note:'broad insider accumulation'},
+      6:{ratio:0.8,buyers:8,sellers:21,dir:'flat',note:'net selling, few buyers'},
+      7:{ratio:1.3,buyers:14,sellers:16,dir:'up',note:'buying into weakness'},
+      8:{ratio:1.0,buyers:6,sellers:6,dir:'flat',note:'balanced, low activity'},
+      9:{ratio:1.1,buyers:13,sellers:19,dir:'flat',note:'roughly balanced'},
+      10:{ratio:0.9,buyers:7,sellers:14,dir:'down',note:'mild net selling'},
+    };
+    this.events = [
+      {title:'CFO departure at Analog Devices peer group filer',source:'8-K Item 5.02 · 1 filing',sev:'caution'},
+      {title:'Restatement filed — revenue recognition',source:'8-K Item 4.02 · 1 filing',sev:'negative'},
+      {title:'Auditor change at mid-cap fabless name',source:'8-K Item 4.01 · 1 filing',sev:'caution'},
+      {title:'Acquisition announced — analog rollup',source:'8-K Item 1.01 / 2.01 · 3 filings',sev:'accent'},
+      {title:'Insider net buying at multi-year high',source:'Form 4 · net ratio 2.4x',sev:'accent'},
+      {title:'New entrant — fabless AI accelerator',source:'S-1 · 1 filing',sev:'neutral'},
+    ];
+    // ---- company peer set (Semiconductors) ----
+    const tickers = ['NVDA','AMD','INTC','TXN','AVGO','QCOM','MU','ADI','MCHP','NXPI','ON','MRVL','SWKS','QRVO','LSCC','MPWR','WOLF','ALGM','SLAB','AMBA','SMTC','POWI','DIOD','FORM','ACLS','UCTT','CRUS','SITM'];
+    this.metricDefs = [
+      {key:'netMargin',   name:'Net margin',          lo:4,   hi:42,  hib:true,  fmt:'%'},
+      {key:'revGrowth',   name:'Revenue growth YoY',  lo:-8,  hi:46,  hib:true,  fmt:'%'},
+      {key:'nde',         name:'Net debt / EBITDA',   lo:-0.6,hi:3.4, hib:false, fmt:'x'},
+      {key:'fcfMargin',   name:'FCF margin',          lo:2,   hi:36,  hib:true,  fmt:'%'},
+      {key:'invTurn',     name:'Inventory turnover',  lo:2,   hi:7.5, hib:true,  fmt:'x'},
+      {key:'effTax',      name:'Effective tax rate',  lo:7,   hi:25,  hib:null,  fmt:'%'},
+    ];
+    const seed = (str)=>{let x=2166136261;for(let i=0;i<str.length;i++){x^=str.charCodeAt(i);x=Math.imul(x,16777619);}return ((x>>>0)%100000)/100000;};
+    this.peers = tickers.map(tk=>{
+      const m={};
+      this.metricDefs.forEach(d=>{ m[d.key] = d.lo + seed(tk+'|'+d.key)*(d.hi-d.lo); });
+      return {ticker:tk, m};
+    });
+    // per-metric distribution stats
+    this.dist = {};
+    const quant=(arr,p)=>{const s=[...arr].sort((a,b)=>a-b);const i=(s.length-1)*p;const lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo);};
+    this.metricDefs.forEach(d=>{
+      const vals=this.peers.map(p=>p.m[d.key]);
+      this.dist[d.key]={q1:quant(vals,0.25),med:quant(vals,0.5),q3:quant(vals,0.75),min:Math.min(...vals),max:Math.max(...vals)};
+    });
+    // theme percentiles for the focal company left rail
+    this.coThemePct = {prof:88,growth:76,health:64,cash:91,eff:58,acct:82,struct:70};
+    // compare metric medians A(Semi) vs B(Software)
+    this.compareMetrics = [
+      {name:'Net margin',        a:22.4, b:18.1, fmt:'%',  inv:false},
+      {name:'Revenue growth YoY',a:14.2, b:16.8, fmt:'%',  inv:false},
+      {name:'R&D / revenue',     a:17.5, b:21.3, fmt:'%',  inv:false},
+      {name:'Net debt / EBITDA', a:0.6,  b:0.9,  fmt:'x',  inv:true},
+      {name:'FCF margin',        a:19.8, b:24.6, fmt:'%',  inv:false},
+      {name:'Revenue / employee',a:684,  b:412,  fmt:'$k', inv:false},
+    ];
+    // qualitative
+    // representative filing language per theme (excerpted from Item 1A full-text, EDGAR full-text search)
+    this.themeLang = {
+      'Foundry / supply concentration':{src:'10-K · Item 1A · large-cap fabless filer',quote:'We rely on a limited number of third-party foundries, and a substantial majority of our advanced-node wafers are sourced from a single foundry partner concentrated in one geographic region.'},
+      'Export controls & geopolitics':{src:'10-K · Item 1A · multiple filers',quote:'New or expanded export licensing requirements affecting sales of advanced computing and semiconductor manufacturing items to certain jurisdictions could materially reduce our addressable market.'},
+      'Customer concentration':{src:'10-K · Item 1A · analog filer',quote:'Our ten largest customers accounted for a significant portion of net revenue, and the loss of, or a reduction in orders from, any key customer could harm operating results.'},
+      'Cyclical demand / inventory':{src:'10-K · Item 1A / MD&A',quote:'The semiconductor industry is highly cyclical and has experienced significant downturns; inventory corrections at our customers may lead to reduced bookings and underutilization.'},
+      'Talent & skilled labor':{src:'10-K · Item 1 (Human Capital)',quote:'Competition for engineering and technical talent is intense, and our ability to attract and retain skilled personnel is critical to executing our technology roadmap.'},
+      'Capital intensity':{src:'10-K · Item 1A',quote:'Constructing and equipping advanced fabrication facilities requires very substantial capital expenditure, and we may be unable to achieve sufficient utilization to recover these investments.'},
+      'IP & patent litigation':{src:'10-K · Item 3 (Legal)',quote:'We are subject to intellectual-property claims and litigation that are expensive and time-consuming, and an adverse outcome could require us to pay damages or cease certain product sales.'},
+      'AI-demand dependence':{src:'10-K · Item 1A · newly added',quote:'A significant and growing portion of recent demand is attributable to artificial-intelligence applications; a slowdown in AI infrastructure investment could disproportionately affect our results.'},
+      'Water / energy for fabs':{src:'10-K · Item 1A / Human Capital & Environment',quote:'Our manufacturing operations depend on reliable access to large volumes of water and energy, and scarcity, rationing, or price increases could disrupt production.'},
+    };
+    // Cybersecurity — Item 1C (2023 rule) + 8-K Item 1.05
+    this.cyber = { adopted:96, board:81, ciso:74, incidents8k:5,
+      note:'96% describe an Item 1C process; 5 filed an 8-K Item 1.05 material-incident report this year.' };
+    // Critical Audit Matters — from auditor report (PCAOB AS 3101)
+    this.cams = [
+      {name:'Revenue recognition (multiple-element)',cov:62},
+      {name:'Inventory valuation / excess & obsolete',cov:54},
+      {name:'Goodwill & intangible impairment',cov:41},
+      {name:'Income taxes / uncertain positions',cov:33},
+      {name:'Business-combination purchase accounting',cov:22},
+    ];
+    // Auditor landscape — 10-K auditor + 8-K Item 4.01 changes
+    this.auditors = [
+      {name:'Big Four A',share:34},{name:'Big Four B',share:29},
+      {name:'Big Four C',share:18},{name:'Big Four D',share:13},{name:'Other / regional',share:6},
+    ];
+    this.auditorChanges = 4; this.auditorTenure = '11.2 yr median tenure';
+    // Risk-factor language volume — Item 1A word count trend
+    this.rfVolume = { words:[7800,8200,8900,9600,10400,11200], median:'10.9k words',
+      yoy:'+7.7% YoY', netNew:'3.1 net-new factors / filer', note:'Item 1A length trending up for 6 straight years.' };
+    // Non-GAAP & charges — 8-K 2.02 non-GAAP + XBRL charge facts
+    this.nonGaap = { nonGaapUse:88, restructuring:37, impairment:24,
+      note:'88% present at least one non-GAAP measure; 37% recorded a restructuring charge, 24% an impairment.' };
+    // Late / deficient filings — Form 12b-25 + Item 9A ICFR
+    this.deficient = [
+      {label:'NT 10-K / 10-Q (late)',count:3,basis:'Form 12b-25'},
+      {label:'Material weakness (ICFR)',count:5,basis:'Item 9A'},
+      {label:'Restatement (Item 4.02)',count:2,basis:'8-K'},
+    ];
+    // Human-capital & climate — 10-K Item 1 (2020 rule) + climate where disclosed
+    this.hcClimate = [
+      {label:'Human-capital section',cov:98,basis:'Item 1 · required 2020'},
+      {label:'Headcount disclosed',cov:91,basis:'Item 1'},
+      {label:'DEI / turnover metrics',cov:47,basis:'Item 1'},
+      {label:'GHG / climate targets',cov:38,basis:'voluntary · rule stayed'},
+      {label:'Water / energy use',cov:29,basis:'voluntary'},
+    ];
+    this.qualThemes = [
+      {name:'Foundry / supply concentration',cov:86,dir:'stable'},
+      {name:'Export controls & geopolitics',cov:79,dir:'rising'},
+      {name:'Customer concentration',cov:71,dir:'stable'},
+      {name:'Cyclical demand / inventory',cov:68,dir:'fading'},
+      {name:'Talent & skilled labor',cov:61,dir:'rising'},
+      {name:'Capital intensity',cov:58,dir:'stable'},
+      {name:'IP & patent litigation',cov:54,dir:'stable'},
+      {name:'AI-demand dependence',cov:44,dir:'new'},
+      {name:'Water / energy for fabs',cov:33,dir:'rising'},
+    ];
+    this.emerging = [
+      {title:'AI-demand concentration',count:27,note:'0 last year'},
+      {title:'Water & energy scarcity for fabs',count:21,note:'up from 6'},
+      {title:'Export-control license risk',count:49,note:'up from 31'},
+    ];
+    this.gc = [{filer:'Wolfspeed-class filer',nature:'substantial doubt'},{filer:'Mid-cap analog filer',nature:'covenant waiver'}];
+    this.lit = [{name:'Patent / IP',count:34},{name:'Antitrust / export enforcement',count:12},{name:'Securities',count:7}];
+    this.matrix = [
+      {filer:'NVDA',rf:41,nw:3,gc:false,lt:true},
+      {filer:'AMD',rf:38,nw:2,gc:false,lt:true},
+      {filer:'INTC',rf:52,nw:4,gc:false,lt:true},
+      {filer:'MU',rf:44,nw:5,gc:false,lt:false},
+      {filer:'WOLF',rf:47,nw:6,gc:true,lt:true},
+      {filer:'MCHP',rf:33,nw:1,gc:false,lt:false},
+      {filer:'QRVO',rf:36,nw:0,gc:false,lt:false},
+      {filer:'AMBA',rf:29,nw:2,gc:false,lt:false},
+    ];
+
+    this.state = {
+      view:'sector',
+      sectorIdx:0,
+      subIdx:-1,
+      expanded:'growth',
+      decomp:'growth',
+      drillScope:'theme',
+      focal:'AVGO',
+      compareA:0,
+      compareB:1,
+      sectorMenuOpen:false,
+      sparkOpen:null,
+      themeLangOpen:null,
+      filerListOpen:null,
+      filingsTheme:null,
+      prevView:'qualitative',
+      filingsPage:0,
+    };
+  }
+
+  // ---------- handlers ----------
+  noop = (e)=>{ if(e&&e.preventDefault) e.preventDefault(); };
+  selectSector = (i)=>this.setState({sectorIdx:i, subIdx:-1, sectorMenuOpen:false});
+  toggleSectorMenu = ()=>this.setState({sectorMenuOpen:!this.state.sectorMenuOpen});
+  selectSub = (i)=>this.setState({subIdx: this.state.subIdx===i?-1:i});
+  goView = (v)=>this.setState({view:v});
+  expandTheme = (id)=>this.setState({expanded:id, decomp:id});
+  setDrillScope = (s)=>this.setState({drillScope:s});
+  openDecomp = (id,e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({decomp: this.state.decomp===id?null:id}); };
+  closeDecomp = ()=>this.setState({decomp:null});
+  setFocal = (tk)=>this.setState({focal:tk});
+  toggleSpark = (key,e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({sparkOpen:this.state.sparkOpen===key?null:key}); };
+  toggleThemeLang = (name)=>this.setState({themeLangOpen:this.state.themeLangOpen===name?null:name});
+  openFilings = (name,e)=>{ if(e){if(e.preventDefault)e.preventDefault();if(e.stopPropagation)e.stopPropagation();} this.setState({prevView:this.state.view,view:'filings',filingsTheme:name,filingsPage:0}); window.scrollTo(0,0); };
+  setFilingsPage = (p)=>this.setState({filingsPage:p});
+  backFromFilings = ()=>this.setState({view:this.state.prevView||'qualitative'});
+  toggleFilerList = (id,e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.setState({filerListOpen:this.state.filerListOpen===id?null:id}); };
+  // deterministic pick of `count` tickers from the peer set for a given id
+  pickFilers(id,count){
+    const s=(str)=>{let x=2166136261;for(let i=0;i<str.length;i++){x^=str.charCodeAt(i);x=Math.imul(x,16777619);}return x>>>0;};
+    const pool=this.peers.map(p=>p.ticker);
+    const arr=pool.map((tk,i)=>({tk,k:s(id+tk)})).sort((a,b)=>a.k-b.k).slice(0,Math.min(count,pool.length)).map(o=>o.tk);
+    return arr;
+  }
+  filerReveal(id,count){
+    const h=React.createElement; const open=this.state.filerListOpen===id;
+    const btn=h('button',{onClick:(e)=>this.toggleFilerList(id,e),title:'Show filers',
+      style:{cursor:'pointer',fontFamily:'"IBM Plex Mono",monospace',fontSize:'inherit',color:'inherit',background:open?'var(--accent-wash)':'transparent',border:'1px solid '+(open?'var(--accent)':'var(--border-tint)'),borderRadius:6,padding:'1px 7px',display:'inline-flex',alignItems:'center',gap:5}},
+      [h('span',{key:'n'},count), h('span',{key:'c',style:{fontSize:9,color:'var(--mono-muted)'}}, open?'▾':'▸')]);
+    if(!open) return btn;
+    const chips=this.pickFilers(id,count).map(tk=>h('span',{key:tk,style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:10.5,color:'var(--ink)',background:'var(--bg-badge)',border:'1px solid var(--border-strong)',borderRadius:5,padding:'2px 7px'}}, tk));
+    return h('span',{style:{display:'inline-flex',flexWrap:'wrap',gap:5,alignItems:'center'}},[btn,
+      h('span',{key:'l',style:{display:'inline-flex',flexWrap:'wrap',gap:5,marginLeft:4}},chips)]);
+  }
+  onPin = ()=>this.setState({view:'compare', compareA:this.state.sectorIdx});
+  setA = (i)=>this.setState({compareA:i});
+  setB = (i)=>this.setState({compareB:i});
+
+  // ---------- node builders ----------
+  track(m, marker){
+    const h=React.createElement;
+    const lo=m.lo,hi=m.hi; const p=v=>Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+    const kids=[
+      h('div',{key:'band',style:{position:'absolute',top:5,bottom:5,left:p(m.q1)+'%',width:(p(m.q3)-p(m.q1))+'%',background:'var(--accent-wash)',borderRadius:4}}),
+      h('div',{key:'tick',style:{position:'absolute',top:3,bottom:3,left:'calc('+p(m.median)+'% - 1px)',width:2,background:'var(--ink)'}}),
+    ];
+    if(marker!=null) kids.push(h('div',{key:'mk',style:{position:'absolute',top:'50%',left:'calc('+p(marker)+'% - 6px)',width:12,height:12,transform:'translateY(-50%) rotate(45deg)',background:'var(--accent)',borderRadius:2}}));
+    return h('div',{style:{position:'relative',height:34,background:'var(--bg-tint)',borderRadius:6,border:'1px solid var(--border-tint)'}},kids);
+  }
+  dotPlot(d, focalVal){
+    const h=React.createElement; const lo=d.min-(d.max-d.min)*0.08, hi=d.max+(d.max-d.min)*0.08;
+    const p=v=>Math.max(0,Math.min(100,((v-lo)/(hi-lo))*100));
+    const band=h('div',{key:'band',style:{position:'absolute',top:8,bottom:8,left:p(d.q1)+'%',width:(p(d.q3)-p(d.q1))+'%',background:'var(--accent-wash)',borderRadius:6}});
+    const tick=h('div',{key:'tick',style:{position:'absolute',top:6,bottom:6,left:'calc('+p(d.med)+'% - 1px)',width:2,background:'var(--mono-muted)'}});
+    const dots=this.peers.map((pe,i)=>{
+      const val=pe.m[d.key]; const isFocal=pe.ticker===this.state.focal; if(isFocal) return null;
+      return h('div',{key:pe.ticker,title:pe.ticker,onClick:()=>this.setFocal(pe.ticker),
+        style:{position:'absolute',left:'calc('+p(val)+'% - 4px)',top:'calc('+(50+((i%5)-2)*13)+'% - 4px)',width:8,height:8,borderRadius:'50%',background:'var(--border-strong)',opacity:0.6,cursor:'pointer'}});
+    });
+    const dia=h('div',{key:'foc',title:this.state.focal,style:{position:'absolute',top:'50%',left:'calc('+p(focalVal)+'% - 9px)',width:18,height:18,transform:'translateY(-50%) rotate(45deg)',background:'var(--accent)',border:'2px solid var(--bg-card)',borderRadius:3,boxShadow:'0 2px 7px rgba(0,0,0,.22)',zIndex:2}});
+    return h('div',{style:{position:'relative',height:66,background:'var(--bg-tint)',borderRadius:8,border:'1px solid var(--border-tint)'}},[band,tick,...dots,dia]);
+  }
+  peerStripNode(themeId){
+    const h=React.createElement; const vals=this.sectorScores[themeId]; const max=Math.max(...vals); const sel=this.state.sectorIdx;
+    return h('div',{style:{display:'flex',alignItems:'flex-end',gap:6,height:66}}, vals.map((v,i)=>h('div',{key:i,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5}},[
+      h('div',{key:'b',style:{width:'100%',height:Math.round(v/max*44)+'px',background:i===sel?'var(--accent)':'var(--border-strong)',borderRadius:'3px 3px 0 0'}}),
+      h('div',{key:'l',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:8.5,letterSpacing:'.03em',textTransform:'uppercase',color:i===sel?'var(--accent-ink)':'var(--mono-muted)'}}, this.sectorAbbr[i])
+    ])));
+  }
+  pctBar(pct){
+    const h=React.createElement;
+    return h('div',{style:{height:8,background:'var(--bg-tint)',borderRadius:4,overflow:'hidden',border:'1px solid var(--border-tint)'}},
+      h('div',{style:{width:pct+'%',height:'100%',background:'var(--accent)'}}));
+  }
+  contribBar(pct){
+    const h=React.createElement;
+    return h('div',{style:{height:10,background:'var(--bg-tint)',borderRadius:5,overflow:'hidden',border:'1px solid var(--border-tint)'}},
+      h('div',{style:{width:pct+'%',height:'100%',background:'var(--accent-wash)',borderRight:'2px solid var(--accent)'}}));
+  }
+  cmpBars(a,b){
+    const h=React.createElement;
+    const row=(v,c)=>h('div',{style:{display:'flex',alignItems:'center',gap:9}},[
+      h('div',{key:'t',style:{flex:1,height:12,background:'var(--bg-tint)',borderRadius:6,overflow:'hidden',border:'1px solid var(--border-tint)'}},h('div',{style:{width:v+'%',height:'100%',background:c}})),
+      h('div',{key:'v',style:{width:26,textAlign:'right',fontFamily:'"IBM Plex Mono",monospace',fontSize:12,color:'var(--ink)'}}, v)
+    ]);
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:6}},[row(a,'var(--accent)'),row(b,'var(--gaap)')]);
+  }
+  radarChart(aVals,bVals,labels){
+    const h=React.createElement; const size=230,cx=size/2,cy=size/2,R=78,n=aVals.length;
+    const pt=(i,r)=>{const ang=-Math.PI/2+i/n*2*Math.PI; return [cx+Math.cos(ang)*r, cy+Math.sin(ang)*r];};
+    const ring=(f)=>Array.from({length:n},(_,i)=>pt(i,R*f)).map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')+' Z';
+    const poly=(vals)=>vals.map((v,i)=>{const p=pt(i,R*(v/100));return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1);}).join(' ')+' Z';
+    const grid=[0.33,0.66,1].map((f,i)=>h('path',{key:'r'+i,d:ring(f),fill:'none',stroke:'var(--rule)',strokeWidth:1}));
+    const spokes=Array.from({length:n},(_,i)=>{const p=pt(i,R);return h('line',{key:'s'+i,x1:cx,y1:cy,x2:p[0],y2:p[1],stroke:'var(--rule)',strokeWidth:1});});
+    const labs=labels.map((l,i)=>{const p=pt(i,R+15);return h('text',{key:'l'+i,x:p[0],y:p[1],textAnchor:p[0]<cx-6?'end':p[0]>cx+6?'start':'middle',dominantBaseline:'middle',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:8,fill:'var(--mono-muted)'}}, l);});
+    return h('svg',{width:'100%',viewBox:'0 0 '+size+' '+size,style:{display:'block',maxHeight:250}},[
+      ...grid,...spokes,
+      h('path',{key:'b',d:poly(bVals),fill:'var(--gaap)',fillOpacity:0.16,stroke:'var(--gaap)',strokeWidth:1.6}),
+      h('path',{key:'a',d:poly(aVals),fill:'var(--accent)',fillOpacity:0.16,stroke:'var(--accent)',strokeWidth:1.6}),
+      ...labs,
+    ]);
+  }
+  cmpSpread(a,b,fmt){
+    const h=React.createElement; const lo=Math.min(a.q1,b.q1),hi=Math.max(a.q3,b.q3),rng=(hi-lo)||1;
+    const pos=v=>((v-lo)/rng)*100;
+    const rail=(d,c)=>h('div',{style:{position:'relative',height:16}},[
+      h('div',{key:'ln',style:{position:'absolute',top:'50%',left:0,right:0,height:1,background:'var(--border-tint)'}}),
+      h('div',{key:'bd',style:{position:'absolute',top:3,bottom:3,left:pos(d.q1)+'%',width:(pos(d.q3)-pos(d.q1))+'%',background:c,opacity:0.22,borderRadius:3}}),
+      h('div',{key:'tk',style:{position:'absolute',top:1,bottom:1,left:'calc('+pos(d.med)+'% - 1px)',width:2,background:c}}),
+    ]);
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:4}},[
+      h('div',{key:'a',style:{display:'flex',alignItems:'center',gap:8}},[h('span',{key:'k',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:9,color:'var(--accent-ink)',width:10}},'A'),h('div',{key:'r',style:{flex:1}},rail(a,'var(--accent)'))]),
+      h('div',{key:'b',style:{display:'flex',alignItems:'center',gap:8}},[h('span',{key:'k',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:9,color:'var(--gaap)',width:10}},'B'),h('div',{key:'r',style:{flex:1}},rail(b,'var(--gaap)'))]),
+      h('div',{key:'sc',style:{display:'flex',justifyContent:'space-between',fontFamily:'"IBM Plex Mono",monospace',fontSize:8.5,color:'var(--mono-muted)'}},[h('span',{key:'l'},this.fmt(lo,fmt)),h('span',{key:'h'},this.fmt(hi,fmt))]),
+    ]);
+  }
+  cmpMetricBars(aVal,bVal,aDisp,bDisp){
+    const h=React.createElement; const max=Math.max(aVal,bVal)||1;
+    const row=(v,disp,c,ink)=>h('div',{style:{display:'flex',alignItems:'center',gap:9}},[
+      h('div',{key:'t',style:{flex:1,height:10,background:'var(--bg-tint)',borderRadius:5,overflow:'hidden',border:'1px solid var(--border-tint)'}},h('div',{style:{width:Math.round(v/max*100)+'%',height:'100%',background:c}})),
+      h('div',{key:'v',style:{width:70,textAlign:'right',fontFamily:'"IBM Plex Mono",monospace',fontSize:11.5,color:ink}}, disp)
+    ]);
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:6}},[row(aVal,aDisp,'var(--accent)','var(--accent-ink)'),row(bVal,bDisp,'var(--gaap)','var(--gaap)')]);
+  }
+  stackedBar(vals){
+    const h=React.createElement;
+    return h('div',{style:{display:'flex',height:22,borderRadius:6,overflow:'hidden',border:'1px solid var(--border-tint)'}},
+      vals.map((v,i)=>h('div',{key:i,style:{width:v+'%',background:this.geoColors[i]}})));
+  }
+  stackedBar2(vals,colors){
+    const h=React.createElement;
+    return h('div',{style:{display:'flex',height:22,borderRadius:6,overflow:'hidden',border:'1px solid var(--border-tint)'}},
+      vals.map((v,i)=>h('div',{key:i,style:{width:v+'%',background:colors[i]}})));
+  }
+  insiderBar(buyers,sellers){
+    const h=React.createElement; const tot=buyers+sellers||1;
+    return h('div',{style:{display:'flex',height:14,borderRadius:7,overflow:'hidden',border:'1px solid var(--border-tint)',background:'var(--bg-tint)'}},[
+      h('div',{key:'b',style:{width:(buyers/tot*100)+'%',background:'var(--accent)'}}),
+      h('div',{key:'s',style:{width:(sellers/tot*100)+'%',background:'var(--border-strong)'}}),
+    ]);
+  }
+  coverageBar(pct){
+    const h=React.createElement;
+    return h('div',{style:{height:9,background:'var(--bg-tint)',borderRadius:5,overflow:'hidden',border:'1px solid var(--border-tint)'}},
+      h('div',{style:{width:pct+'%',height:'100%',background:'var(--accent)'}}));
+  }
+  sparkline(vals,onClick,open){
+    const h=React.createElement; const w=58,ht=18,n=vals.length;
+    const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1;
+    const pts=vals.map((v,i)=>[(i/(n-1))*w, ht-2-((v-mn)/rng)*(ht-4)]);
+    const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    return h('button',{onClick,title:'Expand trend',style:{cursor:'pointer',background:open?'var(--accent-wash)':'transparent',border:'1px solid '+(open?'var(--accent)':'var(--border-tint)'),borderRadius:5,padding:'2px 4px',display:'flex',alignItems:'center',gap:3,lineHeight:0}},[
+      h('svg',{key:'s',width:w,height:ht,viewBox:'0 0 '+w+' '+ht,style:{display:'block'}},[
+        h('path',{key:'l',d,fill:'none',stroke:'var(--ink-soft)',strokeWidth:1.3}),
+        h('circle',{key:'d',cx:pts[n-1][0],cy:pts[n-1][1],r:2,fill:'var(--accent)'}),
+      ]),
+      h('span',{key:'c',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:9,color:'var(--mono-muted)'}}, open?'−':'+'),
+    ]);
+  }
+  trendChart(vals,fmt){
+    const h=React.createElement; const w=560,ht=132,padL=6,padR=6,padT=12,padB=22,n=vals.length;
+    const iw=w-padL-padR, ih=ht-padT-padB;
+    const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1;
+    const x=i=>padL+(i/(n-1))*iw, y=v=>padT+ih-((v-mn)/rng)*ih;
+    const line=vals.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+    const area=line+' L'+x(n-1).toFixed(1)+' '+(padT+ih)+' L'+x(0).toFixed(1)+' '+(padT+ih)+' Z';
+    const qlabels=['-7q','-6q','-5q','-4q','-3q','-2q','-1q','now'];
+    const grid=[0,0.5,1].map((g,i)=>h('line',{key:'g'+i,x1:padL,x2:w-padR,y1:padT+ih*g,y2:padT+ih*g,stroke:'var(--rule)',strokeWidth:1}));
+    const dots=vals.map((v,i)=>h('circle',{key:'p'+i,cx:x(i),cy:y(v),r:i===n-1?3.5:2,fill:i===n-1?'var(--accent)':'var(--ink-soft)'}));
+    const xlabels=vals.map((v,i)=>h('text',{key:'x'+i,x:x(i),y:ht-6,textAnchor:'middle',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:8.5,fill:'var(--mono-muted)'}}, qlabels[i]));
+    return h('svg',{width:'100%',viewBox:'0 0 '+w+' '+ht,preserveAspectRatio:'none',style:{display:'block'}},[
+      ...grid,
+      h('path',{key:'a',d:area,fill:'var(--accent-wash)',opacity:0.5}),
+      h('path',{key:'l',d:line,fill:'none',stroke:'var(--ink-soft)',strokeWidth:1.6}),
+      ...dots, ...xlabels,
+      h('text',{key:'hi',x:w-padR,y:y(mx)-4,textAnchor:'end',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:9,fill:'var(--mono-muted)'}}, this.fmt(mx,fmt)),
+      h('text',{key:'lo',x:w-padR,y:y(mn)+11,textAnchor:'end',style:{fontFamily:'"IBM Plex Mono",monospace',fontSize:9,fill:'var(--mono-muted)'}}, this.fmt(mn,fmt)),
+    ]);
+  }
+  statusDot(sev){
+    const h=React.createElement;
+    if(sev==='negative') return {dot:'var(--ext)',border:'2px solid var(--ext-border)'};
+    if(sev==='caution')  return {dot:'var(--ext-bg)',border:'2px solid var(--ext)'};
+    if(sev==='accent')   return {dot:'var(--accent)',border:'none'};
+    return {dot:'var(--mono-muted)',border:'none'};
+  }
+
+  // ---------- helpers ----------
+  fmt(v,f){ if(f==='%') return v.toFixed(1)+'%'; if(f==='x') return v.toFixed(1)+'x'; if(f==='$k') return '$'+Math.round(v)+'k'; return ''+v; }
+  rankOf(themeId){ const vals=this.sectorScores[themeId]; const mine=vals[this.state.sectorIdx]; const better=vals.filter(v=>v>mine).length; return better+1; }
+  ord(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+
+  renderVals(){
+    const st=this.state; const si=st.sectorIdx;
+    const sector=this.sectorNames[si];
+    const subActive = st.subIdx>=0;
+    const basePeer = 62; const peerCount = subActive ? this.subCounts[st.subIdx] : basePeer;
+    const rankBasis = subActive ? this.subCounts[st.subIdx] : this.sectorNames.length;
+    const rankSuffix = subActive ? ('of '+this.subCounts[st.subIdx]+' sub-industries') : ('of '+this.sectorNames.length+' sectors');
+
+    // nav (sidebar)
+    const navLabels=['Company hub','Compare','Screen','Coverage','Sector analytics'];
+    const navData=navLabels.map((label,i)=>({label, noop:this.noop, bg: i===4?'var(--accent-wash)':'transparent'}));
+
+    // sector dropdown items
+    const sectors=this.sectorNames.map((name,i)=>{
+      const on=i===si;
+      return {name, select:()=>this.selectSector(i), checked:on, weight:on?700:500,
+        color:on?'var(--accent-ink)':'var(--ink-body)', bg:on?'var(--accent-wash)':'transparent'};
+    });
+    const sectorMenu={ current:sector, open:st.sectorMenuOpen, caret: st.sectorMenuOpen?'rotate(180deg)':'none' };
+    // sub pills (only meaningful for Semiconductors, index 0; show for all but derived from semi taxonomy)
+    const subs=this.subNames.map((name,i)=>{
+      const on=st.subIdx===i;
+      return {name, select:()=>this.selectSub(i),
+        color:on?'var(--accent-ink)':'var(--ink-soft)', bg:on?'var(--accent-wash)':'transparent', border:on?'var(--accent)':'var(--border-strong)'};
+    });
+
+    // views rail
+    const viewList=[['sector','Sector'],['company','Company'],['compare','Compare'],['qualitative','Qualitative']];
+    const views=viewList.map(([k,label])=>{
+      const on=st.view===k;
+      return {label, go:()=>this.goView(k),
+        color:on?'#fff':'var(--ink-muted)', bg:on?'var(--accent)':'transparent', border:on?'var(--accent)':'transparent'};
+    });
+
+    const pinnedHere = st.compareA===si || st.compareB===si;
+    const pin = { label: pinnedHere?'✓ pinned to compare':'+ pin to compare', onPin:this.onPin,
+      color:pinnedHere?'var(--accent-ink)':'var(--ink-soft)', bg:pinnedHere?'var(--accent-wash)':'transparent', border:pinnedHere?'var(--accent)':'var(--border-strong)'};
+
+    const meta={
+      right: sector + (subActive?(' · '+this.subNames[st.subIdx]):'') ,
+      peerCount: peerCount+' filers',
+      asOf: 'Q1 FY26',
+      coverage: '94% filed · full peer set',
+      railNote: 'Sector · period · company preserved across views (§7). Selecting a sector keeps your current metric focus.',
+    };
+
+    // ---- scorecard tiles ----
+    const n=this.sectorNames.length;
+    const tiles=this.themes.map(t=>{
+      const score=this.sectorScores[t.id][si];
+      const rank=this.rankOf(t.id);
+      const pctile=Math.round((n-rank)/(n-1)*100);
+      const d=si===0?this.semiDelta[t.id]:0;
+      const dGlyph=d>0?'↑':d<0?'↓':'→';
+      const on=st.expanded===t.id;
+      return {name:t.name, score,
+        deltaLabel: dGlyph+' '+(d>0?'+':'')+d,
+        pctileLabel: this.ord(pctile)+' pctile · vs all sectors',
+        rankLabel: this.ord(rank)+' '+rankSuffix,
+        expand:()=>this.expandTheme(t.id),
+        openDecomp:(e)=>this.openDecomp(t.id,e),
+        cardBg: on?'var(--accent-wash)':'var(--bg-card)',
+        cardBorder: on?'var(--accent)':'var(--border)'};
+    });
+
+    // decomposition
+    let decomp={open:false};
+    if(st.decomp){
+      const t=this.themes.find(x=>x.id===st.decomp);
+      const cons=this.constituents[st.decomp];
+      const contribs=cons.map(c=>c[1]*c[2]);
+      const maxC=Math.max(...contribs);
+      const score=Math.round(contribs.reduce((a,b)=>a+b,0));
+      decomp={open:true, title:t.name+' · '+score+' composite', close:this.closeDecomp,
+        method:'percentile-averaged, favorability-adjusted, vs 11 sectors — provisional weighting (§9)',
+        rows:cons.map((c,i)=>({label:c[0], weightLabel:'w '+c[1].toFixed(2), contribLabel:'+'+contribs[i].toFixed(1), bar:this.contribBar(Math.round(contribs[i]/maxC*100))}))};
+    }
+
+    // peer strip (follows expanded theme)
+    const et=this.themes.find(x=>x.id===st.expanded);
+    const peerStrip={ node:this.peerStripNode(st.expanded), caption: et.name.toLowerCase()+' · 11 sectors · Q1 FY26' };
+
+    // biggest shifts
+    const shifts=this.biggestShifts.map(s=>({name:s.name, deltaLabel:s.delta, glyph:s.glyph, basis:s.basis, flag:s.flag, flagLabel:s.flagLabel||''}));
+
+    // drill-down / dispersion — scope toggle: theme-scoped vs all-metric
+    const mkTile=(m)=>({
+      name:m.name,
+      medianLabel: (m.name.indexOf('days')>=0||m.name.indexOf('cycle')>=0)?Math.round(m.median): (m.median%1===0?m.median:m.median.toFixed(1)),
+      track:this.track({lo:m.lo,hi:m.hi,q1:m.q1,q3:m.q3,median:m.median},null),
+      caption:m.caption});
+    const allMetricSrc=this.themes.flatMap(t=>(this.themeDrill[t.id]||[]).slice(0,1));
+    const scopeAll = st.drillScope==='all';
+    const dtiles=(scopeAll?allMetricSrc:(this.themeDrill[st.expanded]||[])).map(mkTile);
+    const scopeBtn=(k,label)=>{const on=st.drillScope===k;return {label, select:()=>this.setDrillScope(k), color:on?'#fff':'var(--ink-soft)', bg:on?'var(--accent)':'transparent'};};
+    const drill={
+      heading: scopeAll ? 'All-metric spreads · sector-wide' : (et.name+' · constituents'),
+      scopes:[scopeBtn('theme','This theme'), scopeBtn('all','All metrics')],
+      tiles:dtiles};
+
+    // events
+    const events=this.events.map(e=>{const s=this.statusDot(e.sev);return {title:e.title, source:e.source, dot:s.dot, dotBorder:s.border};});
+
+    // geographic revenue mix
+    const gm=this.geoMix[si]||this.geoMix[0];
+    const geo={ segments:gm.map((v,i)=>({label:this.geoLabels[i], pct:v+'%', width:v+'%', color:this.geoColors[i]})),
+      bar:this.stackedBar(gm) };
+    // insider flow (Forms 3/4/5)
+    const ins=this.insider[si]||this.insider[0];
+    const insGlyph=ins.dir==='up'?'↑':ins.dir==='down'?'↓':'→';
+    const insider={ ratioLabel:ins.ratio.toFixed(1)+'×', glyph:insGlyph,
+      basis: ins.buyers+' buyers · '+ins.sellers+' sellers', note:ins.note,
+      bar:this.insiderBar(ins.buyers,ins.sellers) };
+
+    // right-rail snapshot
+    const snapshot=[
+      {k:'Filers', v:peerCount+(subActive?' · sub':'')},
+      {k:'Period', v:'Q1 FY26'},
+      {k:'Coverage', v:'94% filed'},
+      {k:'Focused theme', v:et.name},
+    ];
+
+    // ---- company view ----
+    const focal=this.peers.find(p=>p.ticker===st.focal)||this.peers[0];
+    const pctRail=this.themes.map(t=>({name:t.name, pLabel:'P'+this.coThemePct[t.id], bar:this.pctBar(this.coThemePct[t.id])}));
+    const seedN=(str)=>{let x=2166136261;for(let i=0;i<str.length;i++){x^=str.charCodeAt(i);x=Math.imul(x,16777619);}return ((x>>>0)%100000)/100000;};
+    const distRows=this.metricDefs.map(d=>{
+      const dd=this.dist[d.key]; const val=focal.m[d.key];
+      const below=this.peers.filter(p=>p.m[d.key]<val).length/(this.peers.length-1)*100;
+      let fav = d.hib===false ? (100-below) : below; // favorability pctile
+      const P = d.hib==null ? Math.round(below) : Math.round(fav);
+      // this filer's own 8-quarter trend, ending at current value
+      const spk=[]; for(let i=0;i<8;i++){ const j=seedN(st.focal+d.key+i); spk.push(val*(0.82+j*0.32)); } spk[7]=val;
+      const chg=(spk[7]-spk[0]); const tg=Math.abs(chg)<Math.abs(val)*0.03?'→':(chg>0?'↑':'↓');
+      const isOpen=st.sparkOpen===d.key;
+      return {name:d.name, dirTag:d.hib===false,
+        valueLabel:this.fmt(val,d.fmt)+' · P'+P,
+        spark:this.sparkline(spk,(e)=>this.toggleSpark(d.key,e),isOpen), trendLabel:tg+' 8q',
+        sparkOpen:isOpen, trend:isOpen?this.trendChart(spk,d.fmt):null,
+        trendCaption: this.fmt(spk[0],d.fmt)+' → '+this.fmt(val,d.fmt)+' over 8 quarters · this filer only, not peers',
+        plot:this.dotPlot(dd,val)};
+    });
+    // per-filer segment & geographic mix (deterministic from ticker)
+    const segNames=['Core products','Services & licensing','Other'];
+    const segColors=['var(--accent)','var(--gaap)','var(--border-strong)'];
+    const s1=55+Math.round(seedN(st.focal+'seg')*25), s2=Math.round((100-s1)*0.66), s3=100-s1-s2;
+    const segVals=[s1,s2,s3];
+    const geoNames=this.geoLabels; const gm2=this.geoMix[si]||this.geoMix[0];
+    const gShift=Math.round((seedN(st.focal+'geo')-0.5)*16);
+    const gv=[Math.max(4,gm2[0]+gShift),gm2[1],gm2[2],0]; gv[3]=Math.max(0,100-gv[0]-gv[1]-gv[2]);
+    const hasWeak=seedN(st.focal+'mw')>0.82, hasRestate=seedN(st.focal+'rs')>0.9;
+    const flags=[];
+    if(hasRestate) flags.push({label:'restatement',color:'var(--ext)',bg:'var(--ext-bg)',border:'var(--ext-border)'});
+    if(hasWeak) flags.push({label:'material weakness',color:'var(--ext)',bg:'var(--ext-bg)',border:'var(--ext-border)'});
+    flags.push({label:'timely filer',color:'var(--ink-soft)',bg:'transparent',border:'var(--border-strong)'});
+    const filings=[
+      {form:'10-Q', desc:'Quarterly report · Q1 FY26', date:'2026-05-04'},
+      {form:'8-K', desc:'Item 2.02 · earnings release', date:'2026-05-04'},
+      {form:'4', desc:'Insider transaction · officer', date:'2026-04-22'},
+      {form:'10-K', desc:'Annual report · FY25', date:'2026-02-11'},
+      {form:'8-K', desc:'Item 5.02 · officer appointment', date:'2026-01-28'},
+    ];
+    const company={
+      sector, name: st.focal, ticker: st.focal,
+      contextPill: subActive?('NAICS 334413 · rank 4 / '+this.subCounts[st.subIdx]):'SIC 3674 · rank 5 / 62',
+      filingBasis:'10-Q · Q1 FY26',
+      pctRail, rankLabel: subActive?'4 / '+this.subCounts[st.subIdx]:'5 / 62', rankMove:'↑ up 3 spots QoQ',
+      openRank:(e)=>this.openDecomp('prof',e),
+      dist:distRows,
+      segBar:this.stackedBar2(segVals,segColors),
+      segments:segVals.map((v,i)=>({label:segNames[i],pct:v+'%',color:segColors[i]})),
+      geoBar:this.stackedBar(gv),
+      geo:gv.map((v,i)=>({label:geoNames[i],pct:v+'%',color:this.geoColors[i]})),
+      flags, filings,
+    };
+
+    // ---- compare view ----
+    const ai=st.compareA, bi=st.compareB;
+    const aName=this.sectorNames[ai], bName=this.sectorNames[bi];
+    const aPills=this.sectorNames.map((name,i)=>{const on=i===ai;return {name, select:()=>this.setA(i), color:on?'#fff':'var(--ink-soft)', bg:on?'var(--accent)':'transparent', border:on?'var(--accent)':'var(--border-strong)'};});
+    const bPills=this.sectorNames.map((name,i)=>{const on=i===bi;return {name, select:()=>this.setB(i), color:on?'#fff':'var(--ink-soft)', bg:on?'var(--gaap)':'transparent', border:on?'var(--gaap)':'var(--border-strong)'};});
+    const cmpRows=this.themes.map(t=>{
+      const a=this.sectorScores[t.id][ai], b=this.sectorScores[t.id][bi]; const gap=a-b;
+      const lead = gap===0?'even':(gap>0?this.sectorAbbr[ai]:this.sectorAbbr[bi]);
+      return {name:t.name, bars:this.cmpBars(a,b),
+        gapLabel: gap===0?'even':((gap>0?'+':'−')+Math.abs(gap)+' '+lead),
+        gapColor: Math.abs(gap)>=10?'var(--ink)':'var(--ink-soft)'};
+    });
+    const cmpCards=this.compareMetrics.map(m=>{
+      // synthesize IQR around each median: semis (A) tighter, software (B) wider — deterministic
+      const spreadA=Math.abs(m.a)*0.28+ (m.fmt==='x'?0.3:2), spreadB=Math.abs(m.b)*0.36+(m.fmt==='x'?0.4:2.5);
+      const dA={q1:m.a-spreadA,med:m.a,q3:m.a+spreadA};
+      const dB={q1:m.b-spreadB,med:m.b,q3:m.b+spreadB};
+      return {name:m.name, inverted:m.inv,
+        bars:this.cmpMetricBars(m.a,m.b,this.fmt(m.a,m.fmt),this.fmt(m.b,m.fmt)),
+        spread:this.cmpSpread(dA,dB,m.fmt)};
+    });
+    // composite profile radar + divergence table
+    const radarA=this.themes.map(t=>this.sectorScores[t.id][ai]);
+    const radarB=this.themes.map(t=>this.sectorScores[t.id][bi]);
+    const themeAbbr={prof:'Profit',growth:'Growth',health:'Health',cash:'Cash',eff:'Efficiency',acct:'Acct',struct:'Structure'};
+    const radar=this.radarChart(radarA,radarB,this.themes.map(t=>themeAbbr[t.id]));
+    const compare={aName,bName, counts:peerCount+' vs 148 filers · Q1 FY26', aPills,bPills, rows:cmpRows, cards:cmpCards, radar};
+
+    // ---- qualitative view ----
+    const dirChip=(dir)=>{
+      if(dir==='new')   return {chipLabel:'new',    chipColor:'var(--gaap)',     chipBg:'var(--gaap-bg)', chipBorder:'var(--gaap-border)'};
+      if(dir==='rising')return {chipLabel:'↑ rising',chipColor:'var(--ext)',      chipBg:'var(--ext-bg)',  chipBorder:'var(--ext-border)'};
+      if(dir==='fading')return {chipLabel:'↓ fading',chipColor:'var(--ink-soft)', chipBg:'transparent',    chipBorder:'var(--border-strong)'};
+      return {chipLabel:'— stable', chipColor:'var(--mono-muted)', chipBg:'transparent', chipBorder:'var(--border-strong)'};
+    };
+    const qThemes=this.qualThemes.map(q=>{const c=dirChip(q.dir);const on=st.themeLangOpen===q.name;return {name:q.name, coverageLabel:q.cov+'%', bar:this.coverageBar(q.cov), open:()=>this.toggleThemeLang(q.name), rowBg:on?'var(--accent-wash)':'transparent', filingsUrl:'/filings?theme='+encodeURIComponent(q.name), openLink:(e)=>this.openFilings(q.name,e), ...c};});
+    // representative language panel
+    let themeLang={open:false};
+    if(st.themeLangOpen && this.themeLang[st.themeLangOpen]){
+      const l=this.themeLang[st.themeLangOpen];
+      themeLang={open:true, name:st.themeLangOpen, src:l.src, quote:l.quote,
+        filingsUrl:'/filings?theme='+encodeURIComponent(st.themeLangOpen),
+        openFilings:(e)=>this.openFilings(st.themeLangOpen,e),
+        close:()=>this.toggleThemeLang(st.themeLangOpen)};
+    }
+    const cyberRows=[
+      {label:'Item 1C process described',cov:this.cyber.adopted},
+      {label:'Board oversight named',cov:this.cyber.board},
+      {label:'CISO / mgmt role named',cov:this.cyber.ciso},
+    ].map(r=>({label:r.label, covLabel:r.cov+'%', bar:this.coverageBar(r.cov)}));
+    const cams=this.cams.map(c=>({name:c.name, covLabel:c.cov+'%', bar:this.coverageBar(c.cov)}));
+    const auditors=this.auditors.map((a,i)=>({name:a.name, pct:a.share+'%', width:a.share+'%', color:this.geoColors[i%this.geoColors.length]}));
+    const rfWords=this.rfVolume.words; const rfMax=Math.max(...rfWords);
+    const rfBars=rfWords.map((w,i)=>({height:Math.round(w/rfMax*44)+'px', barColor:i===rfWords.length-1?'var(--accent)':'var(--border-strong)', label:'FY'+(20+i)}));
+    const nonGaapRows=[
+      {label:'Presents non-GAAP measures',cov:this.nonGaap.nonGaapUse},
+      {label:'Recorded restructuring charge',cov:this.nonGaap.restructuring},
+      {label:'Recorded impairment',cov:this.nonGaap.impairment},
+    ].map(r=>({label:r.label, covLabel:r.cov+'%', bar:this.coverageBar(r.cov)}));
+    const hcRows=this.hcClimate.map(r=>({label:r.label, covLabel:r.cov+'%', basis:r.basis, bar:this.coverageBar(r.cov)}));
+    const matrix=this.matrix.map(m=>({filer:m.filer, rf:m.rf,
+      newLabel:m.nw>0?('+'+m.nw):'—', newColor:m.nw>0?'var(--gaap)':'var(--mono-muted)',
+      gc:m.gc?'●':'—', lit:m.lt?'●':'—'}));
+    const qual={
+      peerPill: peerCount+' filers · FY25 10-Ks', sections:'Item 1A · 3 · 1C · MD&A',
+      themes:qThemes,
+      gcCount:'2 / '+basePeer, gc:this.gc,
+      litCountReveal:this.filerReveal('litall',53), lit:this.lit.map(l=>({name:l.name, countReveal:this.filerReveal('lit-'+l.name,l.count)})), matrix,
+      themeLang,
+      emerging:this.emerging.map(e=>({title:e.title, note:e.note, reveal:this.filerReveal('emg-'+e.title,e.count)})),
+      cyberRows, cyberNote:this.cyber.note, cyberIncidentsReveal:this.filerReveal('cyber8k',this.cyber.incidents8k),
+      cams, auditors, auditorChangesReveal:this.filerReveal('auditchg',this.auditorChanges), auditorTenure:this.auditorTenure,
+      rfBars, rfMedian:this.rfVolume.median, rfYoy:this.rfVolume.yoy, rfNetNew:this.rfVolume.netNew, rfNote:this.rfVolume.note,
+      nonGaapRows, nonGaapNote:this.nonGaap.note,
+      deficient:this.deficient.map(d=>({label:d.label, basis:d.basis, reveal:this.filerReveal('def-'+d.label,d.count)})), hcRows,
+    };
+
+    // ---- filings view (on-site filing list for a theme) ----
+    let themeFilings={active:false};
+    if(st.view==='filings' && st.filingsTheme){
+      const tname=st.filingsTheme;
+      const themeMeta=this.qualThemes.find(t=>t.name===tname)||{cov:60,dir:'stable'};
+      const lang=this.themeLang[tname]||{quote:'',src:''};
+      const dirC=dirChip(themeMeta.dir);
+      const count=Math.max(3,Math.round(peerCount*themeMeta.cov/100));
+      const filerTks=this.pickFilers('theme-'+tname,Math.min(count,14));
+      const compMap={NVDA:'NVIDIA Corp',AMD:'Advanced Micro Devices',INTC:'Intel Corp',TXN:'Texas Instruments',AVGO:'Broadcom Inc',QCOM:'Qualcomm Inc',MU:'Micron Technology',ADI:'Analog Devices',MCHP:'Microchip Technology',NXPI:'NXP Semiconductors',ON:'ON Semiconductor',MRVL:'Marvell Technology',SWKS:'Skyworks Solutions',QRVO:'Qorvo Inc',LSCC:'Lattice Semiconductor',MPWR:'Monolithic Power',WOLF:'Wolfspeed Inc',ALGM:'Allegro MicroSystems',SLAB:'Silicon Labs',AMBA:'Ambarella Inc',SMTC:'Semtech Corp',POWI:'Power Integrations',DIOD:'Diodes Inc',FORM:'FormFactor Inc',ACLS:'Axcelis Technologies',UCTT:'Ultra Clean Holdings',CRUS:'Cirrus Logic',SITM:'SiTime Corp'};
+      const forms=['10-K','10-K','10-Q','10-K','8-K'];
+      const snippets=[lang.quote,
+        'The company identifies this among its principal risk factors and notes that adverse developments could have a material effect on its business, financial condition, or results of operations.',
+        'Management discusses this exposure in its quarterly update, observing heightened attention during the period and outlining mitigation steps underway.',
+        lang.quote,
+        'Item 1A cross-references this factor as newly expanded relative to the prior annual report.'];
+      const seedd=(str)=>{let x=2166136261;for(let i=0;i<str.length;i++){x^=str.charCodeAt(i);x=Math.imul(x,16777619);}return (x>>>0)/4294967295;};
+      const rows=filerTks.map((tk,i)=>{
+        const fi=Math.floor(seedd(tname+tk+'f')*forms.length);
+        const form=forms[fi];
+        const mo=1+Math.floor(seedd(tk+tname+'m')*11), dy=1+Math.floor(seedd(tk+'d')*27);
+        const date='2026-'+String(mo).padStart(2,'0')+'-'+String(dy).padStart(2,'0');
+        const acc='000'+(1000000+Math.floor(seedd(tk+tname)*8999999))+'-26-'+String(100000+Math.floor(seedd(tk+'a')*899999));
+        return {ticker:tk, name:compMap[tk]||tk, form, formBg:form==='8-K'?'var(--gaap-bg)':'var(--accent-wash)', formColor:form==='8-K'?'var(--gaap)':'var(--accent-ink)',
+          date, acc, section: form==='8-K'?'Item 8.01':'Item 1A · Risk Factors', snippet:snippets[i%snippets.length], filingsUrl:'/filings/'+tk};
+      }).sort((a,b)=>b.date.localeCompare(a.date));
+      const perPage=6; const pageCount=Math.max(1,Math.ceil(rows.length/perPage));
+      const page=Math.min(st.filingsPage,pageCount-1);
+      const pageRows=rows.slice(page*perPage,page*perPage+perPage);
+      const pager=Array.from({length:pageCount},(_,i)=>({label:''+(i+1), go:()=>this.setFilingsPage(i),
+        color:i===page?'#fff':'var(--ink-soft)', bg:i===page?'var(--accent)':'transparent', border:i===page?'var(--accent)':'var(--border-strong)'}));
+      themeFilings={active:true, theme:tname, quote:lang.quote, src:lang.src,
+        coverageLabel:themeMeta.cov+'% of '+peerCount+' filers cite this', dirLabel:dirC.chipLabel, dirColor:dirC.chipColor, dirBg:dirC.chipBg, dirBorder:dirC.chipBorder,
+        count:rows.length, rows:pageRows, back:this.backFromFilings, sector,
+        rangeLabel:(page*perPage+1)+'–'+(page*perPage+pageRows.length)+' of '+rows.length,
+        pager, hasPages:pageCount>1,
+        prev:{disabled:page===0, go:()=>this.setFilingsPage(Math.max(0,page-1))},
+        next:{disabled:page>=pageCount-1, go:()=>this.setFilingsPage(Math.min(pageCount-1,page+1))},
+        formTabs:['All forms','10-K','10-Q','8-K'].map((f,i)=>({label:f, select:this.noop,
+          color:i===0?'#fff':'var(--ink-soft)', bg:i===0?'var(--accent)':'transparent', border:i===0?'var(--accent)':'var(--border-strong)'}))};
+    }
+
+    return {
+      noop:this.noop, navData, sectors, sectorMenu, toggleSectorMenu:this.toggleSectorMenu, subs, views, pin, onPin:this.onPin, meta,
+      isSector: st.view==='sector', isCompany: st.view==='company', isCompare: st.view==='compare', isQual: st.view==='qualitative', isFilings: st.view==='filings',
+      filings: themeFilings,
+      tiles, decomp, peerStrip, shifts, drill, events, snapshot, geo, insider,
+      company, compare, qual,
+    };
+  }
+}
+</script>
+</body>
+</html>
