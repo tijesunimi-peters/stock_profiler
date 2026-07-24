@@ -5,7 +5,11 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "Hanken Grotesk", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-.pa-app { display: flex; min-height: 100vh; }
+/* --rule is the app-wide hairline divider (used ~11× for row/section borders). The prototype defines
+   it in :root, but style.css does not — so define it here (aliased to style.css's identical
+   --border-tint-rule #e5dfd3) or every `border-top:1px solid var(--rule)` is invalid and no line
+   renders. Latent since Phase 1; found during v2 manual verification. */
+.pa-app { display: flex; min-height: 100vh; --rule: var(--border-tint-rule); }
 
 /* ---- sidebar ---- */
 .pa-side {
@@ -80,7 +84,28 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-rail-btn.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--accent-wash); }
 .pa-rail-rule { height: 1px; background: var(--rule); margin: 12px 4px; }
 .pa-rail-note { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); padding: 0 4px; }
-.pa-viewport { flex: 1; min-width: 0; }
+.pa-viewport { flex: 1; min-width: 0; max-width: 960px; } /* v2: 960px content cap */
+
+/* ---- v2 right rail (Sector view only): snapshot · "What's moving" feed placeholder · how-to-read.
+   262px, sticky; hidden below 1240px (see media query) so the content never gets crowded. ---- */
+.pa-rrail { width: 262px; flex: none; position: sticky; top: 74px; display: flex; flex-direction: column; gap: 14px; }
+.pa-rr-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 13px 15px; }
+.pa-rr-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mono-muted); margin-bottom: 8px; }
+.pa-rr-name { font-family: var(--font-sans); font-weight: 800; font-size: 16px; color: var(--ink); letter-spacing: -0.01em; line-height: 1.15; }
+.pa-snap { display: flex; flex-direction: column; margin-top: 10px; }
+.pa-snap-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--rule); }
+.pa-snap-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-snap-v { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink); text-align: right; }
+.pa-snap-v.pa-ph { color: var(--mono-muted); font-style: italic; }
+.pa-rr-feed { background: var(--bg-tint); }
+.pa-rr-feedhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.pa-rr-feedname { font-family: var(--font-sans); font-weight: 800; font-size: 14px; color: var(--ink); }
+.pa-rr-t2 { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); border: 1px solid var(--border-strong); border-radius: 6px; padding: 1px 6px; }
+.pa-rr-feedsub { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); margin-bottom: 6px; }
+.pa-rr-feedbody { font-family: var(--font-mono); font-size: 10px; line-height: 1.55; color: var(--ink-soft); }
+.pa-rr-how { font-family: var(--font-mono); font-size: 10px; line-height: 1.55; color: var(--ink-soft); }
+.pa-rr-method { display: inline-block; font-family: var(--font-mono); font-size: 10px; color: var(--accent-ink); margin-top: 8px; text-decoration: none; }
+.pa-rr-method:hover { text-decoration: underline; }
 
 /* ---- generic card ---- */
 .pa-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px; margin-top: 16px; }
@@ -91,6 +116,11 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 
 /* ---- sector view head ---- */
 .pa-sec-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+/* Prototype: the 01 header sits flush at the top (margin-bottom only); each later scope header
+   (02 What drives it, 03 Distribution) gets 30px of top separation from the section above. The scope
+   heads are direct children of the viewport, so target all-but-first. */
+.pa-viewport > .pa-sec-head { margin-top: 30px; }
+.pa-viewport > .pa-sec-head:first-child { margin-top: 0; }
 .pa-sec-num { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--accent); }
 .pa-sec-h2 { margin: 0; font-weight: 800; font-size: 20px; color: var(--ink); }
 .pa-sec-sub { font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); border-bottom: 2px solid var(--ink); padding-bottom: 9px; }
@@ -150,13 +180,27 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-shift-delta { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink); width: 80px; text-align: right; flex: none; }
 .pa-shift-basis { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); width: 150px; text-align: right; flex: none; }
 
-/* ---- drill-down ---- */
+/* ---- 03 Distribution: card head + [This theme]/[All metrics] scope toggle + boxes ---- */
 .pa-drill-cover { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
-.pa-drill-boxes .plot-chart { margin: 2px 0 6px; }
+/* Each metric tile is demarcated like the v2 prototype: padding:12px 0 + a --rule border-top between
+   tiles (the first tile's border also separates the set from the card head/toggle above). */
+.pa-drill-boxes .plot-chart { margin: 0; padding: 12px 0; border-top: 1px solid var(--rule); }
+/* boxWhiskerChart emits .plot-chart-title/.plot-chart-caption, styled in app.css which this page does
+   NOT load -> they'd fall back to the browser-default serif. Restyle locally to the v2 prototype's
+   distribution-tile treatment: metric name in Hanken Grotesk 13.5/600, caption in mono. */
+.pa-drill-boxes .plot-chart-title { font-family: var(--font-sans); font-size: 13.5px; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink-body); margin: 0 0 7px; }
+.pa-drill-boxes .plot-chart-caption { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin: 6px 2px 0; }
+.pa-drill-boxes .plot-chart-body { overflow-x: auto; }
+.pa-drill-boxes .plot-chart-body svg { display: block; }
+.pa-dist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.pa-dist-title { font-family: var(--font-sans); font-weight: 800; font-size: 15px; color: var(--ink); }
+.pa-scope-toggle { display: flex; gap: 4px; background: var(--bg-tint); border: 1px solid var(--border); border-radius: 8px; padding: 3px; flex: none; }
+.pa-scope-btn { cursor: pointer; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em; color: var(--ink-soft); background: transparent; border: none; border-radius: 6px; padding: 4px 10px; }
+.pa-scope-btn:hover { color: var(--ink); }
+.pa-scope-btn.on { color: #fff; background: var(--accent); }
 
-/* prototype's 3fr 2fr bottom row: drill-down (left) + placeholder feed (right) */
-.pa-drill-row { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; margin-top: 16px; }
-.pa-drill-row .pa-drill { margin-top: 0; }
+/* 01's geo/insider row reuses the 3fr 2fr grid (was the drill/feed row) */
+.pa-drill-row, .pa-geo-row { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; align-items: start; margin-top: 16px; }
 
 /* Honest placeholders (never mistakable for data): dashed, muted, with a "placeholder" micro-label. */
 .pa-ph { color: var(--mono-muted); }
@@ -165,8 +209,9 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-subind-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mono-muted); }
 .pa-ph-pill { font-size: 12px; color: var(--mono-muted); background: var(--bg-tint); border: 1px dashed var(--border-strong); border-radius: 999px; padding: 3px 11px; }
 .pa-ph-tag { font-family: var(--font-mono); font-size: 8.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); border: 1px dashed var(--border-strong); border-radius: 6px; padding: 2px 7px; }
-.pa-feed.pa-ph { background: var(--bg-tint); border-style: dashed; border-color: var(--border-strong); }
-.pa-feed-body { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
+/* geo/insider placeholder cards: dashed + muted body, no fabricated figure */
+.pa-geo.pa-ph, .pa-insider.pa-ph { background: var(--bg-tint); border-style: dashed; border-color: var(--border-strong); }
+.pa-ph-body { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
 
 /* ---- Company view (altitude 2): peer dot-plots ---- */
 .pa-co-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; flex-wrap: wrap; }
@@ -317,6 +362,11 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-qual-mbody { margin-top: 12px; }
 
 /* ---- responsive ---- */
+/* The right rail is supplementary (snapshot + feed placeholder + how-to-read) — hide it below 1240px
+   so the 960px content column keeps its room; nothing in it is unavailable elsewhere. */
+@media (max-width: 1240px) {
+  .pa-rrail { display: none; }
+}
 @media (max-width: 900px) {
   .pa-side { display: none; }
   .pa-body { flex-direction: column; }
@@ -331,7 +381,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-qual-cols { grid-template-columns: 1fr; }
   .pa-qual-mhead { font-size: 8px; gap: 4px; }
   .pa-qual-rtrow { grid-template-columns: 1fr 90px 60px; gap: 8px; }
-  .pa-drill-row { grid-template-columns: 1fr; }
+  .pa-drill-row, .pa-geo-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .pa-main { padding: 14px 16px 60px; }

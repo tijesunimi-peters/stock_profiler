@@ -69,11 +69,15 @@ const PAGES = process.env.PAGES
       ["sectors-drilldown-empty", "/sectors?group=73"],
       ["coverage", "/coverage"],
       ["components", "/components"],
-      // New "paper terminal" Sector Analytics app (/sector-analytics) -- shell + Sector view on real
-      // data (NO favorability color). The decomp shot opens a score's decomposition; the stub shot
-      // clicks the Qualitative rail to show the honest "Coming — Track 2" placeholder.
+      // "Paper terminal" Sector Analytics app v2 (/sector-analytics) -- 3-col shell (960px cap + right
+      // rail: snapshot + "What's moving" Track-2 feed PLACEHOLDER + how-to-read) and the Sector view's
+      // three scopes: 01 scorecard (F4 delta color kept) + peer strip + geo/insider PLACEHOLDERS; 02
+      // decomposition (full-width, open by default) + biggest shifts; 03 Distribution (this-theme /
+      // all-metric toggle). The decomp shot re-points the decomposition by clicking a tile; the
+      // dist-all shot flips the Distribution scope to All metrics; the qual shot opens the Track-2 stub.
       ["sectorapp", "/sector-analytics"],
       ["sectorapp-decomp", "/sector-analytics"],
+      ["sectorapp-dist-all", "/sector-analytics"],
       ["sectorapp-qual", "/sector-analytics"],
       // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
       // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
@@ -138,11 +142,17 @@ const PAGES = process.env.PAGES
         await new Promise((r) => setTimeout(r, 1200));
       }
       if (name === "sectorapp-decomp") {
-        // Click a scorecard TILE -> opens BOTH the decomposition AND the peer strip + drill-down
-        // (the 3fr/2fr drill row with the placeholder feed on the right). Captures the colored
-        // trend-delta chip + the placeholder columns too.
+        // Click a scorecard TILE -> re-points the focus (decomposition in 02, peer strip, and the 03
+        // Distribution) at that theme. Captures the colored trend-delta chip + the re-pointed decomp.
         await page.waitForSelector(".pa-tile[data-theme]");
         await page.click(".pa-tile[data-theme]");
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      if (name === "sectorapp-dist-all") {
+        // Flip the 03 Distribution scope toggle to [All metrics] -> the dispersion re-renders to every
+        // metric with a peer distribution (not just the focused theme's constituents).
+        await page.waitForSelector('.pa-scope-btn[data-scope="all"]');
+        await page.click('.pa-scope-btn[data-scope="all"]');
         await new Promise((r) => setTimeout(r, 500));
       }
       if (name === "sectorapp-company-default") {

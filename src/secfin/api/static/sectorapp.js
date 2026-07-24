@@ -25,6 +25,7 @@
     compareA: null,
     compareB: null,
     ddOpen: false, // sector dropdown open
+    drillScope: "theme", // Distribution scope: "theme" (focused theme's constituents) | "all" (every metric)
     sectors: null, // /v1/sectors payload (universe + peer_count + fiscal_year)
     themeScores: null, // /v1/sectors/theme-scores payload (all sectors)
     themeScoresErr: false,
@@ -242,7 +243,9 @@
       '<main class="pa-main">' +
       titleHtml() +
       controlBarHtml() +
-      '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div></div>' +
+      // v2 shell: view rail · viewport (960px cap) · Sector-view-only right rail (snapshot + feed + how-to-read)
+      '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div>' +
+      (state.view === "sector" ? rightRailHtml() : "") + "</div>" +
       "</main></div></div>";
     renderViewport();
     wireShell();
@@ -343,6 +346,46 @@
       '<div class="pa-rail-rule"></div>' +
       '<div class="pa-rail-note">Sector · period · company preserved across views. Selecting a sector keeps your current theme focus.</div>' +
       "</nav>"
+    );
+  }
+
+  // ---------- right rail (Sector view only): snapshot · "What's moving" feed placeholder · how-to-read ----------
+
+  function rightRailHtml() {
+    var sel = selectedSector();
+    var name = sel ? sel.group_label : "—";
+    // Snapshot k/v rows — real where we have it (filers · period), honest placeholder for coverage;
+    // the focused-theme label reflects the current tile focus. No fabricated numbers.
+    var rows = [
+      ["Filers", sel ? sel.peer_count + "" : "—"],
+      ["Period", state.sectors ? "FY" + state.sectors.fiscal_year : "—"],
+      ["Coverage", "to be defined"],
+      ["Focused theme", state.expandedTheme ? themeLabel(state.expandedTheme) : "—"],
+    ].map(function (kv) {
+      var isPh = kv[1] === "to be defined";
+      return '<div class="pa-snap-row"><span class="pa-snap-k">' + P.esc(kv[0]) + "</span>" +
+        '<span class="pa-snap-v' + (isPh ? " pa-ph" : "") + '">' + P.esc(kv[1]) + "</span></div>";
+    }).join("");
+    // "What's moving" — the prototype's filing-event feed is Track 2 (filing metadata / free text) we
+    // don't aggregate at the sector level. Honest placeholder, NO fabricated events.
+    var feed =
+      '<div class="pa-rr-card pa-rr-feed"><div class="pa-rr-feedhead">' +
+      '<span class="pa-rr-feedname">What’s moving</span><span class="pa-rr-t2">Track 2</span></div>' +
+      '<div class="pa-rr-feedsub">Filing events · walled off from metrics</div>' +
+      '<div class="pa-rr-feedbody pa-ph">A sector filing-event feed (8-K / Form 4 / S-1) would sit here — ' +
+      "that’s Track 2 (filing metadata / free text) we don’t aggregate yet. To be defined; nothing here " +
+      "is fabricated.</div></div>";
+    return (
+      '<aside class="pa-rrail">' +
+      '<div class="pa-rr-card"><div class="pa-rr-label">Sector snapshot</div>' +
+      '<div class="pa-rr-name">' + P.esc(name) + "</div>" +
+      '<div class="pa-snap">' + rows + "</div></div>" +
+      feed +
+      '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
+      '<div class="pa-rr-how">Scores are a position vs other sectors, not a good/bad or buy verdict. ' +
+      "Every number is traceable — click a score to open its decomposition.</div>" +
+      '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
+      "</aside>"
     );
   }
 
@@ -470,24 +513,42 @@
       return;
     }
     ensureExpandedTheme();
+    ensureDecompTheme();
     vp.innerHTML =
-      secHead() +
+      // 01 Health scorecard — tiles (F4 delta color kept) + provisional + peer strip + geo/insider placeholders
+      scopeHead("01", "Health scorecard", "Seven composite themes · percentile-averaged (provisional) · click a tile to focus it below; the peer strip shows where this sector stands") +
       scorecardHtml(entry) +
       '<div class="pa-provisional">≈ Scores provisional — final weighting/normalization per methodology. Every number is a position vs other sectors, not a good/bad or buy verdict, and is openable.</div>' +
-      (state.decompTheme ? decompHtml(entry) : "") +
       peerStripHtml() +
+      geoInsiderRowHtml() +
+      // 02 What drives it — decomposition (full-width, open by default) then biggest shifts
+      scopeHead("02", "What drives it", "Constituent decomposition of the focused theme · then the largest standardized moves vs the sector’s own history") +
+      (state.decompTheme ? decompHtml(entry) : "") +
       shiftsHtml(g) +
-      // prototype's 3fr 2fr row: drill-down (left) + an honest placeholder where its filing feed was
-      '<div class="pa-drill-row">' + drilldownHtml(entry, g) + feedPlaceholderHtml() + "</div>";
+      // 03 Distribution — one card with a [This theme] / [All metrics] toggle over the dispersion spreads
+      scopeHead("03", "Distribution", "How spread out the filers are · band = IQR · tick = median") +
+      distributionHtml(entry, g);
     wireSectorView();
-    mountDrilldown(entry, g);
+    mountDistribution(entry, g);
   }
 
+  // The 01 header kept for the guard states (loading/error/empty) above; the populated view uses scopeHead.
   function secHead() {
+    return scopeHead("01", "Health scorecard", "Seven composite themes · click a tile to open its decomposition, peers &amp; dispersion");
+  }
+  function scopeHead(num, title, sub) {
     return (
-      '<div class="pa-sec-head"><span class="pa-sec-num">01</span><h2 class="pa-sec-h2">Health scorecard</h2></div>' +
-      '<div class="pa-sec-sub">Seven composite themes · click a tile to open its decomposition, peers &amp; dispersion</div>'
+      '<div class="pa-sec-head"><span class="pa-sec-num">' + P.esc(num) + '</span><h2 class="pa-sec-h2">' + P.esc(title) + "</h2></div>" +
+      '<div class="pa-sec-sub">' + sub + "</div>"
     );
+  }
+  // The decomposition is OPEN BY DEFAULT on the focused theme (v2): if nothing is targeted, or the
+  // target isn't a scored theme of this sector, point it at the focused/first-scored theme.
+  function ensureDecompTheme() {
+    var entry = themeEntry(selectedGroup());
+    var scored = scoredThemes(entry);
+    var has = state.decompTheme && scored.some(function (t) { return t.theme === state.decompTheme; });
+    if (!has) state.decompTheme = state.expandedTheme || (scored.length ? scored[0].theme : null);
   }
 
   function scorecardHtml(entry) {
@@ -609,52 +670,85 @@
     );
   }
 
-  function drilldownHtml(entry, g) {
-    var theme = (entry.themes || []).filter(function (x) { return x.theme === state.expandedTheme && x.scored; })[0];
-    var label = themeLabel(state.expandedTheme);
-    var head =
-      '<div class="pa-card-head"><span class="pa-card-title">' + P.esc(label) + " · dispersion</span>" +
-      '<span class="pa-card-hint">drill-down · median + IQR across this sector’s companies</span></div>';
-    if (!theme) return '<div class="pa-card">' + head + '<div class="pa-empty-inline">' + P.esc(selName()) + " doesn’t score this theme.</div></div>";
-    if (!state.spreads[g]) return '<div class="pa-card pa-drill">' + head + P.states.loading({ title: "Loading dispersion", note: "" }) + "</div>";
-    var want = (theme.constituents || []).map(function (c) { return c.metric; });
-    var have = {};
-    ((state.spreads[g] && state.spreads[g].metrics) || []).forEach(function (m) { have[m.metric] = m; });
-    var matched = want.map(function (m) { return have[m]; }).filter(Boolean);
-    var cover = '<div class="pa-drill-cover">Showing ' + matched.length + " of " + want.length +
-      " constituent" + (want.length === 1 ? "" : "s") + " with a peer distribution." +
-      (matched.length < want.length ? " Others have no distribution yet — omitted, not zero." : "") + "</div>";
-    if (!matched.length) {
-      return '<div class="pa-card pa-drill">' + head + cover +
-        '<div class="pa-empty-inline">No peer distribution for this theme’s constituents yet — sparse coverage, not zero. See the score decomposition for the full constituent set.</div></div>';
-    }
-    return '<div class="pa-card pa-drill">' + head + cover + '<div class="pa-drill-boxes" id="paDrillBoxes"></div></div>';
-  }
+  // ---- 01's geo/insider row: two placeholder cards (Track-1 not aggregated at the sector level) ----
 
-  // The prototype's right-hand 2fr column was a synthetic "What's moving" filing-event feed (8-K /
-  // Form 4 / S-1) -- Track 2, not ingested. Honest placeholder, never fabricated items.
-  function feedPlaceholderHtml() {
+  function geoInsiderRowHtml() {
+    return '<div class="pa-drill-row pa-geo-row">' + geoPlaceholderHtml() + insiderPlaceholderHtml() + "</div>";
+  }
+  // Geographic revenue mix (ASC 280 segment disclosure) — Track 1 but NOT ingested/aggregated at the
+  // sector level. Honest placeholder; NO fabricated segment/percentage.
+  function geoPlaceholderHtml() {
     return (
-      '<div class="pa-card pa-feed pa-ph"><div class="pa-card-head">' +
-      '<span class="pa-card-title">What’s moving</span>' +
-      '<span class="pa-ph-tag">placeholder</span></div>' +
-      '<div class="pa-feed-body">A filing-event feed (8-K / Form 4 / S-1) would sit here — that’s ' +
-      'Track 2 (free-text / filing metadata) we don’t ingest yet. To be defined; nothing here is ' +
-      "fabricated.</div></div>"
+      '<div class="pa-card pa-geo pa-ph"><div class="pa-card-head">' +
+      '<span class="pa-card-title">Geographic revenue mix</span>' +
+      '<span class="pa-card-hint">ASC 280 segment disclosure · asset-weighted</span></div>' +
+      '<div class="pa-ph-body">A domestic/international revenue split would sit here — segment (ASC 280) ' +
+      "data isn’t ingested or aggregated by sector yet. To be defined; no figures shown.</div></div>"
+    );
+  }
+  // Insider flow (Forms 3/4/5) — Track 1, but insider data is per-CIK only (no sector-level aggregate).
+  // Honest placeholder; NO fabricated ratio/net figure.
+  function insiderPlaceholderHtml() {
+    return (
+      '<div class="pa-card pa-insider pa-ph"><div class="pa-card-head">' +
+      '<span class="pa-card-title">Insider flow</span>' +
+      '<span class="pa-card-hint">Forms 3/4/5</span></div>' +
+      '<div class="pa-ph-body">A sector net buy/sell would sit here — insider transactions are ingested ' +
+      "per company, not aggregated by sector yet. To be defined; no figures shown.</div></div>"
     );
   }
 
-  function mountDrilldown(entry, g) {
-    var host = $("paDrillBoxes");
-    if (!host || !state.spreads[g]) return;
-    var theme = (entry.themes || []).filter(function (x) { return x.theme === state.expandedTheme && x.scored; })[0];
-    if (!theme) return;
-    var want = (theme.constituents || []).map(function (c) { return c.metric; });
+  // ---- 03 Distribution: one card, [This theme] / [All metrics] toggle over the dispersion spreads ----
+
+  // The metrics to chart for the current scope: the focused theme's constituents ("theme"), or every
+  // metric with a peer distribution ("all"). Only metrics with an actual distribution are returned.
+  function distMetrics(entry, g) {
     var have = {};
-    ((state.spreads[g] && state.spreads[g].metrics) || []).forEach(function (m) { have[m.metric] = m; });
+    var order = [];
+    ((state.spreads[g] && state.spreads[g].metrics) || []).forEach(function (m) { have[m.metric] = m; order.push(m.metric); });
+    if (state.drillScope === "all") return { want: order.length, keys: order, have: have };
+    var theme = (entry.themes || []).filter(function (x) { return x.theme === state.expandedTheme && x.scored; })[0];
+    var want = theme ? (theme.constituents || []).map(function (c) { return c.metric; }) : [];
+    return { want: want.length, keys: want.filter(function (k) { return have[k]; }), have: have, theme: theme };
+  }
+
+  function distributionHtml(entry, g) {
+    var scopeAll = state.drillScope === "all";
+    var heading = scopeAll ? "All-metric spreads · sector-wide" : (themeLabel(state.expandedTheme) + " · constituents");
+    var toggle =
+      '<div class="pa-scope-toggle">' +
+      '<button class="pa-scope-btn' + (scopeAll ? "" : " on") + '" data-scope="theme">This theme</button>' +
+      '<button class="pa-scope-btn' + (scopeAll ? " on" : "") + '" data-scope="all">All metrics</button></div>';
+    var head =
+      '<div class="pa-dist-head"><span class="pa-dist-title">' + P.esc(heading) + "</span>" + toggle + "</div>";
+    if (!scopeAll) {
+      var theme = (entry.themes || []).filter(function (x) { return x.theme === state.expandedTheme && x.scored; })[0];
+      if (!theme) return '<div class="pa-card pa-dist">' + head + '<div class="pa-empty-inline">' + P.esc(selName()) + " doesn’t score this theme.</div></div>";
+    }
+    if (!state.spreads[g]) return '<div class="pa-card pa-dist">' + head + P.states.loading({ title: "Loading dispersion", note: "" }) + "</div>";
+    var d = distMetrics(entry, g);
+    var cover = scopeAll
+      ? '<div class="pa-drill-cover">' + d.keys.length + " metric" + (d.keys.length === 1 ? "" : "s") +
+        " with a peer distribution across this sector’s companies.</div>"
+      : '<div class="pa-drill-cover">Showing ' + d.keys.length + " of " + d.want +
+        " constituent" + (d.want === 1 ? "" : "s") + " with a peer distribution." +
+        (d.keys.length < d.want ? " Others have no distribution yet — omitted, not zero." : "") + "</div>";
+    if (!d.keys.length) {
+      var msg = scopeAll
+        ? "No peer distributions for this sector yet — sparse coverage, not zero."
+        : "No peer distribution for this theme’s constituents yet — sparse coverage, not zero. See the score decomposition for the full constituent set.";
+      return '<div class="pa-card pa-dist">' + head + cover + '<div class="pa-empty-inline">' + msg + "</div></div>";
+    }
+    return '<div class="pa-card pa-dist">' + head + cover + '<div class="pa-drill-boxes" id="paDistBoxes"></div></div>';
+  }
+
+  function mountDistribution(entry, g) {
+    var host = $("paDistBoxes");
+    if (!host || !state.spreads[g]) return;
+    var d = distMetrics(entry, g);
     var width = P.measuredWidth(host, 560);
-    want.forEach(function (mk) {
-      var m = have[mk];
+    d.keys.forEach(function (mk) {
+      var m = d.have[mk];
       if (!m) return;
       host.appendChild(P.boxWhiskerChart(
         [{ label: "", peer_count: m.peer_count, min: m.min, p25: m.p25, median: m.median, p75: m.p75, max: m.max }],
@@ -1218,6 +1312,13 @@
     });
     var close = $("paDecompClose");
     if (close) close.addEventListener("click", function () { state.decompTheme = null; renderApp(); });
+    // 03 Distribution scope toggle: theme-scoped vs all-metric spreads.
+    document.querySelectorAll(".pa-scope-btn[data-scope]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var s = btn.getAttribute("data-scope");
+        if (s !== state.drillScope) { state.drillScope = s; renderApp(); }
+      });
+    });
   }
 
   // close the sector dropdown on an outside click
