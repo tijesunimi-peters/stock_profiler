@@ -467,6 +467,49 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-qual-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .pa-qual-block-name { font-family: var(--font-sans); font-weight: 700; font-size: 13.5px; color: var(--ink-muted); }
 .pa-qual-block-src { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); }
+/* "Open filings in ClearyFi →" -> a real drill entry inside the representative-language panel. */
+.pa-qual-langfoot { margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--border-strong); }
+.pa-qual-langfilings { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.03em; color: var(--accent-ink); background: transparent; border: 1px dashed var(--border-strong); border-radius: 6px; padding: 4px 9px; cursor: pointer; }
+.pa-qual-langfilings:hover { background: var(--accent-wash); }
+
+/* ---- Filings view (5th, P5): on-site theme drill — honest Track-2 placeholder LAYOUT (§5.5) ----
+   Real controls (form tabs, pager, Back) over an EMPTY placeholder list. Dashed "blueprint" idiom
+   matches the Qualitative view so the drill reads as a deliberate continuation, not an error. */
+.pa-fil-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.pa-fil-back { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--ink-muted); background: transparent; border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.pa-fil-back:hover { background: var(--bg-badge); color: var(--ink); }
+.pa-fil-crumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; }
+.pa-fil-crumb-seg { color: var(--mono-muted); }
+.pa-fil-crumb-seg.cur { color: var(--ink); font-weight: 600; }
+.pa-fil-crumb-sep { color: var(--border-strong); }
+.pa-fil-note { border: 1px dashed var(--border-strong); background: var(--bg-tint); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.pa-fil-why { margin: 12px 0 0; max-width: 76ch; font-size: 13px; line-height: 1.65; color: var(--ink-body); }
+.pa-fil-why strong { color: var(--ink); font-weight: 700; }
+.pa-fil-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 22px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.pa-fil-cov { display: flex; align-items: center; gap: 8px; min-width: 200px; flex: 1; }
+.pa-fil-cov .pa-qual-rtbar { max-width: 160px; }
+.pa-fil-cov-label, .pa-fil-dir-label, .pa-fil-count-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-fil-dir, .pa-fil-count { display: flex; align-items: center; gap: 8px; }
+.pa-fil-lang { border: 1px dashed var(--border-strong); background: var(--bg-tint); border-radius: 10px; padding: 13px 15px; margin: 16px 0; }
+.pa-fil-lang-head { font-family: var(--font-sans); font-weight: 700; font-size: 13.5px; color: var(--ink-muted); margin-bottom: 6px; }
+.pa-fil-lang-body { font-size: 12.5px; line-height: 1.55; color: var(--ink-soft); }
+.pa-fil-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 0; }
+.pa-fil-tab { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em; color: var(--ink-muted); background: transparent; border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 13px; cursor: pointer; }
+.pa-fil-tab:hover { background: var(--bg-badge); color: var(--ink); }
+.pa-fil-tab.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--accent-wash); font-weight: 600; }
+.pa-fil-list { margin-top: 12px; }
+.pa-fil-mhead { display: grid; grid-template-columns: 1.4fr 0.7fr 0.9fr 1.1fr 2fr; gap: 10px; padding: 7px 0; border-bottom: 2px solid var(--ink); font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-fil-mcol { text-align: right; }
+.pa-fil-mcol.first { text-align: left; }
+.pa-fil-empty { border: 1px dashed var(--border-strong); border-radius: 10px; background: var(--bg-tint); padding: 22px 18px; margin-top: 12px; font-size: 12.5px; line-height: 1.6; color: var(--ink-soft); text-align: center; }
+.pa-fil-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.pa-fil-range { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); }
+.pa-fil-pg { display: flex; align-items: center; gap: 8px; }
+.pa-fil-pg-btn { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-muted); background: transparent; border: 1px solid var(--border-strong); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+.pa-fil-pg-btn:hover:not([disabled]) { background: var(--bg-badge); color: var(--ink); }
+.pa-fil-pg-btn[disabled] { opacity: 0.4; cursor: default; }
+.pa-fil-pg-num { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); min-width: 20px; text-align: center; }
+.pa-fil-foot { font-family: var(--font-mono); font-size: 9.5px; color: var(--mono-muted); margin-top: 16px; }
 
 /* ---- responsive ---- */
 /* The right rail is supplementary (snapshot + feed placeholder + how-to-read) — hide it below 1240px
@@ -488,6 +531,8 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-qual-cols { grid-template-columns: 1fr; }
   .pa-qual-mhead { font-size: 8px; gap: 4px; }
   .pa-qual-rtrow { grid-template-columns: 1fr 70px auto; gap: 8px; }
+  .pa-fil-mhead { font-size: 8px; gap: 5px; grid-template-columns: 1.2fr 0.6fr 0.8fr 1fr 1.6fr; }
+  .pa-fil-meta { gap: 14px; }
   .pa-drill-row, .pa-geo-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
