@@ -91,6 +91,16 @@ segment mix** to be *real* rather than placeholders: sector-level aggregation jo
 batch for insider net-flow by sector; ASC 280 segment ingest). Scoped separately — Track-1 but new
 data work; **not required** for the v2 UI (placeholders hold the layout).
 
+> **Operator decision (2026-07-24, after P7/M2 shipped):** build **both**, **Insider flow FIRST**,
+> then Geographic mix as a follow-on. Each is its own `/deliver` (backend-led, then wire the app
+> panel). **P6a Insider flow** = reuse the per-CIK Forms 3/4/5 ingest (`sec/insider.py` + insider
+> repo) + CIK→SIC (`company_profiles`); add a sector net buy/sell **aggregation batch** + a new
+> `/v1/sectors/{group}/insider-flow` endpoint; replace the app's Insider-flow placeholder with real
+> figures. Honesty: net-flow is a **derived rollup** (label it; the underlying Forms 3/4/5 ARE reported
+> transactions, unlike 13F, so no "derived trade" caveat — but carry the reporting-lag + coverage
+> caveats and never show a missing sector as 0). **P6b Geographic mix** = new dimensional-XBRL (ASC
+> 280) ingest — bigger/riskier, sequenced after P6a.
+
 **P7 — Migration M2/M3** (from `ROADMAP_SECTOR_MIGRATION.md`): once v2 is agreed, do the routing swap
 (`/sectors` → the app + redirect + legacy flag) and later decommission the old page.
 
