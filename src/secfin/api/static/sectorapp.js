@@ -47,6 +47,13 @@
     // Qualitative view (altitude 4) state -- both drive wired-but-EMPTY placeholder reveals (P4).
     qualThemeOpen: null, // theme label whose representative-language panel is expanded (single-open)
     qualFilerOpen: {}, // { affordanceId: true } -> revealed filer-count panels (multi-open, empty states)
+    // Filings view (5th, P5) -- an on-site theme DRILL reached from the Qualitative "Filings →"
+    // affordances. Track-2 placeholder LAYOUT: the controls (form tabs, pager, Back) are real, but
+    // the list they operate over is an honest EMPTY placeholder -- never a fabricated filing.
+    filingsTheme: null, // the drilled risk-theme label (string) -> breadcrumb + language-block context
+    prevView: null, // the view to return to on Back (captured at open; "qual" in the normal flow)
+    filingsForm: "All", // active form-type tab: "All" | "10-K" | "10-Q" | "8-K"
+    filingsPage: 0, // 0-based pager index; reset to 0 every time the drill is opened
   };
   if (params.get("view") === "company") state.view = "company";
   if (params.get("view") === "compare") state.view = "compare";
@@ -223,6 +230,17 @@
     ensureSectorData();
   }
   function setView(v) { state.view = v; renderApp(); if (v === "company" && !state.focalCik) resolveDefaultFocal(); }
+  // Open the Filings drill (P5) for a risk theme, remembering where we came from so Back returns
+  // there. Resets the form tab + pager on every open (prototype §6). No data fetch -- placeholder.
+  function openFilings(theme) {
+    state.filingsTheme = theme || null;
+    state.prevView = state.view; // "qual" in the normal flow; Back returns here
+    state.filingsForm = "All";
+    state.filingsPage = 0;
+    state.view = "filings";
+    renderApp();
+  }
+  function backFromFilings() { state.view = state.prevView || "qual"; renderApp(); }
   // A tile click opens BOTH the decomposition (what drove the score) AND the peer strip + drill-down.
   function expandTheme(theme) { state.expandedTheme = theme; state.decompTheme = theme; renderApp(); }
   function toggleDecomp(theme) { state.decompTheme = state.decompTheme === theme ? null : theme; renderApp(); }
@@ -481,6 +499,7 @@
     if (state.view === "sector") return renderSectorView(vp);
     if (state.view === "company") return renderCompanyView(vp);
     if (state.view === "compare") return renderCompareView(vp);
+    if (state.view === "filings") return renderFilingsView(vp);
     return renderQualView(vp);
   }
 
@@ -550,9 +569,11 @@
         '<button type="button" class="pa-qual-filings" data-qual-filings="' + P.esc(name) + '">Filings →</button>' +
         "</span></div>";
       var lang = open
-        ? '<div class="pa-qual-langpanel">Representative language will appear here — a verbatim excerpt, ' +
-          'its source filing, and “Open filings in ClearyFi”. <span class="pa-qual-phtag">to be defined · ' +
-          "no filing text shown</span>. Nothing is quoted or paraphrased from a filing yet.</div>"
+        ? '<div class="pa-qual-langpanel">Representative language will appear here — a verbatim excerpt ' +
+          'and its source filing. <span class="pa-qual-phtag">to be defined · no filing text shown</span>. ' +
+          "Nothing is quoted or paraphrased from a filing yet." +
+          '<div class="pa-qual-langfoot"><button type="button" class="pa-qual-langfilings" ' +
+          'data-qual-filings="' + P.esc(name) + '">Open filings in ClearyFi →</button></div></div>'
         : "";
       return row + lang;
     }).join("");
@@ -635,9 +656,10 @@
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
       });
     });
-    // "Filings →" -> inert stub: the Filings view (P5) isn't built. No navigation, no error.
-    document.querySelectorAll(".pa-qual-filings[data-qual-filings]").forEach(function (b) {
-      b.addEventListener("click", function (e) { e.stopPropagation(); e.preventDefault(); });
+    // "Filings →" (row) and "Open filings in ClearyFi →" (language panel) -> open the Filings drill
+    // (P5) for that theme. stopPropagation so the row's language-toggle doesn't also fire.
+    document.querySelectorAll(".pa-qual-filings[data-qual-filings], .pa-qual-langfilings[data-qual-filings]").forEach(function (b) {
+      b.addEventListener("click", function (e) { e.stopPropagation(); e.preventDefault(); openFilings(b.getAttribute("data-qual-filings")); });
     });
     // Click-to-reveal filer counts -> toggle an honest empty panel (never tickers).
     document.querySelectorAll("[data-qual-filer]").forEach(function (b) {
@@ -649,6 +671,123 @@
         renderApp();
       });
     });
+  }
+
+  // ---------- Filings view (5th, P5): on-site theme DRILL — honest Track-2 placeholder LAYOUT ----------
+  //
+  // HONESTY LANDMINE (CLAUDE.md guardrail 1 / roadmap decision 3): the per-theme filing list, cited
+  // passages, coverage %, direction, and filing count are all Track-2 NARRATIVE we don't ingest. This
+  // view replicates the prototype's §5.5 SHAPE — breadcrumb, coverage/direction chip, count line,
+  // representative-language block, form-type tabs, paginated list — but renders NOTHING derived and
+  // NOTHING fabricated. The form tabs, pager, and Back are REAL controls; the list they operate over
+  // is an honest EMPTY placeholder. The ONLY real strings are the live sector label + the drilled
+  // theme label (both genuinely known) and static UI copy / form-type control labels. Never a filer,
+  // ticker, accession no., filed date, form count, coverage %, direction, section, or cited passage.
+
+  var FILINGS_FORMS = ["All", "10-K", "10-Q", "8-K"]; // form-type tab labels (controls, not data)
+  var FILINGS_COLS = ["Filer", "Form", "Filed", "Section", "Cited passage"]; // list header labels
+
+  // The placeholder list is EMPTY -> a single empty page. Never fabricate a page/row/total count.
+  function filingsTotalPages() { return 1; }
+  function setFilingsPage(p) {
+    var total = filingsTotalPages();
+    state.filingsPage = Math.max(0, Math.min(p, total - 1)); // clamp; ends are no-ops, never throw
+    renderApp();
+  }
+
+  function renderFilingsView(vp) {
+    var sel = selectedSector();
+    var sectorLabel = sel ? P.esc(sel.group_label) : "Sector"; // live selection — real, not a placeholder
+    var theme = state.filingsTheme ? P.esc(state.filingsTheme) : "Risk theme"; // the drilled theme — real
+
+    // --- header: Back + breadcrumb (sector › Risk theme › <name>). Real strings; no fabrication. ---
+    var head =
+      '<div class="pa-fil-top">' +
+      '<button type="button" class="pa-fil-back" id="paFilBack">← Back</button>' +
+      '<nav class="pa-fil-crumb" aria-label="Breadcrumb">' +
+      '<span class="pa-fil-crumb-seg">' + sectorLabel + "</span>" +
+      '<span class="pa-fil-crumb-sep">›</span>' +
+      '<span class="pa-fil-crumb-seg">Risk theme</span>' +
+      '<span class="pa-fil-crumb-sep">›</span>' +
+      '<span class="pa-fil-crumb-seg cur">' + theme + "</span>" +
+      "</nav></div>";
+
+    // --- Track-2 framing (matches the Qualitative view's tone: deliberate, not broken) ---
+    var note =
+      '<div class="pa-fil-note"><span class="pa-qual-flag">Track 2 · not yet derived from filings</span>' +
+      '<p class="pa-fil-why">The filings behind this theme come from risk-factor <strong>narrative</strong> ' +
+      "(10-K Item 1A and updates) that ClearyFi doesn’t ingest yet. This is the shape the drill will take — " +
+      "<strong>nothing here is fabricated</strong>; no filing, filer, date, or passage is shown until it can " +
+      "trace to a real filing.</p></div>";
+
+    // --- coverage + direction chip (placeholder: empty bar + dash, no % / no new-rising-fading value) ---
+    var meta =
+      '<div class="pa-fil-meta">' +
+      '<div class="pa-fil-cov"><span class="pa-fil-cov-label">Coverage</span>' +
+      '<span class="pa-qual-rtbar"></span><span class="pa-qual-dash">—</span></div>' +
+      '<div class="pa-fil-dir"><span class="pa-fil-dir-label">Direction</span>' +
+      '<span class="pa-qual-planned">planned</span></div>' +
+      '<div class="pa-fil-count"><span class="pa-fil-count-label">Filings</span>' +
+      '<span class="pa-ph">— · to be defined</span></div>' +
+      "</div>";
+
+    // --- representative-language block (placeholder, same shape as the Qualitative panel) ---
+    var lang =
+      '<div class="pa-fil-lang"><div class="pa-fil-lang-head">Representative language</div>' +
+      '<div class="pa-fil-lang-body">A verbatim excerpt and its source filing will appear here. ' +
+      '<span class="pa-qual-phtag">to be defined · no filing text shown</span>. ' +
+      "Nothing is quoted or paraphrased from a filing yet.</div></div>";
+
+    // --- form-type tabs (REAL controls; every tab resolves to the same empty placeholder list) ---
+    var tabs = FILINGS_FORMS.map(function (f) {
+      var active = state.filingsForm === f;
+      return '<button type="button" class="pa-fil-tab' + (active ? " active" : "") + '" role="tab"' +
+        ' aria-selected="' + (active ? "true" : "false") + '" data-fil-form="' + P.esc(f) + '">' + P.esc(f) + "</button>";
+    }).join("");
+    var tabRow = '<div class="pa-fil-tabs" role="tablist" aria-label="Filter by form type">' + tabs + "</div>";
+
+    // --- list: header labels (not data) + an honest EMPTY body (no fabricated rows) ---
+    var mhead = FILINGS_COLS.map(function (c, i) {
+      return '<span class="pa-fil-mcol' + (i === 0 ? " first" : "") + '">' + P.esc(c) + "</span>";
+    }).join("");
+    var listBody =
+      '<div class="pa-fil-empty">Filings will list here — filer, form, filed date, section, and the matched ' +
+      'cited passage. <span class="pa-qual-phtag">to be defined · none shown</span>. ' +
+      "No filing is fabricated.</div>";
+    var list =
+      '<div class="pa-fil-list"><div class="pa-fil-mhead">' + mhead + "</div>" + listBody + "</div>";
+
+    // --- pager (REAL controls over the empty list): prev/next + a page token; range "— of —" ---
+    var atFirst = state.filingsPage <= 0;
+    var atLast = state.filingsPage >= filingsTotalPages() - 1;
+    var pager =
+      '<div class="pa-fil-pager">' +
+      '<span class="pa-fil-range">— of —</span>' + // NEVER a fabricated "1–6 of 14"
+      '<div class="pa-fil-pg">' +
+      '<button type="button" class="pa-fil-pg-btn pa-fil-pg-prev"' + (atFirst ? " disabled" : "") + '>‹ Prev</button>' +
+      '<span class="pa-fil-pg-num">—</span>' + // no fabricated page numbers over an empty list
+      '<button type="button" class="pa-fil-pg-btn pa-fil-pg-next"' + (atLast ? " disabled" : "") + '>Next ›</button>' +
+      "</div></div>";
+
+    vp.innerHTML =
+      head + note + meta + lang + tabRow + list + pager +
+      '<div class="pa-fil-foot">Nothing on this view is derived from filings or estimated.</div>';
+
+    wireFilingsView();
+  }
+
+  function wireFilingsView() {
+    var back = $("paFilBack");
+    if (back) back.addEventListener("click", backFromFilings);
+    // Form tabs -> set the active form + re-render. Every tab resolves to the same empty list.
+    document.querySelectorAll(".pa-fil-tab[data-fil-form]").forEach(function (b) {
+      b.addEventListener("click", function () { state.filingsForm = b.getAttribute("data-fil-form"); renderApp(); });
+    });
+    // Pager -> clamp within [0, totalPages-1]. Over the empty list the ends are no-ops (never throw).
+    var prev = document.querySelector(".pa-fil-pg-prev");
+    var next = document.querySelector(".pa-fil-pg-next");
+    if (prev) prev.addEventListener("click", function () { setFilingsPage(state.filingsPage - 1); });
+    if (next) next.addEventListener("click", function () { setFilingsPage(state.filingsPage + 1); });
   }
 
   // ---------- Sector view ----------

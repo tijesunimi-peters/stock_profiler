@@ -79,6 +79,12 @@ const PAGES = process.env.PAGES
       ["sectorapp-decomp", "/sector-analytics"],
       ["sectorapp-dist-all", "/sector-analytics"],
       ["sectorapp-qual", "/sector-analytics"],
+      // v2 P5: the Filings view (5th) -- an on-site theme DRILL reached from the Qualitative
+      // "Filings →" stub. Honest Track-2 placeholder LAYOUT: breadcrumb + coverage/direction chip +
+      // count + representative-language + form-type tabs + paginated list, all "to be defined"; the
+      // range label is "— of —" (never a fabricated "1–6 of 14"). The shot opens the drill and flips
+      // a form tab; a JS error in the drill/tab/pager wiring fails the check.
+      ["sectorapp-filings", "/sector-analytics"],
       // Company view (altitude 2): the empty state (no filer picked), a populated peer dot-cloud
       // for a preset focal (?symbol=900001, a raw CIK in the seeded SIC-35 group), and a dot re-focus.
       // No ?symbol= now resolves a DEFAULT focal (first-alpha company in the largest sector) so the
@@ -213,6 +219,23 @@ const PAGES = process.env.PAGES
         await page.waitForSelector('.pa-qual-langpanel');
         await page.click('[data-qual-filer]');
         await page.waitForSelector('.pa-qual-filerpanel');
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (name === "sectorapp-filings") {
+        // Open Qualitative, then drill into the Filings view via a risk-theme "Filings →" stub.
+        // Verify the drill renders (breadcrumb + list), exercise a form tab + the pager, and confirm
+        // the range label is the honest placeholder. Any JS error in the wiring fails the check.
+        await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
+        await page.click('.pa-rail-btn[data-view="qual"]');
+        await page.waitForSelector('.pa-qual-filings[data-qual-filings]');
+        await page.click('.pa-qual-filings[data-qual-filings]');
+        await page.waitForSelector('.pa-fil-crumb');
+        await page.waitForSelector('.pa-fil-list .pa-fil-empty');
+        // The range label must be the placeholder, never a fabricated count.
+        const range = await page.$eval('.pa-fil-range', (el) => el.textContent.trim());
+        if (!/^—\s*of\s*—$/.test(range)) { console.log('    filings range label not a placeholder: ' + JSON.stringify(range)); failed = true; }
+        // Flip a form tab (real control over the empty placeholder list).
+        await page.click('.pa-fil-tab[data-fil-form="10-K"]');
         await new Promise((r) => setTimeout(r, 300));
       }
       if (name === "sectors-decomp") {

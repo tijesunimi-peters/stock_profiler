@@ -1,7 +1,7 @@
 # Active delivery task
-task_slug: sector-v2-qualitative
-request: v2 P4 — Qualitative view. Expand the shipped /sector-analytics Qualitative view (altitude 4) from the honest "Coming — Track 2" placeholder frame to the v2 prototype's fuller placeholder LAYOUT: representative-language rows, the Disclosure landscape blocks (cyber / CAMs / auditor / RF-volume / non-GAAP / late / human-capital), a per-filer matrix, and click-to-reveal — ALL honest placeholders (Track 2, not yet derived). Never fabricate a figure, filer, count, %, ●, or excerpt. Frontend-only, branch off sector-v2-compare (stacked). See docs/ROADMAP_SECTOR_APP_V2.md P4 + docs/design/sector-app-prototype-v2/ altitude 4.
-branch: sector-v2-qualitative (created off sector-v2-compare; engineer stage will use it)
+task_slug: sector-v2-filings
+request: v2 P5 — Filings view (the new 5th view). Add an on-site "theme drill" Filings view to the /sector-analytics app, reached from the Qualitative view's "Filings →" stubs (currently inert no-ops, added in P4). Per prototype §5.5: breadcrumb (sector › Risk theme › name), coverage + direction chip, filing count, a representative-language block, form-type tabs (All / 10-K / 10-Q / 8-K), and a paginated filing list (6/page; prev/next + numbered pages; "1–6 of 14" range label). Each row: filer ticker + company name + accession no., form badge, filed date (newest-first), section label, matched cited passage. Back link returns to the previous view; everything resolves in-app (no EDGAR redirect). ALL Track-2 → HONEST PLACEHOLDER layout: replicate the shape, NEVER fabricate a filer, ticker, accession, date, count, %, or cited passage. Frontend-only, branch off master (P0–P4 now merged). See docs/ROADMAP_SECTOR_APP_V2.md P5 + docs/design/sector-app-prototype-v2/ HANDOFF §5.5 + §6.
+branch: sector-v2-filings (off master @ e43be08)
 next_stage: done
 qa_cycles: 0
 updated: 2026-07-24
@@ -9,46 +9,44 @@ updated: 2026-07-24
 ## Progress
 - [x] 1 Product Manager       -> 1-brief.md
 - [x] 2 Principal Architect   -> 2-architecture.md
-- [x] 3 Backend  — N/A (architect confirmed: no Python/route/repo change; frontend-only)
+- [x] 3 Backend  — N/A (P5 is frontend-only, placeholder-only; confirmed by architect)
 - [x] 3 Frontend              -> 3-implementation.md
-- [x] 4 QA Tester             -> 4-qa.md  (PASS — accepted at QA-tester level)
-- [x] 4b Operator manual verification -> 4b-manual-verification.md  (CONFIRMED, 2026-07-24)
+- [x] 4 QA Tester             -> 4-qa.md  (PASS)
+- [x] 4b Operator interactive acceptance -> 4b-manual-verification.md  (CONFIRMED, all 10 rows ✅)
 
 ## Notes / open loops
-- v2 sequence: P0/P1 (438c79e) -> P2 (2301754) -> P3 (55285f7, Compare radar+IQR+rail) -> P4.
-- PM done (1-brief.md): frontend-only, Track-2 -> honest placeholders. Key additions vs shipped view:
-  NEW Disclosure-landscape 7-block section (cyber/CAMs/auditor/RF-volume/non-GAAP/late/human-capital),
-  wired-but-empty click-to-expand representative language (themes) + click-to-reveal filer counts
-  (both reveal honest "to be defined / none shown" empty states, NEVER data), "Filings →" inert stub
-  (P5 not built). AC-1..AC-10; AC-2 (no fabricated data anywhere, incl. expanded states) is load-bearing.
-- Placeholder/layout-only -> MAY be accepted at QA-tester level (no operator hands-on gate). Architect confirms.
-- Reference: docs/ROADMAP_SECTOR_APP_V2.md P4 + HANDOFF.md §5.4/§6 + renderQualView/pa-qual-* in
-  sectorapp.js/.css (shipped view is banner + partial layout; evolve to fuller placeholder shape).
-- Architect done (2-architecture.md): 2 files — sectorapp.js (rewrite renderQualView, add
-  QUAL_DISCLOSURE 7-block const, add wireQualView + state.qualThemeOpen/qualFilerOpen) + sectorapp.css
-  (extend pa-qual-*). Backend N/A. AC→check table in the doc. Interactions wired but reveal honest
-  empty states only. "Filings →" = preventDefault no-op (P5 not built).
-- Frontend done (3-implementation.md): sectorapp.js (renderQualView rewrite + wireQualView +
-  QUAL_DISCLOSURE 7 blocks + qualReveal helper + 2 state fields), sectorapp.css (pa-qual-* additions,
-  no color, theme tokens), headless_check.js (qual step now drives expand+reveal). Self-verified:
-  e2e sectorapp-qual errors=0; screenshot eyeballed (light) — all honest placeholders, no fabrication.
-- KNOWN: overall e2e exit non-zero from PRE-EXISTING Company-view 502 baseline (symbol=900001),
-  documented in sector-v2-compare/4-qa.md; NOT from this qual-only change. Don't read raw exit as P4 defect.
-- QA done (4-qa.md): PASS, accepted at QA-tester level (placeholder/wired-empty view -> no operator
-  hands-on gate required). Evidence: pytest 511 passed/6 skipped (P2/P3 baseline); e2e sectorapp-qual
-  + all Sector/Compare pages errors=0; scripted end-to-end drive (7 rows expanded + 4 reveals opened)
-  -> all honest empty states, NO fabricated data (%/●/direction chip/ticker) anywhere. Light-only app
-  (no dark theme by design); CSS additions token-only, no color. Filings-> inert (P5 will wire it).
-- KNOWN pre-existing (NOT P4): Company-view 502 (symbol=900001) keeps raw e2e exit non-zero; documented.
-- NEW required gate (institutionalized 2026-07-24): after the QA report, the QA stage emits an
-  operator-fillable questionnaire `4b-manual-verification.md`; the pipeline PAUSES at next_stage:
-  manual until the operator hand-runs it and signs off. Questionnaire is GENERATED and awaiting the
-  operator (app running at http://localhost:8001/sector-analytics, container secfin-manual).
-- Operator hand-ran the questionnaire interactively (13/13 ✅), verdict CONFIRMED (2026-07-24).
-- FOLLOW-UP (post-acceptance): operator chose to FIX the empty far-right — added a Qualitative right
-  rail (qualRailHtml: "Track 2" note + "how to read" card, no data; reused pa-rr-* classes, no CSS).
-  Wired via rightRailHtml dispatch + renderApp shell condition. e2e sectorapp-qual errors=0; rail
-  eyeballed. Tradeoff: rail narrows content ~1240-1280px so some theme names wrap (graceful, no clip).
-  Operator ACCEPTED the rail as-is (2026-07-24) — wrapping deemed acceptable.
-- DONE (incl. rail follow-up). Branch NOT committed (working tree). Operator options: commit the
-  branch / request a deploy (/devops-engineer, operator-gated) / proceed to P5 (Filings view).
+- v2 sequence: P0/P1 (438c79e) → P2 (2301754) → P3 (55285f7) → P4 (056aef6, Qualitative + rail) → **P5 (this)**.
+  P0–P4 + the pipeline gate (e43be08) are MERGED to master. Remaining after P5: P6 backend spikes
+  (optional), P7 migration M2/M3 (route /sectors → the app, then decommission). See ROADMAP_SECTOR_APP_V2.md.
+- P5 is ALL Track-2 → HONEST PLACEHOLDER layout (standing directive / roadmap decision 3): replicate the
+  prototype's Filings-view shape; every data cell an unmistakable "— / to be defined / none shown / planned";
+  NEVER a fabricated filer, ticker, accession no., filed date, form count, %, or cited passage/excerpt.
+- Entry point already stubbed in P4: the Qualitative rows render a `.pa-qual-filings[data-qual-filings]`
+  "Filings →" button wired to an inert no-op in `wireQualView` (sectorapp.js ~line 638). P5 replaces that
+  no-op with: set a `filingsTheme` (the row's theme label) + switch to the Filings view. Add a matching
+  `renderFilingsView` + wiring (form tabs, pager, Back). Per prototype §6 state: `filingsTheme`, `prevView`,
+  `filingsPage` (reset to 0 on open). "Open filings in ClearyFi" (in the P4 language panel) is another entry.
+- Reached-FROM-Qualitative drill with a Back link (returns to prevView) — NOT necessarily a 5th view-rail
+  button; the prototype's rail stays Sector/Company/Compare/Qualitative (4). Architect/PM to confirm whether
+  Filings is a top-level rail item or a drill-in sub-view only.
+- Honesty: keep the "nothing derived/estimated" framing; form tabs + pager are real controls but operate over
+  a placeholder (empty) list — an honest empty state ("filings will list here · to be defined · none shown"),
+  and the "1–6 of 14"-style range label must NOT show a fabricated count (use a placeholder, e.g. "— of —").
+- Placeholder/layout-only → per the roadmap MAY be accepted at the QA-tester level, but the 4b operator
+  interactive-acceptance questionnaire is still generated + offered (institutionalized this session, e43be08).
+- CONTEXT RESET (required for a clean P5 PM scope): this is a NEW /deliver iteration whose next_stage is `pm`.
+  Before running it, **/clear (or start a fresh session)** so the PM scopes P5 from the roadmap/prototype, not
+  from residual P4 context — then run **/deliver resume**, which reads this file + the roadmap and starts at PM.
+- `/deliver resume` continues here at next_stage: pm (branch off master first when the engineer stage begins).
+
+## P5 DONE — operator-accepted (2026-07-24)
+- All four build stages complete on branch `sector-v2-filings`: PM (1-brief) → Architect
+  (2-architecture, backend N/A) → Frontend (3-implementation) → QA (4-qa: **PASS**, all 14 ACs,
+  pytest 511 passed, e2e sectorapp-filings errors=0, independent QA drive all-green).
+- **4b operator interactive acceptance: CONFIRMED** — operator hand-drove all 10 checklist rows ✅
+  via a 3-batch `/deliver` walkthrough against a live seeded instance. `next_stage: done`.
+- Pre-existing e2e failure (NOT P5): `sectorapp-company`/`-refocus` 502 on synthetic symbol 900001 —
+  confirmed on master by stash-reproduction. Unrelated; recommend a separate ticket.
+- **NOT committed/pushed/deployed** (operator-gated). Open options: commit the `sector-v2-filings`
+  branch, and/or request a deploy (`/devops-engineer`). Remaining v2 roadmap after P5: P6 backend
+  spikes (optional) → P7 migration M2/M3 (route `/sectors` → the app, then decommission).
