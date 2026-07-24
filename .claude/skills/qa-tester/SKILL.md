@@ -50,6 +50,13 @@ you just don't audit the source to find one.
 7. **Prepare and require manual UI verification** (see below) — for any UI change, write the
    hands-on click-through script and gate the pass on the operator actually running it. Automated
    checks alone never complete a UI QA.
+8. **Generate the operator manual-verification questionnaire + drive the interactive acceptance**
+   (see below) — a REQUIRED step after the `4-qa.md` report: emit
+   `docs/delivery/<task-slug>/4b-manual-verification.md`, an operator-*fillable* questionnaire
+   (Result + Notes per row, plus a sign-off block), and — when the operator is present — **walk them
+   through it interactively** to capture their acceptance of the reported change. This is a distinct
+   artifact from the script embedded in `4-qa.md`, not a substitute for it; the operator's recorded
+   verdict here is what accepts the feature.
 
 ## UI/UX review (your specialty)
 
@@ -103,6 +110,9 @@ but **neither exercises the *felt* behaviour of interacting**: click/tap respons
 focus order, hover, transitions, scroll, back/forward, real typed input, and how it all holds
 together in a live browser.
 
+The manual UI verification is the operator's **interactive acceptance** of the change (recorded in
+`4b-manual-verification.md`, below) — walk them through it when present.
+
 **Which changes need the operator hands-on step vs. QA-tester-level acceptance** (operator policy,
 2026-07-22):
 
@@ -135,6 +145,46 @@ together in a live browser.
 - **Backend-only changes** (no rendered surface) are exempt from the manual UI step — say so in the
   report rather than omitting it silently.
 
+## Operator manual-verification questionnaire — `4b-manual-verification.md` (required after the report)
+
+This questionnaire is the **operator's interactive acceptance** of the feature/change the QA tester
+implemented-and-reported — the explicit "I drove it and I accept it" step that turns a QA *pass* into
+an operator-*accepted* change. QA's own evidence (`4-qa.md`) never counts as acceptance; **acceptance
+is the operator's**, recorded here.
+
+After `4-qa.md` is written, **always** produce this second, operator-*fillable* artifact —
+`docs/delivery/<task-slug>/4b-manual-verification.md` — so the operator has a ready checklist to
+hand-run and sign off, not just a script buried in the QA report. This is a **required deliverable of
+the QA stage** (the one exception is a backend-only change with no rendered surface — then state in
+`4-qa.md` that no questionnaire is needed and skip it).
+
+**Run it interactively when the operator is present.** The questionnaire is meant to be *walked*, not
+just handed over: present the checks to the operator **one batch at a time** (e.g. via
+`AskUserQuestion` — the primary flow + the key states/edge cases + a11y + the honesty scan, ~4 rows
+per prompt), collect their ✅/❌ per row and any note, resolve any ambiguity they raise (a "differs"
+may be by-design — clarify before calling it a defect), then ask the **overall verdict** (Confirmed /
+Accepted at QA-tester level / Defect found). Transcribe their answers verbatim into
+`4b-manual-verification.md` and mark it **completed**. If the operator prefers to fill the file
+themselves, leave the Result/Notes columns blank for them — but offer the interactive walk-through
+first. Either way, the recorded verdict is the operator's interactive acceptance.
+
+The questionnaire is derived from the `4-qa.md` manual script + the acceptance criteria, but written
+**for the operator to fill in**:
+- A one-line **purpose** + the **branch**, the **QA verdict**, and the **exact URL** to open (name
+  the running instance / port; if the app isn't up, say how to start it).
+- A short **"the load-bearing rule for this change"** note — the single thing that must hold (e.g.
+  "no missing value shown as 0", "13F deltas read as derived", "no fabricated data on a placeholder").
+- A **numbered checklist table**: each row = Step · Expected result · AC · **Result (✅/❌)** (blank
+  for the operator) · **Notes** (blank). Cover the primary flow + the key states/edge cases + a11y +
+  the honesty scan — the same ground as the `4-qa.md` script, but with blank Result/Notes columns.
+- An **overall sign-off block**: verdict (Confirmed / Accepted at QA-tester level / Defect found),
+  operator name, date, and a free-text discrepancy field.
+- Classify per the policy above: **interactive/logic → blocking** (verdict stays "PASS — pending
+  manual UI verification" until the operator signs off); **pure-layout/placeholder → non-blocking**
+  (may be accepted at the QA-tester level — say so, but still emit the questionnaire).
+- When the operator returns an outcome, **record it in this file** (checked verdict + date, or the
+  discrepancy). A ❌ is a defect → loop back to the owning engineer.
+
 ## Report
 
 `4-qa.md` must contain, in this order: pass/fail **per acceptance criterion** (each with its command
@@ -143,14 +193,20 @@ review** section, the **manual UI verification** script + its operator outcome, 
 (severity + reproduction). Distinguish "this change broke it" from a pre-existing or flaky failure —
 re-run to confirm flakiness before blaming the change.
 
+Then (required, unless backend-only) emit the second artifact **`4b-manual-verification.md`** — the
+operator-fillable questionnaire described above. `4-qa.md` is *your* record of what you verified;
+`4b-manual-verification.md` is the *operator's* checklist to hand-run and sign off.
+
 ## Handoff
 
 - **On failure**: hand *back* to the Senior Engineer that owns the defect —
   `senior-backend-engineer` (API/data/logic) or `senior-frontend-engineer` (rendering/copy/layout/
   UX) — with the failing criteria and repro. Do not advance.
-- **On pass → DevOps Engineer**: end with a **Handoff** block (or
-  `docs/delivery/<task-slug>/4-qa.md`): the verdict, the evidence, and an explicit "ready to
-  deploy" or "blocked by X". For a UI change the honest verdict is **"PASS — pending manual UI
-  verification"** until the operator confirms the hands-on script; only *then* is it "ready to
-  deploy". A green QA report (manual step included) unlocks a deployment *request* — never the
+- **On pass → operator manual verification → DevOps Engineer**: end with a **Handoff** block (or
+  `docs/delivery/<task-slug>/4-qa.md`): the verdict, the evidence, an explicit "ready to deploy" or
+  "blocked by X", **and a pointer to `4b-manual-verification.md`** for the operator to run. For a UI
+  change the honest verdict is **"PASS — pending manual UI verification"** until the operator confirms
+  the questionnaire; only *then* is it "ready to deploy". (A pure-layout/placeholder change may be
+  "accepted at the QA-tester level" — still emit the questionnaire so the operator can review.) A
+  green QA report + a completed/accepted questionnaire unlocks a deployment *request* — never the
   deployment itself (that stays operator-gated).

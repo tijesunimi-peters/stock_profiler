@@ -31,8 +31,10 @@ progress in `docs/delivery/_active.md`, so **`/deliver` (or `/deliver resume`) c
 task from wherever it stopped — even in a fresh session with no prior context** (it rebuilds context
 from the state file + the stage handoff docs; resuming needs no reset). It runs the stages
 sequentially in one context, loops a QA failure back to the owning engineer (≤3 cycles), and stops
-at the QA gate — never commits, pushes, or deploys, and still pauses for genuine operator decisions
-and scope-gate flags. Use the manual flow below when you want a checkpoint at every stage boundary.
+at the QA gate — then pauses for the operator to hand-run the manual-verification questionnaire
+(`4b-manual-verification.md`) before the task is marked done. It never commits, pushes, or deploys,
+and still pauses for genuine operator decisions and scope-gate flags. Use the manual flow below when
+you want a checkpoint at every stage boundary.
 
 1. **Reset, then start.** `/clear` (new task) or `/compact` (keep a related thread), then
    `/product-manager <your request>`. Only this first step needs the reset.
@@ -87,8 +89,9 @@ between them, or the handoff is lost.
 | 1 | Product Manager | `product-manager` | a request / idea | product brief: problem, users, scope, acceptance criteria, out-of-scope |
 | 2 | Principal Architect | `principal-architect` | the brief | technical design + ordered implementation plan |
 | 3 | Senior Engineer | `senior-engineer` → `senior-backend-engineer` / `senior-frontend-engineer` | the plan | code + tests on a branch, self-verified |
-| 4 | QA Tester | `qa-tester` | the branch + the brief | QA report: pass/fail per acceptance criterion + evidence |
-| 5 | DevOps Engineer | `devops-engineer` | a QA-passed change | deployment — **only after operator confirmation** |
+| 4 | QA Tester | `qa-tester` | the branch + the brief | QA report (`4-qa.md`) + **operator manual-verification questionnaire** (`4b-manual-verification.md`) |
+| 4b | Operator interactive acceptance | (operator walks `4b-manual-verification.md`, interactively) | the QA-passed branch | operator acceptance (Confirmed / accepted at QA-tester level / defect) recorded in the questionnaire |
+| 5 | DevOps Engineer | `devops-engineer` | a QA-passed **and operator-verified** change | deployment — **only after operator confirmation** |
 
 ## Hard gates (never bypass)
 
@@ -96,7 +99,15 @@ between them, or the handoff is lost.
    drifts toward Track 2 (free-text / LLM summarization) or cross-company screening ahead
    of its milestone, or implies price/market data — **STOP and flag it**; do not design or
    build it. See `CLAUDE.md` § "Scope".
-2. **Deployment gate (stage 5).** The DevOps role **deploys only after explicit
+2. **Interactive-acceptance gate (stage 4→4b).** After a green QA report, the QA stage emits an
+   operator-fillable questionnaire (`4b-manual-verification.md`) — the operator's **interactive
+   acceptance** of the qa-tester-reported change. The change **pauses for the operator to walk the
+   checks (interactively — e.g. batched `AskUserQuestion`) and sign off** before it can advance; QA's
+   own evidence is never the acceptance. For interactive/logic changes this is **blocking**; a
+   pure-layout/placeholder change may be "accepted at the QA-tester level" — but the questionnaire is
+   emitted either way (backend-only changes with no UI are exempt). A defect found here loops back to
+   the owning engineer.
+3. **Deployment gate (stage 5).** The DevOps role **deploys only after explicit
    confirmation from the operator, every time.** No auto-deploy, no "while I'm here." It
    never buys or provisions paid resources (domains, droplets, services) — those are the
    operator's.
@@ -122,8 +133,8 @@ between them, or the handoff is lost.
 - **Small tasks**: hand off inline — end the turn with a short **Handoff** block stating
   what you produced, open questions / decisions, and which role is next.
 - **Substantial tasks**: write the artifact to `docs/delivery/<task-slug>/<n>-<role>.md`
-  (`1-brief.md`, `2-architecture.md`, `3-implementation.md`, `4-qa.md`, `5-deploy.md`) so
-  the trail survives the conversation.
+  (`1-brief.md`, `2-architecture.md`, `3-implementation.md`, `4-qa.md`,
+  `4b-manual-verification.md`, `5-deploy.md`) so the trail survives the conversation.
 - **A stage starts by reading the previous stage's artifact.** If it is missing or thin,
   ask for it rather than guessing — don't skip a stage.
 

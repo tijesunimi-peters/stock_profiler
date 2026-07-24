@@ -1,6 +1,6 @@
 ---
 name: deliver
-description: Run the delivery pipeline (Product Manager → Principal Architect → Senior Engineer backend/frontend → QA Tester) end to end in one pass, OR resume it mid-pipeline. Tracks the active task and its progress in docs/delivery/_active.md, so it can resume from any stage — even in a fresh session with no prior context — by reading that state file plus the completed stage handoffs. Sequential and context-sharing (not parallel subagents); loops a QA failure back to the owning engineer until green; stops at the QA gate. Invoke as "/deliver <request>" to start, or "/deliver" / "/deliver resume" to continue the active task. Never commits, pushes, or deploys.
+description: Run the delivery pipeline (Product Manager → Principal Architect → Senior Engineer backend/frontend → QA Tester) end to end in one pass, OR resume it mid-pipeline. Tracks the active task and its progress in docs/delivery/_active.md, so it can resume from any stage — even in a fresh session with no prior context — by reading that state file plus the completed stage handoffs. Sequential and context-sharing (not parallel subagents); loops a QA failure back to the owning engineer until green; stops at the QA gate, then pauses for the operator to hand-run the manual-verification questionnaire (4b-manual-verification.md) before marking the task done. Invoke as "/deliver <request>" to start, or "/deliver" / "/deliver resume" to continue the active task. Never commits, pushes, or deploys.
 ---
 
 # /deliver — run (or resume) the delivery pipeline end to end
@@ -33,7 +33,7 @@ Format (overwrite in full each update):
 task_slug: <kebab-slug>          # also the docs/delivery/<slug>/ folder
 request: <the original one-line request>
 branch: <branch name | "not yet branched">
-next_stage: <pm | architect | backend | frontend | qa | done | blocked>
+next_stage: <pm | architect | backend | frontend | qa | manual | done | blocked>
 qa_cycles: <int>                 # fix→QA loops used so far (cap 3)
 updated: <YYYY-MM-DD>
 
@@ -43,6 +43,7 @@ updated: <YYYY-MM-DD>
 - [ ] 3 Backend  (full-stack: backend then frontend; else the one side that applies)
 - [ ] 3 Frontend
 - [ ] 4 QA Tester             -> 4-qa.md
+- [ ] 4b Operator manual verification -> 4b-manual-verification.md  (operator fills + signs off)
 
 ## Notes / open loops
 <e.g. "QA failed AC-3 (N/A shown as 0) — back to frontend, cycle 1"; or
@@ -90,7 +91,20 @@ operator-gated); it lives in the working tree and survives session boundaries on
      it + e2e) on the **same branch**. After backend, set `next_stage: frontend`; after the last
      engineer stage, set `next_stage: qa`. Each self-verifies via Docker before handing off.
 4. **QA Tester** — `Skill: qa-tester` → `4-qa.md`: verify each acceptance criterion (`pytest`, e2e,
-   drive the real flow, honesty contract). On **pass** → `next_stage: done`. On **fail** → see below.
+   drive the real flow, honesty contract). On **fail** → see below. On **pass**, the QA stage also
+   emits **`4b-manual-verification.md`** — the operator-fillable manual-verification questionnaire (a
+   required deliverable after the report; backend-only changes with no rendered surface are exempt —
+   note that and go straight to `done`). Then set **`next_stage: manual`** and **STOP** — surface the
+   questionnaire to the operator and wait. This is a **pause point**, like a scope gate: `/deliver`
+   does not self-advance past the operator's hands-on gate.
+5. **Operator interactive acceptance** — the manual-verification gate is the operator's *acceptance*
+   of the qa-tester-reported change, not a formality. When the operator is present, **run
+   `4b-manual-verification.md` interactively** — walk them through the checks in batches (e.g.
+   `AskUserQuestion`), collect ✅/❌ per row + the overall verdict, clarify any "differs" (it may be
+   by-design), and transcribe their answers into the file. (If they'd rather fill it themselves,
+   hand it over blank.) **Confirmed / accepted** (a pure-layout/placeholder change may be *accepted at
+   the QA-tester level* without a hands-on run) → `next_stage: done`. **Defect found** → treat as a QA
+   failure: loop back to the owning engineer (below), bump `qa_cycles`, then re-QA.
 
 ## QA failure → loop back (bounded)
 
@@ -103,8 +117,10 @@ lower the bar.
 
 ## Where it stops
 
-- **Ends at a green QA report** (`next_stage: done`). A green report unlocks a deploy *request* — it
-  is **not** a deploy.
+- **Pauses at the operator manual-verification gate** (`next_stage: manual`) after a green QA report —
+  `/deliver` emits `4b-manual-verification.md` and STOPs for the operator to hand-run and sign off.
+- **Ends when the operator confirms/accepts** (`next_stage: done`). A green QA report + a
+  completed/accepted questionnaire unlocks a deploy *request* — it is **not** a deploy.
 - **Never commits, pushes, or deploys.** Engineer stages commit only when explicitly asked; DevOps
   (deploy) is a separate operator-gated stage (`/devops-engineer`) outside this run. End by
   summarizing the QA verdict and the operator's next options (commit the branch / request a deploy).
@@ -112,10 +128,12 @@ lower the bar.
 ## Pauses (not fully unattended)
 
 Flow through the stages, but **PAUSE and ask the operator** when: a scope gate fires (Track 2 /
-out-of-scope); a stage raises a genuine fork only the operator can decide (`AskUserQuestion`); or QA
-is still red after 3 cycles. Record the pause reason in the state file's Notes (`next_stage:
-blocked`) so a later `/deliver resume` picks up exactly there. Otherwise don't stop at each stage
-boundary for approval — `/deliver` removes the manual hand-offs, not the judgment.
+out-of-scope); a stage raises a genuine fork only the operator can decide (`AskUserQuestion`); QA is
+still red after 3 cycles; or **QA passes and the operator manual-verification gate is reached**
+(`next_stage: manual` — surface `4b-manual-verification.md` and wait for the sign-off). Record the
+pause reason in the state file's Notes (`next_stage: blocked` for a hard block, `manual` for the
+verification gate) so a later `/deliver resume` picks up exactly there. Otherwise don't stop at each
+stage boundary for approval — `/deliver` removes the manual hand-offs, not the judgment.
 
 ## Inherited rules (non-negotiable)
 
@@ -126,5 +144,6 @@ Every stage keeps its own SKILL's rules; `/deliver` relaxes none — only the ma
 - **Branch off `master`**, one branch per change; **commit/push/deploy only when asked**.
 - SEC compliance (User-Agent + process-wide throttle); DuckDB batch-only, never on the request path.
 
-The per-stage handoff docs in `docs/delivery/<slug>/` (`1-brief` … `4-qa`) are the durable, auditable
-trail — and, with `_active.md`, the memory that makes `/deliver` resumable without prior context.
+The per-stage handoff docs in `docs/delivery/<slug>/` (`1-brief` … `4-qa` +
+`4b-manual-verification`) are the durable, auditable trail — and, with `_active.md`, the memory that
+makes `/deliver` resumable without prior context.
