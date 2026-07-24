@@ -117,6 +117,10 @@ def _row_fields(row: ET.Element, *, is_holding: bool) -> dict:
     amounts = row.find("transactionAmounts")
     post = row.find("postTransactionAmounts")
     nature = row.find("ownershipNature")
+    # transactionCoding/transactionCode: the SEC code (P/S/M/A/G/F/...). Holdings have no coding
+    # element -> None. We only capture it here; the open-market (P/S) business decision lives in
+    # the sector-flow aggregation batch, not in this parser.
+    coding = row.find("transactionCoding")
     ownership_raw = _wrapped(nature, "directOrIndirectOwnership")
     return {
         "security_title": _wrapped(row, "securityTitle"),
@@ -124,6 +128,7 @@ def _row_fields(row: ET.Element, *, is_holding: bool) -> dict:
         "shares": _to_float(_wrapped(amounts, "transactionShares")),
         "price_per_share": _to_float(_wrapped(amounts, "transactionPricePerShare")),
         "acquired_disposed": _wrapped(amounts, "transactionAcquiredDisposedCode"),
+        "transaction_code": _text(coding, "transactionCode"),
         "ownership_type": {"D": "direct", "I": "indirect"}.get(ownership_raw or ""),
         "shares_owned_after": _to_float(_wrapped(post, "sharesOwnedFollowingTransaction")),
         "is_holding": is_holding,

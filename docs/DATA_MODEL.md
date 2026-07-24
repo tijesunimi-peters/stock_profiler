@@ -328,8 +328,17 @@ label, value, unit, period fields, fiscal key, form, filed, accession, frame,
 ## Insider transactions
 
 `InsiderTransaction` captures issuer, reporting owner + relationship, and per-trade fields
-(date, security, shares, price, acquired/disposed, direct/indirect ownership, shares after).
-Holdings-only rows are kept but flagged with `is_holding`. Parsing lives in `sec/insider.py`.
+(date, security, shares, price, acquired/disposed, **SEC transaction code**, direct/indirect
+ownership, shares after). Holdings-only rows are kept but flagged with `is_holding`. Parsing
+lives in `sec/insider.py`.
+
+`transaction_code` is the raw SEC `transactionCoding/transactionCode` (`P` = open-market
+purchase, `S` = open-market sale, `M` = option exercise, `A` = grant/award, `G` = gift, `F` =
+tax-withholding, plus others). It is kept a free `str` (not a `Literal`) so an unknown code is
+never dropped on parse, and is `None` for holdings (no coding element). It is distinct from
+`acquired_disposed` (`A`/`D`): the code tells you *how* a position changed (an open-market buy vs
+a grant), which `A`/`D` alone conflates. This is what the sector insider-flow rollup (below) keys
+on to isolate open-market activity.
 
 `fetch_insider_transactions(client, cik, limit)` reads `/submissions/CIK##########.json`'s
 `filings.recent` block, filters to Forms 3/4/5 (+ `/A` amendments), and for each fetches +
@@ -380,6 +389,34 @@ for it. Verified end-to-end against real AAPL data (2026-07-05): a cold `limit=5
 populated the cache in ~1s; a repeat `limit=5` call returned identically in <0.05s (no
 SEC call); a `limit=10` call correctly missed, grew the cache to 10 filings, and a repeat
 `limit=10` call then hit.
+
+### Sector insider flow (derived rollup — Sector Analytics v2, P6a)
+
+`GET /v1/sectors/{group}/insider-flow` serves a **per-SIC-group trailing-window net buy/sell**,
+aggregated by the offline `analytical/sector_insider_flow.py` batch (DuckDB over the SQLite file,
+**batch-only — never on the request path**) into the `sector_insider_flow` table, which the
+endpoint reads as a plain point lookup. Method:
+
+- **Open-market only.** Only `transaction_code IN ('P','S')` counts — open-market purchases (P)
+  and sales (S). Grants (A), option exercises (M), gifts (G), and tax-withholding (F) are
+  **excluded** (a defensible "insider conviction" signal, not "all acquired vs disposed").
+- **Value** = `shares × price_per_share` in **reported USD** (raw units, never rescaled). A P/S row
+  with a missing share count or price is excluded from the sums and surfaced as
+  `excluded_no_price_count` — never silently counted as $0.
+- **Trailing window** anchored on `transaction_date`, `[as_of − window_days, as_of]` (default 90
+  days; `secfin_insider_flow_window_days`). `net = buys − sells`, plus buy/sell/filer/company
+  counts.
+- **Grouped** by the same SIC basis as the other sector endpoints (`substr(sic, 1, sic_digits)`,
+  from `company_profiles`).
+
+**Honesty.** This is a **derived aggregate** of **reported** transactions — NOT a 13F snapshot
+diff, so it does **not** carry the 13F long-only / ~45-day derived-trade caveat. It carries instead
+a *reporting-lag* caveat (Forms 3/4/5 are filed after the transaction date, so a recent window may
+be incomplete), a *coverage* caveat (only ingested companies/filings), and the *open-market-only
+scope*. A group with no in-window open-market activity returns `has_data=false` (net/buys/sells
+`null`) — an honest **N/A, never a fabricated zero**. Legacy cached rows written before
+`transaction_code` was captured carry `NULL` and are simply excluded until re-warmed (covered by
+the coverage caveat).
 
 ## Institutional ownership (13F, 13D/G)
 

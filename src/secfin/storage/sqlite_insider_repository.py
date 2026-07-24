@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS insider_transactions (
     shares REAL,
     price_per_share REAL,
     acquired_disposed TEXT,
+    transaction_code TEXT,
     ownership_type TEXT,
     shares_owned_after REAL,
     is_holding INTEGER NOT NULL DEFAULT 0
@@ -50,8 +51,8 @@ _INSERT_TXN_SQL = """
 INSERT INTO insider_transactions (
     issuer_cik, accession, issuer_name, owner_name, owner_relationship, form_type, filed,
     transaction_date, security_title, shares, price_per_share, acquired_disposed,
-    ownership_type, shares_owned_after, is_holding
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    transaction_code, ownership_type, shares_owned_after, is_holding
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _INSERT_FILING_SQL = """
@@ -68,6 +69,19 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        self._ensure_columns()
+
+    def _ensure_columns(self) -> None:
+        """Additive migration for DBs created before a column existed.
+
+        `CREATE TABLE IF NOT EXISTS` won't add a column to an existing table, and SQLite has no
+        `ADD COLUMN IF NOT EXISTS`, so add any missing column guarded by PRAGMA table_info. Legacy
+        rows keep NULL for the new column (for `transaction_code` that means they're simply
+        excluded from the open-market P/S sector rollup -- honest, covered by its coverage caveat).
+        """
+        have = {row[1] for row in self._conn.execute("PRAGMA table_info(insider_transactions)")}
+        if "transaction_code" not in have:
+            self._conn.execute("ALTER TABLE insider_transactions ADD COLUMN transaction_code TEXT")
 
     def upsert_insider_transactions(
         self,
@@ -145,6 +159,7 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             t.shares,
             t.price_per_share,
             t.acquired_disposed,
+            t.transaction_code,
             t.ownership_type,
             t.shares_owned_after,
             1 if t.is_holding else 0,
@@ -165,6 +180,7 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             shares=row["shares"],
             price_per_share=row["price_per_share"],
             acquired_disposed=row["acquired_disposed"],
+            transaction_code=row.get("transaction_code"),
             ownership_type=row["ownership_type"],
             shares_owned_after=row["shares_owned_after"],
             is_holding=bool(row["is_holding"]),

@@ -1,20 +1,36 @@
 # Active delivery task
 task_slug: sector-insider-flow
 request: P6a — Sector Insider flow (make the placeholder real). Aggregate per-CIK Forms 3/4/5 insider transactions into sector-level net buy/sell. Backend-led: reuse the existing per-company insider ingest (`sec/insider.py` + the insider repository) and CIK→SIC from `company_profiles`; add an analytical batch that sums insider transaction value (buys vs sells) per SIC sector per period, a new `GET /v1/sectors/{group}/insider-flow` endpoint reading a materialized store (never DuckDB on the request path), then wire the app's Sector-view "Insider flow" panel (`sectorapp.js`) to show the real figures instead of the placeholder. Honesty: net-flow is a DERIVED rollup (label it) — but Forms 3/4/5 are REPORTED transactions (unlike 13F), so no "derived trade" caveat; carry reporting-lag + coverage caveats; a sector with no data reads N/A, never 0. Track-1 only. See `ROADMAP_SECTOR_APP_V2.md` P6 (operator decision 2026-07-24: both, insider first).
-branch: not yet branched (branch off master when the engineer stage begins; M2 merged to master @ eaa194f)
-next_stage: pm
-qa_cycles: 0
+branch: sector-insider-flow (off master @ eaa194f)
+next_stage: done
+qa_cycles: 1
 updated: 2026-07-24
 
+## Operator decisions (locked, PM stage 2026-07-24)
+- **Flow = open-market only (P/S).** Net = Σ(shares×price) P buys − Σ(shares×price) S sells; grants
+  (A), option exercises (M), gifts (G), tax-withholding (F) EXCLUDED + disclosed as excluded. Requires
+  capturing SEC `transactionCode` (parser currently keeps only acquired_disposed A/D).
+- **Panel = trailing-window single figure** (recommend ~90d): net + buy/sell breakdown + txn count +
+  distinct-filer count + window label.
+
 ## Progress
-- [ ] 1 Product Manager       -> 1-brief.md
-- [ ] 2 Principal Architect   -> 2-architecture.md
-- [ ] 3 Backend  (aggregation batch + /v1/sectors/{group}/insider-flow endpoint + materialized store; single-writer, DuckDB batch-only)
-- [ ] 3 Frontend (wire the Sector-view "Insider flow" panel in sectorapp.js to the real endpoint; replace placeholder; N/A never 0)
-- [ ] 4 QA Tester             -> 4-qa.md
-- [ ] 4b Operator interactive acceptance -> 4b-manual-verification.md
+- [x] 1 Product Manager       -> 1-brief.md
+- [x] 2 Principal Architect   -> 2-architecture.md
+- [x] 3 Backend  -> 3-implementation.md (parser transaction_code + cache migration + DuckDB batch + sector_insider_flow store + GET /v1/sectors/{group}/insider-flow; 530 tests green, e2e verified)
+- [x] 3 Frontend -> 3-implementation.md (insiderCardHtml in sectorapp.js: populated/N-A/loading/error; seed + N/A e2e shot; both insider shots errors=0, screenshots eyeballed. NOTE: overall e2e FAIL is a PRE-EXISTING company-view sparkline 502, network artifact, not this change — see 3-impl "Pre-existing e2e artifact")
+- [x] 4 QA Tester             -> 4-qa.md (PASS; no defects; 530 tests + live drive + screenshots)
+- [x] 4b Operator interactive acceptance -> 4b-manual-verification.md (CONFIRMED 2026-07-24; QA cycle 1 added arrow + neutral-accent net figure per operator request — not green/red, no honesty deviation)
 
 ## Notes / open loops
+- ✅ **DONE (2026-07-24) — operator CONFIRMED.** Full-stack P6a shipped on branch
+  `sector-insider-flow`: `transaction_code` parser+cache (additive migration), DuckDB batch
+  `analytical/sector_insider_flow.py`, `sector_insider_flow` store, `GET /v1/sectors/{group}/insider-flow`,
+  and the real Insider-flow card in `sectorapp.js` (arrow + neutral-accent net figure, N/A-never-0).
+  530 tests pass; live-driven; honesty contract clean (derived label, correct non-13F caveats).
+  **Not committed / not deployed** — operator to commit the branch + request a deploy when ready.
+  Pre-existing e2e note: the `sectorapp-company` (synthetic filer 900001) 502 is a no-network-sandbox
+  artifact (SEC unreachable → 502 vs a graceful 404 with network), NOT this change — re-runs green
+  with network. **Next up: P6b Geographic revenue mix (ASC 280)** as a separate /deliver.
 - **This is P6a — the FIRST of the two P6 data-depth spikes.** Operator decision (2026-07-24, after
   P7/M2 shipped): build **both**, **Insider flow first**, then **P6b Geographic revenue mix (ASC 280)**
   as a follow-on `/deliver`. Source of truth: `ROADMAP_SECTOR_APP_V2.md` P6 (note added 2026-07-24).

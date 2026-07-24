@@ -763,6 +763,44 @@ def _seed_sector_theme_scores(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed sector insider-flow rows for the demo Sector view (P6a). Written DIRECTLY (not via the
+# DuckDB analytical/sector_insider_flow batch) so the offline/e2e profile -- base install, no
+# `analytical` extra -- can render the real Insider-flow card. Group "28" is deliberately left OUT so
+# the card's honest N/A state (never $0) is exercised alongside a populated (net buying) and a net
+# selling sector. `as_of`/window are a fixed recent window; values are synthetic reported USD.
+_INSIDER_FLOW_DEMO = [
+    # group, net, buys, sells, buy_count, sell_count, filer_count, company_count, excl_no_price
+    ("35", 12_400_000.0, 18_100_000.0, 5_700_000.0, 24, 18, 19, 11, 2),  # net buying
+    ("73", -8_300_000.0, 2_600_000.0, 10_900_000.0, 9, 31, 22, 14, 1),   # net selling
+    ("60", 0.0, 4_500_000.0, 4_500_000.0, 12, 12, 8, 6, 0),              # exactly flat (data present)
+    # group "28": intentionally NO row -> honest N/A card, never a fabricated zero.
+]
+
+
+def _seed_sector_insider_flow(db_path: str) -> None:
+    from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRow
+    from secfin.storage.sqlite_sector_insider_flow_repository import (
+        SQLiteSectorInsiderFlowRepository,
+    )
+
+    as_of, window_days, window_start = "2026-06-30", 90, "2026-04-01"
+    rows = [
+        SectorInsiderFlowRow(
+            peer_group=g, as_of=as_of, window_days=window_days, window_start=window_start,
+            window_end=as_of, net=net, buys=buys, sells=sells, buy_count=bc, sell_count=sc,
+            filer_count=fc, company_count=cc, excluded_no_price_count=excl, unit="USD",
+        )
+        for g, net, buys, sells, bc, sc, fc, cc, excl in _INSIDER_FLOW_DEMO
+    ]
+    repo = SQLiteSectorInsiderFlowRepository(db_path)
+    try:
+        repo.clear()
+        repo.bulk_upsert(rows)
+        print(f"seeded sector insider flow: {len(rows)} groups (28 left empty -> N/A card)")
+    finally:
+        repo.close()
+
+
 # Per-company metric_values + profiles + ranks for the Sector Analytics app's COMPANY view (the peer
 # dot-cloud). Seeds a SIC-35 group of synthetic filers (ciks 900001..900010) so the dot-plots +
 # search/?symbol= + dot-click render. The e2e uses ?symbol=900001 (a RAW CIK -> resolves directly,
@@ -863,6 +901,7 @@ def main() -> None:
     _seed_metric_distributions(db_path)
     _seed_sector_lifecycle(db_path)
     _seed_sector_theme_scores(db_path)
+    _seed_sector_insider_flow(db_path)
     _seed_app_company_group(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")
