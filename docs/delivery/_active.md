@@ -1,52 +1,50 @@
 # Active delivery task
-task_slug: sector-v2-filings
-request: v2 P5 — Filings view (the new 5th view). Add an on-site "theme drill" Filings view to the /sector-analytics app, reached from the Qualitative view's "Filings →" stubs (currently inert no-ops, added in P4). Per prototype §5.5: breadcrumb (sector › Risk theme › name), coverage + direction chip, filing count, a representative-language block, form-type tabs (All / 10-K / 10-Q / 8-K), and a paginated filing list (6/page; prev/next + numbered pages; "1–6 of 14" range label). Each row: filer ticker + company name + accession no., form badge, filed date (newest-first), section label, matched cited passage. Back link returns to the previous view; everything resolves in-app (no EDGAR redirect). ALL Track-2 → HONEST PLACEHOLDER layout: replicate the shape, NEVER fabricate a filer, ticker, accession, date, count, %, or cited passage. Frontend-only, branch off master (P0–P4 now merged). See docs/ROADMAP_SECTOR_APP_V2.md P5 + docs/design/sector-app-prototype-v2/ HANDOFF §5.5 + §6.
-branch: sector-v2-filings (off master @ e43be08)
-next_stage: done
+task_slug: sector-migration-swap
+request: P7 (Migration M2) — routing swap: make the v2 Sector Analytics app (`/sector-analytics`) the CANONICAL sector page. (1) Route: in `api/main.py`, serve the app (`sector-analytics.html` / `#app` + `sectorapp.js`) at **`/sectors`** (recommended canonical per ROADMAP_SECTOR_MIGRATION.md R1), and **301-redirect `/sector-analytics` → `/sectors`** so existing links/bookmarks keep working; pass through `?group=`, `?view=`, `?symbol=`, `?a=&b=` (the app already honors them). (2) Nav links: update every internal "Sector analytics"/"/sectors" link across `static/*` (the `sectorapp.js` sidebar, `index.html`, and any other page) to the canonical URL — no dead links. (3) Old page behind a rollback flag: keep `sectors.js/html/css` served at a temporary URL (e.g. `/sectors-legacy`) or behind an env flag for ONE release; do NOT delete `sectors.*` (that's M3). (4) e2e: repoint the `sectors*` headless shots to the new app (or drop them for the `sectorapp*` shots); keep one `/sectors-legacy` shot while the flag exists. Backend routing + frontend nav only — NO new endpoints/schema/backend logic (the app already consumes every endpoint the old page uses). See ROADMAP_SECTOR_MIGRATION.md M2 + ROADMAP_SECTOR_APP_V2.md P7.
+branch: not yet branched (branch off master; P0–P5 are on master as of 882200c)
+next_stage: pm
 qa_cycles: 0
 updated: 2026-07-24
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md
-- [x] 2 Principal Architect   -> 2-architecture.md
-- [x] 3 Backend  — N/A (P5 is frontend-only, placeholder-only; confirmed by architect)
-- [x] 3 Frontend              -> 3-implementation.md
-- [x] 4 QA Tester             -> 4-qa.md  (PASS)
-- [x] 4b Operator interactive acceptance -> 4b-manual-verification.md  (CONFIRMED, all 10 rows ✅)
+- [ ] 1 Product Manager       -> 1-brief.md
+- [ ] 2 Principal Architect   -> 2-architecture.md
+- [ ] 3 Backend  (main.py: route /sectors → app + 301 redirect /sector-analytics → /sectors + legacy flag)
+- [ ] 3 Frontend (nav links across static/* → canonical URL; e2e shots repointed)
+- [ ] 4 QA Tester             -> 4-qa.md
+- [ ] 4b Operator interactive acceptance -> 4b-manual-verification.md
 
 ## Notes / open loops
-- v2 sequence: P0/P1 (438c79e) → P2 (2301754) → P3 (55285f7) → P4 (056aef6, Qualitative + rail) → **P5 (this)**.
-  P0–P4 + the pipeline gate (e43be08) are MERGED to master. Remaining after P5: P6 backend spikes
-  (optional), P7 migration M2/M3 (route /sectors → the app, then decommission). See ROADMAP_SECTOR_APP_V2.md.
-- P5 is ALL Track-2 → HONEST PLACEHOLDER layout (standing directive / roadmap decision 3): replicate the
-  prototype's Filings-view shape; every data cell an unmistakable "— / to be defined / none shown / planned";
-  NEVER a fabricated filer, ticker, accession no., filed date, form count, %, or cited passage/excerpt.
-- Entry point already stubbed in P4: the Qualitative rows render a `.pa-qual-filings[data-qual-filings]`
-  "Filings →" button wired to an inert no-op in `wireQualView` (sectorapp.js ~line 638). P5 replaces that
-  no-op with: set a `filingsTheme` (the row's theme label) + switch to the Filings view. Add a matching
-  `renderFilingsView` + wiring (form tabs, pager, Back). Per prototype §6 state: `filingsTheme`, `prevView`,
-  `filingsPage` (reset to 0 on open). "Open filings in ClearyFi" (in the P4 language panel) is another entry.
-- Reached-FROM-Qualitative drill with a Back link (returns to prevView) — NOT necessarily a 5th view-rail
-  button; the prototype's rail stays Sector/Company/Compare/Qualitative (4). Architect/PM to confirm whether
-  Filings is a top-level rail item or a drill-in sub-view only.
-- Honesty: keep the "nothing derived/estimated" framing; form tabs + pager are real controls but operate over
-  a placeholder (empty) list — an honest empty state ("filings will list here · to be defined · none shown"),
-  and the "1–6 of 14"-style range label must NOT show a fabricated count (use a placeholder, e.g. "— of —").
-- Placeholder/layout-only → per the roadmap MAY be accepted at the QA-tester level, but the 4b operator
-  interactive-acceptance questionnaire is still generated + offered (institutionalized this session, e43be08).
-- CONTEXT RESET (required for a clean P5 PM scope): this is a NEW /deliver iteration whose next_stage is `pm`.
-  Before running it, **/clear (or start a fresh session)** so the PM scopes P5 from the roadmap/prototype, not
-  from residual P4 context — then run **/deliver resume**, which reads this file + the roadmap and starts at PM.
-- `/deliver resume` continues here at next_stage: pm (branch off master first when the engineer stage begins).
-
-## P5 DONE — operator-accepted (2026-07-24)
-- All four build stages complete on branch `sector-v2-filings`: PM (1-brief) → Architect
-  (2-architecture, backend N/A) → Frontend (3-implementation) → QA (4-qa: **PASS**, all 14 ACs,
-  pytest 511 passed, e2e sectorapp-filings errors=0, independent QA drive all-green).
-- **4b operator interactive acceptance: CONFIRMED** — operator hand-drove all 10 checklist rows ✅
-  via a 3-batch `/deliver` walkthrough against a live seeded instance. `next_stage: done`.
-- Pre-existing e2e failure (NOT P5): `sectorapp-company`/`-refocus` 502 on synthetic symbol 900001 —
-  confirmed on master by stash-reproduction. Unrelated; recommend a separate ticket.
-- **NOT committed/pushed/deployed** (operator-gated). Open options: commit the `sector-v2-filings`
-  branch, and/or request a deploy (`/devops-engineer`). Remaining v2 roadmap after P5: P6 backend
-  spikes (optional) → P7 migration M2/M3 (route `/sectors` → the app, then decommission).
+- **This is P7 / Migration M2 (the routing swap).** Predecessors P0–P5 (the whole v2 app build) are
+  MERGED + PUSHED to master (P5 Filings view = 744e03d, merge 882200c). Migration source of truth:
+  `docs/ROADMAP_SECTOR_MIGRATION.md` (M2 §117–145) as amended by `docs/ROADMAP_SECTOR_APP_V2.md` P7.
+- **M1 (parity port) is OBSOLETE — do NOT port DuPont tree / ROE trend / lifecycle.** The operator
+  dropped those to match v2 (v2 roadmap decision 2); the `sector-parity` branch is abandoned. The v2
+  app is the agreed "superset-minus-the-dropped-charts", so M2 (swap) may proceed WITHOUT an M1 parity
+  port. If the PM/architect think a parity gap blocks the swap, STOP and flag — don't re-add the charts.
+- **M3 (decommission) is NOT this deliverable.** Deleting `sectors.*` + removing the legacy route
+  happens AFTER M2 has baked in production for a release with no rollback (ROADMAP_SECTOR_MIGRATION.md
+  M3 §149). This task keeps the old page alive behind a flag; a later `/deliver` does M3.
+- **Backend + frontend, small.** Backend FIRST (main.py: the `/sectors`→app route, the 301 redirect,
+  the legacy route/flag) so the routing contract lands, THEN frontend (nav-link updates + e2e shots) on
+  the same branch. Architect confirms the split. No new endpoints/schema (guiding principle 2).
+- **Open decisions for PM/operator (from ROADMAP_SECTOR_MIGRATION.md §171):**
+  - R1 canonical URL — recommend **`/sectors`** canonical, redirect `/sector-analytics` in. (Baked into
+    the request as the working default; PM/operator confirm.)
+  - R4 legacy retention window — how long `/sectors-legacy` stays before M3 (one release vs a fixed
+    date). Operator call; not blocking for M2.
+  - (R2 DuPont range / R3 chart color are M1 concerns → moot now that M1 is dropped.)
+- **Honesty carries over:** N/A never 0; caveats/provenance intact; scores are positions not verdicts.
+  The swap is layout-neutral (same app), so the main risks are dead nav links, dropped query params on
+  redirect, and a broken rollback path — QA should probe those + the `?group=`/`?view=` deep-links.
+- **Deployment note (ROADMAP_SECTOR_MIGRATION.md §165):** on prod the scorecard/compare surfaces are
+  honest-empty until the analytical batch runs (`python -m secfin.analytical.sector_theme_scores` + the
+  metrics/peer-distribution pipeline). Sequence that batch before/with the swap so `/sectors` isn't
+  empty on cutover. This is a DEPLOY concern (operator-gated `/devops-engineer`), not part of the build.
+- **CONTEXT RESET (required for a clean M2 PM scope):** this is a NEW /deliver iteration whose
+  next_stage is `pm`. The current session still holds the finished P5 context, so before running the PM
+  stage **/clear (or start a fresh session)**, then run **/deliver resume** — it reads this file + the
+  migration roadmap and starts at PM from a clean context. Branch off master when the engineer stage
+  begins.
+- Previous task (P5 Filings view) is DONE + merged + pushed; its trail is in
+  `docs/delivery/sector-v2-filings/` (1-brief … 4b, operator-confirmed).
