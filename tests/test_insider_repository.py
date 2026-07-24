@@ -6,6 +6,8 @@ rather than per transaction row.
 
 from __future__ import annotations
 
+import sqlite3
+
 from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 
@@ -39,6 +41,55 @@ def test_empty_repo_has_zero_cached_filings():
     assert repo.cached_filing_count(CIK) == 0
     assert repo.get_insider_transactions(CIK, limit=10) == []
     repo.close()
+
+
+def test_transaction_code_round_trips():
+    repo = SQLiteInsiderTransactionRepository(":memory:")
+    repo.upsert_insider_transactions(
+        CIK,
+        [InsiderFilingMeta("acc-1", "2026-06-01", "4")],
+        [_txn("acc-1", "Alice", transaction_code="P")],
+    )
+    (got,) = repo.get_insider_transactions(CIK, limit=10)
+    assert got.transaction_code == "P"
+    repo.close()
+
+
+def test_ensure_columns_migrates_pre_transaction_code_db(tmp_path):
+    # A DB created before `transaction_code` existed (old CREATE TABLE, no such column) must gain
+    # it on open, and its legacy rows read back with transaction_code None -- additive migration.
+    db = str(tmp_path / "legacy.db")
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE insider_filings (
+            issuer_cik INTEGER NOT NULL, accession TEXT NOT NULL, filed TEXT NOT NULL DEFAULT '',
+            form_type TEXT NOT NULL DEFAULT '', fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (issuer_cik, accession)
+        );
+        CREATE TABLE insider_transactions (
+            id INTEGER PRIMARY KEY, issuer_cik INTEGER NOT NULL, accession TEXT NOT NULL DEFAULT '',
+            issuer_name TEXT, owner_name TEXT, owner_relationship TEXT, form_type TEXT, filed TEXT,
+            transaction_date TEXT, security_title TEXT, shares REAL, price_per_share REAL,
+            acquired_disposed TEXT, ownership_type TEXT, shares_owned_after REAL,
+            is_holding INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO insider_filings (issuer_cik, accession, filed, form_type)
+            VALUES (320193, 'old-1', '2025-01-01', '4');
+        INSERT INTO insider_transactions (issuer_cik, accession, owner_name, is_holding)
+            VALUES (320193, 'old-1', 'Legacy', 0);
+        """
+    )
+    conn.close()
+
+    repo = SQLiteInsiderTransactionRepository(db)  # __init__ runs the migration
+    try:
+        cols = {r[1] for r in repo._conn.execute("PRAGMA table_info(insider_transactions)")}
+        assert "transaction_code" in cols
+        (got,) = repo.get_insider_transactions(CIK, limit=10)
+        assert got.transaction_code is None  # legacy row -> None, not a crash
+    finally:
+        repo.close()
 
 
 def test_upsert_stores_filing_and_its_rows():

@@ -33,6 +33,7 @@
     series: {}, // group -> /sectors/{group}
     spreads: {}, // group -> /sectors/{group}/spreads
     lifecycle: {}, // group -> /sectors/{group}/lifecycle
+    insiderFlow: {}, // group -> /sectors/{group}/insider-flow (real; P6a). {_error:true} on failure
     // Company view (altitude 2) state
     focalCik: null, // the focal filer's CIK (int); identity for the Company view
     focalName: null,
@@ -198,6 +199,12 @@
       P.api("/sectors/" + encodeURIComponent(g) + "/spreads?year=" + state.sectors.fiscal_year)
         .then(function (r) { state.spreads[g] = r; if (selectedGroup() === g) renderApp(); })
         .catch(function () { state.spreads[g] = { metrics: [] }; });
+    }
+    if (!state.insiderFlow[g]) {
+      P.api("/sectors/" + encodeURIComponent(g) + "/insider-flow")
+        .then(function (r) { state.insiderFlow[g] = r; if (selectedGroup() === g) renderApp(); })
+        // a fetch failure caches an honest error marker so we render "No insider data", never $0
+        .catch(function () { state.insiderFlow[g] = { has_data: false, _error: true }; });
     }
   }
 
@@ -989,7 +996,8 @@
   // ---- 01's geo/insider row: two placeholder cards (Track-1 not aggregated at the sector level) ----
 
   function geoInsiderRowHtml() {
-    return '<div class="pa-drill-row pa-geo-row">' + geoPlaceholderHtml() + insiderPlaceholderHtml() + "</div>";
+    // Geo stays a placeholder (P6b); Insider flow is real (P6a).
+    return '<div class="pa-drill-row pa-geo-row">' + geoPlaceholderHtml() + insiderCardHtml() + "</div>";
   }
   // Geographic revenue mix (ASC 280 segment disclosure) — Track 1 but NOT ingested/aggregated at the
   // sector level. Honest placeholder; NO fabricated segment/percentage.
@@ -1002,16 +1010,59 @@
       "data isn’t ingested or aggregated by sector yet. To be defined; no figures shown.</div></div>"
     );
   }
-  // Insider flow (Forms 3/4/5) — Track 1, but insider data is per-CIK only (no sector-level aggregate).
-  // Honest placeholder; NO fabricated ratio/net figure.
-  function insiderPlaceholderHtml() {
-    return (
-      '<div class="pa-card pa-insider pa-ph"><div class="pa-card-head">' +
-      '<span class="pa-card-title">Insider flow</span>' +
-      '<span class="pa-card-hint">Forms 3/4/5</span></div>' +
-      '<div class="pa-ph-body">A sector net buy/sell would sit here — insider transactions are ingested ' +
-      "per company, not aggregated by sector yet. To be defined; no figures shown.</div></div>"
-    );
+  // Insider flow (Forms 3/4/5) — REAL (P6a). A DERIVED sector rollup of REPORTED open-market (P/S)
+  // transactions from GET /v1/sectors/{group}/insider-flow. Net is deliberately value-neutral in
+  // color (direction is carried by a word, not green/red — the honesty stance). No data reads N/A,
+  // never $0. See docs/delivery/sector-insider-flow.
+  function signedUsd(v) {
+    if (v > 0) return "+" + P.fmt.usd(v);
+    if (v < 0) return "−" + P.fmt.usd(Math.abs(v)); // U+2212 minus, matches the shifts card
+    return P.fmt.usd(0); // exactly flat (buys offset sells) — an honest 0, data present
+  }
+  function insiderCardHtml() {
+    var g = selectedGroup();
+    var f = state.insiderFlow[g];
+    var head =
+      '<div class="pa-card-head"><span class="pa-card-title">Insider flow</span>' +
+      '<span class="pa-card-hint">Forms 3/4/5' +
+      (f && f.has_data && f.window && f.window.label ? " · " + P.esc(f.window.label) : "") +
+      "</span></div>";
+    var body;
+    if (!f) {
+      body = P.states.loading({ title: "Loading insider flow", note: "" });
+    } else if (!f.has_data) {
+      // Honest N/A — no in-window open-market activity ingested (or the fetch failed). Never $0.
+      body =
+        '<div class="pa-empty-inline">No insider data for this sector yet — no open-market ' +
+        "purchases or sales ingested in the recent window. Shown as N/A, not zero.</div>";
+    } else {
+      // Direction is carried by an arrow glyph + word (same value-neutral vocabulary as the shifts
+      // card) and a SINGLE accent tint on the figure -- one accent for BOTH directions, never a
+      // green/red good-bad code (honesty: net buy/sell is not a verdict).
+      var arrow = f.net > 0 ? "↑" : f.net < 0 ? "↓" : "→";
+      var dir = f.net > 0 ? "Net buying" : f.net < 0 ? "Net selling" : "Net flat";
+      var excl =
+        f.excluded_no_price_count > 0
+          ? " · " + f.excluded_no_price_count + " with no reported price excluded"
+          : "";
+      body =
+        '<div class="pa-insider-net"><span class="pa-insider-figure">' +
+        P.esc(arrow + " " + signedUsd(f.net)) +
+        '</span><span class="pa-insider-dir">' + P.esc(dir) + "</span></div>" +
+        '<div class="pa-insider-break">Buys ' + P.esc(P.fmt.usd(f.buys)) +
+        " · Sells " + P.esc(P.fmt.usd(f.sells)) + "</div>" +
+        '<div class="pa-insider-counts">' +
+        f.transaction_count + " transaction" + (f.transaction_count === 1 ? "" : "s") +
+        " · " + f.filer_count + " filer" + (f.filer_count === 1 ? "" : "s") +
+        P.esc(excl) + "</div>";
+    }
+    // The foot carries the derived/lag/scope framing inline; the payload's full caveats sit in the
+    // title (hover) so the honesty rails travel with the card without inventing new UI.
+    var caveatsTitle = f && f.caveats && f.caveats.length ? P.esc(f.caveats.join("\n")) : "";
+    var foot =
+      '<div class="pa-insider-foot"' + (caveatsTitle ? ' title="' + caveatsTitle + '"' : "") +
+      ">Derived rollup · reporting lag · open-market P/S only</div>";
+    return '<div class="pa-card pa-insider">' + head + body + foot + "</div>";
   }
 
   // ---- 03 Distribution: one card, [This theme] / [All metrics] toggle over the dispersion spreads ----

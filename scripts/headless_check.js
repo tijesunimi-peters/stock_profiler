@@ -53,14 +53,19 @@ const PAGES = process.env.PAGES
       // "Paper terminal" Sector Analytics app v2 -- now canonical at /sectors (M2 swap; the URLs below
       // exercise the app at its canonical route, incl. deep-links, post-swap). 3-col shell (960px cap +
       // right rail: snapshot + "What's moving" Track-2 feed PLACEHOLDER + how-to-read) and the Sector
-      // view's three scopes: 01 scorecard (F4 delta color kept) + peer strip + geo/insider PLACEHOLDERS;
-      // 02 decomposition (full-width, open by default) + biggest shifts; 03 Distribution (this-theme /
-      // all-metric toggle). The decomp shot re-points the decomposition by clicking a tile; the
-      // dist-all shot flips the Distribution scope to All metrics; the qual shot opens the Track-2 stub.
+      // view's three scopes: 01 scorecard (F4 delta color kept) + peer strip + the geo PLACEHOLDER +
+      // the REAL Insider-flow card (P6a: derived open-market net buy/sell); 02 decomposition
+      // (full-width, open by default) + biggest shifts; 03 Distribution (this-theme / all-metric
+      // toggle). The decomp shot re-points the decomposition by clicking a tile; the dist-all shot
+      // flips the Distribution scope to All metrics; the qual shot opens the Track-2 stub.
       ["sectorapp", "/sectors"],
       ["sectorapp-decomp", "/sectors"],
       ["sectorapp-dist-all", "/sectors"],
       ["sectorapp-qual", "/sectors"],
+      // P6a: the Insider-flow card's honest N/A state -- group "28" is seeded with NO insider-flow
+      // row, so the card must read "No insider data" (never $0). A populated card shows on the
+      // default-sector `sectorapp` shot above.
+      ["sectorapp-insider-na", "/sectors?group=28"],
       // v2 P5: the Filings view (5th) -- an on-site theme DRILL reached from the Qualitative
       // "Filings →" stub. Honest Track-2 placeholder LAYOUT: breadcrumb + coverage/direction chip +
       // count + representative-language + form-type tabs + paginated list, all "to be defined"; the

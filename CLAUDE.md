@@ -170,6 +170,8 @@ src/secfin/
     sqlite_sector_theme_score_repository.py  # sector_theme_scores + sector_theme_components tables
     sector_company_repository.py        # abstract per-company-in-sector value read (Company view)
     sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
+    sector_insider_flow_repository.py   # abstract per-SIC-group trailing-window insider net buy/sell
+    sqlite_sector_insider_flow_repository.py  # sector_insider_flow table (P6a)
     backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
     restore.py                 # hydrate a fresh volume from a backup
   analytical/                  # analytical-layer BATCH jobs (DuckDB over the SQLite file) --
@@ -178,6 +180,9 @@ src/secfin/
     sector_theme_scores.py     # composite 0-100 theme scores from metric_distributions ->
                                #   sector_theme_scores (+ decomposition). PURE-PYTHON (input
                                #   already aggregated, no DuckDB); still offline, never live path
+    sector_insider_flow.py     # P6a: per-SIC-group trailing-window OPEN-MARKET (P/S) insider net
+                               #   buy/sell over insider_transactions JOIN company_profiles ->
+                               #   sector_insider_flow. DuckDB batch, offline, never live path
   ingest/
     downloader.py              # resumable download of SEC bulk zips
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
@@ -306,6 +311,11 @@ python -m secfin.analytical.peer_ranks        # DuckDB: percentile/z-score -> me
 # (materialized by peer_distribution) and z-scores per-sector medians across sectors. PURE PYTHON
 # (no DuckDB / no analytical extra) -- still an offline batch, never the live path.
 python -m secfin.analytical.sector_theme_scores
+
+# sector insider flow (Sector Analytics v2, P6a): per-SIC-group trailing-window OPEN-MARKET (P/S)
+# insider net buy/sell over the cached insider_transactions JOIN company_profiles. DuckDB batch
+# (needs the analytical extra), offline, never the live path. Writes sector_insider_flow.
+python -m secfin.analytical.sector_insider_flow --window-days 90   # --as-of YYYY-MM-DD (default today)
 ```
 
 Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must

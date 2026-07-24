@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     secfin_peer_sic_digits: int = 2
     secfin_peer_min_size: int = 5
 
+    # Sector insider flow (Sector Analytics v2 P6a, analytical/sector_insider_flow.py). Default
+    # trailing-window length (days), anchored on transaction_date, for the per-SIC-group open-market
+    # net buy/sell rollup. The batch's --window-days overrides it; the endpoint reports this default
+    # in its window on a no-data (N/A) response.
+    secfin_insider_flow_window_days: int = 90
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).

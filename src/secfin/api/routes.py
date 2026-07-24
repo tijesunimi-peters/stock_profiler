@@ -56,6 +56,7 @@ from secfin.normalize.schema import (
     FiscalPeriod,
     HoldingsSnapshot,
     IncomeStatementViz,
+    InsiderFlowWindow,
     InsiderTransaction,
     MetricFrequency,
     MetricHistory,
@@ -65,6 +66,7 @@ from secfin.normalize.schema import (
     PeerRank,
     RawFact,
     SectorDupont,
+    SectorInsiderFlow,
     SectorLifecyclePoint,
     SectorLifecycleSeries,
     SectorList,
@@ -115,6 +117,7 @@ from secfin.storage.metric_rank_repository import MetricRankRepository
 from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
+from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
     SectorLifecycleRepository,
     SectorLifecycleRow,
@@ -314,6 +317,10 @@ def get_sector_lifecycle_repo(request: Request) -> SectorLifecycleRepository:
 
 def get_sector_theme_score_repo(request: Request) -> SectorThemeScoreRepository:
     return request.app.state.sector_theme_score_repo
+
+
+def get_sector_insider_flow_repo(request: Request) -> SectorInsiderFlowRepository:
+    return request.app.state.sector_insider_flow_repo
 
 
 def get_sector_company_repo(request: Request) -> SectorCompanyRepository:
@@ -1672,6 +1679,81 @@ async def get_sector_lifecycle(
         peer_basis=f"SIC {settings.secfin_peer_sic_digits}-digit",
         caveats=_LIFECYCLE_CAVEATS,
         points=points,
+    )
+
+
+# ---- Sector insider flow (Sector Analytics v2, P6a) --------------------------------------------
+#
+# A trailing-window OPEN-MARKET net buy/sell for one SIC group -- a DERIVED aggregate summing
+# individual companies' REPORTED Forms 3/4/5 transactions (P=buy, S=sell only). Because the
+# underlying data is reported transactions (NOT a 13F snapshot diff), the caveats are reporting-lag
+# + coverage, NOT the 13F long-only/45-day derived-trade caveat. A group with no in-window open-mkt
+# activity returns has_data=False (net/buys/sells null) -- an honest N/A, never a fabricated zero.
+_INSIDER_FLOW_CAVEATS = [
+    "Sector net buy/sell is a DERIVED aggregate -- it sums individual companies' reported insider "
+    "transactions; it is not a single reported figure.",
+    "Forms 3/4/5 are filed after the transaction date, so the most recent window may be incomplete "
+    "(reporting lag).",
+    "Aggregated only over the companies and filings ingested so far -- not every filer in the "
+    "sector is covered.",
+    "Open-market purchases (P) and sales (S) only -- grants, option exercises, gifts, and "
+    "tax-withholding dispositions are excluded.",
+]
+
+
+@public_router.get(
+    "/sectors/{group}/insider-flow",
+    response_model=SectorInsiderFlow,
+    tags=["Sectors"],
+    summary="One sector's trailing-window open-market insider net buy/sell (Forms 3/4/5)",
+)
+async def get_sector_insider_flow(
+    group: str,
+    repo: SectorInsiderFlowRepository = Depends(get_sector_insider_flow_repo),
+) -> SectorInsiderFlow:
+    """One SIC group's trailing-window OPEN-MARKET insider net buy/sell.
+
+    A **precomputed** read of `sector_insider_flow` (the analytical/sector_insider_flow.py batch is
+    the sole producer; the live path never runs the DuckDB aggregation -- see CLAUDE.md guard 6).
+    A DERIVED aggregate that sums individual companies' **reported** Forms 3/4/5 open-market
+    transactions (P=buy, S=sell); it is NOT a 13F snapshot diff, so it carries reporting-lag +
+    coverage caveats, never the 13F long-only/45-day caveat. `has_data=False` (net/buys/sells null)
+    is a valid, honest result -- the group has no in-window open-market activity ingested yet, shown
+    as N/A, never a zero net-flow.
+    """
+    peer_basis = f"SIC {settings.secfin_peer_sic_digits}-digit"
+    row = repo.get(group)
+    if row is None:
+        return SectorInsiderFlow(
+            group=group,
+            group_label=sic2_label(group),
+            peer_basis=peer_basis,
+            window=InsiderFlowWindow(days=settings.secfin_insider_flow_window_days, label=""),
+            caveats=_INSIDER_FLOW_CAVEATS,
+        )
+    return SectorInsiderFlow(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=peer_basis,
+        as_of=row.as_of,
+        window=InsiderFlowWindow(
+            days=row.window_days,
+            start=row.window_start,
+            end=row.window_end,
+            label=f"last {row.window_days} days",
+        ),
+        unit=row.unit,
+        net=row.net,
+        buys=row.buys,
+        sells=row.sells,
+        buy_count=row.buy_count,
+        sell_count=row.sell_count,
+        transaction_count=row.buy_count + row.sell_count,
+        filer_count=row.filer_count,
+        company_count=row.company_count,
+        excluded_no_price_count=row.excluded_no_price_count,
+        has_data=True,
+        caveats=_INSIDER_FLOW_CAVEATS,
     )
 
 

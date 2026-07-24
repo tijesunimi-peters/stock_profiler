@@ -410,6 +410,10 @@ class InsiderTransaction(BaseModel):
     shares: float | None = None
     price_per_share: float | None = None
     acquired_disposed: Literal["A", "D"] | None = None
+    # Raw SEC transaction code (P=open-market buy, S=open-market sale, M=option exercise,
+    # A=grant/award, G=gift, F=tax withholding, ...). Kept a free str, not a Literal: the code
+    # set is open-ended and we never want to drop an unknown code on parse. None for holdings.
+    transaction_code: str | None = None
     ownership_type: Literal["direct", "indirect"] | None = None
     shares_owned_after: float | None = None
     form_type: str | None = None
@@ -962,6 +966,49 @@ class SectorThemeScoreList(BaseModel):
     normalization: str  # one-line statement of how the 0-100 score is built (guide 00 §9a)
     caveats: list[str] = Field(default_factory=list)
     sectors: list[SectorThemeScores] = Field(default_factory=list)
+
+
+# --- Sector insider flow (Sector Analytics v2, P6a) -------------------------------------------
+#
+# A trailing-window OPEN-MARKET net buy/sell for one SIC group, a DERIVED aggregate summing
+# individual companies' REPORTED Forms 3/4/5 transactions (P=buy, S=sell only). NOT a 13F snapshot
+# diff -- so it carries reporting-lag + coverage caveats, never the 13F long-only/45-day caveat.
+# `has_data=False` (net/buys/sells None) is an honest N/A, never a fabricated zero net-flow.
+
+
+class InsiderFlowWindow(BaseModel):
+    """The trailing window a sector flow was computed over."""
+
+    days: int  # window length
+    start: str | None = None  # as_of - days (None when has_data is False)
+    end: str | None = None  # == as_of (None when has_data is False)
+    label: str  # human label, e.g. "last 90 days"
+
+
+class SectorInsiderFlow(BaseModel):
+    """One SIC group's trailing-window open-market insider net buy/sell.
+
+    Empty (`has_data=False`, net/buys/sells None) is a valid, honest result: the group has no
+    in-window open-market activity ingested yet -- rendered as N/A, never a zero."""
+
+    group: str  # SIC prefix, e.g. "35"
+    group_label: str
+    peer_basis: str  # e.g. "SIC 2-digit"
+    as_of: str | None = None  # window anchor date, None when has_data is False
+    window: InsiderFlowWindow
+    unit: str = "USD"
+    net: float | None = None  # buys - sells, None when has_data is False
+    buys: float | None = None
+    sells: float | None = None
+    buy_count: int = 0
+    sell_count: int = 0
+    transaction_count: int = 0  # buy_count + sell_count
+    filer_count: int = 0  # distinct reporting owners
+    company_count: int = 0  # distinct issuers contributing
+    excluded_no_price_count: int = 0  # in-window P/S rows dropped from the sums for missing price
+    has_data: bool = False
+    derived: bool = True  # always True -- a derived aggregate rollup, labeled as such
+    caveats: list[str] = Field(default_factory=list)
 
 
 # --- Per-company value list within a sector (Sector Analytics app, Company view / altitude 2) -----

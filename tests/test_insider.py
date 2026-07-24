@@ -76,9 +76,41 @@ def test_form4_parses_nonderivative_and_derivative_transactions():
     assert tax_withholding.shares == 16238
     assert tax_withholding.price_per_share == 296.42
     assert tax_withholding.acquired_disposed == "D"
+    # transaction_code is the raw SEC code -- here an RSU vest (M) and a tax-withholding (F),
+    # neither of which is an open-market P/S. See test_transaction_code_captures_open_market.
+    assert rsu_vest.transaction_code == "M"
+    assert tax_withholding.transaction_code == "F"
 
     assert derivative.security_title == "Restricted Stock Unit"
     assert derivative.shares == 30104
+    assert derivative.transaction_code == "M"
+
+
+def test_transaction_code_captures_open_market_and_distinguishes_it():
+    # A real open-market sale (code S) -- the BRKA/DaVita joint Form 4 -- must parse to
+    # transaction_code == "S", distinct from the AAPL vest/tax M/F above. This is what the sector
+    # insider-flow rollup keys on to isolate open-market activity (acquired_disposed alone can't).
+    records = parse_ownership_xml(
+        _read("brka_form4_davita_joint.xml"),
+        form_type="4",
+        filed="2026-05-15",
+        accession="0000950123-26-000001",
+    )
+    assert records, "expected at least one transaction row"
+    assert all(r.transaction_code == "S" for r in records)
+    assert all(r.acquired_disposed == "D" for r in records)
+
+
+def test_form3_holding_has_no_transaction_code():
+    # Holdings rows have no transactionCoding element -> transaction_code stays None.
+    records = parse_ownership_xml(
+        _read("aapl_form3_newstead.xml"),
+        form_type="3",
+        filed="2026-03-06",
+        accession="0001780525-26-000003",
+    )
+    assert records and all(r.is_holding for r in records)
+    assert all(r.transaction_code is None for r in records)
 
 
 def test_form3_parses_holdings_with_no_transaction_amounts():
