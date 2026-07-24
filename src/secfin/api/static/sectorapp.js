@@ -1,4 +1,5 @@
-/* Sector Analytics app — /sector-analytics. A "paper terminal" single-page app (a from-scratch
+/* Sector Analytics app — canonical at /sectors (M2 swap 2026-07-24; /sector-analytics 301s in).
+ * A "paper terminal" single-page app (a from-scratch
  * redesign; docs/REDESIGN_SECTOR_APP.md) over the shipped Track-1 endpoints. Phase 1 = the app
  * shell + the Sector view on real data; Company/Compare/Qualitative are inert stubs (later phases).
  *
@@ -279,10 +280,10 @@
   function sidebarHtml() {
     var nav = [
       ["Company hub", "/company/AAPL"], ["Compare", "/compare"], ["Screen", "/screen"],
-      ["Coverage", "/coverage"], ["Sector analytics", "/sector-analytics"],
+      ["Coverage", "/coverage"], ["Sectors", "/sectors"],
     ];
     var links = nav.map(function (n) {
-      var active = n[1] === "/sector-analytics";
+      var active = n[1] === "/sectors";
       return '<a class="pa-side-link' + (active ? " active" : "") + '" href="' + n[1] + '">' + P.esc(n[0]) + "</a>";
     }).join("");
     return (

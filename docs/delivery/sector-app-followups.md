@@ -190,4 +190,24 @@ then a Compare fidelity check, then Qualitative.
 
 ---
 
+## Company view: focal selector not scoped to the selected sector (Company/P2; found in M2 swap manual verify, 2026-07-24)
+
+- **Symptom (operator, M2 routing-swap manual verification):** in the Company view, the company
+  selector isn't scoped to the sector chosen in the sector dropdown — you can land a filer whose SIC
+  peer group differs from the currently-selected sector.
+- **Root cause:** by-design, pre-existing since the Company view (`sector-v2-company`/P2). The focal is
+  chosen by a **global** "place a filer in its own SIC peers" search (topbar `#paSearchInput`), a
+  dot-click within the focal's group, or the default resolver (first-alpha in the largest sector) —
+  and the peer dot-cloud is scoped to the **focal's own SIC peer group**, which `sectorapp.js:470`
+  explicitly notes "can differ from the dropdown sector". `sectorapp.js:1091–1127`. **Not** touched by
+  M2 (routing/nav only).
+- **Scope:** frontend-only, Company view. A fix would scope the focal picker (and/or default resolver)
+  to the selected sector's companies — decide whether search stays global with a "different sector"
+  affordance, or is filtered to the sector. Weigh against the intended "place ANY filer in its peers"
+  design at pick-up.
+- **Status:** deferred (operator elected to log this during the M2 acceptance; accepted M2 as-is). Not
+  blocking any Pn / the M2 swap.
+
+---
+
 *Add further deferred items below as they arise, with their source (phase + how found) and date.*

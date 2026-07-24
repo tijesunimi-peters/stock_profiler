@@ -296,10 +296,16 @@ async def data_coverage() -> FileResponse:
 
 
 @app.get("/sector-analytics", include_in_schema=False)
-async def sector_analytics_app() -> FileResponse:
-    # The "paper terminal" single-page Sector Analytics app (docs/REDESIGN_SECTOR_APP.md). Served
-    # alongside the existing /sectors page until the 4-view app is complete + approved.
-    return FileResponse(STATIC_DIR / "sector-analytics.html")
+async def sector_analytics_redirect(request: Request) -> RedirectResponse:
+    # M2 routing swap (2026-07-24, ROADMAP_SECTOR_MIGRATION.md): /sectors is canonical now and
+    # serves the v2 Sector Analytics app. Keep existing /sector-analytics links + bookmarks working
+    # by 301-redirecting, carrying the raw query string through (?group=&view=&symbol=&a=&b=) -- the
+    # app honors those params identically at the new URL. Use request.url.query (already-encoded) so
+    # nothing is dropped or double-encoded.
+    target = "/sectors"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(target, status_code=301)
 
 
 @app.get("/robots.txt", include_in_schema=False)
@@ -347,7 +353,17 @@ async def screening() -> FileResponse:
 
 @app.get("/sectors", include_in_schema=False)
 async def sector_overview() -> FileResponse:
-    # The sector overview shell; sectors.js calls /v1/sectors + /v1/sectors/{group}.
+    # M2 routing swap (2026-07-24, ROADMAP_SECTOR_MIGRATION.md): /sectors is the canonical sector
+    # page and now serves the v2 Sector Analytics app (#app + sectorapp.js). The pre-v2
+    # single-sector page lives on at /sectors-legacy for one release (rollback), then M3 deletes it.
+    return FileResponse(STATIC_DIR / "sector-analytics.html")
+
+
+@app.get("/sectors-legacy", include_in_schema=False)
+async def sector_overview_legacy() -> FileResponse:
+    # Rollback path for the M2 swap: the pre-v2 single-sector page (sectors.js/html/css calling
+    # /v1/sectors + /v1/sectors/{group}), kept reachable for one release before M3 deletes it. Plain
+    # always-on route, no env gate.
     return FileResponse(STATIC_DIR / "sectors.html")
 
 
