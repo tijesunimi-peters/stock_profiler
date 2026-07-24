@@ -1,21 +1,25 @@
 # Active delivery task
-task_slug: sector-v2-company
-request: v2 P2 — Company view. Evolve the shipped /sector-analytics Company view (altitude 2) to the v2 prototype: per-metric sparklines (REAL, click-to-expand 8-quarter trend), segment & geographic mix (PLACEHOLDER — ASC 280 not ingested), filing history & flags (dates real per CIK; restatement/material-weakness flags Track-2 PLACEHOLDER). Carry F1/F2/F3 follow-ups. Keep F4 color + honesty rails. Frontend-only, branch off master (stacked on sector-v2). See docs/ROADMAP_SECTOR_APP_V2.md P2.
-branch: sector-v2-company (off sector-v2; stacked)
-next_stage: done
+task_slug: sector-v2-compare
+request: v2 P3 — Compare view. Evolve the shipped /sector-analytics Compare view (altitude 3, sector-vs-sector) to the v2 prototype: add the 7-theme composite PROFILE RADAR (real, from theme scores) + an overlaid IQR SPREAD per metric (real, from spreads); keep the v1 paired theme bars + metric-median cards, NO winner declared, A/B color = categorical identity only (A=--accent, B=--pa-b). Keep honesty rails (N/A never 0, no fabricated data, no favorability color). Frontend-only, branch off sector-v2-company (stacked). See docs/ROADMAP_SECTOR_APP_V2.md P3 + docs/design/sector-app-prototype-v2/ altitude 3.
+branch: not yet branched
+next_stage: pm
 qa_cycles: 0
 updated: 2026-07-24
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md (scope gate PASS; Track 1, frontend-only; filing history = placeholder per operator)
-- [x] 2 Principal Architect   -> 2-architecture.md (FRONTEND-ONLY confirmed; reuse P.sparkline + P.trendChart; .spark/.trend-* need local CSS; 2 placeholder cards; real context pill)
-- [x] 3 Backend  — N/A (FRONTEND-ONLY confirmed by architect)
-- [x] 3 Frontend             -> 3-implementation.md (sparklines + click-to-expand trend REAL; 2 placeholder cards; real context pill; .spark/.trend-* local CSS; AAPL added to fixture group; pytest 511, e2e PASS + eyeballed)
-- [x] 4 QA Tester             -> 4-qa.md (PASS at QA-tester level; pytest 511, e2e PASS, AAPL history 11 pts w/ 2 gaps never 0, placeholders honest, no favorability color. PENDING operator hands-on manual UI verification.)
+- [ ] 1 Product Manager       -> 1-brief.md
+- [ ] 2 Principal Architect   -> 2-architecture.md
+- [ ] 3 Backend  — expected N/A (P3 is frontend-only per the roadmap; architect confirms)
+- [ ] 3 Frontend
+- [ ] 4 QA Tester             -> 4-qa.md
 
 ## Notes / open loops
-- P0/P1 (sector-v2) committed (438c79e) on branch sector-v2 off master. P2 stacks on it.
-- v2 P2 reference: docs/ROADMAP_SECTOR_APP_V2.md P2 + docs/design/sector-app-prototype-v2/ altitude 2.
-- Classifications: sparklines = Track-1 REAL; segment/geo mix = Track-1 not ingested -> PLACEHOLDER;
-  filing dates = REAL where available; restatement/material-weakness flags = Track-2 -> PLACEHOLDER.
-- Keep F4 delta-color deviation; NO fabricated data; N/A never 0.
+- v2 sequence: P0/P1 (sector-v2, committed 438c79e) -> P2 (sector-v2-company, committed 2301754) -> P3.
+- P3 branch off sector-v2-company (stacked); frontend-only per the roadmap.
+- v2 P3 reference: docs/ROADMAP_SECTOR_APP_V2.md P3 + docs/design/sector-app-prototype-v2/ altitude 3
+  (prototype.dc.html ~396-469: profile radar `compare.radar` + overlaid IQR `m.spread` per metric-card).
+- Classifications: profile radar = Track-1 REAL (theme scores); overlaid IQR spread = Track-1 REAL
+  (spreads). Keep A/B categorical color (NOT favorability); no winner; N/A never 0.
+- Reuse: state.themeScores (per-theme 0-100), state.spreads[group] (per-metric medians+IQR). No new endpoint.
+- INTERACTIVE view -> operator hands-on manual UI verification gate applies (like P1/P2).
+- `/deliver resume` will start here at the PM stage (reconstruct from this file + the roadmap/prototype).
