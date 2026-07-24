@@ -170,4 +170,24 @@ then a Compare fidelity check, then Qualitative.
 
 ---
 
+## URL does not reflect the active view on view-switch (shell/P0; found in v2 P3 manual verify, 2026-07-24)
+
+- **Symptom (operator, v2 P3 Compare manual verification):** switching views via the view rail
+  (Sector / Company / Compare / Qualitative) updates the rendered view but **does not update the URL**
+  — so the address bar keeps `?view=…` from the initial load (or none), deep-linking the current view
+  and browser back/forward don't reflect view state.
+- **Root cause:** `setView(v)` (`sectorapp.js`) sets `state.view` + `renderApp()` but never writes to
+  the URL (no `history.pushState`/`replaceState`, no `params.set('view', …)`). The `?view=` param is
+  read **only** on initial load (`sectorapp.js:49`). Pre-existing since the P0 shell; **not** introduced
+  by P3.
+- **Scope:** shell-wide (affects every view switch, not just Compare). Frontend-only. Fix = have
+  `setView` (and the focal/compare selectors that change deep-link state) `replaceState`/`pushState`
+  the querystring so the URL round-trips. Weigh `pushState` (back-button cycles views) vs
+  `replaceState` (no history spam) at pick-up — likely `replaceState` for view, and keep the existing
+  `?a=&b=&symbol=` params in sync.
+- **Status:** deferred (operator elected to add the Compare right rail now instead; this URL-sync item
+  logged for a later shell iteration). Not blocking any Pn.
+
+---
+
 *Add further deferred items below as they arise, with their source (phase + how found) and date.*

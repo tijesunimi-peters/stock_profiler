@@ -246,9 +246,9 @@
       titleHtml() +
       controlBarHtml() +
       // v2 shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
-      // Company: focal filer snapshot + how-to). Compare/Qualitative have no rail (own phases).
+      // Company: focal filer snapshot + how-to; Compare: A/B snapshot + how-to). Qualitative has no rail.
       '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div>' +
-      (state.view === "sector" || (state.view === "company" && state.focalCik) ? rightRailHtml() : "") + "</div>" +
+      (state.view === "sector" || (state.view === "company" && state.focalCik) || state.view === "compare" ? rightRailHtml() : "") + "</div>" +
       "</main></div></div>";
     renderViewport();
     wireShell();
@@ -356,6 +356,7 @@
 
   function rightRailHtml() {
     if (state.view === "company") return companyRailHtml();
+    if (state.view === "compare") return compareRailHtml();
     var sel = selectedSector();
     var name = sel ? sel.group_label : "—";
     // Snapshot k/v rows — real where we have it (filers · period), honest placeholder for coverage;
@@ -388,6 +389,33 @@
       '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
       '<div class="pa-rr-how">Scores are a position vs other sectors, not a good/bad or buy verdict. ' +
       "Every number is traceable — click a score to open its decomposition.</div>" +
+      '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
+      "</aside>"
+    );
+  }
+
+  // Compare view right rail: a snapshot of the A/B pair (names + filer counts + period, all real) plus
+  // a how-to-read note that carries the no-winner / A-B-identity / profile-not-rank honesty rails.
+  function compareRailHtml() {
+    var A = state.compareA, B = state.compareB;
+    var ca = sectorPeerCount(A), cb = sectorPeerCount(B);
+    function row(kHtml, v, ph) {
+      return '<div class="pa-snap-row"><span class="pa-snap-k">' + kHtml + "</span>" +
+        '<span class="pa-snap-v' + (ph ? " pa-ph" : "") + '">' + P.esc(v) + "</span></div>";
+    }
+    var rows =
+      row('<span class="pa-cmp-swatch pa-cmp-idA"></span>Sector A', A ? sectorLabel(A) : "—", !A) +
+      row('<span class="pa-cmp-swatch pa-cmp-idB"></span>Sector B', B ? sectorLabel(B) : "—", !B) +
+      row("Filers", (ca != null ? ca : "—") + " vs " + (cb != null ? cb : "—"), ca == null && cb == null) +
+      row("Period", state.sectors ? "FY" + state.sectors.fiscal_year : "—", !state.sectors);
+    return (
+      '<aside class="pa-rrail">' +
+      '<div class="pa-rr-card"><div class="pa-rr-label">Compare snapshot</div>' +
+      '<div class="pa-snap">' + rows + "</div></div>" +
+      '<div class="pa-rr-card"><div class="pa-rr-label">How to read this</div>' +
+      '<div class="pa-rr-how">Bars are true-length and <strong>no winner is declared</strong> — A and B mark ' +
+      "identity only, not good vs bad. The radar is a profile (shape across themes), not a rank: neither " +
+      "larger area is better. Scores are a position vs other sectors (50 = average).</div>" +
       '<a class="pa-rr-method" href="/methodology">Methodology ↗</a></div>' +
       "</aside>"
     );
@@ -1234,7 +1262,7 @@
         ? '<div class="pa-card"><div class="pa-empty-inline">Pick a sector to compare.</div></div>'
         : !B
         ? '<div class="pa-card"><div class="pa-empty-inline">Pick a second sector (B) to compare against ' + P.esc(sectorLabel(A)) + '.</div></div>'
-        : cmpThemesHtml(A, B) + cmpMetricsHtml(A, B));
+        : cmpThemesHtml(A, B) + cmpRadarHtml(A, B) + cmpMetricsHtml(A, B));
     wireCompareView();
   }
 
@@ -1279,30 +1307,41 @@
     );
   }
 
-  // --- theme spine: paired composite + per-theme true-length bars ---
-  function cmpThemesHtml(A, B) {
-    if (!state.themeScores) return '<div class="pa-card">' + P.states.loading({ title: "Loading theme scores", note: "" }) + "</div>";
+  // Shared theme model for the Compare scorecard AND the profile radar: the canonical theme order
+  // (first appearance across A then B — both come pre-ordered by the API), a per-(entry, theme)
+  // scored-score accessor that returns null (never a fabricated 0) for a deferred/absent theme, and
+  // the derived composite. One source so the radar's numbers + axis order match the scorecard exactly.
+  function cmpThemeModel(A, B) {
     var eA = themeEntry(A), eB = themeEntry(B);
-    if (!eA && !eB) {
-      return '<div class="pa-card">' + P.states.empty({
-        title: "No composite theme scores for either sector",
-        copy: "Neither sector has materialized theme scores yet — sparse coverage, not zero.",
-      }) + "</div>";
-    }
-    // canonical theme order = first appearance across A then B (both come pre-ordered by the API)
     var order = [], seen = {};
     [eA, eB].forEach(function (e) { (e && e.themes || []).forEach(function (t) { if (!seen[t.theme]) { seen[t.theme] = 1; order.push(t); } }); });
-
+    function scoreOf(entry, themeKey) {
+      var t = themeOf(entry, themeKey);
+      return t && t.scored ? t.score : null; // deferred / absent -> null, never 0
+    }
     // derived overall composite = mean of each sector's SCORED theme scores (labeled, not a rank)
     function composite(e) {
       var sc = scoredThemes(e).map(function (t) { return t.score; }).filter(function (v) { return v !== null && v !== undefined; });
       return sc.length ? Math.round(sc.reduce(function (a, b) { return a + b; }, 0) / sc.length) : null;
     }
-    var rows = cmpScoreRow("Composite", composite(eA), composite(eB), A, B, true);
-    rows += order.map(function (ref) {
-      var tA = themeOf(eA, ref.theme), tB = themeOf(eB, ref.theme);
-      var sA = tA && tA.scored ? tA.score : null;
-      var sB = tB && tB.scored ? tB.score : null;
+    return { eA: eA, eB: eB, order: order, scoreOf: scoreOf, composite: composite };
+  }
+
+  // --- theme spine: paired composite + per-theme true-length bars ---
+  function cmpThemesHtml(A, B) {
+    if (!state.themeScores) return '<div class="pa-card">' + P.states.loading({ title: "Loading theme scores", note: "" }) + "</div>";
+    var m = cmpThemeModel(A, B);
+    if (!m.eA && !m.eB) {
+      return '<div class="pa-card">' + P.states.empty({
+        title: "No composite theme scores for either sector",
+        copy: "Neither sector has materialized theme scores yet — sparse coverage, not zero.",
+      }) + "</div>";
+    }
+    var rows = cmpScoreRow("Composite", m.composite(m.eA), m.composite(m.eB), A, B, true);
+    rows += m.order.map(function (ref) {
+      var tA = themeOf(m.eA, ref.theme), tB = themeOf(m.eB, ref.theme);
+      var sA = m.scoreOf(m.eA, ref.theme);
+      var sB = m.scoreOf(m.eB, ref.theme);
       // a theme that is a deferred marker for whichever sector has it, or absent for both -> not scored
       var deferred = (tA && !tA.scored) || (tB && !tB.scored);
       if (sA === null && sB === null) return cmpNotScoredRow(ref.theme_label, deferred);
@@ -1389,7 +1428,7 @@
       }
       return (
         '<div class="pa-cmp-card"><div class="pa-cmp-card-head"><span class="pa-cmp-metric">' + P.esc(label) + "</span>" + lib + "</div>" +
-        line("A", av) + line("B", bv) + "</div>"
+        line("A", av) + line("B", bv) + cmpSpreadStripHtml(a, b) + "</div>"
       );
     }).join("");
     return (
@@ -1397,6 +1436,105 @@
       '<div class="pa-cmp-cards">' + cards + "</div>" +
       '<div class="pa-cmp-cardcap">Sector medians · bar length normalized per metric · value shown raw · A ' +
       P.esc(sectorLabel(A)) + " vs B " + P.esc(sectorLabel(B)) + " · N/A where a sector has no comparable median</div></section>"
+    );
+  }
+
+  // --- composite profile radar: 7-theme shape, A vs B overlaid (categorical identity only) ---
+  // A = solid stroke / filled vertices; B = dashed stroke / hollow vertices — identity carried by a
+  // non-color channel too, so it never rests on color alone. A theme a sector doesn't score is NEVER
+  // plotted at radius 0: that sector's polygon is drawn through only its scored vertices (chording
+  // across the gap); an axis unscored by BOTH sectors is labelled "n/s".
+  function cmpTruncLabel(s) {
+    s = String(s || "");
+    return s.length > 15 ? s.slice(0, 14).replace(/\s+\S*$/, "") + "…" : s;
+  }
+  function cmpRadarSvg(model) {
+    var axes = model.order, n = axes.length;
+    var sa = axes.map(function (t) { return model.scoreOf(model.eA, t.theme); });
+    var sb = axes.map(function (t) { return model.scoreOf(model.eB, t.theme); });
+    var W = 340, H = 272, cx = W / 2, cy = 134, R = 86;
+    function ang(i) { return (-90 + i * 360 / n) * Math.PI / 180; }
+    function pt(i, frac) { var a = ang(i); return [cx + R * frac * Math.cos(a), cy + R * frac * Math.sin(a)]; }
+    function poly(frac) { return axes.map(function (_, i) { return pt(i, frac).map(function (v) { return v.toFixed(1); }).join(","); }).join(" "); }
+    // concentric heptagon rings at 25/50/75/100; the 50 ring (cross-sector average) is emphasized
+    var rings = [0.25, 0.5, 0.75, 1].map(function (f) {
+      return '<polygon class="pa-radar-ring' + (f === 0.5 ? " avg" : "") + '" points="' + poly(f) + '"></polygon>';
+    }).join("");
+    var spokes = axes.map(function (_, i) { var p = pt(i, 1); return '<line class="pa-radar-spoke" x1="' + cx + '" y1="' + cy + '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '"></line>'; }).join("");
+    var labels = axes.map(function (t, i) {
+      var p = pt(i, 1.17), c = Math.cos(ang(i));
+      var anchor = Math.abs(c) < 0.34 ? "middle" : (c > 0 ? "start" : "end");
+      var ns = (sa[i] === null && sb[i] === null);
+      return '<text class="pa-radar-axlabel' + (ns ? " ns" : "") + '" x="' + p[0].toFixed(1) + '" y="' + (p[1] + 3).toFixed(1) + '" text-anchor="' + anchor + '">' + P.esc(cmpTruncLabel(t.theme_label)) + (ns ? " · n/s" : "") + "</text>";
+    }).join("");
+    function series(scores, cls, dashed) {
+      var idx = [];
+      scores.forEach(function (s, i) { if (s !== null && s !== undefined) idx.push(i); });
+      var dots = idx.map(function (i) { var p = pt(i, scores[i] / 100); return '<circle class="pa-radar-vtx ' + cls + '" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="2.6"></circle>'; }).join("");
+      if (idx.length < 3) return dots; // degenerate (< 3 scored themes) -> dots only, no polygon
+      var pts = idx.map(function (i) { return pt(i, scores[i] / 100).map(function (v) { return v.toFixed(1); }).join(","); }).join(" ");
+      return '<polygon class="pa-radar-poly ' + cls + (dashed ? " dashed" : "") + '" points="' + pts + '"></polygon>' + dots;
+    }
+    var avgP = pt(0, 0.5);
+    return (
+      '<svg class="pa-radar" viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Composite profile radar across ' + n + ' themes, sector A versus sector B">' +
+      rings + spokes +
+      '<text class="pa-radar-avg" x="' + (avgP[0] + 4).toFixed(1) + '" y="' + (avgP[1] - 2).toFixed(1) + '">50 avg</text>' +
+      series(sa, "pa-cmp-idA", false) + series(sb, "pa-cmp-idB", true) + labels +
+      "</svg>"
+    );
+  }
+  function cmpRadarHtml(A, B) {
+    if (!state.themeScores) return "";
+    var m = cmpThemeModel(A, B);
+    if (!m.eA && !m.eB) return ""; // scorecard already shows the honest empty state
+    return (
+      '<section class="pa-cmp-radar-sec"><div class="pa-cmp-radar-card">' +
+      '<div class="pa-cmp-radar-viz">' +
+      '<div class="pa-cmp-radar-head"><span class="pa-cmp-radar-title">Composite profile</span>' +
+      '<span class="pa-cmp-radar-sub">shape across ' + m.order.length + " themes</span></div>" +
+      cmpRadarSvg(m) + "</div>" +
+      '<div class="pa-cmp-radar-read"><div class="pa-cmp-radar-read-h">Reading the shape</div>' +
+      "Each polygon traces a sector's composite scores across the " + m.order.length +
+      " themes (per-theme gaps are in the table above). Where the shapes pull apart the sectors are structurally unlike; where they overlap they behave similarly. " +
+      '<strong>Neither larger area means "better"</strong> — this is profile, not rank. ' +
+      'A <span class="pa-cmp-swatch pa-cmp-idA"></span> solid · B <span class="pa-cmp-swatch pa-cmp-idB"></span> dashed carry identity only. An axis marked <em>n/s</em> isn\'t scored for a sector — never plotted as 0.' +
+      "</div></div></section>"
+    );
+  }
+
+  // --- overlaid per-metric IQR strip (inside each metric-median card): A upper lane, B lower lane,
+  // one shared axis = combined [min, max] of both sectors so the bands are comparable within the card.
+  // Band = p25..p75, tick = median. A side with no distribution draws no band (never a zero-width band
+  // at the origin). No flipped fill for inverted metrics — direction stays the text "lower is better". ---
+  function cmpSpreadStripHtml(a, b) {
+    function ok(r) { return r && r.p25 != null && r.p75 != null && r.min != null && r.max != null && r.median != null; }
+    var haveA = ok(a), haveB = ok(b);
+    if (!haveA && !haveB) return ""; // card's median bars already carry the N/A
+    var mins = [], maxs = [];
+    if (haveA) { mins.push(a.min); maxs.push(a.max); }
+    if (haveB) { mins.push(b.min); maxs.push(b.max); }
+    var lo = Math.min.apply(null, mins), hi = Math.max.apply(null, maxs);
+    if (!(hi > lo)) { var e = Math.abs(lo) || 1; lo -= e * 0.5; hi += e * 0.5; }
+    var VB = 280;
+    function fx(v) { return ((v - lo) / (hi - lo) * VB).toFixed(2); }
+    function lane(row, have, cls, dashed) {
+      if (!have) return '<span class="pa-iqr-none">no distribution</span>';
+      var x25 = parseFloat(fx(row.p25)), x75 = parseFloat(fx(row.p75));
+      var w = Math.max(1.2, x75 - x25).toFixed(2);
+      return (
+        '<svg class="pa-iqr ' + cls + '" viewBox="0 0 ' + VB + ' 14" preserveAspectRatio="none" aria-hidden="true">' +
+        '<line class="pa-iqr-whisk" x1="' + fx(row.min) + '" y1="7" x2="' + fx(row.max) + '" y2="7"></line>' +
+        '<rect class="pa-iqr-band' + (dashed ? " dashed" : "") + '" x="' + x25.toFixed(2) + '" y="2" width="' + w + '" height="10" rx="1.5"></rect>' +
+        '<line class="pa-iqr-med" x1="' + fx(row.median) + '" y1="0" x2="' + fx(row.median) + '" y2="14"></line>' +
+        "</svg>"
+      );
+    }
+    return (
+      '<div class="pa-iqr-wrap" role="img" aria-label="Interquartile spread — sector A upper, sector B lower, on a shared axis">' +
+      '<div class="pa-iqr-row"><span class="pa-iqr-lab pa-cmp-idA">A</span>' + lane(a, haveA, "pa-cmp-idA", false) + "</div>" +
+      '<div class="pa-iqr-row"><span class="pa-iqr-lab pa-cmp-idB">B</span>' + lane(b, haveB, "pa-cmp-idB", true) + "</div>" +
+      '<div class="pa-iqr-cap">band = IQR · tick = median</div></div>'
     );
   }
 
