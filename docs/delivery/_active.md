@@ -1,20 +1,46 @@
 # Active delivery task
 task_slug: sector-geographic-mix
 request: P6b — Sector Geographic revenue mix (ASC 280). Make the Sector-view "Geographic revenue mix" placeholder real: a per-sector domestic/international (and possibly regional) revenue split, derived by aggregating companies' ASC 280 geographic segment disclosures. UNLIKE P6a, this is a NEW dimensional-XBRL ingest — companyfacts carries NO dimensional facts, so segment/geographic revenue must come from a new source (SEC Financial Statement Data Sets, whose num.txt has a segment axis — the path the existing Phase-3 spike prototyped). Backend-led: new dimensional ingest → normalize geography buckets (domestic vs international; principled, documented) → per-SIC-sector revenue-weighted rollup into a materialized store → new GET /v1/sectors/{group}/geographic-mix (never DuckDB on the request path) → wire sectorapp.js geoPlaceholderHtml() to the real endpoint. Honesty: sector mix is a DERIVED, revenue-weighted rollup (label it); geography labels are inconsistent across filers (US/International vs country vs region) so the domestic/international normalization is the moat AND the risk; carry coverage caveats (not every filer discloses ASC 280 geography); a sector with no data reads N/A, never 0. Track-1 only. See ROADMAP_SECTOR_APP_V2.md P6 + ROADMAP_DATA_DEPTH.md Phase 3 (dimensional-data SPIKE).
-branch: not yet branched (branch off master when the engineer stage begins; P6a merged to master @ b0a12ba)
-next_stage: pm
+branch: sector-geographic-mix (off master @ b0a12ba)
+next_stage: done
 qa_cycles: 0
-updated: 2026-07-24
+updated: 2026-07-25
 
 ## Progress
-- [ ] 1 Product Manager       -> 1-brief.md
-- [ ] 2 Principal Architect   -> 2-architecture.md
-- [ ] 3 Backend  (NEW dimensional ingest + geography normalization + per-sector rollup batch + /v1/sectors/{group}/geographic-mix + materialized store; DuckDB batch-only, single-writer)
-- [ ] 3 Frontend (wire the Sector-view "Geographic revenue mix" card in sectorapp.js to the real endpoint; replace placeholder; N/A never 0)
-- [ ] 4 QA Tester             -> 4-qa.md
-- [ ] 4b Operator interactive acceptance -> 4b-manual-verification.md
+- [x] 1 Product Manager       -> 1-brief.md
+- [x] 2 Principal Architect   -> 2-architecture.md
+- [x] 3 Backend  -> 3-implementation.md (DERA ingest + segment_geography classifier + pure-Python rollup + GET /v1/sectors/{group}/geographic-mix + 2 stores; 551 pass / ruff clean / live-verified)
+- [x] 3 Frontend -> 3-implementation.md (appended) (geoCardHtml value-neutral stacked bar + N/A-never-0%; e2e geo shots errors=0, both states eyeballed)
+- [x] 4 QA Tester             -> 4-qa.md (PASS; all 18 ACs green via real-pipeline + live-endpoint + e2e)
+- [x] 4b Operator interactive acceptance -> 4b-manual-verification.md  (CONFIRMED — accepted hands-on 2026-07-25; check 7 dark-theme N/A, app is single-theme)
 
 ## Notes / open loops
+- **✅ TASK DONE (2026-07-25): operator CONFIRMED — accepted hands-on.** Full-stack P6b complete on
+  branch `sector-geographic-mix` (NOT yet committed/merged — /deliver never commits). QA PASS + the
+  operator's interactive `4b` sign-off (checks 1–6, 8–10 ✅; check 7 dark-theme N/A — the Sector app
+  is single-theme). **Operator's next options:** (1) commit the branch (engineer stage commits only
+  when asked); (2) request a deploy via `/devops-engineer` (separate, operator-gated — needs the DERA
+  ingest + rollup run on prod so sectors populate instead of N/A: `dimensional_backfill --quarter …
+  && sector_geographic_mix`); or (3) start the next task with a fresh `/deliver <request>`.
+- **QA GATE REACHED (2026-07-25): PASS — pending operator manual UI verification.** Full-stack build
+  complete on branch `sector-geographic-mix`. All 18 ACs green via automation (551 pytest pass, ruff
+  clean), a real-pipeline drive (`dimensional_backfill` + `sector_geographic_mix` CLIs → materialized
+  store → live endpoint), and the e2e render check (geo card shots errors=0, both populated + N/A
+  states eyeballed; value-neutral stacked bar + hatched "other"; N/A never 0%). The only e2e FAIL is
+  the **pre-existing** Company-view 502 on synthetic cik 900001 (no-network sandbox; identical to
+  P6a's QA record) — unrelated to this change. **Next: operator runs `4b-manual-verification.md`**
+  (interactive/data-driven view → blocking hands-on gate). A confirmed sign-off → next_stage: done
+  and unlocks a deploy *request* (DevOps is separate + operator-gated; /deliver never deploys).
+  Op follow-up for prod: run `dimensional_backfill --quarter … && sector_geographic_mix` so prod
+  sectors populate instead of reading N/A (an ops step, not a build gate).
+- **NOTE (git):** during QA an accidental `git stash -u`/`drop` removed the new untracked files; they
+  were fully recovered from the dropped stash commit `d7d6cc2e`^3 and re-verified (551 pass). Tree is
+  intact; new files staged, edits unstaged — harmless (pipeline doesn't commit).
+- **PM DONE (2026-07-24).** Spike-decision gate RESOLVED in `1-brief.md` (spike executed →
+  recommends source (a) DERA; operator's "build P6b" IS the go-decision). **Two forks locked by
+  operator (2026-07-24):** (1) **Geography = binary Domestic (US) vs International + `other/unclassified`**
+  (not a region set); (2) **Ingest scope = bounded, latest annual (~4–8 DERA quarterly ZIPs)** — NOT
+  whole-market/full-history (that's a later ops call, not this build's gate). Source = (a) DERA.
 - **This is P6b — the SECOND of the two P6 data-depth spikes.** Operator decision (2026-07-24): build
   **both** P6 spikes, **Insider flow first** (P6a — ✅ DONE, merged + pushed @ master b0a12ba), then
   **Geographic revenue mix** as this follow-on `/deliver`. Source of truth: `ROADMAP_SECTOR_APP_V2.md`

@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     # in its window on a no-data (N/A) response.
     secfin_insider_flow_window_days: int = 90
 
+    # Sector geographic mix (Sector Analytics v2 P6b, analytical/sector_geographic_mix.py). A
+    # company enters the revenue-weighted rollup only if its ASC 280 geographic members sum to its
+    # consolidated revenue within this relative tolerance -- otherwise its disclosure is treated as
+    # inconsistent (mixed hierarchy levels; see docs/SPIKE_DIMENSIONAL.md) and it is EXCLUDED and
+    # counted, never silently mis-summed. 1% by default.
+    secfin_geo_mix_reconcile_tolerance: float = 0.01
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).

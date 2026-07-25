@@ -801,6 +801,44 @@ def _seed_sector_insider_flow(db_path: str) -> None:
         repo.close()
 
 
+# Precomputed sector geographic mix (Sector Analytics v2, P6b) -- seeded directly (bypassing the DERA
+# ingest + pure-Python rollup) so the offline/e2e profile can render the real Geographic-mix card
+# without downloading DERA ZIPs. Group "28" is deliberately left OUT so the card's honest N/A state
+# (never 0%) is exercised alongside populated sectors. Values are synthetic reported USD; the shares
+# are computed by the endpoint from the amounts.
+_GEO_MIX_DEMO = [
+    # group, domestic, international, other, company_count, in_scope, excluded, revenue_covered_share
+    ("35", 620_000_000.0, 350_000_000.0, 30_000_000.0, 9, 14, 2, 0.71),   # US-heavy tech
+    ("73", 410_000_000.0, 540_000_000.0, 50_000_000.0, 7, 12, 1, 0.63),   # internationally exposed
+    ("60", 900_000_000.0, 60_000_000.0, 40_000_000.0, 5, 8, 0, 0.55),     # domestic-dominant finance
+    # group "28": intentionally NO row -> honest N/A card, never a fabricated 0%.
+]
+
+
+def _seed_sector_geographic_mix(db_path: str) -> None:
+    from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRow
+    from secfin.storage.sqlite_sector_geographic_mix_repository import (
+        SQLiteSectorGeographicMixRepository,
+    )
+
+    fiscal_year, as_of = 2025, "2026-07-24"
+    rows = [
+        SectorGeographicMixRow(
+            peer_group=g, fiscal_year=fiscal_year, domestic=dom, international=intl, other=oth,
+            unit="USD", company_count=cc, companies_in_scope=scope,
+            excluded_unreconciled_count=excl, revenue_covered_share=cov, as_of=as_of,
+        )
+        for g, dom, intl, oth, cc, scope, excl, cov in _GEO_MIX_DEMO
+    ]
+    repo = SQLiteSectorGeographicMixRepository(db_path)
+    try:
+        repo.clear()
+        repo.bulk_upsert(rows)
+        print(f"seeded sector geographic mix: {len(rows)} groups (28 left empty -> N/A card)")
+    finally:
+        repo.close()
+
+
 # Per-company metric_values + profiles + ranks for the Sector Analytics app's COMPANY view (the peer
 # dot-cloud). Seeds a SIC-35 group of synthetic filers (ciks 900001..900010) so the dot-plots +
 # search/?symbol= + dot-click render. The e2e uses ?symbol=900001 (a RAW CIK -> resolves directly,
@@ -902,6 +940,7 @@ def main() -> None:
     _seed_sector_lifecycle(db_path)
     _seed_sector_theme_scores(db_path)
     _seed_sector_insider_flow(db_path)
+    _seed_sector_geographic_mix(db_path)
     _seed_app_company_group(db_path)
     _seed_api_key(db_path)
     print(f"seed complete -> {db_path}")

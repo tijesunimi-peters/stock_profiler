@@ -42,6 +42,9 @@ from secfin.storage.sqlite_metric_rank_repository import SQLiteMetricRankReposit
 from secfin.storage.sqlite_metric_value_repository import SQLiteMetricValueRepository
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
 from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRepository
+from secfin.storage.sqlite_sector_geographic_mix_repository import (
+    SQLiteSectorGeographicMixRepository,
+)
 from secfin.storage.sqlite_sector_insider_flow_repository import (
     SQLiteSectorInsiderFlowRepository,
 )
@@ -171,6 +174,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # path shape; analytical/sector_insider_flow.py is the sole writer, so the live API never
     # touches DuckDB. See routes.get_sector_insider_flow_repo.
     app.state.sector_insider_flow_repo = SQLiteSectorInsiderFlowRepository(settings.secfin_db_path)
+    # Precomputed sector geographic mix (Sector Analytics v2, P6b) -- same read-only-on-the-serving-
+    # path shape; analytical/sector_geographic_mix.py is the sole writer (a pure-Python offline batch
+    # over dimensional_geo_facts -- no DuckDB on this path at all). See
+    # routes.get_sector_geographic_mix_repo.
+    app.state.sector_geographic_mix_repo = SQLiteSectorGeographicMixRepository(
+        settings.secfin_db_path
+    )
     try:
         yield
     finally:
@@ -189,6 +199,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.sector_theme_score_repo.close()
         app.state.sector_company_repo.close()
         app.state.sector_insider_flow_repo.close()
+        app.state.sector_geographic_mix_repo.close()
 
 
 app = FastAPI(

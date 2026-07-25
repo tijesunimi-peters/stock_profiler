@@ -31,6 +31,16 @@ logger = logging.getLogger(__name__)
 BULK_COMPANYFACTS_URL = "https://www.sec.gov/Archives/edgar/daily-index/xbrl/companyfacts.zip"
 BULK_SUBMISSIONS_URL = "https://www.sec.gov/Archives/edgar/daily-index/bulkdata/submissions.zip"
 
+# SEC "Financial Statement Data Sets" (DERA) quarterly ZIPs -- one per calendar quarter of filings.
+# Their `num.txt` carries a `segments` (Axis=Member;) column, the ONLY structured source of
+# dimensional (segment/geography) facts (companyfacts has none). Used by the bounded dimensional
+# geographic-revenue ingest (ingest/dimensional_backfill.py, Sector Analytics v2 P6b). Confirmed live
+# in the Phase-3 spike (docs/SPIKE_DIMENSIONAL.md, 2026-07-16); re-check the path before long-term
+# reliance, like the other bulk URLs above.
+DERA_FSDS_URL_TEMPLATE = (
+    "https://www.sec.gov/files/dera/data/financial-statement-data-sets/{quarter}.zip"
+)
+
 _CHUNK_SIZE = 1024 * 1024  # 1 MiB
 
 
@@ -136,6 +146,19 @@ def download_bulk_files(data_dir: Path | str) -> dict[str, Path]:
     download_resumable(BULK_COMPANYFACTS_URL, companyfacts_dest)
     download_resumable(BULK_SUBMISSIONS_URL, submissions_dest)
     return {"companyfacts": companyfacts_dest, "submissions": submissions_dest}
+
+
+def download_dera_quarter(data_dir: Path | str, quarter: str) -> Path:
+    """Fetch one DERA Financial Statement Data Sets quarterly ZIP (e.g. `quarter="2025q4"`).
+
+    Reuses `download_resumable` -- so the required User-Agent guard applies here too -- and lands the
+    file in `data_dir` under its canonical name. `quarter` is the SEC's `{yyyy}q{n}` form; it is
+    lower-cased so callers can pass "2025Q4" or "2025q4".
+    """
+    quarter = quarter.lower()
+    data_dir = Path(data_dir)
+    dest = data_dir / f"{quarter}.zip"
+    return download_resumable(DERA_FSDS_URL_TEMPLATE.format(quarter=quarter), dest)
 
 
 def download_submissions_file(data_dir: Path | str) -> Path:
