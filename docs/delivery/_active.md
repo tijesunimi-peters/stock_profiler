@@ -15,8 +15,9 @@ updated: 2026-07-25
 - [x] 4b Operator interactive acceptance -> 4b-manual-verification.md  (CONFIRMED — accepted hands-on 2026-07-25; check 7 dark-theme N/A, app is single-theme)
 
 ## Notes / open loops
-- **✅ TASK DONE (2026-07-25): operator CONFIRMED — accepted hands-on.** Full-stack P6b complete on
-  branch `sector-geographic-mix` (NOT yet committed/merged — /deliver never commits). QA PASS + the
+- **✅ TASK DONE (2026-07-25): operator CONFIRMED — merged + pushed.** Full-stack P6b complete on
+  branch `sector-geographic-mix`, committed (b856500), merged no-ff to master (c199102) and pushed
+  to origin (419a1f4..c199102) at operator request. QA PASS + the
   operator's interactive `4b` sign-off (checks 1–6, 8–10 ✅; check 7 dark-theme N/A — the Sector app
   is single-theme). **Operator's next options:** (1) commit the branch (engineer stage commits only
   when asked); (2) request a deploy via `/devops-engineer` (separate, operator-gated — needs the DERA
