@@ -223,6 +223,24 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-insider-counts { margin-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
 .pa-insider-foot { margin-top: 11px; padding-top: 8px; border-top: 1px solid var(--rule); font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); }
 
+/* Geographic revenue mix (real, P6b): a value-neutral stacked bar — geography is not good/bad, so
+   ONE accent family (domestic solid, international lightened) + a hatched "other/unclassified"
+   (a residual, SHOWN not hidden), never a green/red code. Direction is category, not verdict. */
+.pa-geo-bar { display: flex; width: 100%; height: 14px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); background: var(--bg-tint); }
+.pa-geo-seg { height: 100%; display: block; }
+.pa-geo-seg.dom, .pa-geo-sw.dom { background: var(--accent); }
+.pa-geo-seg.intl, .pa-geo-sw.intl { background: color-mix(in srgb, var(--accent) 38%, var(--bg-card)); }
+/* "other" is a hatch, not a flat fill — it reads as "unclassified / residual", not a real place. */
+.pa-geo-seg.oth, .pa-geo-sw.oth { background-color: var(--bg-tint); background-image: repeating-linear-gradient(45deg, var(--mono-muted) 0 1.5px, transparent 1.5px 4.5px); }
+.pa-geo-legend { margin-top: 12px; display: flex; flex-direction: column; gap: 5px; }
+.pa-geo-leg-row { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--ink-soft); }
+.pa-geo-sw { width: 11px; height: 11px; border-radius: 3px; flex: none; border: 1px solid var(--border); }
+.pa-geo-leg-label { flex: 1; min-width: 0; }
+.pa-geo-leg-pct { font-family: var(--font-mono); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; width: 60px; text-align: right; }
+.pa-geo-leg-amt { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); font-variant-numeric: tabular-nums; width: 70px; text-align: right; }
+.pa-geo-cov { margin-top: 10px; font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+.pa-geo-foot { margin-top: 11px; padding-top: 8px; border-top: 1px solid var(--rule); font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); }
+
 /* ---- Company view (altitude 2): peer dot-plots ---- */
 .pa-co-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; flex-wrap: wrap; }
 .pa-co-crumbwrap { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; min-width: 0; }

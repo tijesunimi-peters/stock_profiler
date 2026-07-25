@@ -1177,3 +1177,58 @@ screen at realistic frames scale (~8,000 companies × 6 concepts) and found plai
 orders of magnitude below the 561K-row 13F inversion that justified DuckDB there. See
 `ARCHITECTURE.md` §3b for the full numbers. `screen()` is plain SQLite; no new `duckdb`
 dependency on the screening path.
+
+## Dimensional geographic revenue (ASC 280) — Sector geographic mix (P6b)
+
+The Sector-view **Geographic revenue mix** card shows a per-sector domestic / international /
+other revenue split. This is the first productized use of **dimensional** XBRL, and it comes from
+a **different source** than everything above: companyfacts carries only non-dimensional
+(consolidated) facts — **~half of a 10-K's numeric facts are dimensional and invisible to it**
+(measured in `docs/SPIKE_DIMENSIONAL.md`). So geographic revenue is ingested from the SEC
+**Financial Statement Data Sets (DERA)** quarterly ZIPs, whose `num.txt` carries a `segments`
+(`Axis=Member;`) column (source (a) in the spike; source (b), per-filing XBRL parsing, was assessed
+and rejected as unnecessary).
+
+**Scope (deliberately bounded, operator decision 2026-07-24):** only the ASC 280 **geography** axis
+on a **revenue** tag, only the **annual** (10-K, `qtrs=4`) current-year column, only a few recent
+quarters — NOT a whole-market/full-history backfill (a later ops decision), NOT business-segment /
+product axes, NOT the general `dimensional_facts` store from the spike sketch. The coverage figure
++ caveats carry the gaps honestly.
+
+**Ingest** (`ingest/dimensional_backfill.py` → `dimensional_geo_facts`, single writer): reuses the
+canonical **`revenue` candidate tags** (`mapping.py` — tag variance persists in dimensions, so one
+revenue tag is chosen per filing and never mixed); keeps geography rows qualified `OperatingSegments`
+or unqualified and **drops eliminations/corporate reconciling items** (naive aggregation would
+double-count); keeps the **consolidated total** (non-dimensional) row per filing as the
+reconciliation denominator. Geography **members are stored raw** (identifier as filed) — provenance
+preserved; the bucketing is applied later.
+
+**Normalization — the moat** (`normalize/segment_geography.classify_geography_member`): the ONE
+documented, principled place that reduces inconsistent filer geography labels to
+**domestic / international / other**. Binary (US vs non-US) by decision — regions collapse into
+`international`; ambiguous US-inclusive rollups ("Americas", "North America") and non-geographic
+residuals go to `other`, which is **shown, never dropped**. US matching is **exact** (never a
+substring test — "AUSTRALIA" contains "US"). Unrecognized members fall to `other` on purpose;
+over-claiming a bucket would be dishonest. Deliberately separate from `geography.classify_location`
+(that buckets a 13F filer's HQ, a different domain).
+
+**Rollup** (`analytical/sector_geographic_mix.py` → `sector_geographic_mix`, **pure Python**, no
+DuckDB): per company, take the latest-accession 10-K, bucket its members, and **reconcile-or-exclude**
+— a company whose geography members don't sum to its consolidated revenue within
+`secfin_geo_mix_reconcile_tolerance` (1%) is **excluded and counted** (`excluded_unreconciled_count`),
+never mis-summed (the spike's mixed-hierarchy blocker). Covered companies' domestic / international /
+other **dollars** are summed per SIC group (revenue-weighted: larger companies weigh more; dollar
+sum, not average-of-ratios). **Coverage** is recorded honestly for a bounded ingest:
+`companies_in_scope` = companies in the group we ingested a consolidated total for (not the whole
+universe we didn't); `revenue_covered_share` = covered / in-scope consolidated revenue.
+
+**Serving** (`GET /v1/sectors/{group}/geographic-mix`): a precomputed point read of
+`sector_geographic_mix` (the batch is the sole producer; no DuckDB / no aggregation on the request
+path). Returns the domestic/international/other **amounts and shares** (which sum to 1 — `other`
+included), the coverage figures, and the caveats. A group with no covered company returns
+`has_data=false` (mix `null`) — an **honest N/A, never a fabricated 0%/100% split**. The figure is a
+**DERIVED, revenue-weighted aggregate** and is labeled as such.
+
+**Not a canonical concept.** This reuses the existing `revenue` mapping rather than adding a new
+canonical concept, so `mapping.py` is unchanged; the normalization that earns its keep here is the
+geography **bucketing** (`segment_geography.py`), documented above.

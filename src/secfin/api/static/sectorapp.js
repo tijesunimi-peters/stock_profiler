@@ -34,6 +34,7 @@
     spreads: {}, // group -> /sectors/{group}/spreads
     lifecycle: {}, // group -> /sectors/{group}/lifecycle
     insiderFlow: {}, // group -> /sectors/{group}/insider-flow (real; P6a). {_error:true} on failure
+    geoMix: {}, // group -> /sectors/{group}/geographic-mix (real; P6b). {has_data:false,_error:true} on fail
     // Company view (altitude 2) state
     focalCik: null, // the focal filer's CIK (int); identity for the Company view
     focalName: null,
@@ -205,6 +206,12 @@
         .then(function (r) { state.insiderFlow[g] = r; if (selectedGroup() === g) renderApp(); })
         // a fetch failure caches an honest error marker so we render "No insider data", never $0
         .catch(function () { state.insiderFlow[g] = { has_data: false, _error: true }; });
+    }
+    if (!state.geoMix[g]) {
+      P.api("/sectors/" + encodeURIComponent(g) + "/geographic-mix")
+        .then(function (r) { state.geoMix[g] = r; if (selectedGroup() === g) renderApp(); })
+        // a fetch failure caches an honest error marker so we render "No geo data", never 0%
+        .catch(function () { state.geoMix[g] = { has_data: false, _error: true }; });
     }
   }
 
@@ -996,19 +1003,76 @@
   // ---- 01's geo/insider row: two placeholder cards (Track-1 not aggregated at the sector level) ----
 
   function geoInsiderRowHtml() {
-    // Geo stays a placeholder (P6b); Insider flow is real (P6a).
-    return '<div class="pa-drill-row pa-geo-row">' + geoPlaceholderHtml() + insiderCardHtml() + "</div>";
+    // Both cards are real now: Geographic mix (P6b) + Insider flow (P6a).
+    return '<div class="pa-drill-row pa-geo-row">' + geoCardHtml() + insiderCardHtml() + "</div>";
   }
-  // Geographic revenue mix (ASC 280 segment disclosure) — Track 1 but NOT ingested/aggregated at the
-  // sector level. Honest placeholder; NO fabricated segment/percentage.
-  function geoPlaceholderHtml() {
+  // Geographic revenue mix (ASC 280) — REAL (P6b). A DERIVED, revenue-weighted sector rollup of
+  // companies' reported ASC 280 geographic revenue from GET /v1/sectors/{group}/geographic-mix.
+  // Value-neutral: geography is not good/bad, so the split uses ONE accent family (domestic solid,
+  // international lightened) + a hatched "other/unclassified" (a residual, SHOWN not hidden), never a
+  // green/red code. No data reads N/A, never 0%. See docs/delivery/sector-geographic-mix.
+  function geoSegHtml(cls, share) {
+    return '<span class="pa-geo-seg ' + cls + '" style="width:' +
+      Math.max(0, share * 100).toFixed(2) + '%"></span>';
+  }
+  function geoLegendRow(cls, label, share, amount) {
     return (
-      '<div class="pa-card pa-geo pa-ph"><div class="pa-card-head">' +
-      '<span class="pa-card-title">Geographic revenue mix</span>' +
-      '<span class="pa-card-hint">ASC 280 segment disclosure · asset-weighted</span></div>' +
-      '<div class="pa-ph-body">A domestic/international revenue split would sit here — segment (ASC 280) ' +
-      "data isn’t ingested or aggregated by sector yet. To be defined; no figures shown.</div></div>"
+      '<div class="pa-geo-leg-row"><span class="pa-geo-sw ' + cls + '"></span>' +
+      '<span class="pa-geo-leg-label">' + P.esc(label) + "</span>" +
+      '<span class="pa-geo-leg-pct">' + P.esc(P.fmt.pct(share)) + "</span>" +
+      '<span class="pa-geo-leg-amt">' + P.esc(P.fmt.usd(amount)) + "</span></div>"
     );
+  }
+  function geoCardHtml() {
+    var g = selectedGroup();
+    var d = state.geoMix[g];
+    var cov =
+      d && d.has_data && typeof d.revenue_covered_share === "number"
+        ? " · " + P.fmt.pct(d.revenue_covered_share) + " of revenue covered"
+        : "";
+    var head =
+      '<div class="pa-card-head"><span class="pa-card-title">Geographic revenue mix</span>' +
+      '<span class="pa-card-hint">ASC 280' +
+      (d && d.has_data && d.fiscal_year ? " · FY" + d.fiscal_year : "") + cov + "</span></div>";
+    var body;
+    if (!d) {
+      body = P.states.loading({ title: "Loading geographic mix", note: "" });
+    } else if (!d.has_data || !d.mix) {
+      // Honest N/A — no company in the sector disclosed usable ASC 280 geography (or the fetch
+      // failed). A domestic/international split we don't have is N/A, never a fabricated 0%.
+      body =
+        '<div class="pa-empty-inline">No ASC 280 geographic disclosure ingested for this sector ' +
+        "yet — no domestic/international split to show. Shown as N/A, not zero.</div>";
+    } else {
+      var m = d.mix;
+      var bar =
+        '<div class="pa-geo-bar" role="img" aria-label="Domestic ' + P.esc(P.fmt.pct(m.domestic_share)) +
+        ", international " + P.esc(P.fmt.pct(m.international_share)) +
+        ", other " + P.esc(P.fmt.pct(m.other_share)) + '">' +
+        geoSegHtml("dom", m.domestic_share) +
+        geoSegHtml("intl", m.international_share) +
+        geoSegHtml("oth", m.other_share) + "</div>";
+      var legend =
+        '<div class="pa-geo-legend">' +
+        geoLegendRow("dom", "Domestic (US)", m.domestic_share, m.domestic) +
+        geoLegendRow("intl", "International", m.international_share, m.international) +
+        geoLegendRow("oth", "Other / unclassified", m.other_share, m.other) + "</div>";
+      var excl =
+        d.excluded_unreconciled_count > 0
+          ? " · " + d.excluded_unreconciled_count + " excluded (unreconciled)"
+          : "";
+      var sub =
+        '<div class="pa-geo-cov">' + d.company_count + " of " + d.companies_in_scope +
+        " compan" + (d.companies_in_scope === 1 ? "y" : "ies") + " disclosed" + P.esc(excl) + "</div>";
+      body = bar + legend + sub;
+    }
+    // The foot carries the derived/revenue-weighted framing inline; the payload's full caveats
+    // (coverage / normalization / reconciliation) sit in the title (hover), like the insider card.
+    var caveatsTitle = d && d.caveats && d.caveats.length ? P.esc(d.caveats.join("\n")) : "";
+    var foot =
+      '<div class="pa-geo-foot"' + (caveatsTitle ? ' title="' + caveatsTitle + '"' : "") +
+      ">Derived rollup · revenue-weighted · ASC 280</div>";
+    return '<div class="pa-card pa-geo">' + head + body + foot + "</div>";
   }
   // Insider flow (Forms 3/4/5) — REAL (P6a). A DERIVED sector rollup of REPORTED open-market (P/S)
   // transactions from GET /v1/sectors/{group}/insider-flow. Net is deliberately value-neutral in

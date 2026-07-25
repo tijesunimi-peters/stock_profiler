@@ -54,6 +54,7 @@ from secfin.normalize.schema import (
     CompanyPeerRanks,
     CusipResolutionStats,
     FiscalPeriod,
+    GeographicMixBuckets,
     HoldingsSnapshot,
     IncomeStatementViz,
     InsiderFlowWindow,
@@ -66,6 +67,7 @@ from secfin.normalize.schema import (
     PeerRank,
     RawFact,
     SectorDupont,
+    SectorGeographicMix,
     SectorInsiderFlow,
     SectorLifecyclePoint,
     SectorLifecycleSeries,
@@ -117,6 +119,7 @@ from secfin.storage.metric_rank_repository import MetricRankRepository
 from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
+from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRepository
 from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
     SectorLifecycleRepository,
@@ -321,6 +324,10 @@ def get_sector_theme_score_repo(request: Request) -> SectorThemeScoreRepository:
 
 def get_sector_insider_flow_repo(request: Request) -> SectorInsiderFlowRepository:
     return request.app.state.sector_insider_flow_repo
+
+
+def get_sector_geographic_mix_repo(request: Request) -> SectorGeographicMixRepository:
+    return request.app.state.sector_geographic_mix_repo
 
 
 def get_sector_company_repo(request: Request) -> SectorCompanyRepository:
@@ -1754,6 +1761,82 @@ async def get_sector_insider_flow(
         excluded_no_price_count=row.excluded_no_price_count,
         has_data=True,
         caveats=_INSIDER_FLOW_CAVEATS,
+    )
+
+
+# ---- Sector geographic revenue mix (ASC 280) (Sector Analytics v2, P6b) -------------------------
+#
+# A revenue-weighted domestic / international / other split for one SIC group -- a DERIVED aggregate
+# summing individual companies' reported ASC 280 geographic revenue (a NEW dimensional-XBRL source;
+# companyfacts has no dimensional facts). The domestic/international bucketing is a documented
+# normalization of inconsistent filer geography labels, not a filer-reported field. A group with no
+# company disclosing usable ASC 280 geography returns has_data=False (mix null) -- an honest N/A,
+# never a fabricated 0%/100% split.
+_GEO_MIX_CAVEATS = [
+    "Sector geographic mix is a DERIVED, revenue-weighted aggregate -- it sums individual "
+    "companies' reported ASC 280 geographic revenue; it is not a single reported figure.",
+    "Coverage varies: not every company discloses ASC 280 geography, so the split reflects only "
+    "the companies that did (see the coverage figure).",
+    "Domestic vs international is our documented normalization of inconsistent filer geography "
+    "labels (some report by country, some by region), not a field the filer reports directly.",
+    "Companies whose geographic revenue does not reconcile to their consolidated revenue are "
+    "excluded and counted, never mis-summed.",
+]
+
+
+@public_router.get(
+    "/sectors/{group}/geographic-mix",
+    response_model=SectorGeographicMix,
+    tags=["Sectors"],
+    summary="One sector's revenue-weighted domestic/international geographic mix (ASC 280)",
+)
+async def get_sector_geographic_mix(
+    group: str,
+    repo: SectorGeographicMixRepository = Depends(get_sector_geographic_mix_repo),
+) -> SectorGeographicMix:
+    """One SIC group's revenue-weighted domestic / international / other revenue mix.
+
+    A **precomputed** read of `sector_geographic_mix` (the analytical/sector_geographic_mix.py batch
+    is the sole producer; the live path never runs the aggregation -- CLAUDE.md guardrail 6). A
+    DERIVED aggregate that sums individual companies' reported ASC 280 geographic revenue; the
+    domestic/international bucketing is a documented normalization (normalize/segment_geography.py),
+    not a filer-reported field. `has_data=False` (mix null) is a valid, honest result -- no company
+    in the group disclosed usable ASC 280 geography, shown as N/A, never a fabricated 0%/100% split.
+    """
+    peer_basis = f"SIC {settings.secfin_peer_sic_digits}-digit"
+    row = repo.get(group)
+    if row is None:
+        return SectorGeographicMix(
+            group=group,
+            group_label=sic2_label(group),
+            peer_basis=peer_basis,
+            caveats=_GEO_MIX_CAVEATS,
+        )
+    total = row.domestic + row.international + row.other
+    # total > 0 is guaranteed by the batch (a covered company has a reconciled, positive geo total),
+    # but guard anyway so a degenerate row can never divide-by-zero on the request path.
+    mix = GeographicMixBuckets(
+        domestic=row.domestic,
+        international=row.international,
+        other=row.other,
+        domestic_share=(row.domestic / total) if total > 0 else 0.0,
+        international_share=(row.international / total) if total > 0 else 0.0,
+        other_share=(row.other / total) if total > 0 else 0.0,
+    )
+    return SectorGeographicMix(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=peer_basis,
+        fiscal_year=row.fiscal_year,
+        unit=row.unit,
+        has_data=True,
+        mix=mix,
+        company_count=row.company_count,
+        companies_in_scope=row.companies_in_scope,
+        excluded_unreconciled_count=row.excluded_unreconciled_count,
+        revenue_covered_share=row.revenue_covered_share,
+        as_of=row.as_of,
+        caveats=_GEO_MIX_CAVEATS,
     )
 
 

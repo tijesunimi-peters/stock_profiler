@@ -141,6 +141,9 @@ src/secfin/
                                #   exact-name-match, conservative)
     geography.py               # US_STATE_CODES + classify_location: bucket a 13F filer's raw
                                #   stateOrCountry (state/other/unknown) for the holder choropleth
+    segment_geography.py       # classify_geography_member: bucket an ASC 280 revenue geography
+                               #   member (domestic/international/other) for the sector geo mix (P6b);
+                               #   the documented moat -- separate from geography.py (filer HQ)
     screening.py                # SCREENABLE_CONCEPTS + frames<->RawFact reconciliation (M4)
     metrics.py                  # fundamental metrics over RawFact history -> MetricValue
                                #   (period_end-anchored, TTM/as-of, status+reason; R1-R8) +
@@ -172,6 +175,10 @@ src/secfin/
     sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
     sector_insider_flow_repository.py   # abstract per-SIC-group trailing-window insider net buy/sell
     sqlite_sector_insider_flow_repository.py  # sector_insider_flow table (P6a)
+    dimensional_geo_repository.py       # abstract raw ASC 280 geographic-revenue facts (P6b)
+    sqlite_dimensional_geo_repository.py  # dimensional_geo_facts table (DERA geo rows + consolidated)
+    sector_geographic_mix_repository.py # abstract per-SIC-group revenue-weighted domestic/intl mix
+    sqlite_sector_geographic_mix_repository.py  # sector_geographic_mix table (P6b)
     backup.py                  # sqlite3 online-backup API snapshot (safe on live WAL DB)
     restore.py                 # hydrate a fresh volume from a backup
   analytical/                  # analytical-layer BATCH jobs (DuckDB over the SQLite file) --
@@ -183,8 +190,15 @@ src/secfin/
     sector_insider_flow.py     # P6a: per-SIC-group trailing-window OPEN-MARKET (P/S) insider net
                                #   buy/sell over insider_transactions JOIN company_profiles ->
                                #   sector_insider_flow. DuckDB batch, offline, never live path
+    sector_geographic_mix.py   # P6b: per-SIC-group revenue-weighted domestic/international/other
+                               #   revenue mix over dimensional_geo_facts JOIN company_profiles ->
+                               #   sector_geographic_mix. PURE-PYTHON batch (no DuckDB), offline,
+                               #   never live path; reconcile-or-exclude + coverage
   ingest/
-    downloader.py              # resumable download of SEC bulk zips
+    downloader.py              # resumable download of SEC bulk zips (incl. DERA FSDS quarters, P6b)
+    dimensional_backfill.py    # P6b: bounded ASC 280 geographic-revenue ingest from DERA quarterly
+                               #   ZIPs (num.txt segments col) -> dimensional_geo_facts. Single
+                               #   writer; reuses mapping "revenue" candidates; reconciling filter
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
     incremental.py              # daily incremental via SEC daily index + SECClient
     frames_backfill.py          # bulk-ingest frames data for cross-company screening (M4)
@@ -199,7 +213,8 @@ src/secfin/
     routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
                                #   insider, 13D/G, 13F manager + issuer-centric (holders,
                                #   activity, holdings-series, holder-geography), sector DuPont +
-                               #   spreads + lifecycle + theme-scores (composite health),
+                               #   spreads + lifecycle + theme-scores (composite health) + insider
+                               #   flow (P6a) + geographic-mix (ASC 280, P6b),
                                #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
     static/                    # server-rendered UI: index, company hub (absorbed the data
                                #   explorer, /explorer redirects there),
@@ -316,6 +331,17 @@ python -m secfin.analytical.sector_theme_scores
 # insider net buy/sell over the cached insider_transactions JOIN company_profiles. DuckDB batch
 # (needs the analytical extra), offline, never the live path. Writes sector_insider_flow.
 python -m secfin.analytical.sector_insider_flow --window-days 90   # --as-of YYYY-MM-DD (default today)
+
+# sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
+# 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly
+#    ZIPs (num.txt's segments column -- the ONLY structured dimensional source; companyfacts has none)
+#    into dimensional_geo_facts. Single writer; reuses the canonical "revenue" candidate tags. Pass a
+#    few recent quarters (bounded, latest-annual -- NOT a whole-market/full-history backfill).
+python -m secfin.ingest.dimensional_backfill --quarter 2025q4 --quarter 2026q1
+# 2) Roll up per-company geo splits into a per-SIC-group revenue-weighted domestic/international/other
+#    mix (reconcile-or-exclude + coverage) -> sector_geographic_mix. PURE PYTHON (no DuckDB /
+#    analytical extra), offline, never the live path. Reads dimensional_geo_facts JOIN company_profiles.
+python -m secfin.analytical.sector_geographic_mix   # --fiscal-year 2025 (default: latest ingested)
 ```
 
 Or via Docker (`docs/DEVELOPMENT.md` has the full workflow, including why you must

@@ -1011,6 +1011,49 @@ class SectorInsiderFlow(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+# --- Sector geographic revenue mix (Sector Analytics v2, P6b) ----------------------------------
+#
+# A revenue-weighted domestic / international / other split for one SIC group, DERIVED by summing
+# individual companies' reported ASC 280 geographic revenue (a NEW dimensional-XBRL source, not
+# companyfacts). The domestic/international bucketing is a documented normalization of inconsistent
+# filer geography labels (normalize/segment_geography.py), not a filer-reported field. `other`
+# (unclassifiable / residual) is SHOWN, never hidden. `has_data=False` (mix None) is an honest N/A --
+# no company in the group disclosed usable ASC 280 geography -- never a fabricated 0%/100% split.
+
+
+class GeographicMixBuckets(BaseModel):
+    """The three revenue buckets, as reported USD amounts and as shares (0-1) that sum to ~1."""
+
+    domestic: float  # US revenue, reported USD
+    international: float  # non-US revenue, reported USD
+    other: float  # unclassifiable / residual geography revenue, reported USD (shown, not hidden)
+    domestic_share: float  # domestic / (domestic + international + other)
+    international_share: float
+    other_share: float
+
+
+class SectorGeographicMix(BaseModel):
+    """One SIC group's revenue-weighted geographic revenue mix.
+
+    Empty (`has_data=False`, `mix=None`) is a valid, honest result: no company in the group has a
+    reconciled ASC 280 geographic disclosure ingested -- rendered as N/A, never a fabricated 0%."""
+
+    group: str  # SIC prefix, e.g. "35"
+    group_label: str
+    peer_basis: str  # e.g. "SIC 2-digit"
+    fiscal_year: int | None = None  # annual (10-K) basis, None when has_data is False
+    unit: str = "USD"
+    has_data: bool = False
+    derived: bool = True  # always True -- a derived, revenue-weighted aggregate rollup
+    mix: GeographicMixBuckets | None = None  # None when has_data is False
+    company_count: int = 0  # distinct companies contributing a reconciled geo split (== covered)
+    companies_in_scope: int = 0  # distinct companies in the group with an ingested consolidated total
+    excluded_unreconciled_count: int = 0  # companies dropped because geo != consolidated (~1%)
+    revenue_covered_share: float | None = None  # covered / in-scope consolidated revenue (0-1)
+    as_of: str | None = None  # batch run date, None when has_data is False
+    caveats: list[str] = Field(default_factory=list)
+
+
 # --- Per-company value list within a sector (Sector Analytics app, Company view / altitude 2) -----
 #
 # Every company in a SIC group with a comparable (non-N/A) value for one metric+period -- for the
