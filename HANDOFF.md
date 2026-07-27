@@ -185,12 +185,15 @@ open it first when you need to know what already exists.
   + a cold-path note; notFound is a mono `HTTP 404` in the flag color plus recovery chips.
 - `mountSearch()` — for in-page flows needing a resolve callback (Compare's "Add a company"). The
   *global* search lives in the shell topbar, not here.
-- **Charts** — `ClearyFi` builders over **vendored Observable Plot** (load `d3.min.js` before
-  `plot.umd.min.js`; exposes `window.Plot`). Pages never call `Plot.plot()` directly. Every Plot
-  chart wraps itself in `chartCard()` and takes its width from `measuredWidth(container, fallback)`
-  — never a hardcoded pixel width. Plot builders return a **DOM node** (callers append it); the
-  older hand-rolled string builders (`sparkline`, `trendChart`, `trajectoryChart`, `positionBar`)
-  are unchanged and not migrated.
+- **Charts** — `ClearyFi` builders over a **vendored** engine (load `d3.min.js` before
+  `plot.umd.min.js`; exposes `window.Plot`). Pages never call `Plot.plot()` **or `d3`** directly.
+  **The engine is chosen per chart** — Plot for a plain mark-on-scale, d3 wherever custom label
+  placement or collision logic is needed (STYLE_GUIDE §12's rules can't be expressed in Plot).
+  Every chart wraps itself in `chartCard()` and takes its width from
+  `measuredWidth(container, fallback)` — never a hardcoded pixel width. **Every builder returns a
+  DOM node** (callers append it) — forced by `chartCard()` returning a node. The four hand-rolled
+  string builders (`sparkline`, `trendChart`, `trajectoryChart`, `positionBar`) stay strings and are
+  **frozen** — not migrated, and that's a closed decision.
   - **Ranked bars take one fill** — length already encodes value; use *emphasis* (accent one mark,
     mute the rest) when one mark is the point.
   - **Magnitude stays single-hue** (the holder choropleth uses a randomized single-hue sequential
@@ -218,6 +221,9 @@ Chip: mono, 8.5px, uppercase, 6px radius.
 - **APPROX still shows the value** — the number is useful, the caveat rides alongside it.
 - Solid border = hard structural (N/A); dashed = soft judgment (N/M). Keep that distinction.
 - `statusLegend()` appears near the top of any page showing metrics.
+- Translating a design that has no chips (the v3 prototype states these distinctions in prose):
+  `docs/STATUS_MAPPING.md` is the row-by-row lookup, and STYLE_GUIDE §7.1 the two rules — the
+  design's prose becomes the reason string **verbatim**, and our definitions win on conflict.
 
 ---
 

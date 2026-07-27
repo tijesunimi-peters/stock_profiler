@@ -44,9 +44,9 @@ open and are resolved inside **V3-P0**, which is now startable.
 |---|---|
 | **D1** Surface/route ownership | 🔒 **LOCKED — option (1), absorb. The prototype's IA is authoritative.** Existing routes survive as deep links into the one app |
 | **D2** Subject-based nav | 🔒 **LOCKED — build it as the prototype draws it: all 7 subjects, 4 rendered planned-and-inert.** It is the product's primary nav |
-| **D3** Status-vocabulary mapping | open → V3-P0 |
-| **D4** as-filed / as-restated basis axis | open → V3-P0 (surfaces in V3-P4) |
-| **D5** Chart engine (d3 vs Plot) | open → V3-P0 (recommendation below is expected to stand) |
+| **D3** Status-vocabulary mapping | 🔒 **RESOLVED (V3-P0)** — `docs/STATUS_MAPPING.md` + `STYLE_GUIDE` §7.1 |
+| **D4** as-filed / as-restated basis axis | 🔒 **RESOLVED (V3-P0)** — the axis already exists; `STYLE_GUIDE` §8.1. Compute path deferred to V3-P4+ |
+| **D5** Chart engine (d3 vs Plot) | 🔒 **RESOLVED (V3-P0)** — per-chart engine under a `ClearyFi.*` builder; `STYLE_GUIDE` §6 + §12 |
 
 ### D1 — Surface/route ownership 🔒 LOCKED (2026-07-26)
 
@@ -155,7 +155,21 @@ anti-pattern it leaned on does not actually apply to a non-interactive label.*
 Data/Reference sidebar everywhere except the marketing/legal pages. It ships as part of **V3-P2**,
 the shell unification — one navigation change, one regression pass.
 
-### D3 — Status vocabulary: the real gap
+### D3 — Status vocabulary 🔒 RESOLVED (V3-P0, 2026-07-26)
+
+**Landed as `docs/STATUS_MAPPING.md`** (the row-by-row table) **+ `STYLE_GUIDE` §7.1** (the two
+normative rules, kept in the guide so a reader who never opens the companion still can't get the
+honesty wrong). Rows are decided by a four-step test applied in order — is it a status at all? is
+the value computable? structurally meaningless? present but imprecise? — which makes the mapping
+mechanical rather than a matter of taste.
+
+**One deliberate divergence from the design's own table:** RECONCILIATION maps *"no disclosure in
+this period"* → N/M. **We resolved it to N/A**, because §7 defines N/M as *"computable but would
+mislead"* and an undisclosed period has no inputs to compute from — N/M is definitionally
+unavailable. The same test reclassified nothing else, but it was applied to every row rather than
+inherited.
+
+*Original framing, for the record:*
 
 **The prototype has no status chips at all.** It expresses the same distinctions in prose. Production
 §6 requires a chip on every metric and derived value. Mapping (from RECONCILIATION §3):
@@ -175,20 +189,40 @@ the shell unification — one navigation change, one regression pass.
 — it is better than our current copy, do not paraphrase.** The prototype's rule that an absent
 measure is *omitted from a comparison rather than shown as zero* already satisfies §6.
 
-### D4 — A third basis axis
+### D4 — Basis axis 🔒 RESOLVED (V3-P0, 2026-07-26)
 
-We model `TTM` vs `AS-OF`. The prototype's Financial-history view adds an **as-filed / as-restated**
-toggle. We *do* keep the data for this (every fact carries `accession` + `filed`, and prior values
-are never deleted), so this is a spec question, not a data question: does basis become a
-two-dimensional label? **Decide before V3-P4;** do not silently collapse it.
+**The premise was wrong: this is not a third axis, and it is not unmodelled.** The axis already
+exists in code — `RestatementBasis = Literal["as-restated", "as-originally-reported"]`
+(`normalize/schema.py:619`), `MetricValue.restatement_basis` (`schema.py:649`), already named as a
+provenance field in `STYLE_GUIDE` §8, and `DATA_MODEL` R9 already requires one labeled basis per
+series, never mixed.
 
-### D5 — Chart engine
+What does **not** exist is any code path that emits `as-originally-reported` — `metrics.py` hard-codes
+`"as-restated"`. So D4 resolved to: **document the axis (`STYLE_GUIDE` §8.1) and set the rule that
+protects it** — *a UI must not offer an as-filed/as-restated toggle until a real point-in-time
+compute path exists behind it.* A toggle returning identical data on both settings fabricates
+precision and breaks §9.1, which is the worst outcome available here because it looks like rigor.
+Until then the basis is **stated, not selectable**.
 
-STYLE_GUIDE §6 currently says every chart is a `ClearyFi` builder over vendored Observable Plot.
-RECONCILIATION §5 targets **d3 directly** for anything with custom label placement, because the
-collision logic in §7 cannot be expressed in Plot. **Recommendation:** keep the rule *"pages never
-call the chart library directly; every chart is a `ClearyFi` builder"*, and let the engine under the
-builder be **d3 or Plot per chart**. Both are already vendored. Amend §6 rather than replace it.
+**Still open, and genuinely the operator's call:** whether `as-originally-reported` becomes a
+shipped capability at all. It is a real differentiator — most vendors silently restate, and we keep
+every prior value — but serving it needs a new point-in-time compute path across `metrics.py` and
+the materialized `metric_values`. **Recommend deciding at V3-P4**, when the Financial-history view
+actually wants the toggle; it is backend work and does not belong in a docs phase.
+
+### D5 — Chart engine 🔒 RESOLVED (V3-P0, 2026-07-26)
+
+**Landed in `STYLE_GUIDE` §6.** The rule stands and was extended, not replaced: pages never call
+`Plot.plot()` or `d3` directly; every chart is a `ClearyFi.*` builder; **the engine is chosen per
+chart** — Plot where the chart is a plain mark-on-scale, d3 wherever custom label placement or
+collision logic is needed, since §12's rules cannot be expressed in Plot. Both are already vendored,
+so neither choice adds a dependency.
+
+**Settled in passing (it was a live ambiguity): every builder returns a DOM node.** Not a
+preference — `chartCard()` (`app.js:432`) builds and returns a node, and §6 requires every chart to
+wrap itself in it, so a string builder cannot satisfy the wrapper rule. The four hand-rolled string
+builders (`sparkline`, `trendChart`, `trajectoryChart`, `positionBar`) stay strings and are
+**frozen** — recorded as a closed decision so V3-P1 doesn't relitigate it five times.
 
 ---
 
