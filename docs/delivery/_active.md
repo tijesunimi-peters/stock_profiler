@@ -1,97 +1,129 @@
 # Active delivery task
-task_slug: sector-geographic-mix
-request: P6b — Sector Geographic revenue mix (ASC 280). Make the Sector-view "Geographic revenue mix" placeholder real: a per-sector domestic/international (and possibly regional) revenue split, derived by aggregating companies' ASC 280 geographic segment disclosures. UNLIKE P6a, this is a NEW dimensional-XBRL ingest — companyfacts carries NO dimensional facts, so segment/geographic revenue must come from a new source (SEC Financial Statement Data Sets, whose num.txt has a segment axis — the path the existing Phase-3 spike prototyped). Backend-led: new dimensional ingest → normalize geography buckets (domestic vs international; principled, documented) → per-SIC-sector revenue-weighted rollup into a materialized store → new GET /v1/sectors/{group}/geographic-mix (never DuckDB on the request path) → wire sectorapp.js geoPlaceholderHtml() to the real endpoint. Honesty: sector mix is a DERIVED, revenue-weighted rollup (label it); geography labels are inconsistent across filers (US/International vs country vs region) so the domestic/international normalization is the moat AND the risk; carry coverage caveats (not every filer discloses ASC 280 geography); a sector with no data reads N/A, never 0. Track-1 only. See ROADMAP_SECTOR_APP_V2.md P6 + ROADMAP_DATA_DEPTH.md Phase 3 (dimensional-data SPIKE).
-branch: sector-geographic-mix (off master @ b0a12ba)
+task_slug: v3-p0-decisions
+request: V3-P0 — Decisions + doc amendments (no code), per `docs/ROADMAP_APP_V3.md` §6. Resolve the three still-open v3 decision gates and land the style-guide amendments the whole v3 programme depends on. (1) **D3 status-vocabulary mapping**: the prototype has NO status chips — it expresses OK/APPROX/N/A/N/M distinctions in prose ("not tagged", "not shared", "no filing on record", "Section 16 does not apply…", "no disclosure in this period", a broken series line, "provisional"). Produce the authoritative mapping table from each prototype phrasing to a production status token, with the prototype's prose carried into `provenance()`'s "why {flag}" line **verbatim, not paraphrased**. (2) **D4 basis axis**: decide whether the prototype's as-filed / as-restated toggle becomes a second basis dimension alongside TTM/AS-OF (we already store it — every fact carries `accession` + `filed` and prior values are never deleted), or is modelled another way. (3) **D5 chart engine**: confirm the rule that pages never call a chart library directly and every chart stays a `ClearyFi.*` builder, with d3 *or* Plot as the engine per chart (d3 where custom label placement/collision logic is needed — Plot cannot express it). Then amend `docs/STYLE_GUIDE.md`: §6 chart-engine rule; §9 + the six honesty patterns the prototype earned (newest-fact age shown as prominently as the fact; staleness ledger incl. the load-bearing "what it cannot tell you" column; structural absence ≠ missing data; one fact one source; deadline context on any dated filing metric; comparison validity stated before the comparison); a NEW label-placement section (edge anchoring via `getComputedTextLength()`, computed line-height, candidate-offset placement, origin tick, legend on converging series, author-at-container-width, ~9px minimum effective text); §4.2/§5 for the locked D2 subject nav; and §10 to draw the line between a placeholder link and a planned-and-inert nav label. Docs-only — no code, no runtime surface. D1 (absorb) and D2 (all 7 subjects, 4 planned-and-inert) are already LOCKED and are inputs, not open questions.
+branch: v3-p0-decisions (⚠️ stacked on `docs/app-v3-roadmap`, NOT master — see note below)
 next_stage: done
-qa_cycles: 0
-updated: 2026-07-25
+qa_cycles: 1
+updated: 2026-07-26
 
 ## Progress
-- [x] 1 Product Manager       -> 1-brief.md
-- [x] 2 Principal Architect   -> 2-architecture.md
-- [x] 3 Backend  -> 3-implementation.md (DERA ingest + segment_geography classifier + pure-Python rollup + GET /v1/sectors/{group}/geographic-mix + 2 stores; 551 pass / ruff clean / live-verified)
-- [x] 3 Frontend -> 3-implementation.md (appended) (geoCardHtml value-neutral stacked bar + N/A-never-0%; e2e geo shots errors=0, both states eyeballed)
-- [x] 4 QA Tester             -> 4-qa.md (PASS; all 18 ACs green via real-pipeline + live-endpoint + e2e)
-- [x] 4b Operator interactive acceptance -> 4b-manual-verification.md  (CONFIRMED — accepted hands-on 2026-07-25; check 7 dark-theme N/A, app is single-theme)
+- [x] 1 Product Manager       -> 1-brief.md (19 ACs; D4 reframed — the basis axis already exists in schema.py)
+- [x] 2 Principal Architect   -> 2-architecture.md (5 files, 7 ordered steps; both open questions settled from existing invariants)
+- [x] 3 Backend  — **N/A, docs-only** (architect: no backend stage)
+- [x] 3 Frontend -> 3-implementation.md (STATUS_MAPPING.md new + 7 STYLE_GUIDE amendments + roadmap/HANDOFF sync; all inspection checks pass)
+- [x] 4 QA Tester             -> 4-qa.md (FAIL on AC-17 → fixed cycle 1 → PASS 19/19)
+- [x] 4b Operator manual verification — **EXEMPT, no rendered surface**; no questionnaire emitted (stated in 4-qa.md, not skipped silently)
 
 ## Notes / open loops
-- **✅ TASK DONE (2026-07-25): operator CONFIRMED — merged + pushed.** Full-stack P6b complete on
-  branch `sector-geographic-mix`, committed (b856500), merged no-ff to master (c199102) and pushed
-  to origin (419a1f4..c199102) at operator request. QA PASS + the
-  operator's interactive `4b` sign-off (checks 1–6, 8–10 ✅; check 7 dark-theme N/A — the Sector app
-  is single-theme). **Operator's next options:** (1) commit the branch (engineer stage commits only
-  when asked); (2) request a deploy via `/devops-engineer` (separate, operator-gated — needs the DERA
-  ingest + rollup run on prod so sectors populate instead of N/A: `dimensional_backfill --quarter …
-  && sector_geographic_mix`); or (3) start the next task with a fresh `/deliver <request>`.
-- **QA GATE REACHED (2026-07-25): PASS — pending operator manual UI verification.** Full-stack build
-  complete on branch `sector-geographic-mix`. All 18 ACs green via automation (551 pytest pass, ruff
-  clean), a real-pipeline drive (`dimensional_backfill` + `sector_geographic_mix` CLIs → materialized
-  store → live endpoint), and the e2e render check (geo card shots errors=0, both populated + N/A
-  states eyeballed; value-neutral stacked bar + hatched "other"; N/A never 0%). The only e2e FAIL is
-  the **pre-existing** Company-view 502 on synthetic cik 900001 (no-network sandbox; identical to
-  P6a's QA record) — unrelated to this change. **Next: operator runs `4b-manual-verification.md`**
-  (interactive/data-driven view → blocking hands-on gate). A confirmed sign-off → next_stage: done
-  and unlocks a deploy *request* (DevOps is separate + operator-gated; /deliver never deploys).
-  Op follow-up for prod: run `dimensional_backfill --quarter … && sector_geographic_mix` so prod
-  sectors populate instead of reading N/A (an ops step, not a build gate).
-- **NOTE (git):** during QA an accidental `git stash -u`/`drop` removed the new untracked files; they
-  were fully recovered from the dropped stash commit `d7d6cc2e`^3 and re-verified (551 pass). Tree is
-  intact; new files staged, edits unstaged — harmless (pipeline doesn't commit).
-- **PM DONE (2026-07-24).** Spike-decision gate RESOLVED in `1-brief.md` (spike executed →
-  recommends source (a) DERA; operator's "build P6b" IS the go-decision). **Two forks locked by
-  operator (2026-07-24):** (1) **Geography = binary Domestic (US) vs International + `other/unclassified`**
-  (not a region set); (2) **Ingest scope = bounded, latest annual (~4–8 DERA quarterly ZIPs)** — NOT
-  whole-market/full-history (that's a later ops call, not this build's gate). Source = (a) DERA.
-- **This is P6b — the SECOND of the two P6 data-depth spikes.** Operator decision (2026-07-24): build
-  **both** P6 spikes, **Insider flow first** (P6a — ✅ DONE, merged + pushed @ master b0a12ba), then
-  **Geographic revenue mix** as this follow-on `/deliver`. Source of truth: `ROADMAP_SECTOR_APP_V2.md`
-  P6 note + `ROADMAP_DATA_DEPTH.md` Phase 3.
-- **⚠️ SPIKE-DECISION GATE (read before scoping).** P6b IS the roadmap's **Phase-3 dimensional-data**
-  work, and `ROADMAP_DATA_DEPTH.md` is explicit: *"Phase 3 must not be started without the spike's
-  decision."* A labeled **"Segments · spike"** prototype already exists (company hub → Statements →
-  **segments** tab, `renderSpikeSegments` in `company.js`), fed by a **static** `/static/spike_dimensional.json`
-  extract for a few symbols only, **NOT served by the API**. The PM must FIRST confront this gate:
-  treat the operator's 2026-07-24 "build P6b" as the go-decision on the spike, OR flag that the spike
-  doc/decision should be resolved before a full build. Do not silently start a whole-market ingest
-  without acknowledging this gate.
-- **Why P6b is bigger/riskier than P6a (opposite of P6a's reuse story).** P6a reused already-ingested
-  per-CIK insider data → just an aggregation layer. **P6b has NO ingested source**: companyfacts (our
-  whole backbone) carries **only non-dimensional / consolidated facts** — confirmed in the wild and in
-  `company.js`'s spike banner ("companyfacts … carries no dimensional facts at all"). So P6b needs a
-  **NEW ingest path** for dimensional XBRL. This is a real data-engineering effort, not a thin rollup.
-- **Source options (architect to decide, per ROADMAP_DATA_DEPTH.md Phase 3):** (a) **SEC Financial
-  Statement Data Sets** quarterly ZIPs — `num.txt` carries a segment/dimension column; bulk, structured,
-  fits our existing zip-ingest muscle (the path the spike used) — vs (b) parsing raw XBRL instance
-  documents per filing. Recommend (a). Either way, route bulk ingest through a **single-writer** queue
-  (guardrail 8); DuckDB/analytical **batch-only**, never the request path (guardrail 6/7); DB behind a
-  repository interface, no raw SQL in the API (guardrail 5).
-- **Scope guardrails (Track-1; do NOT drift):** ASC 280 **geographic revenue is structured XBRL**, so
-  it IS Track-1 — NOT Track-2 free text — but it is the deliberately-larger "dimensional-data spike."
-  Keep SEC compliance (User-Agent + process-wide throttle). No new base dependency for the live API.
-- **Honesty (bake into ACs):** the sector geographic mix is a **DERIVED, revenue-weighted aggregate
-  rollup** → label it derived/aggregated. **Geography normalization is the moat AND the risk:** filers
-  disclose geography inconsistently (some "United States / International", some country-level, some
-  regions) — the domestic-vs-international (or regional) bucketing must be **principled + documented**,
-  not ad-hoc. Carry **coverage caveats** (not every company discloses ASC 280 geography; segment
-  reporting varies; ~half of a 10-K's facts are dimensional but disclosure completeness differs). A
-  sector with no geographic data reads **N/A, never 0**; an empty result is an honest empty state.
-- **Architect to decide (flag for PM/architect):** the ingest source (a vs b above); the geography
-  bucketing taxonomy (domestic/international only, or a small region set — must be principled +
-  documented); the value basis + weighting (revenue-weighted sector rollup; how to handle companies
-  that report only a partial geo split or "rest of world"); period alignment (fiscal vs calendar; which
-  annual/quarterly); and the materialized-store shape (a new `sector_geographic_mix` table + repository,
-  mirroring `sector_insider_flow_repository` from P6a — a clean, recent precedent to copy).
-- **Full-stack, backend FIRST:** land the ingest + normalization + rollup batch + endpoint + JSON
-  contract (with pytest), THEN wire `sectorapp.js`'s `geoPlaceholderHtml()` to it on the same branch.
-  Interactive/data-driven view → operator hands-on gate at 4b. (P6a's card next to it — `insiderCardHtml`
-  — is the styling precedent: solid `.pa-card`, value-neutral, N/A-never-0, derived-rollup label.)
-- **CONTEXT RESET (required for a clean P6b PM scope):** this is a NEW /deliver iteration whose
-  next_stage is `pm`. If this session still holds P6a (or any prior) context, **/clear (or start a
-  fresh session)** before running the PM stage, then run **/deliver resume** — it reads this file +
-  the two roadmaps and starts at PM from a clean context. Branch off master when the engineer stage
-  begins.
-- **Previous task (P6a Sector Insider flow) is DONE + merged + pushed** (master @ b0a12ba, origin
-  updated). Its trail is in `docs/delivery/sector-insider-flow/` (1-brief … 4b, operator-confirmed
-  2026-07-24). Operational follow-up for P6a deploy: re-warm the insider cache with the new
-  transaction_code parser (`insider_backfill` → `python -m secfin.analytical.sector_insider_flow`) so
-  prod sectors populate instead of reading N/A.
+- **✅ TASK DONE (2026-07-26): QA PASS 19/19, 4b exempt.** All three remaining v3 gates resolved.
+  Landed: **NEW `docs/STATUS_MAPPING.md`** (D3 table), `docs/STYLE_GUIDE.md` 364 → 518 lines
+  (§4.2 nav, §5 shell-merge note, §6 engine + DOM-node, §7 N/A definition widened, §7.1, §8.1,
+  §9 rules 9–14, §10.1, new §12 label placement), `docs/ROADMAP_APP_V3.md` (D3/D4/D5 closed),
+  `HANDOFF.md` (chart bullet + mapping pointer).
+- **QA found 1 real defect (cycle 1, fixed).** §7 defined N/A as "structurally meaningless", but
+  §7.1 and mapping rows 1/3/5 route *absent-input* cases to N/A too — so §7.1's instruction "our
+  definitions above win" pointed readers at a definition that would reject the very rows the mapping
+  is most careful about. Fixed by widening the §7 N/A row ("or absent for this period/filer; the
+  reason string distinguishes them"). Minor, documentation-only, no user-visible effect.
+- **QA independently verified rather than trusting the handoff:** all 3 code citations resolve
+  (`schema.py:619`/`:649`, `app.js:432`); the quoted prose is byte-identical to RECONCILIATION
+  (incl. the long Section 16 sentence); the four-rule test was re-derived on rows 1/3/5 — QA agreed
+  with all 8 rows.
+- **No pytest / e2e / docker build — correct, not skipped.** Zero `src/` changes; running them would
+  re-prove an unchanged frontend.
+- **⚠️ OPERATOR ACTION — branch stacking.** `v3-p0-decisions` is stacked on `docs/app-v3-roadmap`,
+  NOT master (master has neither `ROADMAP_APP_V3.md` nor the rewritten `HANDOFF.md`). Merging it to
+  master carries that branch's 3 commits too. **Merge `docs/app-v3-roadmap` first** = the clean path.
+  Nothing was merged, committed, or pushed by the pipeline.
+- **Still genuinely open (deliberately not answered by P0):** whether `as-originally-reported`
+  becomes a shipped capability. P0 only guaranteed we don't lie about it meanwhile (STYLE_GUIDE
+  §8.1 forbids a toggle without a real compute path). Recommend deciding at V3-P4.
+- **Unblocked next:** V3-P1 (chart foundry — D5 resolved) and V3-P2 (shell unification — D2/§10
+  amendment landed). V3-P3 (ingest metadata) runs in parallel; it never depended on P0.
+- **PM DONE (2026-07-26)** → `1-brief.md`. 19 acceptance criteria, all inspectable (no runtime
+  surface). Scope: D3 mapping table + D4 resolution + D5 chart-engine rule + the STYLE_GUIDE
+  amendments. Explicitly out of scope: any `src/` change, reopening D1/D2, building the
+  as-originally-reported compute path.
+- **KEY PM FINDING — D4 is reframed, not open.** The basis axis **already exists in code**:
+  `RestatementBasis = Literal["as-restated","as-originally-reported"]` (`schema.py:619`),
+  `MetricValue.restatement_basis` (`schema.py:649`), already named as a provenance field in
+  STYLE_GUIDE §8, and `DATA_MODEL` R9 already requires one labeled basis per series. What does NOT
+  exist is any path emitting `as-originally-reported` — `metrics.py:1279` hard-codes `"as-restated"`.
+  So D4 = *document the axis + forbid a toggle that lies* (AC-8), NOT *invent a third axis*.
+  Building the point-in-time compute path is deferred to V3-P4+.
+- **ENGINEER DONE (2026-07-26)** → `3-implementation.md`. Landed: **NEW `docs/STATUS_MAPPING.md`**
+  (68 lines, the D3 table), `docs/STYLE_GUIDE.md` **364 → 518 lines** (§4.2 nav, §5 shell-merge
+  note, §6 engine + DOM-node, §7.1, §8.1, §9 rules 9–14, §10.1, new §12 label placement),
+  `docs/ROADMAP_APP_V3.md` (D3/D4/D5 closed), `HANDOFF.md` (chart bullet + mapping pointer).
+  All inspection checks PASS: scope docs-only, 8/8 phrasings, 6 Source blocks, section order 1→12.
+- **⚠️ BRANCH DEVIATION — operator must know before any merge.** The plan said branch off `master`,
+  but master has **neither `ROADMAP_APP_V3.md` nor the rewritten `HANDOFF.md`** — both live only on
+  the unmerged `docs/app-v3-roadmap`. So `v3-p0-decisions` is **stacked on that branch**. Merging it
+  to master will carry `docs/app-v3-roadmap`'s 3 commits with it. Merging that branch first is the
+  clean path, and it is operator-gated — not done unilaterally.
+- **`/frontend-design` skipped deliberately** (the skill mandates it for UI tasks): this task has no
+  UI surface, zero `src/` changes, so there was nothing to calibrate. Flagged, not silent.
+- **No pytest / no e2e / no docker build — correct, not a shortcut.** Zero `src/` changes means
+  nothing to rebuild and nothing whose rendering could regress; the e2e would re-prove an unchanged
+  frontend. Gate is the architecture's inspection strategy (run, all pass).
+- **QA: push hardest on AC-4** (mapping rows justified, not copied — re-run the four-rule test on
+  rows 1/3/5 yourself), **AC-3** (prose verbatim vs RECONCILIATION §3/§4.3 — any "improving" fails),
+  **AC-8** (§8.1 must *forbid* the basis toggle, not just describe), **AC-17** (read the guide end to
+  end; 2 stale Plot-only claims were found and fixed, but the engineer wrote the edits).
+- **ARCHITECT DONE (2026-07-26)** → `2-architecture.md`. Single stage, **frontend**, branch
+  `v3-p0-decisions` off master. 5 files: `docs/STYLE_GUIDE.md` (7 amendments + new §12),
+  **NEW `docs/STATUS_MAPPING.md`** (the D3 table), `docs/ROADMAP_APP_V3.md` (close D3/D4/D5),
+  `HANDOFF.md` (one-line chart-convention sync so the two required-reading docs don't diverge), and
+  the stage-3 handoff doc. Explicitly NOT touched: `src/`, `tests/`, compose, `DATA_MODEL.md`
+  (architect ruling: R9 already states the restatement rule; guardrail 3 does not fire).
+- **Both open questions SETTLED from existing invariants, not preference:**
+  (a) **Placement is per-artifact.** D3 mapping (~55 lines, a lookup table) → **companion**
+  `docs/STATUS_MAPPING.md`; label placement (~30 lines, rule-shaped, and chart authors are already
+  in §6) → **in-guide as new §12**. Guard: §7 keeps the two normative rules in the guide itself
+  (prose-verbatim; our-definitions-win) so a reader who never opens the companion still can't get
+  the honesty wrong. (b) **AC-12 → new d3 builders return a DOM node** — forced by `chartCard()`
+  (`app.js:432`) returning a node and §6 already requiring every chart to wrap in it. The 4 legacy
+  string builders stay frozen; §6 must say so as a closed decision so V3-P1 doesn't relitigate it.
+- **AC-4 made mechanical (architect ruling).** Apply in order to every row: (1) is it a status at
+  all — the `ƒ` chip is provenance, not a status; (2) **N/M requires computability** (§7 defines it
+  as "computable but would mislead"), so absent inputs make N/M *definitionally unavailable*;
+  (3) structurally meaningless → N/A; (4) present but imprecise → APPROX, value still shown.
+  **This settles the flagged case: "no disclosure in this period" is N/A, NOT N/M** — an undisclosed
+  period isn't computable. Same test applied to "no filing on record" and "not tagged" (both N/A).
+- **Superseded — the two questions the PM raised for the architect:**
+  (a) risk 4 — do the D3 mapping table + label-placement rules live *inside* `STYLE_GUIDE.md` or as
+  linked companions? The guide is already ~365 lines of required reading. (b) **AC-12** — do new d3
+  builders return a **DOM node** (matching Plot builders) or a **string** (matching the legacy
+  hand-rolled `sparkline`/`trendChart`)? A real inconsistency in the guide today; cheapest to settle
+  now, before V3-P1 builds five of them.
+- **Highest-risk AC is AC-4** (per PM risk 2): the D3 mapping must be justified against OUR four
+  status definitions, not copied wholesale from RECONCILIATION.md. Known case to resolve rather than
+  assume — the design maps "no disclosure in this period" → N/M, but a period a filer simply didn't
+  report reads as *absent* (N/A), not *misleading-if-computed*. This table is the contract eight
+  later phases build against; a wrong row propagates everywhere. QA should push hardest here.
+- **Engineer routing recommendation (PM):** single stage, **frontend** sub-specialty — it is a docs
+  change, so neither side owns it by default, but every amendment governs UI work.
+- **Docs-only task — flag for PM/architect.** V3-P0 has **no runtime surface**: no endpoint, no UI,
+  no pytest target, no e2e shot. The deliverable is amended `docs/STYLE_GUIDE.md` + the D3 mapping
+  table. Stage 4 QA is therefore **document verification** (each amendment present, internally
+  consistent, matches the prototype, contradicts nothing else in the guide), not an exercise run.
+  Per the /deliver skill's own rule, a change with no rendered surface is **exempt from the 4b
+  operator gate** — confirm that at the QA stage and go straight to `done`.
+- **Inputs, already LOCKED by the operator (2026-07-26) — do NOT reopen:** D1 = **absorb** (the
+  prototype's IA is authoritative; one app/one shell/one state model; existing routes survive as
+  addresses serving the same app with selection derived from the path). D2 = **build the nav as the
+  prototype draws it**, all 7 subjects, with People/Auditors/Funds/Events rendered drained + inert
+  (no href, no handler, self-explaining `title`). Both recorded in `docs/ROADMAP_APP_V3.md` §2.
+- **Why this phase is the critical path's gate.** V3-P1 (chart foundry) needs D5; V3-P2 (shell
+  unification — the keystone the whole programme runs through) needs the D2/§10 amendment. Nothing
+  after P2 can start until P2 lands, so P0 slipping stalls everything except V3-P3 (ingest metadata,
+  independent).
+- **Source of truth for this phase:** `docs/ROADMAP_APP_V3.md` (§2 gates, §4 honesty patterns, §5
+  chart program + label placement, §6 phasing) and
+  `docs/design/sector-app-prototype-v3/RECONCILIATION.md` (§3 status-vocabulary gap incl. the prose
+  table, §4 the six honesty additions, §5 chart translation, §6 label-placement rules). The
+  prototype itself is `docs/design/sector-app-prototype-v3/prototype.dc.html`.
+- **Scope discipline.** This phase writes *documentation and decisions only*. Any temptation to
+  start implementing a chart builder, the nav, or a status chip belongs to V3-P1/P2 — flag and stop.
+- Previous task (P6b Sector Geographic mix) is DONE + merged + pushed; its trail is in
+  `docs/delivery/sector-geographic-mix/`.
