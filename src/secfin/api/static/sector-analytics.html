@@ -8,23 +8,32 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- style.css supplies the :root design tokens (identical to the prototype's palette). The new
-       app has its OWN self-contained CSS/JS -- it does NOT load app.css/company.css/sectors.css or
-       script.js (the shared shell); it builds the paper-terminal shell itself. -->
+  <!-- STYLE_GUIDE §5 load order. V3-P2: this page now loads app.css (it declined to before, which
+       forced sectorapp.css to re-declare .plot-chart*/.dist-strip-* — both duplicates are gone) and
+       shell.css, so it wears the SAME shell as every other data page. -->
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/shell.css">
   <link rel="stylesheet" href="/static/sectorapp.css">
 </head>
-<body>
-  <div id="app"></div>
+<body class="app">
+  <!-- Shell mounts live OUTSIDE #app on purpose: sectorapp.js rewrites #app.innerHTML on every
+       state change, so a sidebar inside it would lose its listeners on the first tile click. -->
+  <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
+  <div class="app-scrim" id="appScrim"></div>
+  <div class="app-main">
+    <header class="app-topbar" id="appTopbar"></header>
+    <div id="app"></div>
+  </div>
 
   <!-- vendored (CSP-safe) charting for the drill-down box-whisker tracks -->
   <script src="/static/vendor/d3.min.js"></script>
   <script src="/static/vendor/plot.umd.min.js"></script>
-  <!-- app.js provides the window.ClearyFi.* helpers (api, esc, fmt, measuredWidth, boxWhiskerChart,
-       states). It is the shared component library; the shell renderer (script.js) is intentionally
-       NOT loaded here. suggest.js is the standalone company-autocomplete for the header search. -->
-  <script src="/static/app.js"></script>
+  <!-- suggest.js -> shell.js -> app.js -> page JS (STYLE_GUIDE §5). app.js provides the
+       window.ClearyFi.* helpers; shell.js renders the one product shell. -->
   <script src="/static/suggest.js"></script>
+  <script src="/static/shell.js"></script>
+  <script src="/static/app.js"></script>
   <script src="/static/sectorapp.js"></script>
 </body>
 </html>

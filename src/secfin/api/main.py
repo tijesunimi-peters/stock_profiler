@@ -352,6 +352,15 @@ async def company_hub(symbol: str) -> FileResponse:
     return FileResponse(STATIC_DIR / "company.html")
 
 
+@app.get("/company/{symbol}/{view}", include_in_schema=False)
+async def company_hub_view(symbol: str, view: str) -> FileResponse:
+    # URL-as-state (V3-P2): the active view is part of the path, so a view is linkable and the
+    # browser Back button walks views. Serves the SAME shell as the bare route -- the CLIENT owns
+    # view resolution, so {view} is deliberately NOT validated here: an unknown slug must fall back
+    # to the default view in shell.js, and a server-side 404 would contradict that.
+    return FileResponse(STATIC_DIR / "company.html")
+
+
 @app.get("/manager/{cik}", include_in_schema=False)
 async def manager_profile(cik: str) -> FileResponse:
     # The 13F manager profile shell; manager.js reads {cik} from the path and calls the v1 API.
@@ -373,17 +382,23 @@ async def screening() -> FileResponse:
 @app.get("/sectors", include_in_schema=False)
 async def sector_overview() -> FileResponse:
     # M2 routing swap (2026-07-24, ROADMAP_SECTOR_MIGRATION.md): /sectors is the canonical sector
-    # page and now serves the v2 Sector Analytics app (#app + sectorapp.js). The pre-v2
-    # single-sector page lives on at /sectors-legacy for one release (rollback), then M3 deletes it.
+    # page and serves the Sector Analytics app (#app + sectorapp.js). The pre-v2 single-sector page
+    # and its /sectors-legacy rollback route were deleted in V3-P2 (M3 of the migration).
     return FileResponse(STATIC_DIR / "sector-analytics.html")
 
 
-@app.get("/sectors-legacy", include_in_schema=False)
-async def sector_overview_legacy() -> FileResponse:
-    # Rollback path for the M2 swap: the pre-v2 single-sector page (sectors.js/html/css calling
-    # /v1/sectors + /v1/sectors/{group}), kept reachable for one release before M3 deletes it. Plain
-    # always-on route, no env gate.
-    return FileResponse(STATIC_DIR / "sectors.html")
+@app.get("/sectors/{group}", include_in_schema=False)
+async def sector_overview_group(group: str) -> FileResponse:
+    # URL-as-state (V3-P2): the selected SIC peer group is part of the path. Same shell as the bare
+    # route; sectorapp.js derives the selection from it instead of ?group= + localStorage.
+    return FileResponse(STATIC_DIR / "sector-analytics.html")
+
+
+@app.get("/sectors/{group}/{view}", include_in_schema=False)
+async def sector_overview_group_view(group: str, view: str) -> FileResponse:
+    # As above, plus the active view. {view} is NOT validated server-side for the same reason as
+    # /company/{symbol}/{view}: the client resolves an unknown slug to the default view.
+    return FileResponse(STATIC_DIR / "sector-analytics.html")
 
 
 @app.get("/privacy", include_in_schema=False)

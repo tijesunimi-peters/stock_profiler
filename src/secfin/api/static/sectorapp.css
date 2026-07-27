@@ -10,37 +10,14 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
    it in :root, but style.css does not — so define it here (aliased to style.css's identical
    --border-tint-rule #e5dfd3) or every `border-top:1px solid var(--rule)` is invalid and no line
    renders. Latent since Phase 1; found during v2 manual verification. */
-.pa-app { display: flex; min-height: 100vh; --rule: var(--border-tint-rule); }
+/* V3-P2: no longer the flex row that held the sidebar -- shell.css's body.app owns the shell
+   layout, and --rule moved there too so EVERY page has it, not just this one. */
+.pa-app { min-width: 0; }
 
-/* ---- sidebar ---- */
-.pa-side {
-  width: 210px; flex: none; background: var(--bg-card); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; padding: 18px 14px; position: sticky; top: 0; height: 100vh;
-}
-.pa-brand { display: flex; align-items: baseline; gap: 7px; padding: 0 6px 16px; }
-.pa-brand-name { font-weight: 900; font-size: 19px; letter-spacing: -0.02em; color: var(--ink); }
-.pa-brand-tag { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em; color: var(--mono-muted); text-transform: uppercase; }
-.pa-side-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mono-muted); padding: 6px 8px 4px; }
-.pa-side-label-2 { padding-top: 14px; }
-.pa-side-link { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: var(--ink-muted); text-decoration: none; }
-.pa-side-link:hover { background: var(--bg-badge); color: var(--ink); }
-.pa-side-link.active { background: var(--accent-wash); color: var(--accent-ink); font-weight: 600; }
-.pa-side-foot { margin-top: auto; padding: 12px 8px 0; font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); border-top: 1px solid var(--rule); }
-
-/* ---- main column + topbar ---- */
-.pa-maincol { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.pa-topbar {
-  position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 16px;
-  padding: 11px 28px; background: rgba(246, 243, 238, 0.9); backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
-}
-.pa-search { flex: 1; max-width: 440px; display: flex; align-items: center; gap: 9px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border-strong); border-radius: 8px; margin: 0; }
-.pa-search-ic { color: var(--mono-muted); font-family: var(--font-mono); font-size: 12px; }
-.pa-search-input { flex: 1; min-width: 0; border: none; background: transparent; font: inherit; font-size: 13px; color: var(--ink); padding: 0; }
-.pa-search-input::placeholder { color: var(--mono-muted); }
-.pa-search-input:focus { outline: none; }
-.pa-kbd { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); border: 1px solid var(--border-strong); border-radius: 5px; padding: 1px 5px; }
-.pa-apiref { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); border: 1px solid var(--accent-wash); background: var(--accent-wash); padding: 6px 11px; border-radius: 8px; text-decoration: none; }
+/* ---- sidebar + topbar: MOVED to shell.css (V3-P2) ----
+   Under D1 there is ONE shell for every data page, rendered by shell.js. The .pa-side /
+   .pa-topbar / .pa-search / .pa-apiref blocks that lived here were the second, drifted copy of
+   script.js's sidebar; both merged. This file now styles the sector VIEWS only. */
 
 .pa-main { padding: 16px 28px 72px; max-width: 1440px; width: 100%; }
 
@@ -76,15 +53,11 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-chip.na { background: var(--bg-badge); border: 1.5px solid var(--border-strong); }
 .pa-chip.nm { border: 1.5px dashed var(--mono-muted); }
 
-/* ---- body: view rail + viewport ---- */
-.pa-body { display: flex; gap: 20px; align-items: flex-start; }
-.pa-rail { width: 132px; flex: none; position: sticky; top: 74px; }
-.pa-rail-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mono-muted); padding: 0 4px 8px; }
-.pa-rail-btn { cursor: pointer; display: block; width: 100%; text-align: left; font-size: 13.5px; font-weight: 600; color: var(--ink-muted); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 8px 11px; margin-bottom: 4px; }
-.pa-rail-btn:hover { background: var(--bg-badge); color: var(--ink); }
-.pa-rail-btn.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--accent-wash); }
-.pa-rail-rule { height: 1px; background: var(--rule); margin: 12px 4px; }
-.pa-rail-note { font-family: var(--font-mono); font-size: 9.5px; line-height: 1.5; color: var(--mono-muted); padding: 0 4px; }
+/* ---- body: view rail + viewport: MOVED to shell.css (V3-P2) ----
+   .shell-body / .shell-rail* / .shell-viewport are the shared shell's; sectorapp.js keeps the
+   .pa-body + .pa-viewport class names alongside them so the right rail's flex sibling and the
+   960px cap still resolve. NOTE: .pa-rail-row/-rowhead/-name/-p/-ns/-track/-fill below are the
+   RIGHT rail's rows -- a different thing that happens to share the prefix. Do not delete them. */
 .pa-viewport { flex: 1; min-width: 0; max-width: 960px; } /* v2: 960px content cap */
 
 /* ---- v2 right rail (Sector view only): snapshot · "What's moving" feed placeholder · how-to-read.
@@ -185,14 +158,18 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-drill-cover { font-size: 12px; color: var(--ink-soft); margin-bottom: 8px; }
 /* Each metric tile is demarcated like the v2 prototype: padding:12px 0 + a --rule border-top between
    tiles (the first tile's border also separates the set from the card head/toggle above). */
-.pa-drill-boxes .plot-chart { margin: 0; padding: 12px 0; border-top: 1px solid var(--rule); }
-/* boxWhiskerChart emits .plot-chart-title/.plot-chart-caption, styled in app.css which this page does
-   NOT load -> they'd fall back to the browser-default serif. Restyle locally to the v2 prototype's
-   distribution-tile treatment: metric name in Hanken Grotesk 13.5/600, caption in mono. */
+/* V3-P2: this page now DOES load app.css, so these are true OVERRIDES of app.css's .plot-chart
+   card, not substitutes for it. The card chrome (bg + border + radius + shadow) must be unset
+   explicitly -- a distribution tile is a row in a card, not a card of its own. Dropping these
+   unsets would nest a card inside a card. */
+.pa-drill-boxes .plot-chart {
+  margin: 0; padding: 12px 0; background: none; border: 0; border-radius: 0; box-shadow: none;
+  border-top: 1px solid var(--rule);
+}
+/* The v2 prototype's distribution-tile treatment: metric name in Hanken Grotesk 13.5/600 rather
+   than app.css's mono/uppercase/accent title, caption a touch tighter than app.css's. */
 .pa-drill-boxes .plot-chart-title { font-family: var(--font-sans); font-size: 13.5px; font-weight: 600; text-transform: none; letter-spacing: normal; color: var(--ink-body); margin: 0 0 7px; }
 .pa-drill-boxes .plot-chart-caption { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin: 6px 2px 0; }
-.pa-drill-boxes .plot-chart-body { overflow-x: auto; }
-.pa-drill-boxes .plot-chart-body svg { display: block; }
 .pa-dist-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
 .pa-dist-title { font-family: var(--font-sans); font-weight: 800; font-size: 15px; color: var(--ink); }
 .pa-scope-toggle { display: flex; gap: 4px; background: var(--bg-tint); border: 1px solid var(--border); border-radius: 8px; padding: 3px; flex: none; }
@@ -322,25 +299,18 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-sg-ph { font-style: italic; }
 .pa-ph-note { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin-top: 12px; }
 .pa-fh-body { padding: 4px 0; }
-/* The peer distribution is now P.distributionStrip (V3-P1) -- the old absolutely-positioned
-   .pa-dot/.pa-diamond track is gone, along with its index-derived jitter. Like boxWhiskerChart
-   above, the builder emits .plot-chart-* chrome styled in app.css, which this page deliberately
-   does not load (see the note at .pa-drill-boxes), so re-declare it locally for the strip host.
-   V3-P2 removes this duplication when the shells merge. */
-.pa-dp-host .plot-chart { margin: 0; padding: 2px 0 0; }
+/* The peer distribution is P.distributionStrip (V3-P1) -- the old absolutely-positioned
+   .pa-dot/.pa-diamond track is gone, along with its index-derived jitter.
+   V3-P2: the .dist-strip* re-declarations that lived here are GONE -- this page loads app.css now,
+   which owns them. What remains is only what genuinely differs from app.css for this host: the
+   strip sits inline in the metric row, so the chartCard shell is unset and the title suppressed. */
+.pa-dp-host .plot-chart {
+  margin: 0; padding: 2px 0 0; background: none; border: 0; border-radius: 0; box-shadow: none;
+}
 .pa-dp-host .plot-chart-title { display: none; }
-/* The baseline hairline the old .pa-dp-track carried (border-bottom + 2px 6px margin). It sits under
-   the strip and above the caption, exactly as before -- dropped by accident in the first pass. */
-.pa-dp-host .plot-chart-body { overflow-x: auto; margin: 2px 0 0; }
+.pa-dp-host .plot-chart-body { margin: 2px 0 0; }
 .pa-dp-host .plot-chart-caption { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin: 4px 2px 0; }
-/* .dist-strip* live in app.css, which this page does not load -- re-declared here for the same
-   reason as .plot-chart* above. V3-P2 removes this duplication when the shells merge. */
-.pa-dp-host .dist-strip { display: block; overflow: visible;
-  background: var(--bg-tint); border: 1px solid var(--border-tint); border-radius: 8px; }
-.pa-dp-host .dist-strip-dot { opacity: 0.6; }
-.pa-dp-host .dist-strip-dot.is-clickable { cursor: pointer; }
-.pa-dp-host .dist-strip-dot.is-clickable:hover { opacity: 1; fill: var(--ink-soft); }
-.pa-dp-host .dist-strip-dot.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* An empty-state line inside the strip host reads as a caption, not as app.css's 14px body copy. */
 .pa-dp-host .state-copy { font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); }
 .pa-dp-cap { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-top: 8px; }
 
@@ -354,9 +324,10 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
    The app is self-contained (it does not load app.css), so B's blue is a LOCAL named token here --
    the same slate blue app.css names --gaap-color -- not app.css's token. ---- */
 .pa-app { --pa-b: #3d6a8a; }
-/* Self-contained ext (rust) tokens -- the page doesn't load app.css, so var(--ext*) would be
-   undefined. Same values as app.css; used by the provisional banner, approx chip, and shift flag. */
-.pa-app { --ext: #b04a3a; --ext-bg: #f5e2da; --ext-border: #e8c4b4; }
+/* V3-P2: this page loads app.css now, so --ext-bg/--ext-border come from its :root and the local
+   copies are gone. --ext is this file's own name for the same rust (app.css calls it --ext-color),
+   used by the provisional banner, approx chip, and shift flag -- aliased, not re-specified. */
+.pa-app { --ext: var(--ext-color); }
 .pa-cmp-idA { --pa-cmp: var(--accent); }
 .pa-cmp-idB { --pa-cmp: var(--pa-b); }
 
@@ -560,12 +531,7 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
   .pa-rrail { display: none; }
 }
 @media (max-width: 900px) {
-  .pa-side { display: none; }
-  .pa-body { flex-direction: column; }
-  .pa-rail { position: static; width: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .pa-rail-label { padding: 0 4px 0 0; }
-  .pa-rail-btn { width: auto; margin: 0; }
-  .pa-rail-rule, .pa-rail-note { display: none; }
+  /* .pa-side / .pa-body / .pa-rail* responsive rules moved to shell.css with the shell. */
   .pa-co-body { grid-template-columns: 1fr; }
   .pa-co-rail { position: static; }
   .pa-cmp-cards { grid-template-columns: 1fr; }

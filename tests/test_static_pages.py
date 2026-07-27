@@ -156,16 +156,53 @@ def test_sector_analytics_redirects_to_sectors_preserving_params(tmp_path, monke
     assert deep.headers["location"] == "/sectors?group=73&view=company&symbol=320193&a=73&b=60"
 
 
-def test_sectors_legacy_serves_the_old_page(tmp_path, monkeypatch):
-    # Rollback path: the pre-v2 single-sector page is kept reachable at /sectors-legacy
-    # (sectors.js), not the app -- and sectors.* is NOT deleted (that's M3).
+def test_sectors_legacy_is_gone(tmp_path, monkeypatch):
+    # V3-P2 (= M3 of ROADMAP_SECTOR_MIGRATION): the pre-v2 single-sector page was the rollback
+    # path for the M2 swap and its retention window is over. The route AND sectors.html/css/js
+    # are deleted -- keeping them alive would leave a third shell and a duplicate .plot-chart
+    # declaration in the product.
     with _client(tmp_path, monkeypatch) as client:
         resp = client.get("/sectors-legacy")
+    assert resp.status_code == 404
+
+    # Deleted on disk too, not merely unrouted -- kept in step with the route above.
+    from secfin.api.main import STATIC_DIR
+
+    for gone in ("sectors.html", "sectors.css", "sectors.js"):
+        assert not (STATIC_DIR / gone).exists(), f"{gone} should have been deleted in V3-P2"
+
+
+# --- URL-as-state (V3-P2) -------------------------------------------------------------
+# Every route below serves the SAME shell as its bare form; the client derives the selection from
+# the path. The server deliberately does not validate {view} -- shell.js resolves an unknown slug
+# to the subject's default view, and a server-side 404 would contradict that.
+
+
+def test_company_view_paths_serve_the_company_shell(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        bare = client.get("/company/AAPL")
+        for view in ("fundamentals", "statements", "insider", "institutional", "beneficial"):
+            resp = client.get(f"/company/AAPL/{view}")
+            assert resp.status_code == 200, view
+            assert "text/html" in resp.headers["content-type"]
+            assert resp.text == bare.text, f"/company/AAPL/{view} must serve the same shell"
+
+
+def test_company_unknown_view_still_serves_the_shell(tmp_path, monkeypatch):
+    # AC-21: the client falls back to the default view. The server must NOT 404 here.
+    with _client(tmp_path, monkeypatch) as client:
+        resp = client.get("/company/AAPL/nonsense")
     assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    body = resp.text
-    assert "/static/sectors.js" in body
-    assert "/static/sectorapp.js" not in body
+    assert "/static/company.js" in resp.text
+
+
+def test_sector_group_and_view_paths_serve_the_sector_app(tmp_path, monkeypatch):
+    with _client(tmp_path, monkeypatch) as client:
+        bare = client.get("/sectors")
+        for path in ("/sectors/35", "/sectors/35/sector", "/sectors/35/compare", "/sectors/35/xx"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert resp.text == bare.text, f"{path} must serve the same shell"
 
 
 def test_support_channel_is_reachable_from_every_page_footer(tmp_path, monkeypatch):

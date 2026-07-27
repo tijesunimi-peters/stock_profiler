@@ -1,0 +1,375 @@
+/* The unified product shell (V3-P2, ROADMAP_APP_V3 §2 D1/D2 — STYLE_GUIDE §4.2/§5).
+ *
+ * ONE shell for every data page. Before this file there were two: script.js's Data/Reference
+ * sidebar (styled in style.css) and the sector app's self-contained .pa-side (styled in
+ * sectorapp.css). They had drifted in seven visible ways; this file is the merge, ported from
+ * docs/design/sector-app-prototype-v3/prototype.dc.html:36-70 onto style.css's :root tokens.
+ *
+ * Rendered by shell.js. Pages carry only the empty mounts (#appSide / #appScrim / #appTopbar),
+ * so the link set lives in exactly one place.
+ *
+ * Load order (STYLE_GUIDE §5): style.css -> app.css -> shell.css -> the page's own CSS. */
+
+body.app {
+  --topbar-h: 56px;
+  --ctx-h: 0px;
+  --side-w: 210px; /* the prototype's rail width */
+  /* --rule is the app-wide hairline divider (~11 uses across sectorapp.css for row/section
+     borders). The prototype defines it in :root; style.css does not. Defined here, on the shell
+     root, so every page inside the shell gets it -- it used to be scoped to .pa-app, which meant
+     only the sector app had it. Aliased to style.css's identical --border-tint-rule. */
+  --rule: var(--border-tint-rule);
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ---------- sidebar ---------- */
+
+.app-side {
+  width: var(--side-w);
+  flex: 0 0 var(--side-w);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  z-index: 70;
+}
+
+.shell-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 0 6px 16px;
+  text-decoration: none;
+}
+.shell-brand-name { font-weight: 900; font-size: 19px; letter-spacing: -0.02em; color: var(--ink); }
+.shell-brand-tag {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+
+.shell-nav-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding: 14px 8px 4px;
+}
+.shell-nav-label:first-of-type { padding-top: 6px; }
+
+/* One rule for BOTH live links (<a>) and planned labels (<span>) so they align pixel-for-pixel;
+   the difference is carried entirely by .is-planned below. */
+.shell-nav-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 9px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
+.shell-nav-item.is-current {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+/* Planned-and-inert (STYLE_GUIDE §10.1): NOT a link -- shell.js emits a <span>, so there is no
+   href and no handler to regress. Drained to the same --mono-muted an N/A value uses, and the
+   cursor does not invite a click. Its title names what the subject will hold. */
+.shell-nav-item.is-planned {
+  color: var(--mono-muted);
+  cursor: default;
+}
+.shell-planned-badge {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.shell-side-foot {
+  margin-top: auto;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--rule);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+}
+.shell-side-foot a { color: var(--mono-muted); text-decoration: none; }
+.shell-side-foot a:hover { color: var(--ink); }
+
+/* ---------- main column + topbar ---------- */
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 28px;
+  /* --bg-page at 90% + blur, per the prototype: content scrolls under the bar without ghosting.
+     Literal rgba because color-mix on a var is not worth the support matrix here; this product
+     has a single light theme (no prefers-color-scheme anywhere in the CSS). */
+  background: rgba(246, 243, 238, 0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-menu {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.topbar-menu span {
+  display: block;
+  height: 2px;
+  margin: 0 7px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+.shell-search {
+  flex: 1;
+  max-width: 440px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  margin: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+.shell-search:focus-within { border-color: var(--accent); }
+.shell-search-ic { font-family: var(--font-mono); font-size: 12px; color: var(--mono-muted); }
+.shell-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 0;
+}
+.shell-search-input::placeholder { color: var(--mono-muted); }
+.shell-search-input:focus { outline: none; }
+.shell-kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.shell-apiref {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-wash);
+  padding: 6px 11px;
+  border-radius: 8px;
+  text-decoration: none;
+}
+.shell-apiref:hover { color: var(--accent-ink); border-color: var(--accent); }
+
+/* ---------- view rail + viewport (pages with 2+ views) ---------- */
+
+.shell-body { display: flex; gap: 20px; align-items: flex-start; }
+.shell-rail { width: 132px; flex: none; position: sticky; top: 74px; }
+.shell-rail-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding: 0 4px 8px;
+}
+.shell-rail-btn {
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 11px;
+  margin-bottom: 4px;
+}
+.shell-rail-btn:hover { background: var(--bg-badge); color: var(--ink); }
+.shell-rail-btn.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--accent-wash); }
+.shell-rail-rule { height: 1px; background: var(--rule); margin: 12px 4px; }
+.shell-rail-note {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+  padding: 0 4px;
+}
+.shell-viewport { flex: 1; min-width: 0; max-width: 960px; }
+
+/* Below 1024px the rail stops being a column and rides above the content as a scrollable strip --
+   a 132px sticky column on a phone would eat half the width. */
+@media (max-width: 1023px) {
+  .shell-body { display: block; }
+  .shell-rail {
+    position: static;
+    width: auto;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .shell-rail-btn { width: auto; flex: none; margin-bottom: 0; white-space: nowrap; }
+  .shell-rail-label,
+  .shell-rail-rule,
+  .shell-rail-note { display: none; }
+  .shell-viewport { max-width: none; }
+}
+
+/* ---------- entity control bar (pages with ONE focal entity) ---------- */
+
+.shell-entity {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.shell-entity-cell { display: flex; flex-direction: column; gap: 3px; }
+.shell-entity-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+.shell-entity-value { font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.shell-entity-value.is-mono { font-family: var(--font-mono); font-size: 13px; font-weight: 400; }
+/* The focal identity (ticker / manager name) reads as the entity you are looking at. */
+.shell-entity-value.is-primary { font-family: var(--font-mono); font-size: 19px; font-weight: 600; line-height: 1; }
+/* A value that has not resolved yet renders drained -- never a guess, never 0 (STYLE_GUIDE §7). */
+.shell-entity-value.is-pending { color: var(--mono-muted); font-weight: 400; }
+.shell-entity-sep { width: 1px; height: 34px; background: var(--rule); }
+
+/* ---------- scrim + off-canvas drawer (< 1024px) ---------- */
+
+.app-scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgba(28, 26, 22, 0.28);
+}
+
+.shell-brand:focus-visible,
+a.shell-nav-item:focus-visible,
+.shell-rail-btn:focus-visible,
+.topbar-menu:focus-visible,
+.shell-apiref:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1023px) {
+  .app-side {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    box-shadow: none;
+  }
+  body.app.side-open .app-side {
+    transform: translateX(0);
+    box-shadow: 24px 0 60px -30px rgba(40, 30, 15, 0.45);
+  }
+  body.app.side-open .app-scrim { display: block; }
+  .topbar-menu { display: flex; }
+  .app-topbar { padding: 11px 20px; gap: 12px; }
+
+  /* A closed drawer must be neither clickable nor focusable. Off-screen is not enough: the panel
+     still sits over the topbar (z-index 70 > 60), so without this a tap on the hamburger right
+     after closing lands on the sidebar's brand link and navigates to "/" instead of reopening --
+     and the closed drawer's links stay in the tab order. pointer-events flips instantly (so the
+     re-tap works even mid-slide) while visibility waits out the transition, keeping the slide-out
+     visible. Inherited untouched from the retired script.js shell, which had the same latent bug. */
+  .app-side { pointer-events: none; visibility: hidden; }
+  body.app.side-open .app-side { pointer-events: auto; visibility: visible; }
+  @media (prefers-reduced-motion: no-preference) {
+    .app-side { transition: transform 0.18s ease, visibility 0s linear 0.18s; }
+    body.app.side-open .app-side { transition: transform 0.18s ease, visibility 0s; }
+  }
+}
+
+@media (max-width: 640px) {
+  .shell-apiref { display: none; }
+  .shell-kbd { display: none; }
+  .shell-entity { gap: 14px; }
+  .shell-entity-sep { display: none; }
+}
+
+/* ---------- page-level bits the shell owns ---------- */
+
+/* Compact context: data pages don't need the 36px marketing masthead. */
+body.app .masthead h1 { font-size: 27px; }
+body.app .rule-double { margin-top: 12px; }
+body.app .lede { font-size: 14.5px; }
+
+/* Context bar height is only reserved where .controls reliably fits one line; below
+ * this width the bar wraps and simply scrolls away (no sticky), so --ctx-h stays 0. */
+@media (min-width: 1100px) {
+  body.app.has-ctx { --ctx-h: 58px; }
+}

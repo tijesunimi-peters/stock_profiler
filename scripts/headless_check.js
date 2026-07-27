@@ -17,6 +17,17 @@ const PAGES = process.env.PAGES
     })
   : [
       ["company", "/company/AAPL"],
+      // V3-P2 URL-as-state: the view is addressable as a PATH segment. These prove the new forms
+      // resolve to the right view; the legacy ?tab= forms below prove the old ones still do.
+      ["company-path-view", "/company/AAPL/statements"],
+      // An unknown slug must fall back to the default view, never error (AC-21).
+      ["company-path-unknown", "/company/AAPL/nonsense"],
+      ["sectors-path-group", "/sectors/35"],
+      // V3-P2 drawer guard: below 1024px the sidebar is off-canvas behind a hamburger. This lived
+      // only in the retired script.js shell, so it is the single easiest thing in the merge to lose
+      // -- the shot opens the drawer, so a regression shows up as a failed selector, not just a
+      // different-looking picture.
+      ["shell-drawer-narrow", "/company/AAPL"],
       // The Data Explorer merged into the company hub's Statements tab (2026-07-17);
       // the first entry goes through the old /explorer URL to exercise the redirect.
       ["statements-balance", "/explorer?symbol=AAPL&statement=balance"],
@@ -43,11 +54,9 @@ const PAGES = process.env.PAGES
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
       ["screen", "/screen?view=rank&concept=revenue&year=2024&sort=desc&limit=25"],
-      // M2 routing swap (2026-07-24): /sectors is now the v2 Sector Analytics app (the sectorapp*
-      // shots below drive it at the canonical URL). The pre-v2 single-sector page (sectors.js) lives
-      // on at /sectors-legacy for one release as the rollback path -- one shot proves it still renders
-      // (M3 later deletes both the legacy route and this shot).
-      ["sectors-legacy", "/sectors-legacy"],
+      // M2 routing swap (2026-07-24): /sectors is the Sector Analytics app (the sectorapp* shots
+      // below drive it at the canonical URL). The pre-v2 single-sector page and its /sectors-legacy
+      // rollback shot were deleted in V3-P2 (= M3 of ROADMAP_SECTOR_MIGRATION).
       ["coverage", "/coverage"],
       ["components", "/components"],
       // "Paper terminal" Sector Analytics app v2 -- now canonical at /sectors (M2 swap; the URLs below
@@ -105,6 +114,8 @@ const PAGES = process.env.PAGES
   for (const [name, path] of PAGES) {
     const url = BASE + path;
     const page = await browser.newPage();
+    // The drawer only exists below 1024px, so this one shot runs at a phone width.
+    if (name === "shell-drawer-narrow") await page.setViewport({ width: 900, height: 1200 });
     const errs = [];
     page.on("console", (m) => { if (m.type() === "error") errs.push("console.error: " + m.text()); });
     page.on("pageerror", (e) => errs.push("pageerror: " + e.message));
@@ -195,13 +206,33 @@ const PAGES = process.env.PAGES
         await page.waitForSelector(".pa-cmp-bar", { timeout: 8000 });
         await new Promise((r) => setTimeout(r, 400));
       }
+      if (name === "company-path-view" || name === "company-path-unknown") {
+        // The rail must settle on the view the PATH names -- statements for the explicit slug,
+        // the default (fundamentals) for the unknown one (AC-19/AC-21).
+        const want = name === "company-path-view" ? "statements" : "fundamentals";
+        await page.waitForSelector(`.shell-rail-btn.active[data-view="${want}"]`, { timeout: 8000 });
+      }
+      if (name === "shell-drawer-narrow") {
+        // Hamburger visible below 1024px; clicking it opens the off-canvas drawer, and the scrim
+        // closes it again. All three were script.js-only behaviour before the merge (AC-4).
+        await page.waitForSelector("#appMenu", { visible: true });
+        await page.click("#appMenu");
+        await page.waitForSelector("body.side-open", { timeout: 4000 });
+        await new Promise((r) => setTimeout(r, 300));
+        await page.click("#appScrim");
+        await page.waitForFunction(() => !document.body.classList.contains("side-open"), { timeout: 4000 });
+        // Re-open so the screenshot captures the drawer rather than the closed state.
+        await page.click("#appMenu");
+        await page.waitForSelector("body.side-open", { timeout: 4000 });
+        await new Promise((r) => setTimeout(r, 300));
+      }
       if (name === "sectorapp-qual") {
         // Click the Qualitative view rail -> the honest Track-2 placeholder LAYOUT (v2 P4): banner +
         // risk-factor rows + Disclosure-landscape blocks, NO fabricated data. Then exercise the
         // wired-but-empty interactions (expand a theme's language, reveal a filer-count panel) so a
         // JS error in either handler fails the check; the screenshot captures the expanded state.
-        await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
-        await page.click('.pa-rail-btn[data-view="qual"]');
+        await page.waitForSelector('.shell-rail-btn[data-view="qual"]');
+        await page.click('.shell-rail-btn[data-view="qual"]');
         await page.waitForSelector('.pa-qual-banner');
         await page.waitForSelector('.pa-qual-landscape .pa-qual-block');
         await page.click('.pa-qual-rtrow[data-qual-theme]');
@@ -214,8 +245,8 @@ const PAGES = process.env.PAGES
         // Open Qualitative, then drill into the Filings view via a risk-theme "Filings →" stub.
         // Verify the drill renders (breadcrumb + list), exercise a form tab + the pager, and confirm
         // the range label is the honest placeholder. Any JS error in the wiring fails the check.
-        await page.waitForSelector('.pa-rail-btn[data-view="qual"]');
-        await page.click('.pa-rail-btn[data-view="qual"]');
+        await page.waitForSelector('.shell-rail-btn[data-view="qual"]');
+        await page.click('.shell-rail-btn[data-view="qual"]');
         await page.waitForSelector('.pa-qual-filings[data-qual-filings]');
         await page.click('.pa-qual-filings[data-qual-filings]');
         await page.waitForSelector('.pa-fil-crumb');
@@ -232,8 +263,8 @@ const PAGES = process.env.PAGES
         // type a partial name and give the debounce + /v1/companies/suggest round trip a
         // moment -- the screenshot then captures the open dropdown, and any JS error
         // in the widget fails the check like any other page error.
-        await page.focus(".topbar-search input");
-        await page.type(".topbar-search input", "micro", { delay: 40 });
+        await page.focus(".shell-search input");
+        await page.type(".shell-search input", "micro", { delay: 40 });
         await new Promise((r) => setTimeout(r, 900));
       }
       await page.screenshot({ path: `${OUT}/${name}.png`, fullPage: true });

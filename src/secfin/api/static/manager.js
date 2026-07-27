@@ -10,7 +10,9 @@
   var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   var ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited", unchanged: "Unchanged" };
 
-  var cik = decodeURIComponent((location.pathname.split("/").filter(Boolean).pop() || "").trim());
+  // /manager/{cik} — indexed rather than .pop() for the same reason as company.js: it stays
+  // correct if a view slug is ever appended (V3-P6), instead of silently reading the slug as a CIK.
+  var cik = decodeURIComponent(((location.pathname.split("/").filter(Boolean))[1] || "").trim());
   var state = { periods: [], value: null, name: null };
 
   function quarterLabel(iso) {
@@ -24,6 +26,23 @@
       title: state.name || "Manager CIK " + cik,
       meta: ["CIK " + cik, "13F holdings — quarter-end snapshot"],
     });
+    renderEntityBar();
+  }
+
+  /* Entity control bar (V3-P2). The manager's NAME arrives with the holdings fetch, so on first
+   * paint it is genuinely unknown: shell.entityBar() renders it drained ("—") and it fills in on
+   * resolve. It must never fall back to the CIK or any other stand-in dressed as the name —
+   * an unresolved value is not a value (STYLE_GUIDE §7). */
+  function renderEntityBar() {
+    var host = $("entityBar");
+    if (!host || !window.ClearyFiShell) return;
+    host.innerHTML = "";
+    host.appendChild(window.ClearyFiShell.entityBar([
+      { label: "Manager", value: state.name || null, primary: true },
+      { label: "CIK", value: cik, mono: true },
+      { label: "Quarter", value: state.value ? quarterLabel(state.value) : null, mono: true },
+      { label: "As of", value: "quarter-end · ~45-day lag", mono: true },
+    ]));
   }
 
   // Phase 5 polish (caption dedup, STYLE_GUIDE §6): the standing "reported 13F long positions
@@ -53,9 +72,10 @@
   }
 
   function init() {
+    if (window.ClearyFiShell) window.ClearyFiShell.mount();
     $("footer").innerHTML = P.footer();
     setMasthead();
-    // Company lookup lives in the app shell's topbar search (script.js); the on-page
+    // Company lookup lives in the app shell's topbar search (shell.js); the on-page
     // #search mount is gone. Guard kept so an older shell with the div still works.
     var searchEl = $("search");
     if (searchEl) {
@@ -112,7 +132,7 @@
     if (state.value) $("period-select").value = state.value;
   }
 
-  function onPeriodChange(e) { state.value = e.target.value; render(); }
+  function onPeriodChange(e) { state.value = e.target.value; renderEntityBar(); render(); }
 
   function render() {
     var period = state.value;

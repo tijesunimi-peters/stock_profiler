@@ -58,8 +58,15 @@
     filingsForm: "All", // active form-type tab: "All" | "10-K" | "10-Q" | "8-K"
     filingsPage: 0, // 0-based pager index; reset to 0 every time the drill is opened
   };
-  if (params.get("view") === "company") state.view = "company";
-  if (params.get("view") === "compare") state.view = "compare";
+  // Initial view: the PATH wins (/sectors/{group}/{view}), with the legacy ?view= honored as a
+  // fallback so every bookmark and e2e URL keeps resolving (V3-P2 AC-20). ClearyFiShell.route()
+  // owns that precedence and maps an unknown slug back to the default view.
+  if (window.ClearyFiShell) {
+    var r0 = window.ClearyFiShell.route();
+    if (r0.view) state.view = r0.view;
+  } else if (params.get("view") === "company" || params.get("view") === "compare") {
+    state.view = params.get("view");
+  }
   if (params.get("a")) state.compareA = params.get("a"); // ?a=&b= preset the Compare pair (groups)
   if (params.get("b")) state.compareB = params.get("b");
 
@@ -147,11 +154,21 @@
   }
 
   function init() {
+    // Mount the ONE product shell (V3-P2). The search override keeps this page's behaviour: on
+    // /sectors, submitting places a filer in its peer distribution rather than navigating away to
+    // /company — that IS the Company view. Every other shell page uses the default (navigate).
+    if (window.ClearyFiShell) {
+      window.ClearyFiShell.mount({ onSearch: selectFocal });
+      window.addEventListener("popstate", onPopState);
+    }
     renderApp(); // initial (loading) shell
     P.api("/sectors")
       .then(function (res) {
         state.sectors = res;
         resolveInitialSector();
+        // Normalize a legacy ?group=/?view= (or a bare /sectors) to the canonical path WITHOUT
+        // adding a history entry -- the user never navigated to it.
+        syncUrl({ replace: true });
         renderApp();
         ensureSectorData();
         var sym = params.get("symbol"); // ?symbol= presets the Company view focal (used by e2e)
@@ -169,7 +186,9 @@
   function resolveInitialSector() {
     var list = (state.sectors && state.sectors.sectors) || [];
     if (!list.length) { state.sectorIdx = null; return; }
-    var want = params.get("group") || lsGet(LS_LAST);
+    // Precedence: path (/sectors/{group}) -> legacy ?group= -> last sector used -> largest sector.
+    var routed = window.ClearyFiShell ? window.ClearyFiShell.route().id : null;
+    var want = routed || params.get("group") || lsGet(LS_LAST);
     var idx = -1;
     if (want) idx = list.findIndex(function (s) { return s.group === want; });
     if (idx < 0) {
@@ -241,10 +260,55 @@
     state.ddOpen = false;
     var g = selectedGroup(); if (g) lsSet(LS_LAST, g);
     ensureExpandedTheme();
+    syncUrl();
+    // The Company view is scoped to the selected sector, so a new sector means a new focal --
+    // keeping the old one would leave the dropdown listing the previous sector's filers (AC-22).
+    if (state.view === "company") {
+      state.focalCik = null; state.focalName = null; state.focalTicker = null;
+      state.focalPeers = null; state.focalGroup = g;
+      state.coTrendOpen = {};
+      resolveFocalInGroup(g);
+    }
     renderApp();
     ensureSectorData();
   }
-  function setView(v) { state.view = v; renderApp(); if (v === "company" && !state.focalCik) resolveDefaultFocal(); }
+  function setView(v) {
+    state.view = v;
+    syncUrl();
+    renderApp();
+    if (v === "company" && !state.focalCik) resolveDefaultFocal();
+  }
+
+  /* URL-as-state (V3-P2): the path is the serialization of the selection, so a view is linkable
+   * and Back/Forward walk views. /sectors/{group}[/{view}] — the bare default view is dropped from
+   * the path so /sectors/35 stays the clean address for "this sector, default view". */
+  function syncUrl(opts) {
+    if (!window.ClearyFiShell) return;
+    var g = selectedGroup();
+    var path = "/sectors" + (g ? "/" + encodeURIComponent(g) : "");
+    // "filings" is a drill, not an addressable view; it returns to its opener via Back.
+    if (state.view && state.view !== "sector" && state.view !== "filings") path += "/" + state.view;
+    if (path === location.pathname) return;
+    window.ClearyFiShell.navigate(path, opts);
+  }
+
+  // Back/Forward: re-derive the selection from the path rather than trusting in-memory state.
+  function onPopState() {
+    var r = window.ClearyFiShell.route();
+    var list = (state.sectors && state.sectors.sectors) || [];
+    if (r.id) {
+      var idx = list.findIndex(function (s) { return s.group === r.id; });
+      if (idx >= 0 && idx !== state.sectorIdx) {
+        state.sectorIdx = idx;
+        state.decompTheme = null;
+        ensureExpandedTheme();
+        ensureSectorData();
+      }
+    }
+    if (r.view && r.view !== state.view) state.view = r.view;
+    renderApp();
+    if (state.view === "company" && !state.focalCik) resolveDefaultFocal();
+  }
   // Open the Filings drill (P5) for a risk theme, remembering where we came from so Back returns
   // there. Resets the form tab + pager on every open (prototype §6). No data fetch -- placeholder.
   function openFilings(theme) {
@@ -271,58 +335,41 @@
 
   // ---------- render ----------
 
+  /* Render the main column. The SHELL (sidebar + topbar) is NOT rendered here -- shell.js mounts
+   * it once, outside #app, in init(). This function rewrites #app.innerHTML wholesale, so anything
+   * inside it loses its listeners on every state change; that is exactly why the shell moved out
+   * (V3-P2). The two-phase contract is unchanged and load-bearing: assign HTML strings, THEN let
+   * renderViewport()'s mount*() passes append DOM nodes (every chart builder returns a node). */
   function renderApp() {
     var app = $("app");
     app.innerHTML =
       '<div class="pa-app">' +
-      sidebarHtml() +
-      '<div class="pa-maincol">' +
-      topbarHtml() +
       '<main class="pa-main">' +
       titleHtml() +
       controlBarHtml() +
-      // v2 shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
+      // shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
       // Company: focal filer snapshot + how-to; Compare: A/B snapshot + how-to; Qualitative: Track-2
-      // how-to note, no data). The rail hides < 1240px (CSS) so the content keeps its room.
-      '<div class="pa-body">' + railHtml() + '<div class="pa-viewport" id="viewport"></div>' +
+      // how-to note, no data). The right rail hides < 1240px (CSS) so the content keeps its room.
+      '<div class="pa-body shell-body"><div id="railHost"></div><div class="pa-viewport shell-viewport" id="viewport"></div>' +
       (state.view === "sector" || (state.view === "company" && state.focalCik) || state.view === "compare" || state.view === "qual" ? rightRailHtml() : "") + "</div>" +
-      "</main></div></div>";
+      "</main></div>";
+    mountRail();
     renderViewport();
     wireShell();
   }
 
-  function sidebarHtml() {
-    var nav = [
-      ["Company hub", "/company/AAPL"], ["Compare", "/compare"], ["Screen", "/screen"],
-      ["Coverage", "/coverage"], ["Sectors", "/sectors"],
-    ];
-    var links = nav.map(function (n) {
-      var active = n[1] === "/sectors";
-      return '<a class="pa-side-link' + (active ? " active" : "") + '" href="' + n[1] + '">' + P.esc(n[0]) + "</a>";
-    }).join("");
-    return (
-      '<aside class="pa-side">' +
-      '<div class="pa-brand"><span class="pa-brand-name">ClearyFi</span><span class="pa-brand-tag">SEC data</span></div>' +
-      '<div class="pa-side-label">Data</div>' + links +
-      '<div class="pa-side-label pa-side-label-2">Reference</div>' +
-      '<a class="pa-side-link" href="/guide">Docs &amp; guide</a>' +
-      '<a class="pa-side-link" href="/methodology">Methodology</a>' +
-      '<a class="pa-side-link" href="/docs">API reference</a>' +
-      '<div class="pa-side-foot">Data, not investment advice.</div>' +
-      "</aside>"
-    );
-  }
-
-  function topbarHtml() {
-    return (
-      '<header class="pa-topbar">' +
-      '<form class="pa-search" id="paSearch"><span class="pa-search-ic">⌕</span>' +
-      '<input class="pa-search-input" id="paSearchInput" type="text" placeholder="Search ticker or CIK…" ' +
-      'autocomplete="off" spellcheck="false" aria-label="Search ticker or CIK to place a company in its peers">' +
-      '<span class="pa-kbd">⌘K</span></form>' +
-      '<a class="pa-apiref" href="/docs">API reference ↗</a>' +
-      "</header>"
-    );
+  // The view rail is the shared shell's (STYLE_GUIDE §4.2) -- a DOM node appended after the HTML
+  // string pass, like every other builder.
+  function mountRail() {
+    var host = $("railHost");
+    if (!host || !window.ClearyFiShell) return;
+    host.appendChild(window.ClearyFiShell.rail({
+      // "filings" is a drill reached from Qualitative, not a rail destination.
+      views: [["sector", "Sector"], ["company", "Company"], ["compare", "Compare"], ["qual", "Qualitative"]],
+      active: state.view,
+      note: "Sector · period · company preserved across views. Selecting a sector keeps your current theme focus.",
+      onSelect: setView,
+    }));
   }
 
   function titleHtml() {
@@ -372,20 +419,6 @@
       '<span class="pa-chip ok">● OK</span><span class="pa-chip approx">≈ APPROX</span>' +
       '<span class="pa-chip na">∅ N/A</span><span class="pa-chip nm">~ N/M</span></span>' +
       "</div></section>"
-    );
-  }
-
-  function railHtml() {
-    var views = [["sector", "Sector"], ["company", "Company"], ["compare", "Compare"], ["qual", "Qualitative"]];
-    var btns = views.map(function (v) {
-      var active = state.view === v[0];
-      return '<button class="pa-rail-btn' + (active ? " active" : "") + '" data-view="' + v[0] + '">' + v[1] + "</button>";
-    }).join("");
-    return (
-      '<nav class="pa-rail"><div class="pa-rail-label">View</div>' + btns +
-      '<div class="pa-rail-rule"></div>' +
-      '<div class="pa-rail-note">Sector · period · company preserved across views. Selecting a sector keeps your current theme focus.</div>' +
-      "</nav>"
     );
   }
 
@@ -1244,11 +1277,50 @@
         state.focalCik = res.cik;
         state.focalPeers = res;
         state.focalGroup = (res.peers && res.peers[0] && res.peers[0].peer_group) || null;
+        // Searching a filer moves the SECTOR with it, so the control bar and the peer dropdown
+        // never disagree about which sector you are looking at (AC-22).
+        syncSectorToGroup(state.focalGroup);
         renderApp();
         ensureCompanyData();
       })
       .catch(function () { state.companyErr = true; renderApp(); });
   }
+  /* Point the control bar's sector at `g`, so the selected sector and the focal's peer group are
+   * the same thing (see focalPeerList). Silent when the group isn't in the sector universe -- we
+   * never invent a selection for a group we don't carry. */
+  function syncSectorToGroup(g) {
+    if (!g) return;
+    var list = (state.sectors && state.sectors.sectors) || [];
+    var idx = list.findIndex(function (s) { return s.group === g; });
+    if (idx < 0 || idx === state.sectorIdx) return;
+    state.sectorIdx = idx;
+    state.decompTheme = null;
+    lsSet(LS_LAST, g);
+    ensureExpandedTheme();
+    ensureSectorData();
+    syncUrl();
+  }
+
+  /* Resolve a focal INSIDE one sector -- used when the operator picks a sector while the Company
+   * view is open. Deliberately does NOT fall through to another sector the way resolveDefaultFocal
+   * does: the operator named this sector, so "no company-level metrics here" is an honest empty
+   * state, not a reason to silently show a different sector's filers. */
+  function resolveFocalInGroup(g) {
+    if (!g) return;
+    P.api("/sectors/" + encodeURIComponent(g) + "/net_margin/companies?year=" + focalYear() + "&period=FY")
+      .then(function (r) {
+        if (selectedGroup() !== g) return; // the operator moved on while this was in flight
+        var cos = (r.companies || []).slice().sort(function (a, b) {
+          return (a.name || "").localeCompare(b.name || "");
+        });
+        if (!cos.length) { renderApp(); return; } // honest empty state
+        state.focalGroup = g;
+        selectFocalCik(cos[0].cik, cos[0].name);
+        ensureCompanyData();
+      })
+      .catch(function () { renderApp(); });
+  }
+
   // Re-focus to a peer (identified by cik) without changing the group (a peer is in the same group).
   function selectFocalCik(cik, name) {
     if (cik === state.focalCik) return;
@@ -1278,14 +1350,26 @@
       P.api("/sectors/" + encodeURIComponent(g) + "/net_margin/companies?year=" + focalYear() + "&period=FY")
         .then(function (r) {
           var cos = (r.companies || []).slice().sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
-          if (cos.length && !state.focalCik) { state.focalGroup = g; selectFocalCik(cos[0].cik, cos[0].name); ensureCompanyData(); }
+          if (cos.length && !state.focalCik) {
+            state.focalGroup = g;
+            syncSectorToGroup(g); // the control bar follows the focal we actually landed on
+            selectFocalCik(cos[0].cik, cos[0].name);
+            ensureCompanyData();
+          }
           else if (!state.focalCik) tryNext();
         })
         .catch(tryNext);
     }
     tryNext();
   }
-  // The focal's SIC peers (for the breadcrumb dropdown) -- the real filers already loaded as dots.
+  /* The Company view's peer universe is the SELECTED sector (AC-22).
+   *
+   * INVARIANT: state.focalGroup === selectedGroup(). The two used to drift -- focalGroup came from
+   * the focal company's own SIC group while the control bar kept whatever sector was selected, so
+   * the header could read "Business Services" while this dropdown listed SIC-35 filers. Both ends
+   * are now kept in step: setting a focal moves the sector selection to that focal's group
+   * (syncSectorToGroup), and picking a sector re-resolves the focal inside it (selectSector).
+   */
   function focalPeerList() {
     var g = state.focalGroup;
     if (!g) return [];
@@ -1941,17 +2025,9 @@
     });
     var pin = $("paPin");
     if (pin) pin.addEventListener("click", togglePin);
-    // header search: place a filer in its peers (Company view). Autocomplete via suggest.js;
-    // Enter/pick resolves the ticker (or a raw CIK) to the focal company.
-    var form = $("paSearch");
-    var input = $("paSearchInput");
-    if (form && input) {
-      form.addEventListener("submit", function (e) { e.preventDefault(); selectFocal(input.value); });
-      if (window.ClearyFiSuggest) window.ClearyFiSuggest.attach(input, { onPick: function (sym) { selectFocal(sym); } });
-    }
-    document.querySelectorAll(".pa-rail-btn").forEach(function (b) {
-      b.addEventListener("click", function () { setView(b.getAttribute("data-view")); });
-    });
+    // The topbar search and the view rail belong to the shared shell now (shell.js): the search is
+    // wired once in init() with selectFocal as the override, and the rail carries its own onSelect.
+    // Re-wiring them here would double-bind them on every re-render.
     var back = $("coBackBtn"); // recovery from a dead-end Company state
     if (back) back.addEventListener("click", clearFocalToDefault);
   }
