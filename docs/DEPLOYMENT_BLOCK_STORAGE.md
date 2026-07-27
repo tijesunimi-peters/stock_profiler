@@ -1,14 +1,45 @@
 # Part B — Move the data to a DigitalOcean Block Storage Volume (scoping)
 
-**Status:** volume provisioned; migration pending (2026-07-21). See DEPLOYMENT_DO.md §7.
+**Status:** **DB MIGRATED to the Volume (2026-07-25)** — `/app/data` is now the Volume, verified
+live. Volume provisioned 2026-07-21. Still open: the granular re-ingest (step 3 below) and
+Spaces-backed backups. See DEPLOYMENT_DO.md §6b/§7.
+
+## Migration executed — 2026-07-25
+
+- **fstab.** Added `/dev/disk/by-id/scsi-0DO_Volume_secfin-data-vol /mnt/secfin_data_vol ext4
+  defaults,nofail,discard,noatime 0 2` (it was a **manual mount only** until now — it would not have
+  survived a reboot, which was the real hazard of repointing the app at it). Validated by an actual
+  `umount` + `mount -a` cycle, not just by inspection. `nofail` so a detached Volume can't brick boot.
+- **Mount mechanism.** `docker-compose.prod.yml`'s `secfin-data:/app/data` became
+  `${SECFIN_DATA_MOUNT:-secfin-data}:/app/data`; the droplet's `.env` sets
+  `SECFIN_DATA_MOUNT=/mnt/secfin_data_vol/data`. Compose interpolates before parsing the volume spec,
+  so a leading `/` yields a bind mount and the bare default keeps the named volume. **Why not just
+  hard-code the path on the box:** the deploy flow rsyncs the working tree and
+  `docker-compose.prod.yml` is a tracked file, so an on-box edit would be silently reverted by the
+  next deploy — while `.env` is rsync-excluded and survives.
+- **Copy.** Warm `rsync` pass with the API live (8.6G @ ~162 MB/s, 54s), then stop → delta pass →
+  `up -d`. The delta pass was a no-op (no writes in the window), so **downtime was just the container
+  recreate, ~15s** rather than the ~1min budgeted.
+- **Verified.** Row counts identical pre/post — `api_keys` **59**, `raw_facts` **4,805,056**,
+  `metric_values` **1,738,360**; `https://api.clearyfi.com/health` 200; AAPL FY2023 income returns
+  real data; WAL checkpointed to 0 with a fresh `-shm`, confirming a read-write open on the Volume.
+- **Rollback (kept).** The old `secfin_secfin-data` named volume is **untouched on the root disk**
+  (8.6G). To revert: remove `SECFIN_DATA_MOUNT` from `.env` and `up -d api`. Reclaim it with
+  `docker volume rm secfin_secfin-data` only after a bake period.
+- **Not done here.** Root disk is still 34G/48G because (a) the rollback copy is retained and (b)
+  `/opt/secfin/data/backups` (**22G**, 3 snapshots) still lives on the root disk — moving or pruning
+  those is the bigger reclaim and is tied to the Spaces decision below.
 
 ## Decisions taken (2026-07-21) — supersede the "Options" table below
 - **Volume:** `secfin-data-vol`, **100 GiB**, ext4, region `tor1` — **created, attached, mounted at
   `/mnt/secfin_data_vol`** (`/dev/sda`). ~$10/mo. (Operator chose 100G over the recommended 250G to
   save cost; consequence below.)
 - **Backups:** a 57G snapshot won't fit the 100 GiB Volume alongside the DB, so backups go **off-box
-  to DO Spaces** (Option B's backup path — not yet wired). Interim: `secfin-backup.timer` is
-  **paused**; rollback = the Jul 22 droplet snapshot; granular data is regenerable.
+  to DO Spaces** (Option B's backup path — **not yet wired**). `secfin-backup.timer` is **paused**.
+  **⚠️ Superseded 2026-07-25:** the droplet snapshots this line used to point at as the interim
+  rollback were **deleted at the operator's instruction** to reclaim root disk — there is now **no
+  restore point at all**. Granular data is regenerable; the `api_keys` table is not. See
+  DEPLOYMENT_DO.md §7.
 - **Re-ingest:** **on the box** (not offline-then-rsync). Slow on 1 vCPU / 2 GB — run with
   `SECFIN_BACKFILL_WORKERS=1`, several hours.
 - **Migration seed:** copy the *current* prod DB (fresh consistent snapshot) onto the Volume to

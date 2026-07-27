@@ -213,13 +213,29 @@ detail and anonymous/unauthenticated traffic -- `/v1/admin/ops` only sees metere
 
 - ~~Backup retention~~ — **FIXED & deployed 2026-07-21** (count-based `--keep`, droplet `keep=2`).
   See §6b. Raise to `keep=7` after Part B moves the data to a bigger Volume.
-- **⏸️ BACKUPS PAUSED ON LIVE (2026-07-21).** `secfin-backup.timer` was **stopped + disabled**
-  (`systemctl disable --now`) ahead of the Part B block-storage migration: once the DB is ~57G a
-  local full snapshot won't fit the 100 GiB Volume, so backups must move to **DO Spaces**. Rollback
-  safety meanwhile = the **Jul 22 snapshot** on the droplet (`data/backups/secfin-latest.db`, 7.3G,
-  current operational data incl. API keys) + the granular data is regenerable. **MUST re-enable**
-  (`systemctl enable --now secfin-backup.timer`) once Spaces-backed backups are wired — until then
-  API-key signups after Jul 22 are unprotected. `secfin-incremental.timer` left running.
+- **🔴 NO BACKUPS EXIST — ZERO COVERAGE (2026-07-25).** All three droplet snapshots
+  (`secfin-20260719T070054Z.db`, `secfin-20260722T000743Z.db`, `secfin-latest.db`; 22G total) were
+  **deleted at the operator's explicit instruction** to reclaim root disk (34G→12G used, 72%→26%).
+  `secfin-backup.timer` remains **stopped + disabled** (paused 2026-07-21 ahead of the Part B
+  migration: once the DB is ~57G a local full snapshot won't fit the 100 GiB Volume, so backups must
+  move to **DO Spaces**). **Net effect: prod has no restore point of any kind.**
+  - **What is at risk:** `raw_facts` / metrics / holdings are all **regenerable** from SEC. The
+    **`api_keys` table (59 rows) is NOT** — it exists only in the live DB. Losing it breaks every
+    customer's key with no way to reconstruct it.
+  - **MUST do before this matters:** wire Spaces-backed backups and re-enable the timer
+    (`systemctl enable --now secfin-backup.timer`). Until then every signup is unprotected, not just
+    those after Jul 22. A cheap stopgap that costs ~KBs: export just the `api_keys` table off-box.
+  - `secfin-incremental.timer` left running.
+- **Part B — DB MOVED TO THE VOLUME (2026-07-25).** `/app/data` is now the block-storage Volume
+  (`/mnt/secfin_data_vol/data`), not the droplet root disk. Mechanism: `docker-compose.prod.yml`'s
+  data mount is now `${SECFIN_DATA_MOUNT:-secfin-data}` and the droplet `.env` sets it to the Volume
+  path (`.env` is rsync-excluded, so a deploy can't revert it). An `/etc/fstab` entry with `nofail`
+  was added and validated — **the Volume had been manually mounted only** and would not have survived
+  a reboot. ~15s downtime; row counts verified identical (`api_keys` 59, `raw_facts` 4,805,056,
+  `metric_values` 1,738,360), health 200, AAPL FY2023 real. Old `secfin_secfin-data` named volume
+  retained as the rollback (remove `SECFIN_DATA_MOUNT`, `up -d api`); delete after a bake period.
+  Details in `docs/DEPLOYMENT_BLOCK_STORAGE.md`. **Still open below: the granular re-ingest and
+  Spaces backups — the Volume move alone does NOT populate the sector aggregates.**
 - **Granular data + sector aggregates — Part B, MIGRATION PENDING (2026-07-21).** The whole-market
   granular `raw_facts` is ~57G — it does NOT fit the 48G droplet, so the data moves to a **DO Block
   Storage Volume** (droplet = app serving only). Full plan in **`docs/DEPLOYMENT_BLOCK_STORAGE.md`**.
