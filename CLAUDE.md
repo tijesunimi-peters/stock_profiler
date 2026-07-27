@@ -219,6 +219,15 @@ src/secfin/
     static/                    # server-rendered UI: index, company hub (absorbed the data
                                #   explorer, /explorer redirects there),
                                #   coverage/guide pages (see docs/ROADMAP_UI.md)
+      shell.js / shell.css     # THE product shell (V3-P2): one sidebar + topbar for every data
+                               #   page -- subject nav (7 subjects, 4 planned-and-inert), subject-
+                               #   scoped actions, view rail, entity control bar, URL-as-state.
+                               #   Auto-mounts. The ONLY nav implementation -- don't add a second.
+      app.js / app.css         # the shared component layer (window.ClearyFi.*): status chips,
+                               #   provenance, metric cards, statement tables, chart builders.
+                               #   Loaded by every shell page, sector app included (since V3-P2).
+      sectorapp.js/.css        # the /sectors app's VIEWS only (its shell moved to shell.*)
+      script.js                # marketing/prose pages only: the static .nav hamburger
 scripts/                       # committed, reusable one-off scripts (benchmarks, load tests)
 tests/
 docs/                          # ARCHITECTURE, DATA_MODEL, DEVELOPMENT, DEPLOYMENT

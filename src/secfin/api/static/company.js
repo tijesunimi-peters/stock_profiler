@@ -170,7 +170,9 @@
 
   // ---------- state ----------
 
-  var symbol = decodeURIComponent((location.pathname.split("/").filter(Boolean).pop() || "").trim());
+  // /company/{symbol}[/{view}] — take the segment AFTER "company", not the last one: since V3-P2
+  // the path can carry a trailing view slug, and .pop() would resolve "statements" as the ticker.
+  var symbol = decodeURIComponent(((location.pathname.split("/").filter(Boolean))[1] || "").trim());
   var state = {
     cik: null,
     stmtPeriods: [], // statement-layer {year, period} keys (for the Statements tab, FY + quarters)
@@ -202,10 +204,20 @@
   // ---------- init ----------
 
   function init() {
+    if (window.ClearyFiShell) {
+      window.ClearyFiShell.mount();
+      window.addEventListener("popstate", onPopState);
+    }
+    // Title row per the v3 prototype (:57-64): the surface is named, the entity sits in the meta
+    // and (large) in the entity control bar below. D1 -- the prototype's IA is authoritative.
     $("masthead").innerHTML = P.masthead({
-      title: symbol ? symbol.toUpperCase() : "Company",
+      title: "Company hub",
+      meta: symbol ? symbol.toUpperCase() : "",
+      lede: "Everything filed by this registrant · 10-K, 10-Q, 8-K, Forms 3/4/5 · as of latest filing",
     });
-    // Company lookup lives in the app shell's topbar search (script.js); the on-page
+    renderEntityBar();
+    renderRail(); // chrome, not data: the rail renders immediately, before any fetch resolves
+    // Company lookup lives in the app shell's topbar search (shell.js); the on-page
     // #search mount is gone. Guard kept so an older shell with the div still works.
     var searchEl = $("search");
     if (searchEl) {
@@ -221,7 +233,6 @@
     $("view").innerHTML = P.states.loading({ title: "Loading " + symbol.toUpperCase() });
     P.resolveSymbol(symbol).then(onResolved, onResolveError);
 
-    $("tabs").addEventListener("click", onTabClick);
     $("stmt-types").addEventListener("click", onStmtClick);
     $("period-select").addEventListener("change", onPeriodChange);
   }
@@ -240,9 +251,11 @@
     state.stmtValue = defStmt ? defStmt.year + "|" + defStmt.period : null;
 
     $("masthead").innerHTML = P.masthead({
-      title: symbol.toUpperCase(),
-      meta: ["CIK " + data.cik, "as-of latest filing"],
+      title: "Company hub",
+      meta: [symbol.toUpperCase(), "CIK " + data.cik],
+      lede: "Everything filed by this registrant · 10-K, 10-Q, 8-K, Forms 3/4/5 · as of latest filing",
     });
+    renderEntityBar();
 
     // The Fundamentals axis is the metric engine's own resolvable periods (annual + quarterly,
     // including the in-progress fiscal year) — NOT the statement-layer (fy, fp) labels.
@@ -274,13 +287,19 @@
     );
   }
 
-  // Deep-link support: /company/{symbol}?tab=insider selects a tab on load, and
-  // ?tab=statements&stmt=balance a statement type (shareable URLs, the e2e check, and the
-  // /explorer redirect's translated deep links).
+  /* Deep-link support. V3-P2 made the view a PATH segment (/company/{symbol}/statements) so it is
+   * linkable and Back/Forward walk views; ClearyFiShell.route() resolves the path first and falls
+   * back to the legacy ?tab= form, so every existing URL, bookmark and e2e deep link still lands
+   * on the same view. ?stmt= stays a query param on purpose -- it selects a sub-control INSIDE the
+   * Statements view, not a view. */
   function applyTabFromUrl() {
     var q = new URLSearchParams(location.search);
-    var t = q.get("tab");
-    if (["fundamentals", "statements", "insider", "institutional", "beneficial"].indexOf(t) !== -1) state.tab = t;
+    if (window.ClearyFiShell) {
+      state.tab = window.ClearyFiShell.route().view; // path -> ?tab= -> default, unknown slugs included
+    } else {
+      var t = q.get("tab");
+      if (VIEW_SLUGS.indexOf(t) !== -1) state.tab = t;
+    }
     var s = q.get("stmt");
     if (["income", "balance", "cashflow", "segments"].indexOf(s) !== -1) {
       state.tab = "statements";
@@ -288,9 +307,69 @@
       var sBtn = document.querySelector('#stmt-types button[data-stmt="' + s + '"]');
       if (sBtn) setOn("#stmt-types button", sBtn);
     }
-    var btn = document.querySelector('#tabs button[data-tab="' + state.tab + '"]');
-    if (btn) setOn("#tabs button", btn);
+    renderRail();
+    // Normalize a legacy ?tab= URL onto the canonical path without adding a history entry.
+    syncUrl({ replace: true });
     $("stmt-types").hidden = state.tab !== "statements";
+  }
+
+  var VIEW_SLUGS = ["fundamentals", "statements", "insider", "institutional", "beneficial"];
+
+  /* The entity control bar (v3 prototype :85-108) — the focal company's identity, restricted to
+   * what this page already resolves. Two deliberate omissions, both honesty calls:
+   *
+   *  - NO "Peer set" cell. /companies/{symbol}/peers returns peer_group PER METRIC, is
+   *    period-scoped, carries no group_label, and an empty result is a valid outcome — there is no
+   *    page-load-time sector label for a company. A cell that can never resolve is chrome noise,
+   *    not honesty, so it is omitted rather than shown as a permanent N/A. V3-P5 (Peer-relative)
+   *    is where it earns its place.
+   *  - NO "Facts as filed · not restated" line, which the prototype ends with. That statement is
+   *    FALSE for this product: metrics.py emits restatement_basis="as-restated" and DATA_MODEL R9
+   *    requires one labeled basis per series. Porting it would ship a misstatement about our own
+   *    data (STYLE_GUIDE §8.1).
+   *
+   * Values that have not resolved yet render drained via shell.entityBar(), never as 0 or a guess.
+   */
+  function renderEntityBar() {
+    var host = $("entityBar");
+    if (!host || !window.ClearyFiShell) return;
+    host.innerHTML = "";
+    host.appendChild(window.ClearyFiShell.entityBar([
+      { label: "Company", value: symbol ? symbol.toUpperCase() : null, primary: true },
+      { label: "CIK", value: state.cik || null, mono: true },
+      { label: "Period", value: periodLabelForBar(), mono: true },
+      { label: "As of", value: "latest filing", mono: true },
+    ]));
+  }
+
+  // The period the ACTIVE view is showing. Insider/13D-G are bounded by a filing limit rather than
+  // a period, so they honestly report that instead of borrowing another view's period.
+  function periodLabelForBar() {
+    if (NON_PERIOD_TABS.indexOf(state.tab) !== -1) return "latest filings";
+    if (state.tab === "institutional") return state.instValue ? quarterLabel(state.instValue) : null;
+    var v = state.tab === "fundamentals" ? state.fundValue : state.stmtValue;
+    if (!v) return null;
+    var p = v.split("|");
+    return p[1] === "FY" ? "FY" + p[0] : p[1] + " FY" + p[0];
+  }
+
+  // The shell's vertical Views rail replaces the old horizontal #tabs strip. Same five views, same
+  // labels, same order -- only the chrome that selects them moved (V3-P2 re-homes, never re-cuts).
+  function renderRail() {
+    var host = $("viewRail");
+    if (!host || !window.ClearyFiShell) return;
+    host.innerHTML = "";
+    host.appendChild(window.ClearyFiShell.rail({
+      subject: "companies",
+      active: state.tab,
+      onSelect: selectTab,
+    }));
+  }
+
+  function syncUrl(opts) {
+    if (!window.ClearyFiShell || !symbol) return;
+    var path = "/company/" + encodeURIComponent(symbol) + "/" + state.tab;
+    if (path !== location.pathname) window.ClearyFiShell.navigate(path, opts);
   }
 
   // Show/populate the shared period picker for the active tab. Insider/13D-G have no period.
@@ -364,13 +443,24 @@
 
   // ---------- tab / control handlers ----------
 
-  function onTabClick(e) {
-    var btn = e.target.closest("button[data-tab]");
-    if (!btn) return;
-    state.tab = btn.getAttribute("data-tab");
-    setOn("#tabs button", btn);
+  function selectTab(tab) {
+    if (tab === state.tab) return;
+    state.tab = tab;
+    renderRail();
+    syncUrl(); // pushState: Back returns to the previous view
     $("stmt-types").hidden = state.tab !== "statements";
     updatePeriodControl(); // shows/populates the picker for the tab's own axis (or hides it)
+    render();
+  }
+
+  // Back/Forward: re-derive the view from the path rather than trusting in-memory state.
+  function onPopState() {
+    var v = window.ClearyFiShell.route().view;
+    if (!v || v === state.tab) return;
+    state.tab = v;
+    renderRail();
+    $("stmt-types").hidden = state.tab !== "statements";
+    updatePeriodControl();
     render();
   }
   function onStmtClick(e) {
@@ -389,6 +479,7 @@
   var NON_PERIOD_TABS = ["insider", "beneficial"]; // tabs bounded by a filing limit, not a period
 
   function render() {
+    renderEntityBar(); // keep the control bar in step with the view/period actually rendered
     clearSectionNav(); // the "On this page" rail belongs to the fundamentals grid only
     if (state.tab === "fundamentals") renderFundamentals();
     else if (state.tab === "statements") renderStatements();
@@ -466,6 +557,10 @@
       function (res) {
         state.instPeriods = res.periods || [];
         if (state.instPeriods.length && !state.instValue) state.instValue = state.instPeriods[0];
+        // The Institutional axis resolves AFTER render() painted the entity bar, so repaint it --
+        // otherwise the bar keeps reading "—" while the page's own quarter selector shows a date.
+        // "One fact, one source": the two must never state different periods (ROADMAP_APP_V3 §4.4).
+        renderEntityBar();
       },
       function (err) { instAxisPromise = null; throw err; } // let a retry re-fetch
     );
@@ -1088,15 +1183,15 @@
     clearSectionNav();
     var side = document.getElementById("appSide");
     if (!side || !cats.length) return;
-    var foot = side.querySelector(".app-side-foot");
+    var foot = side.querySelector(".shell-side-foot");
     var nav = document.createElement("nav");
     nav.id = "sectionNav";
-    nav.className = "side-group section-nav";
+    nav.className = "section-nav";
     nav.setAttribute("aria-label", "On this page");
     nav.innerHTML =
-      '<div class="side-group-label">On this page</div>' +
+      '<div class="shell-nav-label">On this page</div>' +
       cats.map(function (c) {
-        return '<a class="side-link section-link" href="#' + c.id + '">' + P.esc(c.label) + "</a>";
+        return '<a class="section-link" href="#' + c.id + '">' + P.esc(c.label) + "</a>";
       }).join("");
     // Sit above the pinned footer (which uses margin-top:auto), below the primary nav groups.
     if (foot) side.insertBefore(nav, foot); else side.appendChild(nav);

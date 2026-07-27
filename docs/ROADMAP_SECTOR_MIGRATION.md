@@ -146,13 +146,18 @@ Once M1 lands (new app = superset), make `/sector-analytics` the canonical secto
 
 ---
 
-## Phase M3 — Decommission the old page (after a bake period)
+## Phase M3 — Decommission the old page (after a bake period) ✅ DONE (2026-07-27)
 
-After M2 has run in production for a release with no rollback needed.
+**Shipped inside V3-P2** (shell unification) rather than as its own branch: the legacy page was the
+last surviving third shell and still declared `.plot-chart`, both of which V3-P2 had to resolve
+anyway. Operator confirmed the decommission at the V3-P2 PM stage. Trail:
+`docs/delivery/v3-p2-shell-unification/`.
 
 **Scope**
-- Delete `static/sectors.js` / `sectors.html` / `sectors.css`; remove the `/sectors-legacy` route/flag.
-- Remove the old `sectors*` e2e shots + any old-page references in docs.
+- ✅ Delete `static/sectors.js` / `sectors.html` / `sectors.css`; remove the `/sectors-legacy` route/flag.
+- ✅ Remove the old `sectors*` e2e shots + any old-page references in docs.
+  (`test_sectors_legacy_serves_the_old_page` → `test_sectors_legacy_is_gone`, which asserts the
+  route 404s **and** the three files are gone from disk.)
 - Update `docs/REDESIGN_SECTOR_APP.md` "supersedes" note + `CLAUDE.md` repo-layout to reflect the
   single sector page.
 

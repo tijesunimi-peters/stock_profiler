@@ -333,7 +333,7 @@ phases may be accepted at the QA-tester level.
 |---|---|---|
 | **V3-P0** | **Decisions + doc amendments, no code.** Resolve **D3–D5** (D1/D2 are locked). Amend `STYLE_GUIDE.md`: §6 chart-engine rule (d3 *or* Plot under a `ClearyFi` builder), §9 + the six honesty patterns, a new label-placement section, §4.2/§5 for the locked subject nav, and **§10 to draw the line between a placeholder link and a planned-and-inert nav label** (per D2). Write the status-chip mapping table (D3) with the prototype's prose carried over verbatim. | — (startable now) |
 | **V3-P1** | **Chart foundry, wave 1.** The five that recur most — distribution strip, gap-breaking series line, histogram, stacked columns, event strip — in d3, each added to `/components` as it lands. Plus `ResizeObserver` re-measure on view change, and the five consolidations. | P0 (D5) |
-| **V3-P2** | **Shell unification — the keystone phase (per D1 absorb).** (a) Promote `sectorapp.js`/`sectorapp.css` to **the** product shell and retire `script.js`'s sidebar/topbar into it; (b) make the unified shell load `app.css`/`app.js` and resolve the two stylesheets' overlap; (c) ship the locked **D2 subject nav**; (d) **URL-as-state** — every route serves the one app with selection derived from the path, absorbing both known open items. **Re-home `/company`, `/manager`, `/compare`, `/screen`, `/coverage` with their current content and tabs UNCHANGED** — no view re-cutting in this branch, so any regression is unambiguously the shell's. | P0 |
+| **V3-P2** ✅ | **DONE 2026-07-27. Shell unification — the keystone phase (per D1 absorb).** (a) Promote `sectorapp.js`/`sectorapp.css` to **the** product shell and retire `script.js`'s sidebar/topbar into it; (b) make the unified shell load `app.css`/`app.js` and resolve the two stylesheets' overlap; (c) ship the locked **D2 subject nav**; (d) **URL-as-state** — every route serves the one app with selection derived from the path, absorbing both known open items. **Re-home `/company`, `/manager`, `/compare`, `/screen`, `/coverage` with their current content and tabs UNCHANGED** — no view re-cutting in this branch, so any regression is unambiguously the shell's. | P0 |
 | **V3-P3** | **Cheap metadata unlock.** Store **8-K item codes + acceptance timestamps** from the submissions JSON we already fetch. Turns "What's moving" from a placeholder into a real feed and unblocks P8. Single-writer ingest path, guardrail 8. | — |
 | **V3-P4** | **Company — re-cut into Overview + Financial history.** The first content re-cut on the stable unified shell: today's Fundamentals + Statements become the prototype's two views. Track-1 half only; EX-21 structure block stays a placeholder. Resolves D4 in the UI. | P1, **P2** |
 | **V3-P5** | **Company — Institutional + Peer-relative.** Insider + Institutional + 13D/G collapse into one **Institutional** view; Peer-relative ports from the sector app. 13F/13D-G/Forms 3-4-5 blocks real; N-PX/N-PORT/144/DEF 14A blocks placeholder or omitted; "Beyond the financials" extras are Track 2. | P1, **P2** |
@@ -350,10 +350,16 @@ P7 Compare → P8 Filing activity → [P9 gated ingest].**
 
 P0–P3 are foundations; P4–P8 are the visible surfaces.
 
-**With D1 locked to absorb, V3-P2 is the whole critical path.** Every view phase (P4–P7) runs on the
-unified shell, so nothing after P2 can start before it lands. Only **P1** (chart builders, pure
-additions to `/components`) and **P3** (ingest metadata, no UI) can run alongside it — start them in
-parallel to keep the queue moving while P2 is in flight.
+**With D1 locked to absorb, V3-P2 was the whole critical path.** ✅ **Landed 2026-07-27** — one
+shell (`static/shell.js` + `shell.css`), the D2 subject nav, URL-as-state, and `/sectors-legacy`
+decommissioned. **P4–P7 are now unblocked.** Trail: `docs/delivery/v3-p2-shell-unification/`.
+
+Two operator decisions taken during P2 that later phases inherit:
+- **The re-homed pages took the full prototype frame**, not just the sidebar: `/company`'s tabs
+  became the vertical view rail and `/company` + `/manager` gained an entity control bar. The view
+  *set* and per-view content were left untouched, so P4/P5 still own the content re-cut.
+- **Actions are genuinely subject-scoped** — Screen and Coverage render planned-and-inert under
+  Sectors and Managers, because a company screener is not a sector screener.
 
 **The one rule P2 must not break:** it re-homes pages **without changing their content**. Shell
 migration and content re-cut never share a branch. If a P2 review starts discussing which tabs

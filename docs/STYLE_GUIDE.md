@@ -138,7 +138,7 @@ growth deltas.
 ## 3. Layout & spacing
 
 - **App shell on every data page** (§5) — fixed left sidebar + sticky topbar, rendered by
-  `static/script.js` into `#appSide`/`#appTopbar`. Fixed furniture; don't redesign per page.
+  `static/shell.js` into `#appSide`/`#appTopbar`. Fixed furniture; don't redesign per page.
   Marketing/prose pages (`/`, `/guide`, legal) keep the older static `.nav` instead.
 - **Content column inside the shell**: `.page` (max-width 1440px), padding `12px 32px 72px`
   — the same column on every data page.
@@ -154,19 +154,21 @@ growth deltas.
 ## 4. Signature treatments (the things that make it "ClearyFi")
 
 1. **Warm paper background** — `--bg-page` (`#F6F3EE`), flat (no dotted grid).
-2. **App shell** — a slim fixed **left sidebar** (logo, grouped links: Data → Company hub /
-   Compare / Screen / Coverage; Reference → Docs & guide / Methodology / API Reference;
-   a "Data, not investment advice" foot) and a sticky **topbar** holding the global
-   ticker/CIK search (`⌘K` / `Ctrl-K` / `/` focuses it) plus an `API Reference` pill.
-   Both are rendered by `static/script.js` — pages carry only the empty mounts (§5), so
-   the link set lives in exactly one place. Below 1024px the sidebar becomes an
-   off-canvas drawer behind a hamburger in the topbar. The active section's link gets
-   `.current` (accent-wash pill) via `<body data-shell="...">`.
-   (Marketing/prose pages keep the older static `.nav` markup with its own hamburger.)
+2. **App shell — the subject nav.** A fixed 210px **left sidebar** (`ClearyFi` + `SEC data`
+   brand → `Subjects` → `Actions · {subject}` → `Reference` → a "Data, not investment advice"
+   foot) and a sticky **topbar** holding the global ticker/CIK search (`⌘K` / `Ctrl-K` / `/`
+   focuses it) plus an `API reference ↗` pill. Below 1024px the sidebar becomes an off-canvas
+   drawer behind a hamburger; a closed drawer is `pointer-events: none` so it is neither clickable
+   nor in the tab order. The active subject gets `.is-current` (accent-wash pill), **derived from
+   the URL path** — there is no `data-shell` attribute any more.
 
-   **⚠️ Changing in V3-P2 — the subject nav.** The Data/Reference grouping above is what ships
-   *today*; it is being replaced by the v3 prototype's **subject-based nav**, locked by the operator
-   2026-07-26 (D2). Build new nav work against this, not against the grouping above:
+   Rendered by **`static/shell.js`** into the empty `#appSide` / `#appTopbar` mounts (§5), and
+   styled by **`static/shell.css`**. It **auto-mounts** on load, so a page gets the nav by loading
+   the file. Landed in V3-P2 (2026-07-27), merging the two shells that used to coexist —
+   `script.js`'s Data/Reference sidebar and the sector app's `.pa-side` — into one.
+   (Marketing/prose pages keep the older static `.nav` markup with its own hamburger, and are the
+   only pages `script.js` still serves.)
+
    - The sidebar names **the entity you are analysing**, and the actions available hang off
      whichever subject is active. It is a claim that the product is entity-centric.
    - **Seven subjects. Three live** — Companies (`/company/{symbol}`), Sectors (`/sectors`),
@@ -177,9 +179,13 @@ growth deltas.
    - **Actions are subject-scoped** (Compare · Screen · Coverage). Where an action isn't built for
      the active subject, it renders planned **with its description**, not omitted.
    - Under D1 (absorb) there is **one shell**, so the subject list has exactly **one source of
-     truth** — no per-page nav copies.
+     truth** — `SUBJECTS` in `shell.js`. No per-page nav copies.
+   - **Actions resolve per subject** (operator, 2026-07-26): under Companies all three are live
+     (`/compare`, `/screen`, `/coverage`); under Sectors only Compare is live; under Managers all
+     three are planned. There is no sector screener, and saying otherwise would be the dishonest
+     option.
 
-   > **Source:** D2 — locked by operator 2026-07-26 · `ROADMAP_APP_V3.md` §2 · ships in V3-P2
+   > **Source:** D2 — locked by operator 2026-07-26 · `ROADMAP_APP_V3.md` §2 · shipped in V3-P2
 3. **Masthead** — Hanken 800 title → right-aligned mono meta caption → a single
    `1px solid --border-tint-rule` **rule** → optional intro paragraph. `ClearyFi.masthead()`
    emits it; the Explorer carries the same `.masthead` markup statically. App-shell pages
@@ -198,27 +204,32 @@ growth deltas.
 ## 5. Standard page shell (copy this skeleton)
 
 Every data page lives inside the app shell and closes with a footer. New pages load, in
-order: Google Fonts → `style.css` → `app.css` → their own page CSS; and `suggest.js` →
-`script.js` → `app.js` → their page JS (`suggest.js` before `script.js` so the topbar
-search gets autocomplete).
+order: Google Fonts → `style.css` → `app.css` → `shell.css` → their own page CSS; and
+`suggest.js` → `shell.js` → `app.js` → their page JS (`suggest.js` before `shell.js` so the
+topbar search gets autocomplete; `shell.css` after `app.css` so scoped chart overrides still win).
 
 ```html
-<body class="app has-ctx" data-shell="screen">   <!-- has-ctx only with a .controls bar -->
+<body class="app has-ctx">                       <!-- has-ctx only with a .controls bar -->
   <aside class="app-side" id="appSide" aria-label="Primary navigation"></aside>
   <div class="app-scrim" id="appScrim"></div>
   <div class="app-main">
   <header class="app-topbar" id="appTopbar"></header>
-  <main class="page">…masthead / controls / legend / view / disclosure…</main>
+  <main class="page">…masthead / entityBar / viewRail + viewport / disclosure…</main>
   <div id="footer"></div>
   </div>
 ```
 
-- **Shell:** `script.js` fills `#appSide`/`#appTopbar`. `data-shell` names the sidebar link
-  to mark `.current` (`company` / `compare` / `screen` / `coverage`; the manager
-  page uses `""` — no section is current, the masthead carries the context).
-  **Changing in V3-P2:** under D1 (absorb) this shell and the Sector app's self-contained shell
-  **merge into one**, `sectorapp.*` becomes the product shell, and the mounts here are superseded by
-  the subject nav in §4.2. Until that lands, build to the skeleton below; don't add a second nav.
+- **Shell:** `shell.js` fills `#appSide`/`#appTopbar` and **auto-mounts** — a page needs no wiring
+  to get the nav. The active subject is derived from the URL **path** via `ClearyFiShell.route()`;
+  there is no `data-shell` attribute (removed in V3-P2 — the path already says where you are).
+- **View rail** (`ClearyFiShell.rail()`) — a page with **two or more views** renders them as the
+  vertical `Views` rail inside `.shell-body` → `.shell-rail` + `.shell-viewport` (960px cap).
+  One-view pages get no rail. The view is a **path segment** (`/company/AAPL/statements`), pushed
+  to history so Back/Forward walk views; legacy `?tab=`/`?group=`/`?view=` forms still resolve.
+- **Entity control bar** (`ClearyFiShell.entityBar()`) — only where a **single focal entity**
+  exists (`/company`, `/manager`, and the sector app's own sector bar). Cells whose value hasn't
+  resolved render drained (`—`), **never `0`, never a guess**; a cell we cannot source at all is
+  omitted rather than shown as a permanent N/A.
 - **Sticky context:** `body.has-ctx` reserves `--ctx-h` so the page's `.controls` bar
   sticks under the topbar (≥1100px) and `.stmt-table th` header rows stick below both.
   Table headers inside a horizontal-scroll wrapper (`.matrix-scroll`) stay in flow —
@@ -250,8 +261,10 @@ Links: accent color, mono. Resolve every href to a real destination — never le
 - **States** — `ClearyFi.states.loading` (pulsing accent dot + shimmer bars + cold-path note) /
   `empty` (calm "filing on record, no mapped fields") / `notFound` (mono `HTTP 404` in
   `--ext-color` + recovery chips) / `error`.
-- **Global search** — lives in the shell's topbar (script.js; `⌘K` / `Ctrl-K` / `/` focuses
-  it) and navigates to the company hub, which handles resolution/404 itself.
+- **Global search** — lives in the shell's topbar (shell.js; `⌘K` / `Ctrl-K` / `/` focuses
+  it) and navigates to the company hub, which handles resolution/404 itself. A page may override
+  the destination with `ClearyFiShell.setSearchHandler()` — the sector app does, so a search there
+  sets the focal company instead of leaving `/sectors`.
   `ClearyFi.mountSearch()` remains for in-page flows that need resolve callbacks (Compare's
   "Add a company", the components demo).
 - **Charts** — every chart is a `ClearyFi.*` builder backed by a **vendored** engine
@@ -480,12 +493,15 @@ covers. This is why the subject nav (§4.2) ships all seven subjects with four i
   Fundamentals (metric cards), Statements (FY + quarterly periods, source-tag audit column,
   raw-JSON toggle, segments spike), Insider, Institutional, 13D/G; loading/404/empty states.
   The most complete reference; new pages descend from it. (`/explorer` merged in 2026-07-17.)
+  Since **V3-P2** it also carries the reference **view rail** (the five views, addressable at
+  `/company/{symbol}/{view}`) and the reference **entity control bar** — copy those from here.
+  New pages load `style.css` → `app.css` → `shell.css` → their own CSS (§5).
 - **`static/components.html` (`/components`)** — the shared-component kitchen sink (`ClearyFi.*`):
   masthead, status legend, metric cards, provenance, disclosure, states, search.
 - **`static/coverage.html` (`/coverage`)** — CUSIP resolution rate + coverage boundaries.
 
-New pages are built the same way: load `style.css` + `app.css`, reuse the shell and `ClearyFi.*`
-builders, and — above all — keep the honesty conventions.
+New pages are built the same way: load `style.css` + `app.css` + `shell.css`, reuse the shell and
+`ClearyFi.*` builders, and — above all — keep the honesty conventions.
 
 ---
 
