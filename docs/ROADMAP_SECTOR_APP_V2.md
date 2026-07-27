@@ -1,5 +1,10 @@
 # Roadmap — Sector Analytics app **v2**
 
+> **Superseded at the IA level by `docs/ROADMAP_APP_V3.md` (2026-07-26).** v2's P0–P6b all shipped;
+> P7 (migration swap) is still live. The v3 prototype grew past a sector app into the whole-product
+> information architecture (3 subjects, 15 views), so new planning happens there. This file remains
+> the record of what v2 decided and delivered.
+
 Status: **planning (2026-07-24).** Owner: operator + delivery pipeline.
 Reference: `docs/design/sector-app-prototype-v2/` (updated prototype: `HANDOFF.md` §5/§9,
 `prototype.dc.html`, `CLAUDE.md`). Supersedes the v1 target of `docs/REDESIGN_SECTOR_APP.md` at the

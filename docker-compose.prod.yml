@@ -37,7 +37,14 @@ services:
       SECFIN_BACKFILL_BATCH_SIZE: "${SECFIN_BACKFILL_BATCH_SIZE:-5000}"
       SECFIN_BACKFILL_QUEUE_MAXSIZE: "${SECFIN_BACKFILL_QUEUE_MAXSIZE:-50}"
     volumes:
-      - secfin-data:/app/data
+      # Defaults to the `secfin-data` named volume (on the droplet's own root disk).
+      # Set SECFIN_DATA_MOUNT in .env to an absolute host path to put the data on a
+      # DO Block Storage Volume instead -- Compose interpolates this before parsing
+      # the volume spec, so a leading "/" makes it a bind mount and a bare name keeps
+      # it a named volume. The host path is deliberately NOT hard-coded here: .env is
+      # excluded from the deploy rsync, so the droplet-specific value survives a
+      # deploy while this file stays generic. See docs/DEPLOYMENT_BLOCK_STORAGE.md.
+      - ${SECFIN_DATA_MOUNT:-secfin-data}:/app/data
       - ./data/backups:/app/backups
     # Reachable ONLY on loopback -- Caddy (below) is the sole public entry point and
     # terminates TLS. This is the one meaningful difference from docker-compose.yml's
