@@ -3973,6 +3973,209 @@
     return card.root;
   }
 
+  // Peer distribution strip (V3-P1) -- the §5c consolidation of the prototype's dotPlot/peerDots/
+  // universeDots into ONE builder with options. Supersedes the sector app's hand-rolled `.pa-dot`
+  // track, whose vertical jitter came from the peer's INDEX (`((i % 5) - 2) * 9`) and so carried
+  // no meaning at all.
+  //
+  // Looks exactly like the track it replaces -- 34px band, dots centred on the midline, 16px
+  // middle-half band, 20px median rule, 12px focal diamond, min/median/max in the caption. The one
+  // thing that changed is invisible: which lane a dot lands in is decided by COLLISION (how many
+  // peers share that neighbourhood), never by its position in the array.
+  //
+  // d3, not Plot, per STYLE_GUIDE §6/D5: the dodge is collision logic, which Plot cannot express.
+  // Deterministic dodge, NOT a d3-force beeswarm -- the Company view re-renders on every focal
+  // change, and a force simulation seeds/settles differently each run, so peers would visibly
+  // reshuffle when only the focal changed. Motion implying the data moved, when it didn't. Dodge is
+  // a pure function of the values: same values -> same layout, every render.
+  //
+  //   peers: [{ id, label, value }]   value null/undefined -> excluded, counted, reported (§9.1)
+  //   opts:  { width, height, focalId, format, title, caption, emptyCopy, showIqr, axisLabels,
+  //            onPeerClick }
+  function distributionStrip(peers, opts) {
+    opts = opts || {};
+    var card = chartCard(opts.title || null);
+    var fmtVal = typeof opts.format === "function" ? opts.format : function (v) { return String(v); };
+
+    var all = (peers || []).slice();
+    var usable = all.filter(function (p) {
+      return p && p.value !== null && p.value !== undefined && isFinite(p.value);
+    });
+    // N/A - N/M peers are dropped from the strip, never plotted at 0 -- and the count survives into
+    // the caption, so "40 filers" is never silently "40 of 58" (§9.1, §9.3).
+    var excluded = all.length - usable.length;
+
+    function bail(copy) {
+      var p = document.createElement("p");
+      p.className = "state-copy";
+      p.style.margin = "0";
+      p.textContent = copy;
+      card.body.appendChild(p);
+      return card.root;
+    }
+    // Distinct from the empty state on purpose: there may well be data, so don't claim there isn't.
+    if (!window.d3) return bail("Chart unavailable — the charting library didn't load on this page.");
+    if (!usable.length) {
+      var root = bail(opts.emptyCopy || "No peer distribution for this metric yet — sparse coverage, not zero.");
+      if (excluded) card.caption(excludedClause(excluded, all.length));
+      return root;
+    }
+
+    var W = opts.width || 560;
+    // Geometry is the v3 prototype's, verbatim (prototype.dc.html peerDots): a 66px tinted plot
+    // panel, 8px-inset middle-half band, 6px-inset median tick, 8px dots, an 18px focal lozenge.
+    var H = opts.height || 66;
+    var PAD_X = 0, R = 4, LANE = 8.6, MID = H / 2;
+    var t = plotTokens();
+    // plotTokens() has no wash/border-strong entry -- read them the same way it does, so the strip
+    // follows a token change instead of freezing a hex.
+    var washFill = cssVar("--accent-wash", "#f3e4d5");
+    var mutedFill = cssVar("--mono-muted", "#8b8579");
+    var dotFill = cssVar("--border-strong", "#d8d1c4");
+    var cardFill = cssVar("--bg-card", "#fdfbf7");
+
+    var vals = usable.map(function (p) { return p.value; }).sort(function (a, b) { return a - b; });
+    var lo = vals[0], hi = vals[vals.length - 1];
+    // The prototype pads the domain by 8% of the range at each end so no mark sits on the edge.
+    var pad = (hi - lo) * 0.08;
+    var x = window.d3.scaleLinear()
+      .domain(lo === hi ? [lo - 1, hi + 1] : [lo - pad, hi + pad])
+      .range([PAD_X, W - PAD_X]);
+    // One point cannot have a middle half or a middle value -- drawing either would invent a
+    // distribution out of a single observation (§9.1). Suppressed, and said out loud in the caption.
+    var single = usable.length < 2;
+    var showIqr = opts.showIqr !== false && !single;
+    var q1 = showIqr ? window.d3.quantile(vals, 0.25) : null;
+    var q3 = showIqr ? window.d3.quantile(vals, 0.75) : null;
+    var med = single ? null : window.d3.quantile(vals, 0.5);
+
+    var NS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", String(H));
+    svg.setAttribute("class", "dist-strip");
+    svg.setAttribute("role", "img");
+
+    function el(name, attrs) {
+      var n = document.createElementNS(NS, name);
+      Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+      return n;
+    }
+    function titled(node, text) {
+      var ttl = document.createElementNS(NS, "title");
+      ttl.textContent = text;
+      node.appendChild(ttl);
+      return node;
+    }
+
+    if (showIqr) {
+      svg.appendChild(el("rect", {
+        class: "dist-strip-iqr", x: x(q1), y: 8,
+        width: Math.max(1, x(q3) - x(q1)), height: H - 16, rx: 6, fill: washFill,
+      }));
+    }
+    if (med !== null) {
+      svg.appendChild(el("line", {
+        class: "dist-strip-median", x1: x(med), x2: x(med), y1: 6, y2: H - 6,
+        stroke: mutedFill, "stroke-width": 2,
+      }));
+    }
+
+    // Deterministic dodge: walk peers left-to-right and drop each into the lowest lane whose last
+    // occupant has cleared 2R on x. Lane 0 sits on the midline, then alternate above/below, so the
+    // visual envelope matches the track this replaced. Identical inputs give identical output --
+    // which is why re-focusing never reshuffles the peers.
+    var laneMaxX = [];
+    var focal = null;
+    usable.slice().sort(function (a, b) { return a.value - b.value; }).forEach(function (p) {
+      var px = x(p.value), lane = 0;
+      while (laneMaxX[lane] !== undefined && px - laneMaxX[lane] < R * 2) lane++;
+      laneMaxX[lane] = px;
+      if (opts.focalId !== undefined && opts.focalId !== null && p.id === opts.focalId) {
+        focal = { peer: p, px: px };
+        return; // drawn last, on top, as a diamond
+      }
+      var off = (lane % 2 ? -1 : 1) * Math.ceil(lane / 2) * LANE;
+      var dot = el("circle", { class: "dist-strip-dot", cx: px, cy: MID + off, r: R, fill: dotFill });
+      titled(dot, (p.label || String(p.id)) + " · " + fmtVal(p.value));
+      if (typeof opts.onPeerClick === "function") {
+        dot.setAttribute("class", "dist-strip-dot is-clickable");
+        dot.addEventListener("click", function () { opts.onPeerClick(p); });
+      }
+      svg.appendChild(dot);
+    });
+
+    // Focal is a DIAMOND, not a recoloured dot: §7 forbids meaning carried by colour alone, so
+    // shape carries it and the accent only reinforces. 12px across, as before.
+    if (focal) {
+      // An 18px square rotated 45 with 3px corners and a soft shadow -- the prototype's focal mark,
+      // not a plain diamond. Shape and size carry it; the accent only reinforces (§7).
+      var S = 18;
+      var dia = el("rect", {
+        class: "dist-strip-focal", x: focal.px - S / 2, y: MID - S / 2, width: S, height: S, rx: 3,
+        transform: "rotate(45 " + focal.px + " " + MID + ")",
+        fill: t.accent, stroke: cardFill, "stroke-width": 2,
+        filter: "drop-shadow(0 2px 7px rgba(0,0,0,.22))",
+      });
+      titled(dia, (focal.peer.label || "Focal") + " · " + fmtVal(focal.peer.value));
+      svg.appendChild(dia);
+    }
+
+    // In-chart value labels are OPT-IN. The track this replaced carried min/median/max in its text
+    // caption, not under the strip, and that is what the sector app still does -- putting them in
+    // the chart was an unrequested restyle (operator, 4b cycle 1). Kept, off by default, for a
+    // caller that genuinely wants an in-chart scale; placement follows §12 when it is used.
+    if (opts.axisLabels) {
+      var labels;
+      if (lo === hi) {
+        // One filer, or every value identical: one number to report, not a range. Emitting min and
+        // max here printed the same value twice, overlapping ("41.2%41.2%").
+        labels = [{ v: lo, anchor: "middle", px: x(lo), strong: true }];
+      } else {
+        labels = [{ v: lo, anchor: "start", px: x(lo) }, { v: hi, anchor: "end", px: x(hi) }];
+        if (med !== null) labels.push({ v: med, anchor: "middle", px: x(med), strong: true });
+      }
+      var texts = labels.map(function (L) {
+        var txt = el("text", {
+          class: "dist-strip-axis" + (L.strong ? " is-median" : ""),
+          x: L.px, y: H - 3, "text-anchor": L.anchor, fill: cssVar("--mono-muted", "#8b8579"),
+        });
+        txt.textContent = fmtVal(L.v);
+        svg.appendChild(txt);
+        return { node: txt, anchor: L.anchor, px: L.px };
+      });
+      // Measure once the SVG is in the document -- getComputedTextLength() needs layout. Real
+      // measurement, never a per-character estimate (§12.1).
+      requestAnimationFrame(function () {
+        texts.forEach(function (T) {
+          var w = 0;
+          try { w = T.node.getComputedTextLength(); } catch (e) { return; }
+          if (!w) return;
+          var left = T.anchor === "start" ? T.px : T.anchor === "end" ? T.px - w : T.px - w / 2;
+          if (left < 2) { T.node.setAttribute("text-anchor", "start"); T.node.setAttribute("x", 2); }
+          else if (left + w > W - 2) { T.node.setAttribute("text-anchor", "end"); T.node.setAttribute("x", W - 2); }
+        });
+      });
+    }
+
+    card.body.appendChild(svg);
+
+    var cap = opts.caption || "";
+    if (single) {
+      cap += (cap ? " " : "") +
+        "One comparable filer — no middle-half range or median is shown, because neither is meaningful from a single value.";
+    }
+    if (excluded) cap += (cap ? " " : "") + excludedClause(excluded, all.length);
+    if (cap) card.caption(cap);
+    return card.root;
+  }
+
+  function excludedClause(excluded, total) {
+    return excluded + " of " + total + " filers " + (excluded === 1 ? "is" : "are") +
+      " excluded — no comparable value reported (N/A or N/M), not a zero.";
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -4017,6 +4220,7 @@
     sectorDupontTrend: sectorDupontTrend,
     sectorLifecycleTrend: sectorLifecycleTrend,
     boxWhiskerChart: boxWhiskerChart,
+    distributionStrip: distributionStrip,
     positionCountChart: positionCountChart,
     ingestionCoverageStrip: ingestionCoverageStrip,
     standingCaveatText: STANDING_CAVEAT_TEXT,

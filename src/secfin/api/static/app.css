@@ -658,4 +658,23 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
      needs one. Scoped to mobile so desktop keeps its viewport-sticky headers. */
   .paged-table { overflow-x: auto; }
   .paged-table .stmt-table th { position: static; }
+}/* Peer distribution strip (V3-P1). Marks are sized/filled inline from tokens by the builder --
+   these rules carry only what CSS owns: the pointer affordance and focus ring on a clickable peer,
+   and the mono axis labels. One fill for every peer (STYLE_GUIDE §6): the focal is distinguished by
+   shape and size, never by being the only coloured mark. */
+/* The strip sits in a tinted, bordered plot panel -- the v3 prototype's peerDots container
+   (66px, --bg-tint, 8px radius, --border-tint border). No gridlines: the prototype has none. */
+.dist-strip { display: block; overflow: visible;
+  background: var(--bg-tint); border: 1px solid var(--border-tint); border-radius: 8px; }
+.dist-strip-dot { opacity: 0.6; }
+.dist-strip-dot.is-clickable { cursor: pointer; }
+.dist-strip-dot.is-clickable:hover { opacity: 1; fill: var(--ink-soft); }
+.dist-strip-dot.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dist-strip-axis {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
 }
+.dist-strip-axis.is-median { font-weight: 600; }
+
+

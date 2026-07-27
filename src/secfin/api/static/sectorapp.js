@@ -1333,11 +1333,6 @@
     });
   }
 
-  function quant(sorted, p) {
-    if (!sorted.length) return null;
-    var i = (sorted.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
-    return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
-  }
   function focalLabel() {
     return state.focalName || state.focalTicker || (state.focalCik ? "CIK " + state.focalCik : "the focal filer");
   }
@@ -1386,6 +1381,7 @@
       filingHistoryPlaceholderHtml() +
       "</div></div>";
     wireCompanyView();
+    mountCompanyDots();
   }
 
   // Segment & geographic revenue mix (ASC 280) — Track 1 but NOT ingested / no endpoint. Honest
@@ -1505,30 +1501,51 @@
       '<span class="pa-dp-namewrap"><span class="pa-dp-name">' + P.esc(payload.label || metric) + "</span>" +
       (hib === false ? '<span class="pa-dp-lib">lower is better</span>' : "") + "</span>" +
       '<span class="pa-dp-headright">' + coSparkHtml(metric) + focalValueLabel(cos, payload) + "</span></div>";
-    if (cos.length < 2) {
-      return '<div class="pa-dp">' + head + '<div class="pa-empty-inline">No peer distribution for this metric yet — sparse coverage, not zero.</div></div>';
-    }
-    var vals = cos.map(function (c) { return c.value; });
-    var sorted = vals.slice().sort(function (a, b) { return a - b; });
-    var min = sorted[0], max = sorted[sorted.length - 1];
-    var span = max - min || 1;
-    var pos = function (v) { return ((v - min) / span) * 100; };
-    var q1 = pos(quant(sorted, 0.25)), q3 = pos(quant(sorted, 0.75)), med = pos(quant(sorted, 0.5));
-    var dots = cos.map(function (c, i) {
-      var focal = c.cik === state.focalCik;
-      var jitter = ((i % 5) - 2) * 9; // deterministic vertical spread so dots don't fully overlap
-      if (focal) return ""; // focal drawn as a diamond on top (below)
-      return '<span class="pa-dot" data-cik="' + c.cik + '" data-name="' + P.esc(c.name || "") + '" title="' + P.esc(c.name || ("CIK " + c.cik)) + " · " + fmtCo(metric, c.value) + '" style="left:' + pos(c.value).toFixed(1) + "%;top:calc(50% + " + jitter + "%)\"></span>";
-    }).join("");
-    var focalCo = cos.filter(function (c) { return c.cik === state.focalCik; })[0];
-    var diamond = focalCo ? '<span class="pa-diamond" style="left:' + pos(focalCo.value).toFixed(1) + '%" title="' + P.esc(focalLabel()) + " · " + fmtCo(metric, focalCo.value) + '"></span>' : "";
-    var track =
-      '<div class="pa-dp-track">' +
-      '<span class="pa-dp-iqr" style="left:' + q1.toFixed(1) + "%;width:" + (q3 - q1).toFixed(1) + '%"></span>' +
-      '<span class="pa-dp-median" style="left:' + med.toFixed(1) + '%"></span>' +
-      dots + diamond + "</div>";
-    var cap = '<div class="pa-dp-cap">' + cos.length + " filers · min " + fmtCo(metric, min) + " · median " + fmtCo(metric, quant(sorted, 0.5)) + " · max " + fmtCo(metric, max) + "</div>";
-    return '<div class="pa-dp">' + head + track + cap + coTrendPanelHtml(metric) + "</div>";
+    // No <2 early-return any more: the strip renders a single filer honestly (its value, with no
+    // invented median or middle-half) instead of suppressing the one datum we actually have.
+    // The strip itself is a DOM node (P.distributionStrip), and this function builds a string --
+    // so emit a host and let mountCompanyDots() append after render. Same shape as the
+    // boxWhiskerChart mount in mountDistribution() below.
+    return '<div class="pa-dp">' + head +
+      '<div class="pa-dp-host" data-metric="' + P.esc(metric) + '"></div>' +
+      coTrendPanelHtml(metric) + "</div>";
+  }
+
+  // Post-render pass: fill every peer-distribution host with the shared strip builder. Mirrors
+  // mountDistribution(); called from the same place, after innerHTML has landed.
+  function mountCompanyDots() {
+    document.querySelectorAll(".pa-dp-host[data-metric]").forEach(function (host) {
+      var metric = host.getAttribute("data-metric");
+      var payload = state.coValues[state.focalGroup + "|" + metric];
+      if (!payload) return;
+      var cos = payload.companies || [];
+      // Caption as it read before: count, then min / median / max in words. The strip carries no
+      // axis labels (opts.axisLabels stays off) -- same as the track this replaced.
+      var sv = cos.map(function (c) { return c.value; }).sort(function (a, b) { return a - b; });
+      var q = function (f) {
+        if (!sv.length) return null;
+        var i = (sv.length - 1) * f, lo = Math.floor(i), hi = Math.ceil(i);
+        return sv[lo] + (sv[hi] - sv[lo]) * (i - lo);
+      };
+      var cap = cos.length + " filers";
+      if (sv.length) {
+        cap += " · min " + fmtCo(metric, sv[0]) +
+               " · median " + fmtCo(metric, q(0.5)) +
+               " · max " + fmtCo(metric, sv[sv.length - 1]);
+      }
+      host.appendChild(P.distributionStrip(
+        cos.map(function (c) { return { id: c.cik, label: c.name || ("CIK " + c.cik), value: c.value }; }),
+        {
+          width: P.measuredWidth(host, 420),
+          height: 66,
+          focalId: state.focalCik,
+          format: function (v) { return fmtCo(metric, v); },
+          emptyCopy: "No peer distribution for this metric yet — sparse coverage, not zero.",
+          caption: cap,
+          onPeerClick: function (peer) { selectFocalCik(peer.id, peer.label); },
+        }
+      ));
+    });
   }
 
   // The trailing window (<=8 quarters) of the focal's history for one metric, oldest-first, mapped to
@@ -1583,11 +1600,8 @@
   function metricLabelFallback(metric) { return metric.replace(/_/g, " "); }
 
   function wireCompanyView() {
-    document.querySelectorAll(".pa-dot[data-cik]").forEach(function (dot) {
-      dot.addEventListener("click", function () {
-        selectFocalCik(parseInt(dot.getAttribute("data-cik"), 10), dot.getAttribute("data-name"));
-      });
-    });
+    // Peer clicks are wired by the strip builder via opts.onPeerClick (mountCompanyDots) -- there is
+    // no `.pa-dot[data-cik]` DOM contract to bind any more, and `cik` never leaks into shared app.js.
     var sel = $("coFocalSel");
     if (sel) sel.addEventListener("change", function () {
       var opt = sel.options[sel.selectedIndex];

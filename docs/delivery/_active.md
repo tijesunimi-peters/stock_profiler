@@ -1,6 +1,6 @@
 # Active delivery task
-task_slug: v3-p1-chart-foundry
-request: V3-P1 — Chart foundry, wave 1, per `docs/ROADMAP_APP_V3.md` §5/§6. Build the five chart builders that recur most across the v3 prototype as `ClearyFi.*` d3 builders, each landing in `/components` as it ships: (1) **distribution strip** — IQR band + median + focal marker, ONE builder with options replacing the prototype's `dotPlot`/`peerDots`/`universeDots` (`scaleLinear`, `d3-array` `quantile`; consider a `d3-force` beeswarm instead of index-jitter); (2) **gap-breaking series line** — multi-series, `line().defined(d => d != null)` so an undisclosed period BREAKS the line rather than interpolating (this is a §7/§9 honesty requirement, NOT a style choice — see DATA_MODEL R9); (3) **histogram** — `d3.bin` + `scaleBand`, median rule, and the median label must print the PASSED median, not the bin label; (4) **stacked columns** — `d3.stack` + `scaleBand`, 100%-of-revenue two-column form; (5) **event strip** — `scaleTime` + `scaleBand` lanes, tick step adapting to span. Plus a `ResizeObserver` re-measure so charts re-author on view/container change, and the option-based consolidations from RECONCILIATION §5c. Every builder: wraps in `chartCard()`, takes width from `measuredWidth()` never hardcoded, returns a **DOM node** (P0 decision), obeys §12 label placement, ranked bars take one fill with emphasis, magnitude stays single-hue, captions dedupe. Frontend-only; no API change, no new dependency.
+task_slug: v3-p2-shell-unification
+request: V3-P2 — Shell unification, the keystone phase of the v3 programme, per `docs/ROADMAP_APP_V3.md` §2 (D1 absorb, D2 subject nav) and §6. Four parts, one branch, one regression pass. (a) **Promote `sectorapp.js`/`sectorapp.css` to THE product shell** and retire `script.js`'s sidebar/topbar into it, so there is one shell and one navigation implementation instead of two. (b) **Make the unified shell load `app.css`/`app.js`** (the sector app currently declines `app.css`) and resolve the stylesheet overlap — `.plot-chart` is declared in FOUR files (`app.css`, `company.css`, `sectorapp.css`, `sectors.css`) and V3-P1 added a fifth scoped block plus a `.dist-strip-*` re-declaration. (c) Ship the locked **D2 subject nav**: seven subjects, three live (Companies → `/company/{symbol}`, Sectors → `/sectors`, Managers → `/manager/{cik}`), four rendered **planned-and-inert** (People, Auditors, Funds, Events — `--mono-muted`, `cursor: default`, NO href and NO click handler, self-explaining `title`), with subject-scoped actions (Compare · Screen · Coverage) that render planned-with-description where not built. (d) **URL-as-state**: every route serves the one app with selection derived from the path (`/company/{symbol}[/{view}]`, `/manager/{cik}[/{view}]`, `/sectors/{group}[/{view}]`, `/compare/{sectors|companies}`), absorbing the two known open items (URL doesn't reflect the active view; focal selector not scoped to the selected sector). **Re-home `/company`, `/manager`, `/compare`, `/screen`, `/coverage` with their CURRENT CONTENT AND TABS COMPLETELY UNCHANGED** — no view re-cutting in this branch.
 branch: not yet branched
 next_stage: pm
 qa_cycles: 0
@@ -9,67 +9,77 @@ updated: 2026-07-26
 ## Progress
 - [ ] 1 Product Manager       -> 1-brief.md
 - [ ] 2 Principal Architect   -> 2-architecture.md
-- [ ] 3 Backend  (expected N/A — frontend-only)
+- [ ] 3 Backend  (likely N/A — frontend + possibly a few FastAPI route paths for URL-as-state)
 - [ ] 3 Frontend -> 3-implementation.md
 - [ ] 4 QA Tester             -> 4-qa.md
-- [ ] 4b Operator manual verification -> 4b-manual-verification.md  (REQUIRED — interactive/rendered surface)
+- [ ] 4b Operator manual verification -> 4b-manual-verification.md  (REQUIRED — navigation is interactive, and this touches EVERY page)
 
 ## Notes / open loops
-- **Why P1 and not P2 (the critical path).** Both P1 and P2 are prerequisites of V3-P4/P5, so
-  ordering them does **not** change when the view phases can start. Given that, do the small
-  additive one first: P1 **validates P0's just-made chart decisions** (DOM-node convention, the
-  d3-vs-Plot selection rule, the §12 label rules) on low-risk work that only ADDS to
-  `/components` — before the largest migration in the project's history (P2 shell unification)
-  depends on them being right. If a P0 decision was wrong, finding out here costs a builder;
-  finding out mid-migration costs the migration. **Switching to P2 is one edit to this file.**
-- **V3-P3 (8-K item codes + acceptance timestamps) is independent** of both and never depended on
-  P0 — it can be queued any time as a separate backend track.
 
-### Pre-checks already done (don't redo)
-- **✅ Vendored d3 covers wave 1 — no new vendoring, no new dependency.** `static/vendor/d3.min.js`
-  is **full d3 v7.9.0** (279,706 bytes) and exports every module the five builders need: verified
-  `bin`, `line`, `area`, `stack` (as `t.bin=` etc. — they do NOT appear as `bin(` in the minified
-  bundle, so a naive grep gives a false negative), plus `scaleLinear/Band/Time/Sqrt/Log/Sequential`,
-  `quantile`, `treemap`, `forceSimulation`, `curveStepAfter`, `lineRadial`. Load d3 before
-  `plot.umd.min.js`, as the pages already do.
-- **✅ P0 landed the decisions this phase consumes:** STYLE_GUIDE §6 (engine per chart; every
-  builder returns a DOM node; the 4 legacy string builders are FROZEN — do not migrate or "improve"
-  `sparkline`/`trendChart`/`trajectoryChart`/`positionBar`), §12 (the 7 label-placement rules),
-  §7.1 + `docs/STATUS_MAPPING.md` (status treatment for absent data).
+### ⚠️ The one rule this phase must not break
+**Re-home pages WITHOUT changing their content.** Shell migration and content re-cut never share a
+branch (`ROADMAP_APP_V3.md` §7). If a review starts debating which tabs the company hub should have,
+that belongs to V3-P4. The whole risk-containment argument for D1 rests on this: if the shell move
+is content-neutral, any regression is unambiguously the shell's.
+
+### Why this is the riskiest phase in the programme
+`/company/{symbol}` is the **reference implementation** — STYLE_GUIDE §11 names it "the parent" of
+every data page, and it's the most-linked page we have. This phase rewrites the shell under it.
+Everything after P2 (P4–P7) runs on the unified shell, so **nothing downstream can start until this
+lands**. Only V3-P3 (ingest metadata) is independent.
+
+### Evidence already gathered — don't re-derive
+- **The two sidebars are entirely separate implementations sharing no code.**
+  `sector-analytics.html` does **not** load `script.js`; `sectorapp.js:293` has its own
+  `sidebarHtml()` building `<aside class="pa-side">`, while `script.js:23` has a `GROUPS` array
+  filling `#appSide`. Two sources of truth for one navigation.
+- **They have already drifted**, visibly: the shared shell has a nested *Overview → Sectors →
+  Overview* group, `data-shell`-driven `.current` highlighting, an off-canvas drawer below 1024px,
+  a mark+wordmark logo and "API Reference ↗". The sector app flattens Sectors into a fifth Data
+  item, **hard-codes it active** (`var active = n[1] === "/sectors"` — it can never highlight
+  anything else), has no drawer, brands as `ClearyFi` + `SEC data`, and says "API reference".
+- **`.plot-chart` is declared in FOUR stylesheets** — `app.css`, `company.css`, `sectorapp.css`,
+  `sectors.css`. The roadmap says "the two stylesheets' overlap"; it is four, plus what P1 added.
+- **V3-P1 added one more instance deliberately and temporarily:** `.pa-dp-host .plot-chart*` and
+  `.pa-dp-host .dist-strip-*` are re-declared in `sectorapp.css` purely because that page can't see
+  `app.css`. **Both blocks should disappear in this phase** — they are the canary for (b) being done.
+- **`sectorapp.js` builds HTML strings**, then post-render `mount*()` passes append DOM nodes
+  (`mountDistribution` at :1176, `mountCompanyDots` from P1). Any shell work must preserve that
+  two-phase render, or every chart in the sector app stops mounting.
+
+### Locked inputs — do NOT reopen
+- **D1 = absorb.** The prototype's IA is authoritative. One app, one shell, one state model. Routes
+  survive as addresses: `/company/AAPL` serves the same app with `subject=companies · view=hub ·
+  focal=AAPL` derived from the path. Nothing redirects into `/sectors`.
+- **D2 = the nav as the prototype draws it**, all seven subjects, four planned-and-inert. Justified
+  in `STYLE_GUIDE.md` §10.1 (a planned-and-inert label is not a placeholder link).
+- **Marketing/legal pages stay outside** the app shell (`/`, `/guide`, `/methodology`, `/privacy`,
+  `/terms`, `/disclaimer`) — they keep the static `.nav`.
+
+### The lesson V3-P1 paid for — apply it here
+Both of P1's fix cycles were **design fidelity, not logic**: an unrequested restyle, then two wrong
+guesses at what the operator meant before opening the prototype. **For any "match the design" work,
+read `docs/design/sector-app-prototype-v3/prototype.dc.html` FIRST** — it is in the repo, it is the
+source of truth, and it is cheaper than a round-trip. The prototype's shell is the target here:
+subject nav → entity control bar → view rail → 960px content column → sticky 262px right rail
+(appears ≥1240px), fixed 210px left sidebar.
 
 ### Flags for the PM / architect
-- **⚠️ Check for existing equivalents BEFORE building — real duplication risk.** We already ship
-  chart code that overlaps wave 1: `ClearyFi.boxWhiskerChart` (Plot-based, sector spreads) is close
-  to the distribution strip, and `sectorapp.js` has peer-strip/dot-plot rendering of its own. The
-  architect must decide per builder: **extend, replace, or add alongside** — and if replacing, who
-  migrates the existing call sites and in which phase. Silently adding a sixth near-duplicate would
-  be the worst outcome, and is exactly what RECONCILIATION §5c's consolidation list warns against.
-- **⚠️ The consolidation list vs the frozen legacy builders.** RECONCILIATION §5c says merge
-  `sparkline` + `microSpark` into one builder — but P0 froze our legacy string `sparkline`. Not a
-  contradiction (the frozen one serves existing call sites; a new d3 sparkline would be a new
-  builder), but the architect must say so explicitly. **Sparkline is NOT in wave 1** — flag only.
-- **13 prototype builders must NOT become d3** (RECONCILIATION §5a): `pctBar`, `contribBar`,
-  `coverageBar`, `insiderBar`, `stackedBar`, `stackedBar2`, `cmpBars`, `cmpMetricBars`, `pairBars`,
-  `ladderRows`, `track`, `presenceMatrix`, `filerReveal`. They are proportional divs that reflow,
-  wrap and inherit tokens for free; porting them would be a regression. Scope guard.
-- **Honesty ACs to bake in:** the gap-breaking line is a **requirement, not an option** (an
-  undisclosed period breaks the line; never zero-filled, never interpolated — DATA_MODEL R9); a
-  thin/empty/one-point series renders an honest empty state, never a broken or misleading partial
-  chart; N/A is never drawn as 0; magnitude never uses a diverging or green/red scale.
-- **`/components` is the deliverable surface**, not just a demo — each builder lands there as it
-  ships, which is also how QA and the operator can exercise wave 1 without a consuming view.
-- **4b operator gate is REQUIRED here** (unlike P0): these are rendered, interactive surfaces, so
-  QA's automated pass + screenshots do not substitute for the operator driving them by hand.
+- **Is any backend work needed?** URL-as-state may need new/changed FastAPI routes
+  (`/sectors/{group}`, `/company/{symbol}/{view}`, `/compare/{sectors|companies}` + a `/compare`
+  redirect). Decide at the architecture stage whether that's a backend sub-stage or just
+  `main.py` route additions the frontend engineer can own.
+- **`/screen` and `/coverage`** also load the shared shell. They are in scope for re-homing even
+  though the prototype says little about them — don't leave two shells alive by forgetting them.
+- **`/sectors-legacy`** (superseded `sectors.html` + `sectors.css`) is dead weight that still
+  declares `.plot-chart`. Consider decommissioning it here rather than migrating it — operator call.
+- **e2e baseline:** the suite reports `HEADLESS CHECK: FAIL` overall due to **pre-existing**
+  Company-view 502s on synthetic CIK 900001 in the offline sandbox (confirmed in three QA records
+  now). Expect that; a shell change touching every page must not add to it.
 
 ### Previous task
-- **V3-P0 DONE (2026-07-26): QA PASS 19/19**, committed `4b0787c` on branch `v3-p0-decisions`
-  (1 commit ahead of master, unmerged). Trail in `docs/delivery/v3-p0-decisions/`. It resolved
-  D3 (status mapping → `docs/STATUS_MAPPING.md`), D4 (basis axis already modelled; no toggle without
-  a real point-in-time compute path), D5 (engine per chart + DOM-node convention).
-- **Still open from P0, deliberately:** whether `as-originally-reported` ever ships as a capability
-  — recommend deciding at V3-P4, not here.
-- **⚠️ Repo state:** `master` is 4 commits ahead of `origin/master` (**nothing pushed**), and
-  `v3-p0-decisions` is unmerged. P1 should branch off `master` **after** deciding whether to merge
-  `v3-p0-decisions` first — P1 consumes STYLE_GUIDE §6/§12 and `STATUS_MAPPING.md`, which exist
-  **only on that branch**. Merging it first is the clean path (same situation P0 hit with the
-  roadmap branch).
+- **V3-P1 DONE (2026-07-26): operator CONFIRMED at 4b after 2 fix cycles**, committed `f69ffda` on
+  branch `v3-p1-chart-foundry` (**unmerged**). Trail in `docs/delivery/v3-p1-chart-foundry/`.
+- **⚠️ MERGE `v3-p1-chart-foundry` INTO MASTER BEFORE BRANCHING P2.** P2 edits `app.css`,
+  `sectorapp.css`, `sectorapp.js` and `script.js` — the same files P1 changed. Branching off master
+  without merging first will lose P1's work or conflict later. (Same trap P0 and P1 both hit.)

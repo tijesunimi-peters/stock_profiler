@@ -322,12 +322,26 @@ body { margin: 0; background: var(--bg-page); color: var(--ink); font-family: "H
 .pa-sg-ph { font-style: italic; }
 .pa-ph-note { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin-top: 12px; }
 .pa-fh-body { padding: 4px 0; }
-.pa-dp-track { position: relative; height: 34px; margin: 2px 6px; border-bottom: 1px solid var(--border-tint-rule); }
-.pa-dp-iqr { position: absolute; top: 50%; transform: translateY(-50%); height: 16px; background: var(--accent-wash); border: 1px solid var(--accent-wash-border); border-radius: 4px; }
-.pa-dp-median { position: absolute; top: 50%; transform: translateY(-50%); width: 2px; height: 20px; background: var(--ink); }
-.pa-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); opacity: 0.55; transform: translate(-50%, -50%); cursor: pointer; }
-.pa-dot:hover { opacity: 1; background: var(--ink-soft); }
-.pa-diamond { position: absolute; top: 50%; width: 12px; height: 12px; background: var(--accent); transform: translate(-50%, -50%) rotate(45deg); border: 1.5px solid var(--bg-card); z-index: 2; }
+/* The peer distribution is now P.distributionStrip (V3-P1) -- the old absolutely-positioned
+   .pa-dot/.pa-diamond track is gone, along with its index-derived jitter. Like boxWhiskerChart
+   above, the builder emits .plot-chart-* chrome styled in app.css, which this page deliberately
+   does not load (see the note at .pa-drill-boxes), so re-declare it locally for the strip host.
+   V3-P2 removes this duplication when the shells merge. */
+.pa-dp-host .plot-chart { margin: 0; padding: 2px 0 0; }
+.pa-dp-host .plot-chart-title { display: none; }
+/* The baseline hairline the old .pa-dp-track carried (border-bottom + 2px 6px margin). It sits under
+   the strip and above the caption, exactly as before -- dropped by accident in the first pass. */
+.pa-dp-host .plot-chart-body { overflow-x: auto; margin: 2px 0 0; }
+.pa-dp-host .plot-chart-caption { font-family: var(--font-mono); font-size: 10px; line-height: 1.5; color: var(--mono-muted); margin: 4px 2px 0; }
+/* .dist-strip* live in app.css, which this page does not load -- re-declared here for the same
+   reason as .plot-chart* above. V3-P2 removes this duplication when the shells merge. */
+.pa-dp-host .dist-strip { display: block; overflow: visible;
+  background: var(--bg-tint); border: 1px solid var(--border-tint); border-radius: 8px; }
+.pa-dp-host .dist-strip-dot { opacity: 0.6; }
+.pa-dp-host .dist-strip-dot.is-clickable { cursor: pointer; }
+.pa-dp-host .dist-strip-dot.is-clickable:hover { opacity: 1; fill: var(--ink-soft); }
+.pa-dp-host .dist-strip-dot.is-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pa-dp-host .state-copy { font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); }
 .pa-dp-cap { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-top: 8px; }
 
 /* ---- stub views ---- */
