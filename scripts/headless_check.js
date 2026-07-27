@@ -157,25 +157,25 @@ const PAGES = process.env.PAGES
       }
       if (name === "sectorapp-company-default") {
         // The default focal resolves asynchronously (largest sector -> first-alpha filer).
-        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        await page.waitForSelector(".pa-dp-host .dist-strip-dot", { timeout: 8000 });
         await new Promise((r) => setTimeout(r, 400));
       }
       if (name === "sectorapp-company" || name === "sectorapp-company-refocus") {
         // Wait for the dot-plots to load; the refocus shot then clicks a peer dot to re-focus.
-        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        await page.waitForSelector(".pa-dp-host .dist-strip-dot", { timeout: 8000 });
         if (name === "sectorapp-company") {
           // Exercise the composite decompose toggle (the header dropdown is captured statically).
           const cbtn = await page.$("#coCompBtn");
           if (cbtn) { await cbtn.click(); await new Promise((r) => setTimeout(r, 250)); }
         }
         if (name === "sectorapp-company-refocus") {
-          await page.click(".pa-dp-track .pa-dot");
+          await page.click(".pa-dp-host .dist-strip-dot");
           await new Promise((r) => setTimeout(r, 600));
         }
       }
       if (name === "sectorapp-company-trend") {
         // Wait for the focal's sparklines to load, then click one to expand its 8-quarter trend panel.
-        await page.waitForSelector(".pa-dp-track .pa-dot", { timeout: 8000 });
+        await page.waitForSelector(".pa-dp-host .dist-strip-dot", { timeout: 8000 });
         await page.waitForSelector(".pa-dp-spark[data-metric]", { timeout: 8000 });
         await page.click(".pa-dp-spark[data-metric]");
         await page.waitForSelector(".pa-dp-trend", { timeout: 5000 });

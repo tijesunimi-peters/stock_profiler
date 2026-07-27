@@ -34,11 +34,15 @@
 
     <div id="states-section"></div>
 
+    <div id="strip-section"></div>
+
     <div id="disclosure-section"></div>
   </main>
   <div id="footer"></div>
   </div>
 
+  <!-- vendored (CSP-safe) d3 -- the distribution-strip demo below is a d3 builder -->
+  <script src="/static/vendor/d3.min.js"></script>
   <script src="/static/suggest.js"></script>
   <script src="/static/script.js"></script>
   <script src="/static/app.js"></script>
@@ -53,6 +57,53 @@
         lede: "",
       });
       $("footer").innerHTML = P.footer();
+
+      // ----- peer distribution strip (V3-P1): the four states that have to stay honest -----
+      // Fixtures are deliberately awkward: one carries nulls (peers with no comparable value), one
+      // has a single filer, one is empty. A builder only proves itself on those, not on the happy path.
+      (function () {
+        var pct = function (v) { return v.toFixed(1) + "%"; };
+        var full = [
+          { id: 1, label: "Aurora Semiconductor", value: 41.2 }, { id: 2, label: "Basalt Micro", value: 38.7 },
+          { id: 3, label: "Cinder Devices", value: 38.1 }, { id: 4, label: "Delta Fab", value: 37.9 },
+          { id: 5, label: "Ember Logic", value: 44.6 }, { id: 6, label: "Ferrite Systems", value: 29.3 },
+          { id: 7, label: "Granite Wafer", value: 52.8 }, { id: 8, label: "Halide Corp", value: 38.4 },
+          { id: 9, label: "Ion Foundry", value: 33.1 }, { id: 10, label: "Jasper Analog", value: 46.0 }
+        ];
+        var withNulls = full.slice(0, 6).concat([
+          { id: 11, label: "Kaolin Instruments", value: null },
+          { id: 12, label: "Lumen Photonics", value: null },
+          { id: 13, label: "Mica Interconnect", value: null }
+        ]);
+        var host = document.createElement("div");
+        host.innerHTML = P.sectionHead("06", "Peer distribution strip");
+        var grid = document.createElement("div");
+        grid.style.cssText = "display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))";
+        [
+          [full, { focalId: 7, title: "Populated, with a focal filer",
+                   caption: "Gross margin across 10 filers. Derived from reported values; peers are SIC-matched." }],
+          [full, { title: "Populated, no focal", caption: "Same distribution, nothing focused." }],
+          [full, { focalId: 7, axisLabels: true, height: 48, title: "With in-chart value labels (opt-in)",
+                   caption: "axisLabels:true — off by default; the sector app keeps min/median/max in the caption." }],
+          [withNulls, { focalId: 3, title: "Some filers have no comparable value",
+                        caption: "Gross margin across the same peer group." }],
+          [[], { title: "Nothing comparable yet", caption: "" }]
+        ].forEach(function (spec) {
+          var cell = document.createElement("div");
+          grid.appendChild(cell);
+          cell.appendChild(P.distributionStrip(spec[0], Object.assign(
+            { width: P.measuredWidth(cell, 320), format: pct,
+              onPeerClick: function (peer) { window.console.log("peer", peer.label); } }, spec[1])));
+        });
+        host.appendChild(grid);
+        // A single filer is its own state: no middle-half band, no median, and the caption says why.
+        var one = document.createElement("div");
+        one.style.marginTop = "16px";
+        host.appendChild(one);
+        one.appendChild(P.distributionStrip([{ id: 1, label: "Aurora Semiconductor", value: 41.2 }],
+          { width: P.measuredWidth(one, 560), format: pct, focalId: 1, title: "Only one comparable filer" }));
+        $("strip-section").appendChild(host);
+      })();
 
       // ----- global search (live ticker->CIK resolve) -----
       $("search-section").innerHTML =
