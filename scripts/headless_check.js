@@ -22,6 +22,13 @@ const PAGES = process.env.PAGES
       ["company-path-view", "/company/AAPL/statements"],
       // An unknown slug must fall back to the default view, never error (AC-21).
       ["company-path-unknown", "/company/AAPL/nonsense"],
+      // V3-P4 re-cut: the two new views, plus every legacy URL form that must still resolve.
+      ["company-hub", "/company/AAPL/hub"],
+      ["company-tray", "/company/AAPL/hub"],
+      ["company-history", "/company/AAPL/history"],
+      ["company-history-range", "/company/AAPL/history"],
+      ["company-legacy-fundamentals", "/company/AAPL/fundamentals"],
+      ["company-legacy-tab", "/company/AAPL?tab=statements"],
       ["sectors-path-group", "/sectors/35"],
       // V3-P2 drawer guard: below 1024px the sidebar is off-canvas behind a hamburger. This lived
       // only in the retired script.js shell, so it is the single easiest thing in the merge to lose
@@ -207,10 +214,57 @@ const PAGES = process.env.PAGES
         await new Promise((r) => setTimeout(r, 400));
       }
       if (name === "company-path-view" || name === "company-path-unknown") {
-        // The rail must settle on the view the PATH names -- statements for the explicit slug,
-        // the default (fundamentals) for the unknown one (AC-19/AC-21).
-        const want = name === "company-path-view" ? "statements" : "fundamentals";
+        // The rail must settle on the view the PATH names. V3-P4 re-cut the company views, so
+        // the LEGACY /statements slug must alias onto `history` -- if VIEW_ALIASES were missing
+        // it would silently fall through to the default and land on Overview, a wrong page
+        // rather than an error. The unknown slug still resolves to the default, now `hub`.
+        const want = name === "company-path-view" ? "history" : "hub";
         await page.waitForSelector(`.shell-rail-btn.active[data-view="${want}"]`, { timeout: 8000 });
+      }
+      if (name === "company-legacy-fundamentals" || name === "company-legacy-tab") {
+        // The other two legacy forms: the retired /fundamentals path slug and the ?tab= query.
+        const want = name === "company-legacy-fundamentals" ? "hub" : "history";
+        await page.waitForSelector(`.shell-rail-btn.active[data-view="${want}"]`, { timeout: 8000 });
+      }
+      if (name === "company-hub") {
+        // Overview: the merged Financial snapshot must render tiles, and opening one must
+        // reveal its "how this is computed" drawer in place (AC-9/AC-11).
+        await page.waitForSelector(".mtile", { timeout: 8000 });
+        await page.click(".mtile [data-tile-toggle]");
+        await page.waitForSelector(".mtile.open .mtile-drawer", { timeout: 6000 });
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      if (name === "company-tray") {
+        // The comparison tray: "+ chart" must open the pinned bottom drawer rather than
+        // navigating, and the tile must read back as being in the chart.
+        await page.waitForSelector(".mtile-tray", { timeout: 8000 });
+        await page.click(".mtile-tray");
+        await page.waitForSelector("#compareTray .tray", { timeout: 8000 });
+        await page.waitForFunction(
+          () => document.querySelectorAll(".tray-chip").length === 1 &&
+                /in chart/.test(document.querySelector(".mtile-tray").textContent),
+          { timeout: 8000 }
+        );
+        await new Promise((r) => setTimeout(r, 800));
+      }
+      if (name === "company-history") {
+        // Financial history: the explorer draws a line, then a second metric OVERLAYS it and
+        // the legend grows to two entries (AC-15/AC-16).
+        await page.waitForSelector(".hist-chip", { timeout: 8000 });
+        await page.waitForSelector(".metric-series-chart", { timeout: 8000 });
+        await page.click('.hist-chip[data-hist-metric="fcf"]');
+        await page.waitForFunction(
+          () => document.querySelectorAll(".hist-legend-item").length >= 2,
+          { timeout: 8000 }
+        );
+        await new Promise((r) => setTimeout(r, 600));
+      }
+      if (name === "company-history-range") {
+        // Switching range must re-render the chart, not leave the old one in place.
+        await page.waitForSelector('[data-hist-range="5y"]', { timeout: 8000 });
+        await page.click('[data-hist-range="5y"]');
+        await page.waitForSelector(".metric-series-chart", { timeout: 8000 });
+        await new Promise((r) => setTimeout(r, 600));
       }
       if (name === "shell-drawer-narrow") {
         // Hamburger visible below 1024px; clicking it opens the off-canvas drawer, and the scrim

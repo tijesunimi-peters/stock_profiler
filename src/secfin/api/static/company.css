@@ -794,3 +794,533 @@ select.period-select:focus { outline: none; border-color: var(--accent); }
   font-weight: 600;
   background: transparent;
 }
+
+/* ==========================================================================
+   V3-P4 — company re-cut: Overview (hub) + Financial history (history).
+   Layout, spacing and type follow docs/design/sector-app-prototype-v3/prototype.dc.html
+   (hub :799-1577, history :1578-1679). The palette needs no new tokens: style.css already
+   carries the prototype's exact values.
+   ========================================================================== */
+
+/* Section source sits INLINE with the number + title (prototype :835-839). */
+.co-section-head { flex-wrap: wrap; }
+.sec-source { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+
+/* Shared card chrome for both views (prototype's --bg-card + --shadow panel). */
+.ov-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 15px 16px;
+  margin-bottom: 16px;
+}
+.ov-card-eyebrow {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  margin-bottom: 11px;
+}
+.ov-card-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+.ov-card-sub { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+.ov-note {
+  margin: 9px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--mono-muted);
+  text-wrap: pretty;
+}
+.ov-empty { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.ov-link, .ov-inline-link { font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+.ov-link { display: inline-block; margin-top: 9px; }
+
+/* ---------- 01 Identity & structure ---------- */
+
+.ov-identity {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.ov-identity .ov-card { margin-bottom: 0; }
+.rp-card { background: var(--bg-tint); box-shadow: none; }
+.rp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 18px; }
+.rp-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rp-k {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+.rp-v {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* EX-21 placeholder: real structure, zero fabricated rows (Track 2 — flag, don't build). */
+.ex21-src {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.ex21-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px 68px;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+.ex21-head span:last-child { text-align: right; }
+.ex21-empty { display: flex; align-items: flex-start; gap: 12px; padding: 18px 0 4px; }
+.ex21-dash { font-family: var(--font-mono); font-size: 20px; color: var(--mono-muted); line-height: 1; }
+.ex21-empty p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-body);
+  text-wrap: pretty;
+}
+
+/* ---------- 02 Condensed statements ---------- */
+
+.cond-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cond-tabs button, .hist-range button { font-size: 11px; padding: 4px 10px; }
+.cond-table { display: block; }
+.cond-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+.cond-row:last-child { border-bottom: none; }
+.cond-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+.cond-label { font-size: 12.5px; color: var(--ink-body); min-width: 0; }
+.cond-amt {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: right;
+}
+/* A line the filer did not report. Drained, explicitly N/A — never a zero. */
+.cond-amt.na { color: var(--mono-muted); }
+.cond-row.emph-sub .cond-label, .cond-row.emph-total .cond-label { font-weight: 600; }
+.cond-row.emph-total { border-top: 1px solid var(--ink); }
+.cond-row.emph-indent .cond-label { padding-left: 14px; color: var(--ink-soft); }
+.cond-flag {
+  margin-left: 7px;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--caution);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* ---------- 02 Financial snapshot: the Overview's grouping around the tiles.
+   The TILE itself (.mtile*) is a shared ClearyFi builder and lives in app.css. ---------- */
+
+.snap-group { margin-top: 18px; }
+.snap-group-title {
+  margin: 0 0 9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+/* Rules are drawn by the TILES, not by a gap over a colored grid background. With auto-fit the
+   last row is usually short, and a rule-colored background made those unfilled cells render as
+   large beige blocks that read as broken or missing tiles. Per-tile borders leave the empty
+   remainder the same color as the card, i.e. invisible. */
+/* ---------- Financial history ---------- */
+
+.hist-picker { padding: 13px 16px; }
+.hist-picker-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  margin-bottom: 9px;
+}
+.hist-picker-head span { text-transform: none; letter-spacing: 0; }
+.hist-groups { display: flex; flex-direction: column; gap: 7px; }
+.hist-group { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.hist-group-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  flex: none;
+  min-width: 92px;
+}
+.hist-chip {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px 9px;
+  white-space: nowrap;
+}
+.hist-chip:hover { border-color: var(--accent); color: var(--accent-ink); }
+.hist-chip.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.hist-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.hist-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.hist-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hist-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hist-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-body);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 3px 8px;
+}
+.hist-swatch { width: 11px; height: 2px; flex: none; }
+.hist-latest { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.hist-remove {
+  appearance: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mono-muted);
+  line-height: 1;
+}
+.hist-remove:hover { color: var(--negative); }
+.hist-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-tint-rule);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
+.hist-foot span { text-wrap: pretty; }
+/* The refusal at four metrics has to be seen — the reader just clicked something. */
+.hist-foot.limit span:last-child { color: var(--accent-ink); font-weight: 600; }
+.hist-chart-card .plot-chart { border: 0; box-shadow: none; padding: 0; margin: 0; background: transparent; }
+
+@media (max-width: 720px) {
+  .rp-grid { grid-template-columns: 1fr; }
+  .hist-group-name { min-width: 0; width: 100%; }
+  .cond-row { grid-template-columns: minmax(0, 1.4fr) repeat(auto-fit, minmax(0, 1fr)); }
+}
+
+/* ==========================================================================
+   V3-P4, QA cycle 1 — prototype-fidelity corrections (operator, 2026-07-27).
+   ========================================================================== */
+
+/* Masthead in the prototype's shape (:76-83): mono subtitle under the title, a right-hand mono
+   meta line, ONE thin rule. Replaces the eyebrow/double-rule/lede arrangement here only. */
+.co-masthead { margin: 0 0 18px; }
+.co-mast-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.co-masthead h1 { margin: 0; font-weight: 800; font-size: 30px; letter-spacing: -0.02em; line-height: 1.05; color: var(--ink); }
+.co-mast-sub { margin-top: 5px; font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+.co-mast-right { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); text-align: right; }
+.co-mast-rule { height: 1px; background: var(--border-tint-rule); margin: 12px 0 0; }
+
+/* In-view breadcrumb header: sector › name › ticker over a heavy rule (:801-812). */
+.view-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 10px;
+  margin-bottom: 18px;
+}
+.vh-sector { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+.vh-sep { color: var(--mono-muted); }
+.vh-name { font-weight: 800; font-size: 21px; color: var(--ink); letter-spacing: -0.015em; }
+.vh-ticker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--bg-page);
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+.vh-view { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); }
+.vh-note { margin-left: auto; font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+
+/* Prototype button (:891-895): separate rounded buttons with a gap, not a joined pill group. */
+.pbtn {
+  appearance: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 4px 10px;
+}
+.pbtn:hover { border-color: var(--accent); color: var(--accent-ink); }
+.pbtn.on { color: #fff; background: var(--accent); border-color: var(--accent); }
+.pbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cond-tabs, .stmt-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* The statement card's own controls, replacing the retired page-level bar. */
+.stmt-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.stmt-period { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--mono-muted); }
+.stmt-period select {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 4px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Condensed rows open their own trend (prototype :906-939). */
+.cond-row.chartable { cursor: pointer; }
+.cond-row.chartable:hover { background: var(--bg-tint); }
+.cond-row.chartable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cond-cue { margin-left: 7px; font-size: 9px; color: var(--mono-muted); }
+.cond-row.open .cond-cue { color: var(--accent); transform: rotate(180deg); display: inline-block; }
+.cond-drawer { background: var(--bg-tint); border: 1px solid var(--border-tint); border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; }
+.cond-drawer .plot-chart { border: 0; box-shadow: none; padding: 0; margin: 0; background: transparent; }
+
+/* EX-21: the prototype's fuller layout, with dashes where it shows figures. */
+.ex21-top { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; margin-bottom: 11px; }
+.ex21-meta { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+.ex21-meta .na { color: var(--mono-muted); font-weight: 600; }
+.ex21 .ov-link { margin-top: 0; }
+
+/* "Sections" in the view rail, numbered, active row marked on its left edge (:249-256). */
+.rail-sections { display: flex; flex-direction: column; gap: 1px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-tint-rule); }
+.rail-sections-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding: 0 4px 8px;
+}
+.rail-section-link {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  background: transparent;
+  border-left: 2px solid transparent;
+  padding: 6px 8px;
+  border-radius: 0 6px 6px 0;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.rail-section-link:hover { color: var(--accent-ink); }
+.rail-section-link.active { color: var(--accent-ink); background: var(--accent-wash); border-left-color: var(--accent); }
+.rail-section-link .rs-n { font-size: 9.5px; color: var(--mono-muted); }
+
+/* Item 1 (Business) is narrative text -> Track 2. Real shape, honest empty state. */
+.biz-empty { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0 2px; }
+.biz-empty p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--ink-body); text-wrap: pretty; }
+.ex21 { margin-top: 16px; }
+
+/* Sticky comparison tray (prototype :1653-1677). Pinned to the bottom of the viewport so a
+   comparison can be assembled without leaving the page you are reading. */
+#compareTray[hidden] { display: none; }
+/* The prototype declares this `position: sticky; bottom: 0` at the end of the content column,
+   which means it is only visible once you have scrolled to the bottom -- and the whole point is
+   to assemble a comparison WHILE reading. Fixed to the viewport bottom instead, spanning the
+   content column, so it behaves as the bottom drawer it is meant to be. The page reserves room
+   for it (body.tray-open) so nothing is hidden underneath. */
+.tray {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  margin: 0 auto;
+  max-width: 1100px;
+  border-radius: 12px 12px 0 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 13px 16px;
+}
+.tray-collapsed { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Room for the drawer so the last of the content is never trapped beneath it. */
+body.tray-open .page { padding-bottom: 340px; }
+body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
+@media (min-width: 1024px) {
+  .tray { left: 232px; }
+}
+.tray-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.tray-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tray-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+.tray-count { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+.tray-actions { display: flex; gap: 6px; align-items: center; }
+.tray-actions .pbtn, .tray-collapsed .pbtn {
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+}
+.tray-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-body);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 8px;
+}
+.tray-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
+.tray-foot.limit span { color: var(--accent-ink); font-weight: 600; }
+.tray .plot-chart { border: 0; box-shadow: none; padding: 0; margin: 0; background: transparent; }
+/* A metric already in the tray reads as such on its tile. */
+.mtile-tray.on { color: var(--accent-ink); }
+
+/* Right rail — Filing timeline (prototype :3902). A 262px sticky column needs real width: the
+   prototype's own frame is 1440px wide with the content capped at 960 beside it. Below 1360px it
+   drops under the content rather than squeezing the statement table and tile grid into ~600px. */
+.right-rail { display: none; }
+#rightRail[hidden] { display: none; }
+.rr-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+.rr-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+.rr-sub { font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); margin-top: 3px; }
+.rr-filters { display: flex; flex-wrap: wrap; gap: 5px; margin: 11px 0 12px; }
+/* Drained and non-interactive: no href, no handler — the status vocabulary applied to a control
+   we cannot yet honour (STYLE_GUIDE §10, the same treatment the planned nav subjects get). */
+.rr-filter {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: default;
+}
+.rr-empty { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0 2px; }
+.rr-empty p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-body); text-wrap: pretty; }
+.rr-note {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-tint-rule);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+}
+@media (min-width: 1360px) {
+  .right-rail {
+    display: block;
+    width: 262px;
+    flex: none;
+    position: sticky;
+    top: 74px;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+}
+/* Narrower than that, it still renders — just beneath the content, never hidden.
+   `flex: 0 0 100%` is load-bearing: .shell-viewport has min-width:0, so with a merely `auto`
+   basis the rail would sit BESIDE it and squeeze the content column to ~170px instead of
+   wrapping. A full basis forces the wrap. */
+@media (max-width: 1359px) {
+  .shell-body { flex-wrap: wrap; }
+  .right-rail { display: block; flex: 0 0 100%; width: 100%; margin-top: 18px; }
+  .right-rail .rr-card { max-width: 640px; }
+}

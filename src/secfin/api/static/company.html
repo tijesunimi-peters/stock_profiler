@@ -47,8 +47,14 @@
 
         <div id="legend"></div>
         <div id="view"></div>
+        <!-- Sticky comparison tray (V3-P4 cycle 3, prototype :1653-1677). Outside #view so it
+             survives a view re-render and persists across Overview <-> Financial history. -->
+        <div id="compareTray" hidden></div>
         <div id="disclosure"></div>
       </div>
+      <!-- Right rail (V3-P4, prototype :3902). Filing timeline — an honest placeholder until
+           V3-P3 stores submissions metadata; see company.js renderRightRail(). -->
+      <aside class="right-rail" id="rightRail" hidden></aside>
     </div>
   </main>
 

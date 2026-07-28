@@ -678,3 +678,155 @@ body.app .app-footer { max-width: none; margin: 44px 0 0; padding: 18px 28px 26p
 .dist-strip-axis.is-median { font-weight: 600; }
 
 
+
+/* ---------- metric tile + drawer (ClearyFi.metricTile, V3-P4) ----------
+   A shared component, so it lives here rather than in company.css: /components renders it
+   too, and a builder whose styles ship with one page is a builder that breaks on the next.
+   Layout follows prototype.dc.html:964-1010. */
+
+.mtile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  background: var(--bg-card);
+  border: 1px solid var(--border-tint-rule);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.mtile {
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border-tint-rule);
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+/* An open tile takes the whole row. Two reasons, both visible without it: the drawer stretched
+   its row-mates into tall empty columns, and the history chart was squeezed into one ~180px
+   column, well under a legible width (§12.6 — author a chart at its container width). */
+.mtile.open { background: var(--bg-tint); grid-column: 1 / -1; }
+.mtile.open .mtile-spark-slot { min-height: 0; }
+/* The tile face is a plain container now: the VALUE is the affordance that opens the drawer
+   (dashed underline, the prototype's `cue`), and "+ chart" is a separate action. */
+.mtile-face { padding: 12px 13px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.mtile-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  overflow-wrap: anywhere;
+}
+.mtile-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+}
+.mtile-value.has-cue { cursor: pointer; border-bottom: 1px dashed var(--mono-muted); }
+.mtile-value.has-cue:hover { color: var(--accent-ink); border-bottom-color: var(--accent); }
+.mtile-value.has-cue:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.mtile-tray {
+  align-self: flex-start;
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+.mtile-tray:hover { color: var(--accent-ink); }
+.mtile-tray:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* N/A and N/M drain rather than disappear — an absent value stays visible and labelled. */
+.mtile.drained .mtile-value { color: var(--mono-muted); font-size: 17px; }
+.mtile-spark-slot { display: block; min-height: 26px; }
+.mtile-spark svg { display: block; }
+.mtile-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+}
+.mtile-status { font-size: 10px; line-height: 1; }
+.mtile-status.status-ok { color: var(--ink-soft); }
+.mtile-status.status-approximate { color: var(--caution); }
+.mtile-status.status-na, .mtile-status.status-nm { color: var(--mono-muted); }
+.mtile-basis { letter-spacing: 0.05em; }
+.mtile-move { color: var(--ink-soft); }
+.mtile-move-note { color: var(--mono-muted); }
+.mtile .tile-peer { padding: 0 13px 10px; display: flex; align-items: center; gap: 8px; }
+.mtile-drawer {
+  border-top: 1px solid var(--border-tint);
+  padding: 11px 13px 13px;
+  background: var(--bg-tint);
+}
+.mtile-drawer-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+.mdh-left { display: inline-flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.mdh-title { font-weight: 800; font-size: 14px; color: var(--ink); }
+.mdh-latest { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+.mdh-change { font-family: var(--font-mono); font-size: 11px; color: var(--ink-soft); }
+.mdh-right { display: inline-flex; gap: 5px; flex-wrap: wrap; }
+.mdh-right .pbtn { font-size: 10px; padding: 3px 8px; }
+.mtile-notes { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 8px; font-family: var(--font-mono); font-size: 10px; color: var(--mono-muted); }
+.tile-prov { margin-top: 9px; }
+.tile-prov summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  list-style: none;
+}
+.tile-prov summary::-webkit-details-marker { display: none; }
+.tile-prov summary::before { content: "+ "; }
+.tile-prov[open] summary::before { content: "\2212 "; }
+.tile-prov .tile-prov-body { margin-top: 8px; }
+.mtile-drawer-title {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+.mtile-compare { font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+.tile-prov-body {
+  margin: 0 0 9px;
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+  gap: 4px 12px;
+  font-size: 11.5px;
+}
+.tile-prov-body dt { font-family: var(--font-mono); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--mono-muted); }
+.tile-prov-body dd { margin: 0; color: var(--ink-body); text-wrap: pretty; }
+.mtile-hist:empty { display: none; }
+
+/* Shaded snapshot sparkline (prototype microSpark :5649-5660): area in --accent-wash under a
+   --ink-soft line, last point marked. Shading is per-segment, so a gap stays a gap. */
+.spark-area polygon { fill: var(--accent-wash); opacity: 0.55; stroke: none; }
+.spark-area polyline { stroke: var(--ink-soft); stroke-width: 1.3; fill: none; }
+.spark-area circle { fill: var(--accent); }
+
+/* Peer position as a number, not a bar (operator, 2026-07-27). */
+.tile-pctile { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--ink); }
+.mtile .tile-peer { gap: 6px; }

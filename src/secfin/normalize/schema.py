@@ -73,6 +73,70 @@ class Statement(BaseModel):
     lines: list[StatementLine] = Field(default_factory=list)
 
 
+class CompanyProfileInfo(BaseModel):
+    """A company's filer identity: name + SIC industry assignment, as EDGAR assigns them.
+
+    Deliberately small. The prototype's other cover-page identity fields (NAICS, state of
+    incorporation, headquarters, auditor, employee count, filer status) are **text** facts, and
+    the SEC's companyfacts API carries NUMERIC facts only -- so they are structurally absent
+    from our store rather than missing through an ingest gap. Serving a field we cannot source
+    would mean inventing it, so this model carries only what is really stored (V3-P4).
+
+    Every field is nullable: a company we have facts for but no ingested profile row is a valid
+    200 with nulls (the same convention /peers uses for an unranked company), NOT a 404. An
+    unknown *ticker* is still the 404.
+    """
+
+    cik: int
+    name: str | None = None
+    sic: str | None = None
+    sic_description: str | None = None
+    source: str = "SEC EDGAR filer index (SIC assignment)"
+
+
+class CondensedStatementColumn(BaseModel):
+    """One period column of a condensed statement, with the filing it came from."""
+
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    period_end: str | None = None
+    form: str | None = None
+    filed: str | None = None
+    accession: str | None = None
+
+
+class CondensedStatementRow(BaseModel):
+    """One canonical line across every column of a condensed statement.
+
+    `values` is positionally aligned to `CondensedStatement.columns`. **A `None` means that
+    period did not report this line.** It is never 0, never dropped, and never carried forward
+    from an adjacent period -- rendering an absent line as 0 is the exact failure the honesty
+    rules exist to prevent (STYLE_GUIDE section 7).
+    """
+
+    canonical_concept: str
+    label: str
+    unit: str
+    values: list[float | int | None] = Field(default_factory=list)
+    unit_mixed: bool = False  # the concept's unit differs across columns; `unit` is the newest
+
+
+class CondensedStatement(BaseModel):
+    """One statement across several periods side by side -- the multi-period read behind the
+    company Overview's condensed-statements card (V3-P4).
+
+    A re-shaping of the SAME normalized statements /statements/{statement} serves, not a new
+    measurement: one facts read, N build_statement calls, columns oldest->newest. An empty
+    result is a valid 200 (an honest "nothing to condense"), not an error.
+    """
+
+    cik: int
+    statement: StatementType
+    period_type: FiscalPeriod  # the period type the columns share (FY, Q1, ...)
+    columns: list[CondensedStatementColumn] = Field(default_factory=list)  # oldest -> newest
+    rows: list[CondensedStatementRow] = Field(default_factory=list)
+
+
 class NormalizedFactLine(BaseModel):
     """One (tag, unit) row of the tag-level normalized view -- the statement builder's
     mechanical normalizations with NO concept mapping. `canonical_concept` cross-links

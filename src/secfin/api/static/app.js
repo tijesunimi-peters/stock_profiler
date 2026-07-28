@@ -204,7 +204,8 @@
   // points: ordered [{value, status}] (a metric's intra-year quarters). Draws a self-scaling
   // polyline over the numeric points, breaking at na/nm gaps (never interpolating across them),
   // with the last point dotted. Returns "" when there aren't >=2 numeric points (no fake trend).
-  function sparkline(points) {
+  function sparkline(points, opts) {
+    opts = opts || {};
     var W = 108, H = 26, PAD = 3;
     var n = points.length;
     var vals = points.map(function (p) {
@@ -225,14 +226,23 @@
       lastI = i;
     });
     if (cur.length) segs.push(cur);
-    var polys = segs
-      .filter(function (s) { return s.length >= 2; })
-      .map(function (s) { return '<polyline points="' + s.join(" ") + '"/>'; })
-      .join("");
+    var drawn = segs.filter(function (s) { return s.length >= 2; });
+    var polys = drawn.map(function (s) { return '<polyline points="' + s.join(" ") + '"/>'; }).join("");
+    // Optional shaded area under each drawn segment (the prototype's snapshot sparkline). It is
+    // filled PER SEGMENT, so a gap leaves a hole in the shading too -- a continuous fill across a
+    // break would re-assert the very continuity the broken line is denying.
+    var area = "";
+    if (opts.area) {
+      area = drawn.map(function (seg) {
+        var first = seg[0].split(",")[0], last = seg[seg.length - 1].split(",")[0];
+        return '<polygon points="' + first + "," + H + " " + seg.join(" ") + " " + last + "," + H + '"/>';
+      }).join("");
+    }
     var dot = lastI >= 0 ? '<circle cx="' + xat(lastI).toFixed(1) + '" cy="' + yat(vals[lastI]).toFixed(1) + '" r="2"/>' : "";
     return (
-      '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H +
-      '" preserveAspectRatio="none" aria-hidden="true">' + polys + dot + "</svg>"
+      '<svg class="spark' + (opts.area ? " spark-area" : "") + '" viewBox="0 0 ' + W + " " + H +
+      '" width="' + W + '" height="' + H +
+      '" preserveAspectRatio="none" aria-hidden="true">' + area + polys + dot + "</svg>"
     );
   }
 
@@ -4176,6 +4186,287 @@
       " excluded — no comparable value reported (N/A or N/M), not a zero.";
   }
 
+  // ---------- metric tile + drawer (V3-P4 company Overview) ----------
+  //
+  // The prototype's "Financial snapshot" tile (prototype.dc.html:964-1010): label, large value,
+  // sparkline, YoY, and an action that carries the metric into Financial history. It REPLACES
+  // the metric card on the company Overview, so everything the card made load-bearing has to
+  // survive the visual change: the status glyph (§7), the basis label (§8), the peer position,
+  // and provenance behind a "how this is computed" drawer (§8).
+  //
+  // `metricCard` is deliberately NOT retired -- /components still showcases it and later phases
+  // may want the card form back.
+  //
+  // The sparkline comes from the metric's own `trend` array, which /metrics already returns:
+  // INTRA-YEAR quarters of the selected period (<=4 points), NOT the prototype's "trailing 8
+  // quarters". It is labelled for what it actually is, and `sparkline()` returns "" below two
+  // numeric points -- so a thin metric shows no sparkline rather than a flat, fake one.
+  function metricTile(mv, opts) {
+    opts = opts || {};
+    var f = fmtMetric(mv);
+    var st = STATUS[mv.status] || STATUS.ok;
+    var basis = mv.basis === "TTM" ? "TTM" : "AS-OF";
+    var chartable = !f.drained;
+
+    var spark = "";
+    if (mv.trend && mv.trend.length) {
+      var svg = sparkline(mv.trend, { area: true });
+      if (svg) spark = '<div class="tile-spark">' + svg + "</div>";
+    }
+
+    /* Movement, in the prototype's form: arrow + signed percent (:7619-7621).
+     *
+     * The prototype labels this "YoY" because its own series is 8 quarters, so its last point is
+     * genuinely four quarters after its comparison point. OURS IS NOT: `/metrics` returns the
+     * INTRA-YEAR quarters of the selected period (<=4 points), so first->last is change across
+     * the fiscal year, not year-over-year. Printing "YoY" here would be a false claim about our
+     * own data, so the form matches the prototype and the label states what was actually
+     * measured. (A real per-metric YoY would need a second request per tile.) */
+    var move = "";
+    if (mv.trend && mv.trend.length >= 2) {
+      var pts = mv.trend.filter(function (p) {
+        return p && p.value !== null && p.value !== undefined && p.status !== "na" && p.status !== "nm";
+      });
+      if (pts.length >= 2) {
+        var first = pts[0].value, last = pts[pts.length - 1].value;
+        var delta = last - first;
+        var glyph = delta === 0 ? "→" : delta > 0 ? "↑" : "↓";
+        if (Math.abs(first) > 0) {
+          var pctMove = Math.round(Math.abs(delta / first) * 1000) / 10;
+          move = '<span class="tile-move">' + glyph + " " + (delta >= 0 ? "+" : MINUS) +
+            esc(pctMove + "%") + '<span class="tile-move-note"> · ' + pts.length +
+            " quarters</span></span>";
+        }
+      }
+    }
+
+    var peer = "";
+    if (opts.peer && opts.peer.percentile !== null && opts.peer.percentile !== undefined) {
+      var pr = opts.peer;
+      peer = '<div class="tile-peer"><span class="tile-pctile">' + esc(ordinal(pr.percentile)) +
+        '</span><span class="peer-label">pctile · ' + esc(pr.peer_count) + " peers</span></div>";
+    }
+
+    var reasonRow = mv.status === "ok" ? "" : "Why " + st.label;
+    var prov =
+      '<dl class="tile-prov-body">' +
+      (opts.formula ? "<dt>Formula</dt><dd>" + esc(opts.formula) + "</dd>" : "") +
+      "<dt>Basis</dt><dd>" + esc(mv.basis === "TTM" ? "Trailing twelve months (TTM)" : "As-of period end") + "</dd>" +
+      "<dt>Restatement</dt><dd>" + esc(mv.restatement_basis || "as-restated") + "</dd>" +
+      (mv.as_of ? "<dt>As of</dt><dd>" + esc(mv.as_of) + "</dd>" : "") +
+      (reasonRow && mv.reason ? "<dt>" + esc(reasonRow) + "</dt><dd>" + esc(mv.reason) + "</dd>" : "") +
+      "</dl>";
+
+    // The VALUE is the affordance (dashed underline = "this opens"), matching the prototype's
+    // `cue`; the tray button is a separate action that carries the metric into Financial history.
+    var face =
+      '<div class="mtile-face">' +
+      '<span class="mtile-label">' + esc(mv.label) + "</span>" +
+      (chartable
+        ? '<button type="button" class="mtile-value has-cue" aria-expanded="false" data-tile-toggle>' +
+          esc(f.text) + "</button>"
+        : '<span class="mtile-value">' + esc(f.text) + "</span>") +
+      '<span class="mtile-spark-slot">' + spark + "</span>" +
+      '<span class="mtile-foot">' +
+      '<span class="mtile-status status-' + esc(mv.status) + '" title="' + esc(st.desc) + '">' + st.glyph + "</span>" +
+      '<span class="mtile-basis">' + esc(basis) + "</span>" + move +
+      "</span>" +
+      (chartable
+        ? '<button type="button" class="mtile-tray" data-compare="' + esc(mv.metric) + '">+ chart</button>'
+        : "") +
+      "</div>";
+
+    // Drawer head in the prototype's shape (:983-998): title · latest · change on the left,
+    // range control on the right. No basis tabs -- see STYLE_GUIDE §8.1 (D4).
+    var drawer = chartable
+      ? '<div class="mtile-drawer" hidden>' +
+        '<div class="mtile-drawer-head">' +
+        '<span class="mdh-left"><span class="mdh-title">' + esc(mv.label) + "</span>" +
+        '<span class="mdh-latest">' + esc(f.text) + "</span>" +
+        (move ? '<span class="mdh-change">' + move + "</span>" : "") + "</span>" +
+        '<span class="mdh-right" data-tile-ranges="' + esc(mv.metric) + '">' +
+        '<button type="button" class="pbtn on" data-tile-range="annual">Fiscal years</button>' +
+        '<button type="button" class="pbtn" data-tile-range="quarterly">Quarters</button>' +
+        "</span>" +
+        "</div>" +
+        '<div class="mtile-hist" data-hist="' + esc(mv.metric) + '"></div>' +
+        '<div class="mtile-notes"><span>Basis: ' +
+        esc(mv.basis === "TTM" ? "trailing twelve months" : "as-of period end") + " · " +
+        esc(mv.restatement_basis || "as-restated") + "</span>" +
+        "<span>A break in the line is a period with no computable value, not a zero.</span></div>" +
+        '<details class="tile-prov"><summary>How this is computed</summary>' + prov + "</details>" +
+        "</div>"
+      : "";
+
+    return (
+      '<article class="mtile' + (f.drained ? " drained" : "") + '" data-metric="' + esc(mv.metric) + '">' +
+      face + peer + drawer + "</article>"
+    );
+  }
+
+  // ---------- multi-series metric history line (V3-P4 Financial history) ----------
+  //
+  // The generic gap-breaking series line the roadmap calls `seriesChart`. The BEHAVIOUR already
+  // existed three times (sectorDupontTrend / sectorLifecycleTrend / valueLineChart) but no
+  // reusable builder did -- this is roadmap §5's "step chart (series: [])" consolidation.
+  // Built in PLOT, not d3: D5 selects Plot for a plain mark on a scale, and BUILDER_INVENTORY
+  // records "do not rebuild in d3" for exactly this chart.
+  //
+  // `series`: [{ metric, label, unit, points: [{period_end, value, status}] }] (oldest first).
+  // opts: { width, height }.
+  //
+  // Honesty rules carried, not optional:
+  //   * a null point BREAKS the line and is never interpolated across (STYLE_GUIDE §7);
+  //   * overlaid series in different units get a warning, because they share one axis;
+  //   * the caption states how many of the requested periods actually carry a value.
+  function metricSeriesChart(series, opts) {
+    opts = opts || {};
+    var width = opts.width || 720;
+    var list = (series || []).filter(function (s) { return s && s.points && s.points.length; });
+    var card = chartCard("");
+    card.root.classList.add("metric-series-chart");
+
+    if (!list.length || !window.Plot) {
+      var p0 = document.createElement("p");
+      p0.className = "state-copy";
+      p0.style.margin = "0";
+      p0.textContent = "No history is on record for this selection.";
+      card.body.appendChild(p0);
+      return card.root;
+    }
+
+    var t = plotTokens();
+    var colors = seriesColors(list.length);
+
+    // Flatten to one row per (series, point). `value: null` rows are kept so Plot's line mark
+    // breaks there -- dropping them would silently join across the gap, which is the exact
+    // failure §7 forbids.
+    var rows = [];
+    list.forEach(function (s, i) {
+      s.points.forEach(function (p) {
+        rows.push({
+          key: s.label,
+          color: colors[i],
+          at: p.period_end || "",
+          value: p.value === undefined ? null : p.value,
+        });
+      });
+    });
+    var present = rows.filter(function (r) { return r.value !== null; });
+
+    if (present.length < 2) {
+      var p1 = document.createElement("p");
+      p1.className = "state-copy";
+      p1.style.margin = "0";
+      p1.textContent = "Only one period carries a value in this range — not enough to draw a line.";
+      card.body.appendChild(p1);
+      return card.root;
+    }
+
+    // The x domain, in series order, de-duplicated across overlaid series.
+    var domain = [];
+    rows.forEach(function (r) { if (domain.indexOf(r.at) === -1) domain.push(r.at); });
+
+    var units = [];
+    list.forEach(function (s) { if (units.indexOf(s.unit) === -1) units.push(s.unit); });
+    var single = list.length === 1;
+    var tickFmt = unitTickFormatter(units.length === 1 ? units[0] : null, list[0].metric);
+
+    var plotNode = window.Plot.plot({
+      width: width,
+      height: opts.height || 330,
+      marginLeft: 74,
+      marginRight: 22,
+      marginTop: 20,
+      // Rotated date ticks need real room underneath or they render clipped at the frame edge.
+      marginBottom: 64,
+      style: { fontFamily: t.fontMono, fontSize: 10.5, background: "transparent", color: t.inkSoft, overflow: "visible" },
+      // A POINT scale does not thin its ticks the way a continuous one does -- `ticks: N` is
+      // advisory and Plot will happily label all 73 quarters into an unreadable smear. Hand it
+      // the exact labels to draw: every Nth domain value, sized so ~78px separates them (§12).
+      x: { type: "point", label: null, tickRotate: -40, ticks: xTicks(domain, width) },
+      y: { grid: true, nice: true, label: null, tickFormat: tickFmt },
+      color: { domain: list.map(function (s) { return s.label; }), range: colors },
+      marks: [
+        window.Plot.ruleY([0], { stroke: t.ink, strokeOpacity: 0.45 }),
+        // Breaks at every null -- never interpolated across a period with no computable value.
+        window.Plot.lineY(rows, { x: "at", y: "value", stroke: "key", strokeWidth: 1.75, curve: "linear" }),
+        window.Plot.dot(present, {
+          x: "at", y: "value", r: single ? 3 : 2.5, fill: "key",
+          stroke: cssVar("--bg-card", "#fff"), strokeWidth: 1.2,
+        }),
+        window.Plot.dot(present, {
+          x: "at", y: "value", r: 9, fill: "transparent",
+          channels: { series: "key", period: "at", amount: "value" },
+          tip: {
+            format: {
+              x: false, y: false, series: true, period: true,
+              amount: function (v) { return tickFmt(v); },
+            },
+          },
+        }),
+      ],
+    });
+    card.body.appendChild(plotNode);
+
+    var gaps = rows.length - present.length;
+    var caption = present.length + " of " + rows.length + " period-values disclosed";
+    if (gaps) {
+      caption += " — a break in a line is a period with no computable value, not a zero.";
+    }
+    card.caption(caption);
+    if (units.length > 1) {
+      card.note("Mixed units (" + units.join(", ") + ") share one axis — read shape, not level.");
+    }
+    return card.root;
+  }
+
+  // Every Nth domain value, keeping the newest (the reader's anchor) and never fewer than two.
+  function xTicks(domain, width) {
+    var room = Math.max(2, Math.floor(width / 78));
+    if (domain.length <= room) return domain;
+    var step = Math.ceil(domain.length / room);
+    var out = [];
+    for (var i = domain.length - 1; i >= 0; i -= step) out.unshift(domain[i]);
+    return out;
+  }
+
+  // Up to three overlay colors, taken from the page's categorical scheme so a series keeps its
+  // identity across re-renders within the session (same rule the other multi-series charts use).
+  function seriesColors(n) {
+    var t = plotTokens();
+    var scheme = [t.accent, cssVar("--ink", "#1c1a16"), cssVar("--positive", "#5e7d4f")];
+    return scheme.slice(0, Math.max(1, n));
+  }
+
+  // Axis/tooltip formatter for a metric's unit. Falls back to a plain number when overlaid
+  // series disagree on unit (the mixed-units note then tells the reader the axis is shape-only).
+  function unitTickFormatter(unit, metric) {
+    if (unit === "ratio") {
+      return PERCENT_METRICS[metric] ? pct : mult;
+    }
+    if (unit === "USD") return usd;
+    if (unit === "USD/shares") return perShare;
+    if (unit === "shares") return shares;
+    if (unit === "days") return days;
+    // Overlaid series in different units: the axis is shape-only (the mixed-units note says so),
+    // but the ticks must still be READABLE -- a raw 12-digit number overflows the margin and gets
+    // clipped, which looks like a broken chart rather than an intentional caveat.
+    return compactNumber;
+  }
+
+  // 1.29e11 -> "129B". Sign-preserving, no currency symbol (the series may not be dollars).
+  function compactNumber(v) {
+    if (v === null || v === undefined) return "";
+    var neg = v < 0, a = Math.abs(v), out;
+    if (a >= 1e12) out = (a / 1e12).toFixed(a >= 1e13 ? 0 : 1) + "T";
+    else if (a >= 1e9) out = (a / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+    else if (a >= 1e6) out = (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+    else if (a >= 1e3) out = (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "K";
+    else out = String(Math.round(a * 100) / 100);
+    return (neg ? MINUS : "") + out;
+  }
+
   window.ClearyFi = {
     api: api,
     resolveSymbol: resolveSymbol,
@@ -4229,6 +4520,8 @@
     sectionHead: sectionHead,
     provenance: provenance,
     metricCard: metricCard,
+    metricTile: metricTile,
+    metricSeriesChart: metricSeriesChart,
     disclosure: disclosure,
     states: states,
     mountSearch: mountSearch,

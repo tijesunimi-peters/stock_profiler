@@ -32,6 +32,8 @@
     <div id="legend-section"></div>
 
     <div id="cards-section"></div>
+    <div id="tiles-section"></div>
+    <div id="series-section"></div>
 
     <div id="states-section"></div>
 
@@ -43,7 +45,11 @@
   </div>
 
   <!-- vendored (CSP-safe) d3 -- the distribution-strip demo below is a d3 builder -->
+  <!-- d3 must load before the Plot UMD build (STYLE_GUIDE §6). Plot was missing here until
+       V3-P4: this page only demoed d3/CSS builders, so every Plot-based builder silently fell
+       through to its "no data" state rather than rendering. -->
   <script src="/static/vendor/d3.min.js"></script>
+  <script src="/static/vendor/plot.umd.min.js"></script>
   <script src="/static/suggest.js"></script>
   <script src="/static/shell.js"></script>
   <script src="/static/app.js"></script>
@@ -169,6 +175,79 @@
         '<div class="card-grid">' +
         samples.map(function (mv) { return P.metricCard(mv, { formula: mv._formula }); }).join("") +
         "</div>";
+
+      // ----- metric tiles + drawer (V3-P4 company Overview) -----
+      // Four states, so a reader can see how the tile behaves when the data is thin: a healthy
+      // metric with a sparkline, one with too few points to draw one, and the two drained
+      // statuses. A drained tile must still show its value slot and status -- never a 0.
+      var tileSamples = [
+        { metric: "net_margin", label: "Net Margin", value: 0.2397, unit: "ratio", basis: "TTM",
+          restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
+          _formula: "Net income ÷ Revenue",
+          trend: [
+            { period: "Q1", period_end: "2024-12-28", value: 0.219, status: "ok" },
+            { period: "Q2", period_end: "2025-03-29", value: 0.228, status: "ok" },
+            { period: "Q3", period_end: "2025-06-28", value: 0.234, status: "ok" },
+            { period: "Q4", period_end: "2025-09-27", value: 0.2397, status: "ok" },
+          ] },
+        { metric: "fcf", label: "Free Cash Flow", value: 108807000000, unit: "USD", basis: "TTM",
+          restatement_basis: "as-restated", as_of: "2024-11-01", status: "ok", reason: null,
+          _formula: "Operating cash flow − Capital expenditures",
+          trend: [{ period: "Q4", period_end: "2025-09-27", value: 108807000000, status: "ok" }] },
+        { metric: "current_ratio", label: "Current Ratio", value: null, unit: "ratio", basis: "as-of",
+          restatement_basis: "as-restated", as_of: "2025-02-27", status: "na",
+          reason: "no current/noncurrent split reported (structural — e.g. a bank)",
+          _formula: "Current assets ÷ Current liabilities" },
+        { metric: "earnings_growth_yoy", label: "Earnings Growth (YoY)", value: null, unit: "ratio",
+          basis: "TTM", restatement_basis: "as-restated", as_of: "2025-02-27", status: "nm",
+          reason: "prior-period base is negative or zero",
+          _formula: "Net income[t] ÷ Net income[t−4Q] − 1" },
+      ];
+      $("tiles-section").innerHTML =
+        P.sectionHead("03b", "Metric tiles (Overview snapshot)") +
+        '<div class="mtile-grid">' +
+        tileSamples.map(function (mv) { return P.metricTile(mv, { formula: mv._formula }); }).join("") +
+        "</div>";
+      document.querySelectorAll("#tiles-section [data-tile-toggle]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var tile = btn.closest(".mtile");
+          var drawer = tile.querySelector(".mtile-drawer");
+          drawer.hidden = !drawer.hidden;
+          tile.classList.toggle("open", !drawer.hidden);
+          btn.setAttribute("aria-expanded", String(!drawer.hidden));
+        });
+      });
+
+      // ----- multi-series metric history (V3-P4 Financial history) -----
+      // Four states: single series, two overlaid, a gap-bearing series (the line must BREAK,
+      // never interpolate), and the empty case.
+      function pts(vals) {
+        return vals.map(function (v, i) {
+          return { period_end: "FY" + (2019 + i), value: v, status: v === null ? "na" : "ok" };
+        });
+      }
+      var seriesSamples = [
+        ["Single series", [{ metric: "net_margin", label: "Net Margin", unit: "ratio",
+          points: pts([0.21, 0.235, 0.258, 0.245, 0.2397]) }]],
+        ["Two overlaid, mixed units", [
+          { metric: "net_margin", label: "Net Margin", unit: "ratio", points: pts([0.21, 0.235, 0.258, 0.245, 0.2397]) },
+          { metric: "fcf", label: "Free Cash Flow", unit: "USD", points: pts([73e9, 93e9, 111e9, 99e9, 108e9]) },
+        ]],
+        ["Gap-bearing (line breaks)", [{ metric: "interest_coverage", label: "Interest Coverage",
+          unit: "ratio", points: pts([28.4, 31.2, null, null, 40.1]) }]],
+        ["Empty", []],
+      ];
+      $("series-section").innerHTML = P.sectionHead("03c", "Metric history series");
+      seriesSamples.forEach(function (pair) {
+        var wrap = document.createElement("div");
+        wrap.style.marginBottom = "18px";
+        var h = document.createElement("div");
+        h.className = "micro";
+        h.textContent = pair[0];
+        wrap.appendChild(h);
+        wrap.appendChild(P.metricSeriesChart(pair[1], { width: 640, height: 220 }));
+        $("series-section").appendChild(wrap);
+      });
 
       // ----- shared states (§6) -----
       $("states-section").innerHTML =

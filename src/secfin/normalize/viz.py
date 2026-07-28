@@ -42,6 +42,9 @@ from secfin.normalize.schema import (
     CashFlowViz,
     CommonSize,
     CommonSizeLine,
+    CondensedStatement,
+    CondensedStatementColumn,
+    CondensedStatementRow,
     IncomeBridge,
     IncomeBridgeStep,
     IncomeStatementViz,
@@ -1025,4 +1028,85 @@ def cashflow_series(
         fiscal_period=fp,
         periods=periods,
         caveats=CASHFLOW_VIZ_CAVEATS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Condensed statement: one statement across several periods, side by side (V3-P4).
+# Not a new measurement -- the same normalized Statements /statements/{statement}
+# serves, transposed so each canonical line becomes a row spanning period columns.
+#
+# The load-bearing invariant: a period that did not report a line contributes `None`
+# at that position. Never 0, never dropped, never carried forward from a neighbour.
+# ---------------------------------------------------------------------------
+
+
+def condensed_statement(statements: list[Statement]) -> CondensedStatement:
+    """Transpose a sequence of one company's statements into period columns x concept rows
+    (any order in; columns emitted oldest -> newest).
+
+    Row order is the union of the concepts present, walked **newest column first**, so the
+    most recent filing's own presentation order wins and older-only lines settle after the
+    lines they most recently sat near. A concept absent from a column gets `None` there --
+    the caller can then render N/A, which is the whole point of the shape.
+
+    A concept whose unit differs across columns (a genuine filer anomaly, e.g. a shares line
+    re-tagged) keeps the NEWEST column's unit and is flagged `unit_mixed` so the UI can
+    surface the inconsistency rather than silently present two scales as one row. Pure (no I/O).
+    """
+    ordered = sorted(statements, key=lambda s: (s.period_end or "", s.fiscal_year))
+    columns = [
+        CondensedStatementColumn(
+            fiscal_year=s.fiscal_year,
+            fiscal_period=s.fiscal_period,
+            period_end=s.period_end,
+            form=s.form,
+            filed=s.filed,
+            accession=s.accession,
+        )
+        for s in ordered
+    ]
+
+    # Concept -> its line per column index, plus the row's label/unit taken from the newest
+    # column that carries it (newest presentation wins, same rule as the row ordering).
+    by_concept: dict[str, dict[int, StatementLine]] = {}
+    for idx, stmt in enumerate(ordered):
+        for line in stmt.lines:
+            by_concept.setdefault(line.canonical_concept, {})[idx] = line
+
+    concept_order: list[str] = []
+    for stmt in reversed(ordered):  # newest first
+        for line in stmt.lines:
+            if line.canonical_concept not in concept_order:
+                concept_order.append(line.canonical_concept)
+
+    rows: list[CondensedStatementRow] = []
+    for concept in concept_order:
+        per_column = by_concept[concept]
+        newest = per_column[max(per_column)]
+        units = {ln.unit for ln in per_column.values()}
+        rows.append(
+            CondensedStatementRow(
+                canonical_concept=concept,
+                label=newest.label,
+                unit=newest.unit,
+                # `.value` is already None when the filer reported the tag with no value;
+                # a column with no line at all is likewise None. Both mean "not reported".
+                values=[
+                    per_column[i].value if i in per_column else None
+                    for i in range(len(ordered))
+                ],
+                unit_mixed=len(units) > 1,
+            )
+        )
+
+    cik = ordered[0].cik if ordered else 0
+    statement_type = ordered[0].statement if ordered else "income"
+    period_type = ordered[0].fiscal_period if ordered else "FY"
+    return CondensedStatement(
+        cik=cik,
+        statement=statement_type,
+        period_type=period_type,
+        columns=columns,
+        rows=rows,
     )
