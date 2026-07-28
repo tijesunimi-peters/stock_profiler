@@ -10,24 +10,18 @@
 
   // ---------- display-only maps ----------
 
+  // The metric taxonomy. Groups the Overview's Financial snapshot tiles AND the Financial
+  // history explorer's metric picker, so the two views name the same things the same way.
+  //
+  // V3-P4 added equity_multiplier / dio / dpo / ccc: /metrics has always computed and served
+  // 30 metrics while this list rendered 26, so four were invisible on the page for no reason.
   var CATEGORIES = [
     ["Profitability", ["gross_margin", "operating_margin", "net_margin", "roa", "roe", "roic"]],
     ["Growth", ["revenue_growth_yoy", "earnings_growth_yoy", "ocf_growth_yoy", "growth_acceleration"]],
-    ["Financial health", ["current_ratio", "quick_ratio", "debt_to_equity", "net_debt", "interest_coverage"]],
+    ["Financial health", ["current_ratio", "quick_ratio", "debt_to_equity", "net_debt", "interest_coverage", "equity_multiplier"]],
     ["Cash flow", ["fcf", "fcf_margin", "accruals"]],
-    ["Efficiency", ["asset_turnover", "inventory_turnover", "dso"]],
+    ["Efficiency", ["asset_turnover", "inventory_turnover", "dso", "dio", "dpo", "ccc"]],
     ["Per-share", ["eps_basic", "eps_diluted", "book_value_per_share", "fcf_per_share", "share_count"]],
-  ];
-
-  // "At a glance" hero band (dashboard prototype): a handful of headline metrics that answer
-  // "how is this company doing?" in one row, spanning profitability / growth / returns / cash /
-  // liquidity. Rendered from the same metric objects as the grid, so an N/A stays honestly N/A.
-  var GLANCE = [
-    ["net_margin", "Net margin"],
-    ["revenue_growth_yoy", "Revenue growth"],
-    ["roe", "Return on equity"],
-    ["fcf", "Free cash flow"],
-    ["current_ratio", "Current ratio"],
   ];
 
   // Stable DOM id for a category section (masthead anchor + section-nav target).
@@ -54,14 +48,36 @@
     fcf: "Operating cash flow − Capital expenditures",
     fcf_margin: "Free cash flow ÷ Revenue",
     accruals: "(Net income − Operating cash flow) ÷ Average assets",
+    equity_multiplier: "Average total assets ÷ Average equity",
     asset_turnover: "Revenue ÷ Average total assets",
     inventory_turnover: "Cost of revenue ÷ Average inventory",
     dso: "Average receivables ÷ Revenue × 365",
+    dio: "Average inventory ÷ Cost of revenue × 365",
+    dpo: "Average payables ÷ Cost of revenue × 365",
+    ccc: "DIO + DSO − DPO",
     eps_basic: "Reported basic EPS",
     eps_diluted: "Reported diluted EPS",
     book_value_per_share: "Equity ÷ Shares outstanding",
     fcf_per_share: "Free cash flow ÷ Diluted shares",
     share_count: "Diluted weighted-average shares",
+  };
+
+  // Display-only labels for the Financial history picker, which renders its chips BEFORE any
+  // history response has arrived (the API returns the authoritative `label` on each series and
+  // that is what the legend and chart use). Keyed by the same canonical metric keys /metrics
+  // returns — a display map, not a duplicate of server logic.
+  var METRIC_LABELS = {
+    gross_margin: "Gross margin", operating_margin: "Operating margin", net_margin: "Net margin",
+    roa: "ROA", roe: "ROE", roic: "ROIC",
+    revenue_growth_yoy: "Revenue growth", earnings_growth_yoy: "Earnings growth",
+    ocf_growth_yoy: "Operating cash-flow growth", growth_acceleration: "Growth acceleration",
+    current_ratio: "Current ratio", quick_ratio: "Quick ratio", debt_to_equity: "Debt / equity",
+    net_debt: "Net debt", interest_coverage: "Interest coverage", equity_multiplier: "Equity multiplier",
+    fcf: "Free cash flow", fcf_margin: "FCF margin", accruals: "Accruals",
+    asset_turnover: "Asset turnover", inventory_turnover: "Inventory turnover",
+    dso: "DSO", dio: "DIO", dpo: "DPO", ccc: "Cash conversion cycle",
+    eps_basic: "EPS (basic)", eps_diluted: "EPS (diluted)",
+    book_value_per_share: "Book value / share", fcf_per_share: "FCF / share", share_count: "Share count",
   };
 
   var STMT_TITLES = {
@@ -175,13 +191,20 @@
   var symbol = decodeURIComponent(((location.pathname.split("/").filter(Boolean))[1] || "").trim());
   var state = {
     cik: null,
-    stmtPeriods: [], // statement-layer {year, period} keys (for the Statements tab, FY + quarters)
-    fundPeriods: [], // {year, period, period_end} the metric engine can compute (Fundamentals)
+    stmtPeriods: [], // statement-layer {year, period} keys (Financial history, FY + quarters)
+    fundPeriods: [], // {year, period, period_end} the metric engine can compute (Overview)
     instPeriods: null, // 13F quarter-ends with holdings data (Institutional); null = not loaded yet
-    tab: "fundamentals",
+    tab: "hub",
     statement: "income",
-    fundValue: null, // "year|period" selected on Fundamentals
-    stmtValue: null, // "year|period" selected on Statements
+    fundValue: null, // "year|period" selected on Overview
+    stmtValue: null, // "year|period" selected on Financial history
+    histMetrics: ["revenue_growth_yoy"], // Financial history: metrics overlaid (max 3)
+    histRange: "20q", // "8q" | "20q" | "5y"
+    histCache: {}, // metric -> { quarterly: MetricHistory, annual: MetricHistory }
+    profile: null, // /companies/{symbol}/profile (name + SIC), null until resolved
+    lastFiled: null, // "<form> · <filed>" of the newest statement loaded (entity bar)
+    tray: [], // metrics pushed into the sticky comparison tray (max 3, same ceiling as overlay)
+    trayHidden: false,
     instValue: null, // quarter-end string selected on Institutional
     instGroup: "holders", // Institutional sub-view: "holders" | "geography" | "activity"
     stmtMode: "table", // income + balance sheet: "table" | "chart" (audit-first default)
@@ -250,12 +273,20 @@
       || state.stmtPeriods[0];
     state.stmtValue = defStmt ? defStmt.year + "|" + defStmt.period : null;
 
-    $("masthead").innerHTML = P.masthead({
-      title: "Company hub",
-      meta: [symbol.toUpperCase(), "CIK " + data.cik],
-      lede: "Everything filed by this registrant · 10-K, 10-Q, 8-K, Forms 3/4/5 · as of latest filing",
-    });
+    renderMasthead();
     renderEntityBar();
+
+    // Filer identity (name + SIC) for the Overview's §01. Supplementary: a failure or an
+    // un-ingested profile must not hold up the page, so it re-renders in place when it lands.
+    P.api("/companies/" + encodeURIComponent(symbol) + "/profile").then(
+      function (prof) {
+        state.profile = prof;
+        renderMasthead();
+        if (state.tab === "hub") { renderIdentity(); refreshViewHeader(); }
+        if (state.tab === "history") refreshViewHeader();
+      },
+      function () { state.profile = null; }
+    );
 
     // The Fundamentals axis is the metric engine's own resolvable periods (annual + quarterly,
     // including the in-progress fiscal year) — NOT the statement-layer (fy, fp) labels.
@@ -302,7 +333,7 @@
     }
     var s = q.get("stmt");
     if (["income", "balance", "cashflow", "segments"].indexOf(s) !== -1) {
-      state.tab = "statements";
+      state.tab = "history";
       state.statement = s;
       var sBtn = document.querySelector('#stmt-types button[data-stmt="' + s + '"]');
       if (sBtn) setOn("#stmt-types button", sBtn);
@@ -310,10 +341,13 @@
     renderRail();
     // Normalize a legacy ?tab= URL onto the canonical path without adding a history entry.
     syncUrl({ replace: true });
-    $("stmt-types").hidden = state.tab !== "statements";
+    $("stmt-types").hidden = true; // retired: statement tabs now live inside the statement card
   }
 
-  var VIEW_SLUGS = ["fundamentals", "statements", "insider", "institutional", "beneficial"];
+  // V3-P4: `fundamentals` -> `hub` (Overview), `statements` -> `history` (Financial history).
+  // Legacy slugs still resolve -- shell.js's VIEW_ALIASES maps them before the unknown-slug
+  // fallback, so every indexed /company/{sym}/statements URL keeps landing on the right view.
+  var VIEW_SLUGS = ["hub", "history", "insider", "institutional", "beneficial"];
 
   /* The entity control bar (v3 prototype :85-108) — the focal company's identity, restricted to
    * what this page already resolves. Two deliberate omissions, both honesty calls:
@@ -338,8 +372,54 @@
       { label: "Company", value: symbol ? symbol.toUpperCase() : null, primary: true },
       { label: "CIK", value: state.cik || null, mono: true },
       { label: "Period", value: periodLabelForBar(), mono: true },
-      { label: "As of", value: "latest filing", mono: true },
+      { label: "Last filed", value: state.lastFiled || null, mono: true },
     ]));
+  }
+
+  /* The masthead in the prototype's shape (:76-83): title, a mono subtitle directly beneath it,
+   * a right-hand mono meta line, and ONE thin rule. Re-rendered when the profile resolves so the
+   * sector can join the meta line. */
+  function renderMasthead() {
+    var right = symbol.toUpperCase() + (state.profile && state.profile.sic_description
+      ? " · " + state.profile.sic_description : "");
+    $("masthead").innerHTML =
+      '<header class="masthead co-masthead"><div class="co-mast-top">' +
+      "<div><h1>Company hub</h1>" +
+      '<div class="co-mast-sub">Everything filed by this registrant · 10-K, 10-Q, 8-K, ' +
+      "Forms 3/4/5 · as of latest filing</div></div>" +
+      '<div class="co-mast-right">' + P.esc(right) + " · CIK " + P.esc(String(state.cik || "")) + "</div>" +
+      '</div><div class="co-mast-rule"></div></header>';
+  }
+
+  /* The prototype's in-view header (:801-812 hub, :1580-1589 history): the focal company named
+   * as a breadcrumb -- sector › name › ticker -- over a heavy rule, with the view's own scope
+   * note on the right. Sector and name arrive with /profile; until then the line carries what it
+   * can rather than a placeholder. */
+  function viewHeader(viewLabel, scopeNote) {
+    var prof = state.profile || {};
+    var crumbs = "";
+    if (prof.sic_description) {
+      crumbs += '<span class="vh-sector">' + P.esc(prof.sic_description) + "</span>" +
+        '<span class="vh-sep">›</span>';
+    }
+    crumbs += '<span class="vh-name">' + P.esc(prof.name || symbol.toUpperCase()) + "</span>" +
+      '<span class="vh-ticker">' + P.esc(symbol.toUpperCase()) + "</span>";
+    if (viewLabel) crumbs += '<span class="vh-view">' + P.esc(viewLabel) + "</span>";
+    return '<div class="view-header">' + crumbs +
+      '<span class="vh-note">' + P.esc(scopeNote || "") + "</span></div>";
+  }
+
+  // Swap the breadcrumb in place once /profile lands, without re-rendering the whole view.
+  function refreshViewHeader() {
+    var el = document.querySelector("#view .view-header");
+    if (!el) return;
+    var label = state.tab === "history" ? "Financial history" : "";
+    var note = state.tab === "history"
+      ? "full XBRL fact history · any metric, any period on file"
+      : "everything filed by this registrant";
+    var tmp = document.createElement("div");
+    tmp.innerHTML = viewHeader(label, note);
+    el.replaceWith(tmp.firstChild);
   }
 
   // The period the ACTIVE view is showing. Insider/13D-G are bounded by a filing limit rather than
@@ -347,7 +427,7 @@
   function periodLabelForBar() {
     if (NON_PERIOD_TABS.indexOf(state.tab) !== -1) return "latest filings";
     if (state.tab === "institutional") return state.instValue ? quarterLabel(state.instValue) : null;
-    var v = state.tab === "fundamentals" ? state.fundValue : state.stmtValue;
+    var v = state.tab === "hub" ? state.fundValue : state.stmtValue;
     if (!v) return null;
     var p = v.split("|");
     return p[1] === "FY" ? "FY" + p[0] : p[1] + " FY" + p[0];
@@ -376,19 +456,19 @@
   // Institutional IS a period tab, but on an async axis (institutional-periods) that
   // renderInstitutional loads and reveals once ready — so keep the control hidden here.
   function updatePeriodControl() {
-    if (NON_PERIOD_TABS.indexOf(state.tab) !== -1 || state.tab === "institutional") {
-      $("period-control").hidden = true;
-      return;
-    }
-    $("period-control").hidden = false;
-    populatePeriodSelect();
+    // Only Institutional still uses the shared top-bar control (its 13F-quarter axis loads
+    // async and has no card of its own). Overview and Financial history own their controls.
+    var usesTopBar = state.tab === "institutional";
+    $("controls").hidden = !usesTopBar;
+    $("period-control").hidden = true;
+    if (usesTopBar) return; // renderInstitutional reveals + populates it once its axis loads
   }
 
   // ---------- period control ----------
 
   function populatePeriodSelect() {
     var sel = $("period-select");
-    if (state.tab === "fundamentals") {
+    if (state.tab === "hub") {
       $("period-label").textContent = "Period";
       sel.innerHTML = state.fundPeriods
         .map(function (p) {
@@ -417,14 +497,14 @@
   }
 
   function onPeriodChange(e) {
-    if (state.tab === "fundamentals") state.fundValue = e.target.value;
+    if (state.tab === "hub") state.fundValue = e.target.value;
     else if (state.tab === "institutional") state.instValue = e.target.value;
     else state.stmtValue = e.target.value;
     render();
   }
 
   function currentSel() {
-    var v = state.tab === "fundamentals" ? state.fundValue : state.stmtValue;
+    var v = state.tab === "hub" ? state.fundValue : state.stmtValue;
     if (!v) return null;
     var parts = v.split("|");
     return { year: parseInt(parts[0], 10), period: parts[1] };
@@ -448,7 +528,7 @@
     state.tab = tab;
     renderRail();
     syncUrl(); // pushState: Back returns to the previous view
-    $("stmt-types").hidden = state.tab !== "statements";
+    $("stmt-types").hidden = true; // retired: statement tabs now live inside the statement card
     updatePeriodControl(); // shows/populates the picker for the tab's own axis (or hides it)
     render();
   }
@@ -459,7 +539,7 @@
     if (!v || v === state.tab) return;
     state.tab = v;
     renderRail();
-    $("stmt-types").hidden = state.tab !== "statements";
+    $("stmt-types").hidden = true; // retired: statement tabs now live inside the statement card
     updatePeriodControl();
     render();
   }
@@ -480,9 +560,11 @@
 
   function render() {
     renderEntityBar(); // keep the control bar in step with the view/period actually rendered
-    clearSectionNav(); // the "On this page" rail belongs to the fundamentals grid only
-    if (state.tab === "fundamentals") renderFundamentals();
-    else if (state.tab === "statements") renderStatements();
+    renderRightRail();
+    renderTray(); // pinned across views; re-asserted because #view was just rebuilt
+    clearSectionNav(); // the "On this page" rail belongs to the Overview snapshot only
+    if (state.tab === "hub") renderOverview();
+    else if (state.tab === "history") renderHistory();
     else if (state.tab === "insider") renderInsider();
     else if (state.tab === "institutional") renderInstitutional();
     else renderBeneficial();
@@ -1088,81 +1170,408 @@
     );
   }
 
-  function renderFundamentals() {
+  // ---------- Overview (view: hub) ----------
+  //
+  // The prototype's company Overview (prototype.dc.html:799-1577), Track-1 half only:
+  //   01  Identity & structure  — registrant profile + the EX-21 placeholder
+  //   02  Financial detail      — condensed statements + the Financial snapshot
+  //
+  // Prototype sections 03-08 (Segments & geography, Capital & ownership, Governance, Accounting
+  // quality, Obligations, Disclosure change) are NOT rendered: every one needs a source we do not
+  // ingest (per-company ASC 280 segments, DEF 14A, the auditor's report, Item 3, Item 1A).
+  // Omitted rather than placeheld — operator decision, 2026-07-27.
+  //
+  // Overview answers "how is this company doing NOW"; Financial history answers "how has this
+  // moved over time". That is the split, and it is why the metric grid lives here and the
+  // series explorer lives there.
+
+  function renderOverview() {
     var sel = currentSel();
     if (!sel) { $("view").innerHTML = P.states.empty({ title: "No period" }); return; }
-    $("legend").innerHTML = P.statusLegend();
+    $("legend").innerHTML = "";
     $("disclosure").innerHTML = P.disclosure(["financials_floor", "not_advice"]);
-    $("view").innerHTML = P.states.loading({ title: "Computing metrics" });
-    // Honest framing for quarterly: flows are trailing-twelve-month; EPS isn't summable.
-    var banner = sel.period === "FY"
-      ? ""
-      : '<p class="stmt-caption" style="margin:0 0 14px">Quarterly view — flow metrics are ' +
-        'trailing-twelve-month (TTM) through ' + P.esc(sel.period) + "; EPS shows N/M (not summable across quarters).</p>";
+    $("view").innerHTML =
+      viewHeader("", "everything filed by this registrant") +
+      '<div id="ovIdentity"></div>' +
+      '<div id="ovDetail">' + P.states.loading({ title: "Computing metrics" }) + "</div>";
+    renderIdentity();
+    renderFinancialDetail(sel);
+  }
+
+  // The prototype puts the section's source note on the SAME line as its number and title
+  // (:835-839), not on a line of its own.
+  function secHead(n, title, source) {
+    return '<div class="section-head co-section-head"><span class="n">' + P.esc(n) + "</span>" +
+      "<h2>" + P.esc(title) + "</h2>" +
+      '<span class="sec-source">' + P.esc(source) + "</span></div>";
+  }
+
+  // ----- 01 Identity & structure -----
+
+  function renderIdentity() {
+    var host = $("ovIdentity");
+    if (!host) return;
+    host.innerHTML =
+      secHead("01", "Identity & structure", "cover page · EX-21 · 10-K Item 1") +
+      '<div class="ov-identity">' + businessPlaceholder() + registrantProfile() + "</div>" +
+      subsidiariesPlaceholder();
+  }
+
+  // Only fields that actually resolve are rendered. The prototype lists ten; five of them
+  // (NAICS, state of incorporation, headquarters, auditor, employees) are TEXT facts, and the
+  // SEC's companyfacts API carries numeric facts only — they are structurally absent from our
+  // store, not merely un-ingested. A cell that can never resolve is chrome noise rather than
+  // honesty, so it is omitted (the same call V3-P2 made for the entity bar's "Peer set" cell).
+  /* The prototype's "What the company does · 10-K Item 1" card. Item 1 (Business) is free-text
+   * narrative, which is Track 2 — CLAUDE.md guardrail 1 says flag it, don't build it. So the card
+   * ships with the prototype's shape and an honest empty state: no summary, no segment mix, not a
+   * single invented word. Turning this real means an LLM summarization path and a recurring
+   * per-token cost, which is a deliberate operator decision, not something this phase grants. */
+  function businessPlaceholder() {
+    return (
+      '<div class="ov-card biz-card">' +
+      '<div class="ov-card-eyebrow">What the company does · 10-K Item 1</div>' +
+      '<div class="biz-empty"><span class="ex21-dash">—</span>' +
+      "<p>Not available. Item 1 (Business) is narrative text in the 10-K, not tagged XBRL, so " +
+      "the description of what this registrant does sits outside the structured data this " +
+      "product covers.</p></div>" +
+      '<a class="ov-link" href="' + edgarUrl("10-K") + '" target="_blank" rel="noopener">' +
+      "Read Item 1 on EDGAR ↗</a>" +
+      "</div>"
+    );
+  }
+
+  function registrantProfile() {
+    var rows = [];
+    var prof = state.profile || {};
+    if (prof.name) rows.push(["Registrant", prof.name]);
+    rows.push(["CIK", String(state.cik)]);
+    if (prof.sic) {
+      rows.push(["SIC", prof.sic + (prof.sic_description ? " · " + prof.sic_description : "")]);
+    }
+    var fy = latestFyPeriod();
+    if (fy && fy.period_end) rows.push(["Fiscal year-end", monthDay(fy.period_end)]);
+    var first = firstPeriodOnRecord();
+    if (first) rows.push(["Earliest period on file", first]);
+    if (state.stmtPeriods.length) rows.push(["Periods on file", String(state.stmtPeriods.length)]);
+
+    var cells = rows.map(function (r) {
+      return '<div class="rp-cell"><span class="rp-k">' + P.esc(r[0]) + "</span>" +
+        '<span class="rp-v">' + P.esc(r[1]) + "</span></div>";
+    }).join("");
+    return (
+      '<div class="ov-card rp-card">' +
+      '<div class="ov-card-eyebrow">Registrant profile</div>' +
+      '<div class="rp-grid">' + cells + "</div>" +
+      '<p class="ov-note">Identity as EDGAR assigns it. Fields the SEC publishes only as filing ' +
+      "text — NAICS, state of incorporation, headquarters, auditor, employee count — are not in " +
+      "the structured XBRL feed we ingest, so they are left out rather than guessed at.</p>" +
+      "</div>"
+    );
+  }
+
+  // EX-21 is a filed EXHIBIT, not tagged XBRL — Track 2 (CLAUDE.md guardrail 1: flag, don't
+  // build). The layout is real, the column heads are real, and there is not one fabricated
+  // entity, jurisdiction or percentage. Replicate the shape, never invent a cell.
+  function subsidiariesPlaceholder() {
+    return (
+      '<div class="ov-card ex21">' +
+      '<div class="ex21-top">' +
+      '<span class="ov-card-title">Consolidated subsidiaries</span>' +
+      '<span class="ex21-meta">EX-21 · <span class="na">—</span> entities · ' +
+      '<span class="na">—</span> organized outside the U.S.</span>' +
+      '<a class="ov-link" href="' + edgarUrl("EX-21") + '" target="_blank" rel="noopener">Read EX-21 ↗</a>' +
+      "</div>" +
+      '<div class="ex21-head"><span>Entity</span><span>Jurisdiction</span><span>Ownership</span></div>' +
+      '<div class="ex21-empty">' +
+      '<span class="ex21-dash">—</span>' +
+      "<p>Not available. EX-21 lists every consolidated subsidiary and its jurisdiction of " +
+      "organization, but it is filed as a prose exhibit to the 10-K rather than as tagged XBRL — " +
+      "so it sits outside the structured data this product covers.</p>" +
+      "</div>" +
+      '<div class="ov-note">Entity count and jurisdiction mix are shown as — because they would ' +
+      "have to be read out of the exhibit's text. We do not parse filing prose, so we do not " +
+      "estimate them.</div>" +
+      "</div>"
+    );
+  }
+
+  function edgarUrl(type) {
+    var cik = String(state.cik || "").padStart(10, "0");
+    return "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=" + cik +
+      "&type=" + encodeURIComponent(type === "EX-21" ? "10-K" : type) + "&dateb=&owner=include&count=40";
+  }
+
+  function latestFyPeriod() {
+    return state.fundPeriods.filter(function (p) { return p.period === "FY"; })[0] || null;
+  }
+
+  function firstPeriodOnRecord() {
+    if (!state.stmtPeriods.length) return null;
+    var oldest = state.stmtPeriods[state.stmtPeriods.length - 1];
+    return oldest.period === "FY" ? "FY" + oldest.year : "FY" + oldest.year + " " + oldest.period;
+  }
+
+  function monthDay(iso) {
+    var d = String(iso).split("-");
+    if (d.length < 3) return iso;
+    return MONTHS[parseInt(d[1], 10) - 1] + " " + parseInt(d[2], 10);
+  }
+
+  // ----- 02 Financial detail -----
+
+  function renderFinancialDetail(sel) {
     var base = "/companies/" + encodeURIComponent(symbol);
     var metricsP = P.api(base + "/metrics?year=" + sel.year + "&period=" + sel.period);
-    // Peer ranks are supplementary — a failure/empty must not break the metric grid.
+    // Peer ranks and the condensed statement are supplementary — neither may break the section.
     var peersP = P.api(base + "/peers?year=" + sel.year + "&period=" + sel.period)
       .catch(function () { return { peers: [] }; });
-    Promise.all([metricsP, peersP]).then(
+    var condensedP = P.api(base + "/statements/" + state.statement + "/condensed?period=FY&limit=4")
+      .catch(function () { return null; });
+
+    Promise.all([metricsP, peersP, condensedP]).then(
       function (res) {
         var by = {};
         (res[0].metrics || []).forEach(function (m) { by[m.metric] = m; });
         var peerBy = {};
         (res[1].peers || []).forEach(function (p) { peerBy[p.metric] = p; });
-        var rendered = []; // categories that actually produced cards -> section-nav targets
-        var html = CATEGORIES.map(function (cat) {
-          var cards = cat[1]
+
+        var rendered = []; // groups that produced tiles -> section-nav targets
+        var groups = CATEGORIES.map(function (cat) {
+          var tiles = cat[1]
             .filter(function (k) { return by[k]; })
-            .map(function (k) { return P.metricCard(by[k], { formula: FORMULAS[k], trend: true, peer: peerBy[k] }); })
+            .map(function (k) { return P.metricTile(by[k], { formula: FORMULAS[k], peer: peerBy[k] }); })
             .join("");
-          if (!cards) return "";
+          if (!tiles) return "";
           var id = sectionId(cat[0]);
           rendered.push({ id: id, label: cat[0] });
-          return '<section class="metric-group" id="' + id + '"><h3 class="metric-group-title">' + P.esc(cat[0]) +
-            '</h3><div class="card-grid">' + cards + "</div></section>";
+          return '<section class="snap-group" id="' + id + '">' +
+            '<h4 class="snap-group-title">' + P.esc(cat[0]) + "</h4>" +
+            '<div class="mtile-grid">' + tiles + "</div></section>";
         }).join("");
-        $("view").innerHTML = glanceBand(by) + banner + peerNote(res[1]) + (html || P.states.empty({}));
+
+        // The condensed response names the filing behind its newest column -- that is the
+        // "Last filed" the entity bar wants, and it means Overview no longer has to render a
+        // drained cell just because it never loads a full statement.
+        var cols = (res[2] && res[2].columns) || [];
+        var newest = cols[cols.length - 1];
+        if (newest && newest.form && newest.filed) {
+          state.lastFiled = newest.form + " · " + newest.filed;
+          renderEntityBar();
+        }
+        $("ovDetail").innerHTML =
+          secHead("02", "Financial detail", "statements & footnotes · XBRL facts as filed") +
+          condensedCard(res[2]) +
+          snapshotCard(groups, sel, res[1]);
+
         buildSectionNav(rendered);
-        wireTrendPanels();
+        wireSnapshot();
+        wireCondensed();
       },
-      function (err) { $("view").innerHTML = metricsError(err); }
+      function (err) { $("ovDetail").innerHTML = metricsError(err); }
     );
   }
 
-  // A one-line honesty note shown above the grid when any peer bar is present.
+  // The prototype's condensed statements card (:888-962): statement tabs across the most recent
+  // four fiscal years. A summary read — the exhaustive table with the source-tag audit column
+  // lives in Financial history. Balance sheet uses the same table shape as the other two
+  // (operator decision 2026-07-27: match the prototype; where balanceMatrix belongs is a later
+  // call), so all three tabs are one uniform, comparable grid.
+  function condensedCard(cond) {
+    var tabs = CONDENSED_TABS.map(function (t) {
+      return '<button type="button" class="pbtn' + (state.statement === t[0] ? " on" : "") +
+        '" data-cond="' + t[0] + '">' + P.esc(t[1]) + "</button>";
+    }).join("");
+
+    var body;
+    if (!cond || !cond.columns || !cond.columns.length || !cond.rows.length) {
+      body = '<p class="ov-empty">No condensed ' + P.esc(CONDENSED_LABEL[state.statement] || "") +
+        " on record for the last four fiscal years.</p>";
+    } else {
+      var head = '<div class="cond-row cond-head"><span class="cond-label"></span>' +
+        cond.columns.map(function (c) {
+          return '<span class="cond-amt">FY' + P.esc(String(c.fiscal_year)) + "</span>";
+        }).join("") + "</div>";
+      state.condRows = {};
+      cond.rows.forEach(function (r) { state.condRows[r.canonical_concept] = r; });
+      state.condCols = cond.columns;
+      var rows = cond.rows.map(function (r) {
+        var emph = EMPH[r.canonical_concept] || "line";
+        var kind = unitKind(r.unit);
+        var cells = r.values.map(function (v) {
+          // null means the period did not report the line. N/A — never 0. This is the
+          // whole reason the endpoint returns null instead of a default.
+          return v === null || v === undefined
+            ? '<span class="cond-amt na">N/A</span>'
+            : '<span class="cond-amt">' + P.esc(fmtAbbrev(v, kind)) + "</span>";
+        }).join("");
+        // A row with two or more reported values opens a small trend of that line. It charts the
+        // SAME values already shown in the row -- no extra request, and the chart cannot disagree
+        // with the numbers above it (ROADMAP_APP_V3 §4.4: one fact, one source).
+        var numeric = r.values.filter(function (v) { return v !== null && v !== undefined; });
+        var chartable = numeric.length >= 2;
+        return '<div class="cond-line">' +
+          '<div class="cond-row emph-' + emph + (chartable ? " chartable" : "") + '"' +
+          (chartable ? ' role="button" tabindex="0" aria-expanded="false" data-cond-row="' +
+            P.esc(r.canonical_concept) + '"' : "") + ">" +
+          '<span class="cond-label">' + P.esc(r.label) +
+          (chartable ? '<span class="cond-cue" aria-hidden="true">▾</span>' : "") +
+          (r.unit_mixed ? '<span class="cond-flag" title="This line\'s unit changed across periods — compare with care">unit varies</span>' : "") +
+          "</span>" + cells + "</div>" +
+          '<div class="cond-drawer" hidden></div></div>';
+      }).join("");
+      body = '<div class="cond-table">' + head + rows + "</div>";
+    }
+
+    var src = cond && cond.columns && cond.columns.length
+      ? "Fiscal years " + cond.columns[0].fiscal_year + "–" +
+        cond.columns[cond.columns.length - 1].fiscal_year + " · as-restated · " +
+        cond.columns.length + (cond.columns.length === 1 ? " period" : " periods")
+      : "as-restated";
+
+    return (
+      '<div class="ov-card cond-card">' +
+      '<div class="cond-top"><span class="ov-card-title">Condensed statements</span>' +
+      '<div class="cond-tabs">' + tabs + "</div></div>" +
+      body +
+      '<p class="ov-note">' + P.esc(src) + ". N/A marks a line the filer did not report that " +
+      "period — it is not a zero. Full line detail, source tags and the raw JSON are in " +
+      '<a class="ov-inline-link" href="#" data-goto="history">Financial history</a>.</p>' +
+      "</div>"
+    );
+  }
+
+  var CONDENSED_TABS = [["income", "Income"], ["balance", "Balance"], ["cashflow", "Cash flow"]];
+  var CONDENSED_LABEL = { income: "income statement", balance: "balance sheet", cashflow: "cash-flow statement" };
+
+  // The prototype's Financial snapshot (:964-1010), carrying every metric we compute rather
+  // than the prototype's eight. This is the merge the operator asked for: the old 5-tile "At a
+  // glance" band and the ~28-card metric grid are ONE surface now.
+  function snapshotCard(groups, sel, peers) {
+    if (!groups) return '<div class="ov-card"><p class="ov-empty">No metric resolved for this period.</p></div>';
+    var quarterly = sel.period !== "FY"
+      ? '<p class="ov-note">Quarterly view — flow metrics are trailing-twelve-month (TTM) through ' +
+        P.esc(sel.period) + "; EPS shows N/M, because it is not summable across quarters.</p>"
+      : "";
+    return (
+      '<div class="ov-card snap-card">' +
+      '<div class="cond-top"><span class="ov-card-title">Financial snapshot</span>' +
+      '<span class="ov-card-sub">XBRL facts · click a tile for the arithmetic</span></div>' +
+      '<p class="ov-note">Movement arrows show direction across the quarters on file, not ' +
+      "favorability — for several of these a higher value is not “better”.</p>" +
+      quarterly +
+      peerNote(peers) +
+      groups +
+      "</div>"
+    );
+  }
+
+  // Tile interactions: open the drawer in place, lazily draw that metric's own history into it,
+  // and hand a metric off to Financial history.
+  function wireSnapshot() {
+    document.querySelectorAll("#view [data-tile-toggle]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tile = btn.closest(".mtile");
+        var drawer = tile.querySelector(".mtile-drawer");
+        var open = !drawer.hidden;
+        drawer.hidden = open;
+        btn.setAttribute("aria-expanded", String(!open));
+        tile.classList.toggle("open", !open);
+        if (!open) loadTileHistory(tile, "annual");
+      });
+    });
+    // Range control inside the drawer (the prototype's range tabs, minus the basis tabs D4 forbids).
+    document.querySelectorAll("#view [data-tile-range]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tile = btn.closest(".mtile");
+        tile.querySelectorAll("[data-tile-range]").forEach(function (b) {
+          b.classList.toggle("on", b === btn);
+        });
+        var host = tile.querySelector(".mtile-hist");
+        host.removeAttribute("data-loaded");
+        loadTileHistory(tile, btn.getAttribute("data-tile-range"));
+      });
+    });
+    document.querySelectorAll("#view [data-compare]").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        toggleTray(a.getAttribute("data-compare"));
+      });
+    });
+    syncTrayButtons();
+    applyPendingTrend(); // ?trend=<metric> opens that tile's drawer, once
+  }
+
+  // One request, on open — the same lazy contract the old per-card Trend panel had.
+  function loadTileHistory(tile, frequency) {
+    var host = tile.querySelector(".mtile-hist");
+    if (!host || host.getAttribute("data-loaded")) return;
+    host.setAttribute("data-loaded", "1");
+    var metric = host.getAttribute("data-hist");
+    host.innerHTML = P.states.loading({ title: "Loading history", note: "" });
+    fetchHistory(metric, frequency || "annual").then(
+      function (hist) {
+        // Measure BEFORE emptying: `.mtile-hist:empty` is display:none, so a cleared host has
+        // zero width and the chart would silently fall back to its default instead of the
+        // container width (§12.6 — never author a chart below its container).
+        var w = P.measuredWidth(host, 420);
+        host.innerHTML = "";
+        if (!hist.points || !hist.points.length) {
+          host.innerHTML = P.states.empty({ title: "No history", copy: "No annual history is on record for this metric yet." });
+          return;
+        }
+        host.appendChild(P.metricSeriesChart([seriesFor(hist)], { width: w, height: 200 }));
+      },
+      function (err) { host.innerHTML = P.states.error({ copy: "Couldn't load history (" + (err.status || "network") + ")." }); }
+    );
+  }
+
+  function wireCondensed() {
+    // Row -> its own trend, drawn from the values already on screen.
+    document.querySelectorAll("#view [data-cond-row]").forEach(function (row) {
+      var open = function () {
+        var concept = row.getAttribute("data-cond-row");
+        var drawer = row.parentNode.querySelector(".cond-drawer");
+        var show = drawer.hidden;
+        drawer.hidden = !show;
+        row.setAttribute("aria-expanded", String(show));
+        row.classList.toggle("open", show);
+        if (!show || drawer.getAttribute("data-drawn")) return;
+        drawer.setAttribute("data-drawn", "1");
+        var r = (state.condRows || {})[concept];
+        var cols = state.condCols || [];
+        if (!r) return;
+        var w = P.measuredWidth(drawer, 520);
+        drawer.appendChild(P.metricSeriesChart([{
+          metric: concept, label: r.label, unit: r.unit,
+          points: r.values.map(function (v, i) {
+            return { period_end: cols[i] ? "FY" + cols[i].fiscal_year : String(i), value: v, status: v === null ? "na" : "ok" };
+          }),
+        }], { width: w, height: 190 }));
+      };
+      row.addEventListener("click", open);
+      row.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+      });
+    });
+    document.querySelectorAll("#view [data-cond]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.statement = btn.getAttribute("data-cond");
+        render();
+      });
+    });
+    var goto = document.querySelector('#view [data-goto="history"]');
+    if (goto) {
+      goto.addEventListener("click", function (e) { e.preventDefault(); selectTab("history"); });
+    }
+  }
+
+  // A one-line honesty note shown above the tiles when any peer bar is present.
   function peerNote(peers) {
     if (!peers || !peers.peers || !peers.peers.length) return "";
-    return '<p class="stmt-caption" style="margin:0 0 14px">Peer bars show each metric\'s percentile ' +
-      "within its " + P.esc(peers.peer_basis || "SIC") + " peer group — position among peers, not a " +
-      "good/bad verdict (for some metrics a higher value is not “better”). Ranks exclude N/A peers.</p>";
-  }
-
-  // "At a glance" hero band: the GLANCE metrics as prominent stat tiles above the full grid,
-  // giving a 5-second read before the exhaustive card grid. Reuses the .stat-tile visual
-  // vocabulary; each tile carries the same status glyph + basis as its card, so honesty is
-  // preserved (an N/A metric shows N/A here too). Skipped entirely if none resolve.
-  function glanceBand(by) {
-    var tiles = GLANCE.map(function (g) {
-      var mv = by[g[0]];
-      if (!mv) return "";
-      var f = P.fmtMetric(mv);
-      var st = P.STATUS[mv.status] || P.STATUS.ok;
-      var basis = mv.basis === "TTM" ? "TTM" : "As-of";
-      return (
-        '<div class="glance-tile' + (f.drained ? " drained" : "") + '">' +
-        '<span class="glance-label">' + P.esc(g[1]) + "</span>" +
-        '<span class="glance-value">' + P.esc(f.text) + "</span>" +
-        '<span class="glance-foot"><span class="glance-dot glance-' + mv.status + '">' + st.glyph + "</span>" +
-        P.esc(basis) + "</span></div>"
-      );
-    }).join("");
-    if (!/glance-tile/.test(tiles)) return "";
-    return (
-      '<section class="glance">' +
-      '<div class="glance-eyebrow">At a glance</div>' +
-      '<div class="glance-tiles">' + tiles + "</div></section>"
-    );
+    return '<p class="ov-note">Peer bars show each metric\'s percentile within its ' +
+      P.esc(peers.peer_basis || "SIC") + " peer group — position among peers, not a " +
+      "good/bad verdict. Ranks exclude N/A peers.</p>";
   }
 
   // ---------- "On this page" section rail (dashboard prototype) ----------
@@ -1179,26 +1588,28 @@
     if (nav) nav.remove();
   }
 
+  /* The prototype puts this in the VIEW RAIL, under a "Sections" label, as numbered entries with
+   * a left-edge marker on the active one (:247-257) -- not as a plain link list in the sidebar.
+   * Same scroll-spy behaviour, the prototype's placement and treatment. */
   function buildSectionNav(cats) {
     clearSectionNav();
-    var side = document.getElementById("appSide");
-    if (!side || !cats.length) return;
-    var foot = side.querySelector(".shell-side-foot");
+    var rail = document.getElementById("viewRail");
+    if (!rail || !cats.length) return;
     var nav = document.createElement("nav");
     nav.id = "sectionNav";
-    nav.className = "section-nav";
-    nav.setAttribute("aria-label", "On this page");
+    nav.className = "rail-sections";
+    nav.setAttribute("aria-label", "Sections");
     nav.innerHTML =
-      '<div class="shell-nav-label">On this page</div>' +
-      cats.map(function (c) {
-        return '<a class="section-link" href="#' + c.id + '">' + P.esc(c.label) + "</a>";
+      '<div class="rail-sections-label">Sections</div>' +
+      cats.map(function (c, i) {
+        return '<a class="rail-section-link" href="#' + c.id + '">' +
+          '<span class="rs-n">' + String(i + 1).padStart(2, "0") + "</span>" +
+          '<span class="rs-l">' + P.esc(c.label) + "</span></a>";
       }).join("");
-    // Sit above the pinned footer (which uses margin-top:auto), below the primary nav groups.
-    if (foot) side.insertBefore(nav, foot); else side.appendChild(nav);
+    rail.appendChild(nav);
 
-    // Scroll-spy: highlight the section whose heading is nearest the top of the viewport.
     var links = {};
-    nav.querySelectorAll(".section-link").forEach(function (a) {
+    nav.querySelectorAll(".rail-section-link").forEach(function (a) {
       links[a.getAttribute("href").slice(1)] = a;
     });
     var visible = {};
@@ -1216,40 +1627,215 @@
     });
   }
 
-  // Expandable multi-year trend per metric card (Phase 1b). Lazy: the fuller chart +
-  // Tier-2 signals load from /metrics/{metric}/history only when a card's Trend panel is
-  // first opened. `?trend=<metric>` auto-opens one panel (shareable / e2e-targetable).
+  // `?trend=<metric>` opens that metric's snapshot drawer on Overview — the successor to the
+  // pre-V3-P4 behaviour, which opened the same metric's Trend panel on the Fundamentals card.
+  // Kept working because the URL is shareable and the e2e drives it.
   var pendingTrend = new URLSearchParams(location.search).get("trend");
 
-  function wireTrendPanels() {
-    document.querySelectorAll("#view .trend-panel[data-metric]").forEach(function (panel) {
-      panel.addEventListener("toggle", function () {
-        if (!panel.open || panel.getAttribute("data-loaded")) return;
-        panel.setAttribute("data-loaded", "1");
-        loadTrend(panel);
-      });
-    });
-    if (pendingTrend) {
-      var p = document.querySelector('#view .trend-panel[data-metric="' + pendingTrend + '"]');
-      pendingTrend = null; // one-shot: don't re-open when the period changes
-      if (p && !p.open) p.open = true; // fires 'toggle' -> loads
+  function applyPendingTrend() {
+    if (!pendingTrend) return;
+    var tile = document.querySelector('#view .mtile[data-metric="' + pendingTrend + '"]');
+    pendingTrend = null; // one-shot: don't re-open when the period changes
+    var btn = tile && tile.querySelector("[data-tile-toggle]");
+    if (btn) {
+      btn.click();
+      tile.scrollIntoView({ block: "center" });
     }
   }
 
-  function loadTrend(panel) {
-    var metric = panel.getAttribute("data-metric");
-    var body = panel.querySelector(".trend-body");
-    body.innerHTML = P.states.loading({ title: "Loading trend", note: "" });
-    P.api("/companies/" + encodeURIComponent(symbol) + "/metrics/" + encodeURIComponent(metric) + "/history?frequency=annual").then(
-      function (hist) {
-        if (!hist.points || !hist.points.length) {
-          body.innerHTML = P.states.empty({ title: "No history", copy: "No annual history is on record for this metric yet." });
-          return;
-        }
-        body.innerHTML = P.trendChart(hist);
-      },
-      function (err) { body.innerHTML = P.states.error({ copy: "Couldn't load trend (" + (err.status || "network") + ")." }); }
-    );
+  /* ---------- right rail: Filing timeline (prototype :3902-3922) ----------
+   *
+   * The prototype's rail lists every form as filed, with type filters. The DATA is Track-1 and
+   * genuinely close -- `sec/insider.py:_recent_filings()` already walks the exact submissions-JSON
+   * arrays it needs (form / accessionNumber / filingDate), just filtered to Forms 3/4/5 -- but
+   * nothing serves it yet, and storing that metadata is **V3-P3's** declared job.
+   *
+   * So this ships as an honest placeholder (operator, 2026-07-28): the prototype's structure, the
+   * real filter vocabulary rendered planned-and-inert, and NOT ONE fabricated filing, date, form
+   * or count. It becomes real when V3-P3 lands, without moving.
+   *
+   * P4 owns Overview and Financial history only, so the rail is scoped to those two views; P5
+   * decides what its own views carry. */
+  var TIMELINE_FILTERS = ["All", "10-K", "10-Q", "8-K", "Ownership"];
+
+  function renderRightRail() {
+    var host = $("rightRail");
+    if (!host) return;
+    var onP4View = state.tab === "hub" || state.tab === "history";
+    host.hidden = !onP4View;
+    if (!onP4View) { host.innerHTML = ""; return; }
+    host.innerHTML =
+      '<div class="rr-card">' +
+      '<div class="rr-title">Filing timeline</div>' +
+      '<div class="rr-sub">every form as filed</div>' +
+      '<div class="rr-filters">' +
+      TIMELINE_FILTERS.map(function (f) {
+        // Planned-and-inert, exactly as the shell treats a nav subject it cannot yet route to:
+        // no handler, drained, and self-explaining on hover (STYLE_GUIDE §10).
+        return '<span class="rr-filter" title="Filing timeline filters arrive with the filing-index ' +
+          'ingest">' + P.esc(f) + "</span>";
+      }).join("") +
+      "</div>" +
+      '<div class="rr-empty"><span class="ex21-dash">—</span>' +
+      "<p>Not available yet. The full filing index — every form this registrant has filed, with " +
+      "its date — is not part of the structured data we store today.</p></div>" +
+      '<a class="ov-link" href="' + edgarUrl("") + '" target="_blank" rel="noopener">' +
+      "All filings on EDGAR ↗</a>" +
+      '<div class="rr-note">Until then, each statement names the filing it came from, and the ' +
+      "entity bar shows the most recent one.</div>" +
+      "</div>";
+  }
+
+  /* ---------- the sticky comparison tray (prototype :1653-1677) ----------
+   *
+   * "+ chart" on a tile does NOT navigate: it drops the metric into a tray pinned to the bottom of
+   * the viewport, so you can assemble a comparison while still reading the page you are on. The
+   * tray persists across Overview <-> Financial history (it lives outside #view), and hands its
+   * selection to the Financial history explorer on request.
+   *
+   * Same ceiling as the explorer: three metrics. A fourth is refused visibly, never silently. */
+  var TRAY_MAX = 3;
+
+  function toggleTray(metric) {
+    var at = state.tray.indexOf(metric);
+    if (at !== -1) state.tray.splice(at, 1);
+    else if (state.tray.length >= TRAY_MAX) { flashTrayLimit(); return; }
+    else { state.tray.push(metric); state.trayHidden = false; }
+    renderTray();
+    syncTrayButtons();
+  }
+
+  // Keep every "+ chart" button in step with the tray, including tiles rendered later.
+  function syncTrayButtons() {
+    document.querySelectorAll("[data-compare]").forEach(function (b) {
+      var on = state.tray.indexOf(b.getAttribute("data-compare")) !== -1;
+      b.textContent = on ? "✓ in chart" : "+ chart";
+      b.classList.toggle("on", on);
+    });
+  }
+
+  function renderTray() {
+    var host = $("compareTray");
+    if (!host) return;
+    if (!state.tray.length) {
+      host.hidden = true;
+      host.innerHTML = "";
+      document.body.classList.remove("tray-open", "tray-collapsed-mode");
+      return;
+    }
+    host.hidden = false;
+    document.body.classList.add("tray-open");
+    document.body.classList.toggle("tray-collapsed-mode", !!state.trayHidden);
+    if (state.trayHidden) {
+      host.innerHTML =
+        '<div class="tray tray-collapsed"><span class="tray-title">Comparison chart</span>' +
+        '<span class="tray-count">' + state.tray.length +
+        (state.tray.length === 1 ? " metric" : " metrics") + "</span>" +
+        '<button type="button" class="pbtn" data-tray-show>Show</button>' +
+        '<button type="button" class="pbtn" data-tray-clear>Clear</button></div>';
+      wireTray();
+      return;
+    }
+    var colors = ["var(--accent)", "var(--ink)", "var(--positive)"];
+    var chips = state.tray.map(function (m, i) {
+      return '<span class="tray-chip"><span class="hist-swatch" style="background:' + colors[i] + '"></span>' +
+        P.esc(METRIC_LABELS[m] || m) +
+        '<button type="button" class="hist-remove" data-tray-remove="' + P.esc(m) +
+        '" aria-label="Remove ' + P.esc(METRIC_LABELS[m] || m) + ' from the comparison">×</button></span>';
+    }).join("");
+    host.innerHTML =
+      '<div class="tray">' +
+      '<div class="tray-head"><div class="tray-left">' +
+      '<span class="tray-title">Comparison chart</span>' +
+      '<a href="#" class="ov-inline-link" data-tray-open>Open in Financial history →</a>' +
+      chips + "</div>" +
+      '<div class="tray-actions">' +
+      '<button type="button" class="pbtn" data-tray-clear>Clear</button>' +
+      '<button type="button" class="pbtn" data-tray-hide>Hide</button></div></div>' +
+      '<div id="trayChart"></div>' +
+      '<div class="tray-foot"><span>' +
+      (state.tray.length < TRAY_MAX
+        ? "Add up to three metrics."
+        : "Three metrics is the maximum — remove one to add another.") +
+      "</span></div></div>";
+    wireTray();
+    drawTrayChart();
+  }
+
+  function drawTrayChart() {
+    var slot = $("trayChart");
+    if (!slot) return;
+    Promise.all(state.tray.map(function (m) {
+      return fetchHistory(m, "annual").catch(function () { return null; });
+    })).then(function (res) {
+      if (!$("trayChart")) return; // tray closed while loading
+      var series = res.filter(Boolean).map(function (h) { return seriesFor(h); })
+        .filter(function (s) { return s.points.length; });
+      var w = P.measuredWidth(slot, 640);
+      slot.innerHTML = "";
+      slot.appendChild(P.metricSeriesChart(series, { width: w, height: 220 }));
+    });
+  }
+
+  function wireTray() {
+    var host = $("compareTray");
+    host.querySelectorAll("[data-tray-remove]").forEach(function (b) {
+      b.addEventListener("click", function () { toggleTray(b.getAttribute("data-tray-remove")); });
+    });
+    var clear = host.querySelector("[data-tray-clear]");
+    if (clear) clear.addEventListener("click", function () {
+      state.tray = []; state.trayHidden = false; renderTray(); syncTrayButtons();
+    });
+    var hide = host.querySelector("[data-tray-hide]");
+    if (hide) hide.addEventListener("click", function () { state.trayHidden = true; renderTray(); });
+    var show = host.querySelector("[data-tray-show]");
+    if (show) show.addEventListener("click", function () { state.trayHidden = false; renderTray(); });
+    var open = host.querySelector("[data-tray-open]");
+    if (open) open.addEventListener("click", function (e) {
+      e.preventDefault();
+      state.histMetrics = state.tray.slice(0, TRAY_MAX);
+      // selectTab() early-returns when the view is already active, so the hand-off would be a
+      // no-op when the tray is used FROM Financial history -- re-render the explorer directly.
+      if (state.tab === "history") renderExplorer();
+      else selectTab("history");
+    });
+  }
+
+  function flashTrayLimit() {
+    var foot = document.querySelector("#compareTray .tray-foot");
+    if (!foot) return;
+    foot.classList.add("limit");
+    setTimeout(function () { foot.classList.remove("limit"); }, 1200);
+  }
+
+  // ---------- metric history (shared by the Overview drawer and Financial history) ----------
+
+  // Cached per (metric, frequency): the explorer re-renders on every range/selection change and
+  // must not re-fetch a series it already holds.
+  function fetchHistory(metric, frequency) {
+    var slot = state.histCache[metric] || (state.histCache[metric] = {});
+    if (slot[frequency]) return Promise.resolve(slot[frequency]);
+    return P.api(
+      "/companies/" + encodeURIComponent(symbol) + "/metrics/" +
+      encodeURIComponent(metric) + "/history?frequency=" + frequency
+    ).then(function (hist) {
+      slot[frequency] = hist;
+      return hist;
+    });
+  }
+
+  // MetricHistory -> the shape metricSeriesChart consumes. Points keep their nulls: a period
+  // the metric could not be computed for stays a gap, so the line breaks there.
+  function seriesFor(hist, limit) {
+    var pts = (hist.points || []).map(function (p) {
+      return {
+        period_end: p.period_end || (p.fiscal_period === "FY" ? "FY" + p.fiscal_year : "FY" + p.fiscal_year + " " + p.fiscal_period),
+        value: p.value,
+        status: p.status,
+      };
+    });
+    if (limit && pts.length > limit) pts = pts.slice(pts.length - limit);
+    return { metric: hist.metric, label: hist.label, unit: hist.unit, points: pts };
   }
 
   function metricsError(err) {
@@ -1261,34 +1847,242 @@
     return P.states.error({ copy: "Couldn't compute metrics (" + (err.status || "network") + ")." });
   }
 
-  function renderStatements() {
-    $("legend").innerHTML = ""; // statements carry EXT badges, not status chips
+  // ---------- Financial history (view: history) ----------
+  //
+  // The prototype's Financial history (prototype.dc.html:1578-1679): "full XBRL fact history ·
+  // any metric, any period on file". Two stacked surfaces —
+  //   * the metric EXPLORER: grouped picker, overlay up to three, range tabs, gap-breaking line;
+  //   * the full STATEMENT surface, moved here intact from the old Statements tab (tables, the
+  //     source-tag audit column, the raw-JSON toggle, the segments spike, the viz charts).
+  //
+  // The prototype's two basis tabs (As filed / As restated) are deliberately NOT ported.
+  // metrics.py emits `as-restated` unconditionally and no code path produces
+  // `as-originally-reported`, so a toggle would return identical data on both settings —
+  // fabricated precision, which STYLE_GUIDE §8.1 forbids outright. The basis is STATED instead.
+
+  var HIST_RANGES = [["8q", "8 quarters"], ["20q", "20 quarters"], ["5y", "5 fiscal years"]];
+  var HIST_MAX = 3;
+
+  function renderHistory() {
+    $("legend").innerHTML = "";
     $("disclosure").innerHTML = P.disclosure(["financials_floor", "not_advice"]);
+    $("view").innerHTML =
+      viewHeader("Financial history", "full XBRL fact history · any metric, any period on file") +
+      '<div id="histExplorer">' + P.states.loading({ title: "Loading metric history" }) + "</div>" +
+      '<div id="histStatements"></div>';
+    renderExplorer();
+    renderStatements($("histStatements"));
+  }
+
+  function renderExplorer() {
+    var host = $("histExplorer");
+    if (!host) return;
+    var freq = state.histRange === "5y" ? "annual" : "quarterly";
+    var wanted = state.histMetrics.slice(0, HIST_MAX);
+
+    Promise.all(wanted.map(function (m) {
+      return fetchHistory(m, freq).catch(function () { return null; });
+    })).then(function (results) {
+      var limit = state.histRange === "8q" ? 8 : state.histRange === "20q" ? 20 : 5;
+      var series = results.filter(Boolean).map(function (h) { return seriesFor(h, limit); })
+        .filter(function (s) { return s.points.length; });
+
+      host.innerHTML =
+        '<div class="ov-card hist-picker">' + metricPicker() + "</div>" +
+        '<div class="ov-card hist-chart-card">' +
+        '<div class="hist-top">' +
+        '<span class="ov-card-title">' + P.esc(explorerTitle(series)) + "</span>" +
+        '<div class="hist-controls">' + legendChips(series) + rangeTabs() + "</div>" +
+        "</div>" +
+        '<div id="histChart"></div>' +
+        '<div class="hist-foot">' + explorerFooter(series) + "</div>" +
+        "</div>";
+
+      // Author at the container's measured width — the Views rail makes this column ~854px at a
+      // 1280px viewport, so a default width would overflow or clip labels (§12.6). Measured
+      // before the clear, same reason as the drawer above.
+      var slot = $("histChart");
+      var w = P.measuredWidth(slot, 700);
+      slot.innerHTML = "";
+      slot.appendChild(P.metricSeriesChart(series, { width: w, height: 330 }));
+      wireExplorer();
+    });
+  }
+
+  function explorerTitle(series) {
+    if (!series.length) return "No metric selected";
+    return series.length === 1 ? series[0].label : series.length + " metrics compared";
+  }
+
+  function metricPicker() {
+    var groups = CATEGORIES.map(function (cat) {
+      var chips = cat[1].map(function (k) {
+        var on = state.histMetrics.indexOf(k) !== -1;
+        return '<button type="button" class="hist-chip' + (on ? " on" : "") + '" data-hist-metric="' + k + '">' +
+          P.esc(METRIC_LABELS[k] || k) + "</button>";
+      }).join("");
+      return '<div class="hist-group"><span class="hist-group-name">' + P.esc(cat[0]) + "</span>" + chips + "</div>";
+    }).join("");
+    return '<div class="hist-picker-head">Metrics <span>— click to overlay, up to three</span></div>' +
+      '<div class="hist-groups">' + groups + "</div>";
+  }
+
+  function legendChips(series) {
+    if (!series.length) return "";
+    var colors = ["var(--accent)", "var(--ink)", "var(--positive)"];
+    return '<div class="hist-legend">' + series.map(function (s, i) {
+      var present = s.points.filter(function (p) { return p.value !== null && p.value !== undefined; });
+      var latest = present.length ? P.fmtMetric({ metric: s.metric, unit: s.unit, value: present[present.length - 1].value, status: "ok" }).text : "—";
+      return '<span class="hist-legend-item"><span class="hist-swatch" style="background:' + colors[i] + '"></span>' +
+        P.esc(s.label) + '<span class="hist-latest">' + P.esc(latest) + "</span>" +
+        '<button type="button" class="hist-remove" data-hist-remove="' + P.esc(s.metric) + '" ' +
+        'aria-label="Remove ' + P.esc(s.label) + ' from the chart">×</button></span>';
+    }).join("") + "</div>";
+  }
+
+  function rangeTabs() {
+    return '<div class="segmented hist-range">' + HIST_RANGES.map(function (r) {
+      return '<button type="button" data-hist-range="' + r[0] + '"' +
+        (state.histRange === r[0] ? ' class="on"' : "") + ">" + P.esc(r[1]) + "</button>";
+    }).join("") + "</div>";
+  }
+
+  function explorerFooter(series) {
+    // The disclosed-period count is the chart card's own caption -- not repeated here.
+    var bits = [];
+    // The D4 resolution, stated rather than offered as a control (STYLE_GUIDE §8.1).
+    bits.push("Basis: as-restated — every period reflects the latest filed figure for it. " +
+      "Prior filed values are retained but are not yet servable as a separate as-filed series.");
+    bits.push(state.histMetrics.length < HIST_MAX
+      ? "Select up to three metrics to overlay."
+      : "Three metrics is the maximum — deselect one to add another.");
+    return bits.map(function (b) { return "<span>" + P.esc(b) + "</span>"; }).join("");
+  }
+
+  function wireExplorer() {
+    document.querySelectorAll("#view [data-hist-metric]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var m = btn.getAttribute("data-hist-metric");
+        var at = state.histMetrics.indexOf(m);
+        if (at !== -1) {
+          // Never leave the chart with nothing selected — the last one stays put.
+          if (state.histMetrics.length > 1) state.histMetrics.splice(at, 1);
+        } else if (state.histMetrics.length >= HIST_MAX) {
+          flashPickerLimit();
+          return;
+        } else {
+          state.histMetrics.push(m);
+        }
+        renderExplorer();
+      });
+    });
+    document.querySelectorAll("#view [data-hist-remove]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var m = btn.getAttribute("data-hist-remove");
+        var at = state.histMetrics.indexOf(m);
+        if (at !== -1 && state.histMetrics.length > 1) {
+          state.histMetrics.splice(at, 1);
+          renderExplorer();
+        }
+      });
+    });
+    document.querySelectorAll("#view [data-hist-range]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        state.histRange = btn.getAttribute("data-hist-range");
+        renderExplorer();
+      });
+    });
+  }
+
+  // Refusing a fourth metric has to be visible, not silent — the reader clicked something.
+  function flashPickerLimit() {
+    var foot = document.querySelector("#view .hist-foot");
+    if (!foot) return;
+    foot.classList.add("limit");
+    setTimeout(function () { foot.classList.remove("limit"); }, 1200);
+  }
+
+  // Where the statement surface draws. Set by renderStatements() each time; the spike
+  // renderers below are reached from inside it and share the same target.
+  var stmtHost = null;
+
+  // The full statement surface. Moved wholesale from the old Statements tab into Financial
+  // history (V3-P4) -- same tables, same source-tag audit column, same raw-JSON toggle, same
+  // segments spike, same viz charts. `host` is where it draws; everything else is untouched.
+  function renderStatements(host) {
+    stmtHost = host || $("view");
     if (state.statement === "segments") { renderSpikeSegments(); return; }
     var sel = currentSel();
     if (!sel) {
-      $("view").innerHTML = P.states.empty({ title: "No period", copy: "No filed period on record to show a statement for." });
+      stmtHost.innerHTML = P.states.empty({ title: "No period", copy: "No filed period on record to show a statement for." });
       return;
     }
     var periodLabel = sel.period === "FY" ? "FY" + sel.year : "FY" + sel.year + " " + sel.period;
-    $("view").innerHTML = P.states.loading({ title: "Loading statement" });
+    stmtHost.innerHTML = stmtControls() + P.states.loading({ title: "Loading statement" });
+    wireStmtControls();
     P.api("/companies/" + encodeURIComponent(symbol) + "/statements/" + state.statement + "?year=" + sel.year + "&period=" + encodeURIComponent(sel.period)).then(
       function (stmt) {
         if (!stmt.lines || !stmt.lines.length) {
-          $("view").innerHTML = P.states.empty({ title: "No mapped lines", copy: "A filing is on record for this period, but no fields mapped to this statement." });
+          stmtHost.innerHTML = stmtControls() + P.states.empty({ title: "No mapped lines", copy: "A filing is on record for this period, but no fields mapped to this statement." });
+          wireStmtControls();
           return;
         }
-        $("view").innerHTML = statementView(stmt, periodLabel);
+        state.lastFiled = stmt.form && stmt.filed ? stmt.form + " · " + stmt.filed : state.lastFiled;
+        stmtHost.innerHTML = stmtControls() + statementView(stmt, periodLabel);
+        wireStmtControls();
         wireStatementView(stmt);
+        renderEntityBar(); // "Last filed" is only knowable once a statement has loaded
       },
       function (err) {
         if (err.status === 404) {
-          $("view").innerHTML = P.states.notFound({ copy: "No " + state.statement + " statement for " + periodLabel + ". Try another period." });
+          stmtHost.innerHTML = stmtControls() + P.states.notFound({ copy: "No " + state.statement + " statement for " + periodLabel + ". Try another period." });
+          wireStmtControls();
         } else {
-          $("view").innerHTML = P.states.error({});
+          stmtHost.innerHTML = stmtControls() + P.states.error({});
+          wireStmtControls();
         }
       }
     );
+  }
+
+  /* The statement card's own header controls -- statement type and period. They used to sit in a
+   * shared bar above the whole page; the prototype puts a card's controls in that card's header
+   * (:889-895), and a page-level bar acting on one card read as leftover chrome. */
+  var STMT_TABS = [["income", "Income"], ["balance", "Balance"], ["cashflow", "Cash flow"],
+                   ["segments", "Segments · spike"]];
+
+  function stmtControls() {
+    var tabs = STMT_TABS.map(function (t) {
+      return '<button type="button" class="pbtn' + (state.statement === t[0] ? " on" : "") +
+        '" data-stmt-tab="' + t[0] + '">' + P.esc(t[1]) + "</button>";
+    }).join("");
+    var opts = state.stmtPeriods.map(function (p) {
+      var label = p.period === "FY" ? "FY " + p.year : "FY" + p.year + " " + p.period;
+      var v = p.year + "|" + p.period;
+      return '<option value="' + v + '"' + (v === state.stmtValue ? " selected" : "") + ">" +
+        P.esc(label) + "</option>";
+    }).join("");
+    var periodSel = state.statement === "segments" || !opts
+      ? ""
+      : '<label class="stmt-period"><span>Period</span>' +
+        '<select id="stmt-period-select">' + opts + "</select></label>";
+    return '<div class="stmt-controls"><div class="stmt-tabs">' + tabs + "</div>" + periodSel + "</div>";
+  }
+
+  function wireStmtControls() {
+    document.querySelectorAll("[data-stmt-tab]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        state.statement = b.getAttribute("data-stmt-tab");
+        renderStatements(stmtHost);
+      });
+    });
+    var sel = document.getElementById("stmt-period-select");
+    if (sel) {
+      sel.addEventListener("change", function () {
+        state.stmtValue = sel.value;
+        renderStatements(stmtHost);
+      });
+    }
   }
 
   // ---------- statement view (the retired /explorer's presentation) ----------
@@ -1655,12 +2449,12 @@
 
   function renderSpikeSegments() {
     if (spikeData) { renderSpikeView(); return; }
-    $("view").innerHTML = P.states.loading({ title: "Loading spike extract" });
+    stmtHost.innerHTML = P.states.loading({ title: "Loading spike extract" });
     fetch("/static/spike_dimensional.json")
       .then(function (r) { return r.json(); })
       .then(function (d) { spikeData = d; renderSpikeView(); })
       .catch(function () {
-        $("view").innerHTML = P.states.error({ copy: "Could not load the static spike extract." });
+        stmtHost.innerHTML = P.states.error({ copy: "Could not load the static spike extract." });
       });
   }
 
@@ -1674,7 +2468,7 @@
       " only. Not served by the API; the period picker does not apply. " +
       "companyfacts (everything else on this page) carries no dimensional facts at all.</div>";
     if (!d) {
-      $("view").innerHTML = '<div class="state">' + banner +
+      stmtHost.innerHTML = '<div class="state">' + banner +
         '<div class="state-title">No spike extract for ' + P.esc(sym) + "</div>" +
         '<p class="state-copy">This prototype covers ' + SPIKE_SYMBOLS.join(", ") +
         ". Open one of them to see revenue by business segment, geography, and product.</p></div>";
@@ -1716,9 +2510,9 @@
       ? '<p class="spike-footnote">Members sum to the consolidated revenue (' + fmtB(d.consolidated_revenue) + ") — shares shown against that total.</p>"
       : '<p class="spike-footnote">Members on this axis mix reporting levels (rollups and their components appear as siblings — the presentation-hierarchy problem in the spike notes), so share-of-total is not shown.</p>';
 
-    $("view").innerHTML = '<div class="state spike-card">' + banner + head +
+    stmtHost.innerHTML = '<div class="state spike-card">' + banner + head +
       '<div class="spike-table">' + table + "</div>" + footnote + "</div>";
-    $("view").querySelectorAll("[data-axis]").forEach(function (btn) {
+    stmtHost.querySelectorAll("[data-axis]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.spikeAxis = btn.getAttribute("data-axis");
         renderSpikeView();

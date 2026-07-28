@@ -76,7 +76,10 @@
   // erroring, which is why the server does not validate {view} either (see api/main.py).
   var VIEWS = {
     companies: [
-      ["fundamentals", "Fundamentals"], ["statements", "Statements"], ["insider", "Insider"],
+      // V3-P4 re-cut the first two: Fundamentals + Statements became the prototype's
+      // Overview + Financial history (split by time horizon, not by data type). The last
+      // three are V3-P5's to collapse into one Institutional view -- untouched here.
+      ["hub", "Overview"], ["history", "Financial history"], ["insider", "Insider"],
       ["institutional", "Institutional"], ["beneficial", "13D/G"],
     ],
     sectors: [
@@ -84,6 +87,16 @@
       // Reached from the Qualitative view's drill affordances, not from the rail.
       ["filings", "Filings"],
     ],
+  };
+
+  /* Retired slugs -> their successor view. Consulted BEFORE the unknown-slug fallback below,
+   * which is the whole point: `resolveView` sends anything it doesn't recognize to the subject's
+   * DEFAULT view, so without this map /company/AAPL/statements would silently render Overview --
+   * a wrong page rather than an error, and the worst kind of routing bug because nothing fails.
+   * Covers the path form and the legacy ?tab= form together, since route() funnels both through
+   * resolveView(). Keep entries here permanently: these URLs are indexed and bookmarked. */
+  var VIEW_ALIASES = {
+    companies: { fundamentals: "hub", statements: "history" },
   };
 
   function esc(s) {
@@ -102,10 +115,14 @@
     var v = VIEWS[subject];
     return v && v.length ? v[0][0] : null;
   }
-  // Resolve a candidate slug against a subject's view list. Unknown -> the default view (AC-21).
+  // Resolve a candidate slug against a subject's view list: exact match, then a retired-slug
+  // alias, then the default view (AC-21). The alias step must come before the fallback -- see
+  // VIEW_ALIASES above for why.
   function resolveView(subject, slug) {
     if (!slug) return defaultView(subject);
-    return viewSlugs(subject).indexOf(slug) !== -1 ? slug : defaultView(subject);
+    if (viewSlugs(subject).indexOf(slug) !== -1) return slug;
+    var alias = (VIEW_ALIASES[subject] || {})[slug];
+    return alias || defaultView(subject);
   }
 
   function route() {

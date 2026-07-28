@@ -52,6 +52,8 @@ from secfin.normalize.schema import (
     CompanyMetrics,
     CompanyPeerDistribution,
     CompanyPeerRanks,
+    CompanyProfileInfo,
+    CondensedStatement,
     CusipResolutionStats,
     FiscalPeriod,
     GeographicMixBuckets,
@@ -101,6 +103,7 @@ from secfin.normalize.viz import (
     capital_structure_series,
     cashflow_series,
     cashflow_viz,
+    condensed_statement,
     income_viz,
 )
 from secfin.sec.client import SECClient
@@ -489,6 +492,98 @@ async def suggest_companies(
         query=q,
         suggestions=[CompanySuggestion(**s) for s in suggestions],
     )
+
+
+# Condensed-statement column budget. Four is the company Overview's card width (V3-P4); the
+# ceiling keeps one request from fanning out into an unbounded number of build_statement calls.
+_CONDENSED_DEFAULT_LIMIT = 4
+_CONDENSED_MAX_LIMIT = 8
+
+
+@public_router.get(
+    "/companies/{symbol}/profile",
+    response_model=CompanyProfileInfo,
+    tags=["Financials"],
+    summary="A company's filer identity (name + SIC industry assignment)",
+)
+async def get_company_profile(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+) -> CompanyProfileInfo:
+    """The registrant's name and SIC industry assignment -- the identity header of the company
+    Overview (V3-P4).
+
+    A pure operational-store read (no facts fetch, no SEC call beyond the cached ticker->CIK
+    resolution), so it is cheap enough to sit alongside the page's other page-load requests.
+
+    **Deliberately narrow.** The other cover-page identity fields a reader might expect (NAICS,
+    state of incorporation, headquarters, auditor, employees, filer status) are TEXT facts, and
+    the SEC's companyfacts API carries numeric facts only -- they are structurally absent from
+    our store, not merely un-ingested. We omit them rather than serve a fabricated or
+    permanently-empty field.
+
+    A company with facts but no ingested profile row returns 200 with null fields (the same
+    convention /peers uses for an unranked company) -- an unknown TICKER is the 404.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    profile = profile_repo.get(cik)
+    if profile is None:
+        return CompanyProfileInfo(cik=cik)
+    return CompanyProfileInfo(
+        cik=cik,
+        name=profile.name,
+        sic=profile.sic,
+        sic_description=profile.sic_description,
+    )
+
+
+@public_router.get(
+    "/companies/{symbol}/statements/{statement}/condensed",
+    response_model=CondensedStatement,
+    tags=["Financials"],
+    summary="One statement across several recent periods, side by side",
+)
+async def get_condensed_statement(
+    symbol: str,
+    statement: StatementType,
+    period: FiscalPeriod = Query("FY", description="Period type for the columns (FY, Q1, ...)"),
+    limit: int = Query(
+        _CONDENSED_DEFAULT_LIMIT,
+        ge=1,
+        le=_CONDENSED_MAX_LIMIT,
+        description="How many recent periods to include (most recent first, drawn oldest->newest).",
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> CondensedStatement:
+    """One company's statement across its most recent `limit` periods of the given `period`
+    type, transposed into period columns x canonical-concept rows (columns oldest->newest).
+
+    The same normalized values /statements/{statement} serves -- one facts read and N
+    `build_statement` calls, re-shaped, NOT a new measurement. Serving this as one request is
+    the point: N client calls would each trigger their own full-history facts read.
+
+    **A `None` in a row's `values` means that period did not report that line.** It is never 0,
+    never dropped, and never carried forward from an adjacent column. A company with no periods
+    of the requested type returns 200 with empty `columns`/`rows` -- an honest "nothing to
+    condense", not an error. An unknown ticker is still a 404.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+    # available_periods is newest-first; condensed_statement re-sorts to oldest->newest.
+    selected = [(y, p) for (y, p) in available_periods(facts) if p == period][:limit]
+    statements = [build_statement(facts, cik, statement, y, p) for (y, p) in selected]
+    # Drop periods that produced neither a mapped line nor filing metadata -- an empty column
+    # would claim a period exists on this statement when nothing about it was reported.
+    statements = [s for s in statements if s.lines or s.accession is not None]
+    if not statements:
+        return CondensedStatement(cik=cik, statement=statement, period_type=period)
+    return condensed_statement(statements)
 
 
 @public_router.get(
