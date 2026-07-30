@@ -80,7 +80,15 @@
       // Overview + Financial history (split by time horizon, not by data type). The last
       // three are V3-P5's to collapse into one Institutional view -- untouched here.
       ["hub", "Overview"], ["history", "Financial history"], ["insider", "Insider"],
-      ["institutional", "Institutional"], ["beneficial", "13D/G"],
+      /* V3-P5a attempt 4 (operator, 2026-07-30) — DESIGN FIRST, DATA SECOND.
+       * `institutional` is now the blank page the v3 prototype is being ported onto; the shipped
+       * view moved to `institutional-legacy` and is LISTED here ON PURPOSE so the two can be
+       * compared side by side without retyping URLs.
+       * ⚠️ BOTH the legacy entry and its render path are TEMPORARY — delete them once the port is
+       * accepted. `beneficial` folds into Institutional in PHASE 2 (§04 needs data), not now. */
+      ["institutional", "Institutional"],
+      ["institutional-legacy", "Institutional (legacy)"],
+      ["beneficial", "13D/G"],
     ],
     sectors: [
       ["sector", "Sector"], ["company", "Company"], ["compare", "Compare"], ["qual", "Qualitative"],

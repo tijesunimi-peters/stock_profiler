@@ -1,193 +1,283 @@
 # Active delivery task
-task_slug: v3-p5-company-institutional
-request: V3-P5 — Company: **Institutional + Peer-relative**, per `docs/ROADMAP_APP_V3.md` §6. Today's three separate views — Insider, Institutional, 13D/G — collapse into ONE **Institutional** view, and **Peer-relative** ports from the sector app. 13F / 13D-G / Forms 3-4-5 blocks are real Track-1 data; N-PX, N-PORT, Form 144 and DEF 14A blocks are placeholder-or-omitted; the prototype's "Beyond the financials" extras (Item 1A/1C/3, CAMs, Item 405, 8-K 4.01/5.02) are **Track 2 — flag, don't build**. Second and final content re-cut of the company hub, on the shell V3-P2 landed and the patterns V3-P4 set.
-branch: not yet branched
-next_stage: pm
-qa_cycles: 0
-updated: 2026-07-28
 
-## Progress
-- [ ] 1 Product Manager       -> 1-brief.md
-- [ ] 2 Principal Architect   -> 2-architecture.md
-- [ ] 3 Backend  (only if the architect finds a gap — 12 issuer-centric endpoints already exist)
-- [ ] 3 Frontend -> 3-implementation.md
-- [ ] 4 QA Tester             -> 4-qa.md
-- [ ] 4b Operator manual verification -> 4b-manual-verification.md  (REQUIRED — interactive change)
+task_slug: v3-p5a-institutional
+request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
+  in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
+branch: v3-p5a-institutional (clean off `master` 9d0d10f — **attempt 4**)
+next_stage: frontend    ← PHASE 1, design port. No PM/architect stage this attempt; see below.
+qa_cycles: 0
+updated: 2026-07-30
 
 ---
 
-## Notes / open loops
+# ⚠️ ATTEMPT 4 — the WORKFLOW changed. Read this before touching anything.
 
-### ⚠️ Read this first: what V3-P4 cost, and why
-P4 passed QA 30/30 on automation and still took **4 operator rounds and 22 defects** to accept.
-None were data or honesty failures — **almost all were prototype-fidelity misses**. Budget for
-fidelity as the main work of this phase, not as polish at the end.
+**Three attempts have failed, all on the same thing: prototype fidelity. None failed on data or
+honesty.**
 
-1. **Open the prototype per ELEMENT, not per phase.** P4 read the prototype for layout and still
-   missed the masthead shape, the breadcrumb, the inline section source, the tile anatomy, the
-   shaded sparkline and the right rail. **Diff the element list of the prototype section against
-   what you built**, one line at a time.
-2. **Ten defects were visible ONLY in a screenshot** — phantom grid cells, a 73-label axis smear, a
-   content column squeezed to 171px, a chart ignoring its container. The e2e exit code was green
-   for every one. **Eyeball every shot.**
-3. **`selectTab()` early-returns when the view is already active** (`company.js`). Any "jump to
-   view X carrying state" hand-off must handle the already-there case or it silently no-ops.
-   P4 shipped exactly that bug in the comparison tray.
-4. **Verify a failing QA assertion before reporting it.** Six of P4's "failures" were the script's
-   fault: digits inside `EX-21` / `10-K` / `Item 1`, `innerText` of a **collapsed** `<details>`,
-   a stale selector after a DOM move, and a wait shorter than the page's 2.2s load.
-5. **Ask, don't guess, on ambiguous design feedback.** P4's four clarifying questions each
-   prevented a wrong cycle; the two items that were guessed at both came back.
+| Attempt | Outcome |
+|---|---|
+| 1 | Reached the 4b gate, took **five rounds** of fidelity feedback, operator called a restart. Built from the brief's block list, retrofitting prototype structure whenever a gap surfaced → fidelity came last. |
+| 2 | Rebuilt structure-first from a mechanically-extracted element inventory. Operator called a **full revert to master**. |
+| 3 | **Green on everything measurable** — pytest 609, e2e 48 shots / 0 threw / 2 pre-existing, 44 driven QA assertions, **0 product defects**, and the operator's own 4b batches A and B passed **by hand**. Still stopped at the gate: *"I can still see leftovers from previous design."* |
 
-### Locked inputs — do NOT reopen
-- **The prototype's IA is authoritative** (D1). Company views are `hub` (Overview) · `history`
-  (Financial history) · `inst` (Institutional) · `company` (Peer-relative) —
-  `prototype.dc.html:7388`. **P4 delivered the first two; P5 delivers the other two.**
-- **Read `docs/design/sector-app-prototype-v3/prototype.dc.html` FIRST** for any "match the design"
-  work.
-- **Track 2 stays flagged, not built** — honest placeholder layouts, real structure, never a
-  fabricated cell.
-- **D4 stays resolved:** basis is stated, never selectable (`STYLE_GUIDE` §8.1). Don't add a toggle.
+**Attempt 3's diagnosis, accepted by the operator:** it built the prototype's **structure** out of
+the **existing product's components** — our `chartCard` chrome (mono eyebrow + caption + card frame),
+P4's `.ov-card`/`.stmt-table`/`.pbtn` vocabulary, our existing chart builders. Right skeleton, wrong
+body. Automation cannot see that, which is why three green builds were rejected.
 
-### ❓ Decision for the PM/architect: the Peer-relative URL slug
-The prototype's state key is `company`, which would make the URL `/company/AAPL/company` — poor.
-D1 says routes are **our** serialization ("preserved as addresses, not as separate designs"), so the
-slug is ours to choose while the IA stays the prototype's. Recommend `peers` or `peer-relative`.
-Decide it in the brief and record it; whatever is chosen, the alias rule below still applies.
+## The new workflow: DESIGN FIRST, DATA SECOND — with an operator gate between
 
-### Evidence already gathered — don't re-derive
+| Phase | Scope | Gate |
+|---|---|---|
+| **1 — design port** | Port the prototype's Institutional view onto a **fresh blank page**: its markup, its CSS, its chart builders, **and its own sample values**. **ZERO backend calls. Nothing fetched. No data plumbing.** | **🚦 Operator verifies the design is faithful** |
+| **2 — data plumbing** | Replace every literal with real filings data, keeping the ported design intact | QA + 4b |
 
-**Prototype line refs**
-- `inst` (Institutional) view: **:1682–2725**. Seven sections: Register snapshot · Register over
-  time & holders · Flows & concentration · Ownership & stewardship · Holder behavior · Register
-  limits & supply · Reference.
-- `company` (Peer-relative) view: **:407–798**, plus its rail block at :235. Blocks: Segment &
-  geographic mix · Filing history & flags · Disclosure behavior · Accounting choices · Governance &
-  people · Ownership shape · Obligations & structure. Its data builder is `peerExtras()` at
-  **:6012** — read it to see which blocks are Track 2 (most of them).
-- The view rail / Sections nav pattern: **:247–257**. The right rail: **:3902**.
+The point: fidelity becomes verifiable **on its own**, with nothing else moving. Attempts 1–3 all
+built design and data together, so every fidelity miss surfaced late and every fix risked the data.
 
-**Current code (line numbers are POST-P4 — they moved)**
-- `company.js` is now **2,524 lines**: `renderBeneficial()` :575 · `beneficialTable()` :602 ·
-  `renderInstitutional()` :652 · `renderInstitutionalData()` :689 · `institutionalView()` :781 ·
-  `renderInsider()` :1116 · `insiderTable()` :1144. **These three views are what P5 merges.**
-- `app.js` is now **4,529 lines** and already carries the institutional chart builders:
-  `holdingsSeriesChart`, `activityMixChart`, `activityFlowChart`, `holderGeographyChart`,
-  `convictionHeatmap`, `coHoldingNetwork`, `divergingBars`, `dumbbellChart`, `positionCountChart`,
-  plus P4's `metricTile` / `metricSeriesChart` and the distribution strip from P1.
-  **Check `docs/BUILDER_INVENTORY.md` before writing any chart** — rebuilding an honest existing
-  builder is what rescoped V3-P1.
+---
 
-**Backend: 12 issuer-centric endpoints already ship.** P5 is likely **frontend-only** — confirm and
-record it explicitly, as P2 and P4 did.
-`/companies/{symbol}/` → `insider-trades` · `beneficial-ownership` · `institutional-holders` ·
-`institutional-activity` · `institutional-activity-series` · `institutional-periods` ·
-`institutional-holdings-series` · `institutional-holder-geography` · `institutional-conviction` ·
-`institutional-co-holding` · `peers` · `peers/{metric}/distribution`.
+## 🔒 Operator decisions — 2026-07-30, the terms of attempt 4. Do NOT re-litigate.
 
-**Not ingested — placeholder or omit, never fake:** N-PX (voting), N-PORT, Form 144, DEF 14A
-(beneficial-ownership table, comp, board). These are named in the prototype's Institutional and
-Peer-relative views. N-PX is gated to **V3-P9**.
+1. **D-legacy** — the existing Institutional view moves to **`/company/{symbol}/institutional-legacy`**
+   and is **LISTED in the view rail** ("Institutional (legacy)"), so old and new can be compared side
+   by side without retyping URLs. **Temporary**: delete the entry, the view and its render path once
+   the port is accepted.
+2. **D-literals** — the phase-1 page carries **the prototype's own sample values, verbatim**. Not
+   blank slots, not uniform fakes: you cannot verify "exactly the prototype" against an empty page —
+   charts collapse, tables have no rows, wrapping and label collisions never happen.
+   **Guardrails, non-negotiable:** a loud **`⚠ STATIC DESIGN PORT — NOT REAL DATA`** banner at the
+   top of the page, not dismissible; the honesty rules are suspended **only** for this unshipped
+   scaffold; and **phase 2 is not done until no literal remains.**
+3. **D-protocharts** — **port the prototype's own chart builders**, don't reuse ours. Our
+   `ClearyFi.*` builders and their chrome are part of what read as "old design".
+4. **D-clean-master** — attempt 4 starts from a **clean master**. Nothing is carried over in the
+   working tree, including attempt 3's backend and its fixes.
 
-### Inherited from V3-P4 — the patterns to reuse, and the traps
-1. ⚠️ **`VIEW_ALIASES` in `shell.js` is permanent and P5 MUST extend it.** Collapsing
-   insider/institutional/beneficial into `inst` retires three live slugs. Add all three to
-   `VIEW_ALIASES.companies` or `/company/AAPL/insider` will **silently render Overview** — a wrong
-   page, not an error, because `resolveView()` sends unknown slugs to the default. The e2e drives
-   every legacy URL per-URL; extend that list.
-2. **Three honest placeholders exist and must not be quietly filled:** Item 1 (Business), EX-21
-   subsidiaries (both on Overview), and the right-rail **Filing timeline**. The timeline becomes
-   real with **V3-P3**, without moving.
-3. **The right rail is scoped to `hub` + `history`** (`renderRightRail()` gates on `state.tab`).
-   P5 decides what its two views carry — the prototype's rail is `inHub`, i.e. all company views.
-4. **Reusable patterns P4 established:** `secHead(n, title, source)` (source inline with the
-   title) · `viewHeader(label, note)` (the `sector › name › ticker` breadcrumb) · the `.pbtn`
-   button · in-card controls instead of a page-level control bar · `metricTile` + drawer ·
-   the sticky comparison tray (`state.tray`, persists across views) · Sections nav in the view rail.
-5. **The "Peer set" entity-bar cell is still deliberately absent.** V3-P2 omitted it because
-   `/peers` returns `peer_group` per metric, is period-scoped and carries no page-load-time label.
-   **P5's Peer-relative view is exactly where it earns its place** — likely with a small backend
-   addition. This is the one place it may legitimately be added.
-6. **Known pre-existing defect that is NOW P5's to fix:** the Institutional "which holders run
-   similar portfolios" co-holding graph has colliding node labels (`coHoldingNetwork`). Verified on
-   `master` at an identical viewport since before the shell work — `STYLE_GUIDE` §12 label
-   placement. P5 owns that view.
-7. **Charts author at container width** via `measuredWidth()`, never a default. Content column is
-   ~831px at 1280px (~854 without the right rail). Plot's `ticks: N` is **advisory on a `point`
-   scale** — hand it an explicit tick list or a long series smears (P4 hit this at 73 labels).
+### 🔒 Still in force from 2026-07-28 (settled before attempt 3; unchanged)
 
-### e2e baseline — recapture before writing code
-`master` (post-P4, `94c3c70`) is at **43 shots · 0 threw · exactly 2 with errors**
-(`sectorapp-company` 8, `sectorapp-company-refocus` 13–14 — the count drifts run to run; the cause
-is pre-existing CIK-900001 502s on the synthetic fixture). **Re-capture on `master` before starting**
-so the AC is measured, not asserted; P4's baseline artifact is `v3-p4-company-recut/0-e2e-baseline.md`.
-Two harness traps: the compose exit code is unreliable when piped, and a shot that *throws* prints
-`FAILED` rather than `errors=N` — **grep both**.
+**FIVE company views, and exactly ONE slug retires.**
+`hub · history · insider ("Insider activity") · institutional · peers`, with
+`VIEW_ALIASES.companies += { beneficial: "institutional" }` as the only retirement.
+13D/G folds into Institutional (a 5% stake and the register it sits in are one question). **Insider
+stays its own view** — Forms 3/4/5 are as-reported *transactions*, a different KIND of fact from a
+quarter-end holdings snapshot, and folding them in would bury the only insider surface we have behind
+a register view. ⚠️ This contradicts `ROADMAP_APP_V3` §6's "three-way collapse"; the operator decision
+wins — update the roadmap when P5a lands.
 
-### Flags for the PM
-- **Scope is genuinely large**: seven prototype sections in Institutional alone, several needing
-  un-ingested sources. The brief's real job is deciding **which blocks are Track-1 real, which are
-  honest placeholders, and which are omitted entirely** — the same three-way split P4's operator
-  made for Overview's sections 03–08 (omitted, not placeheld).
-- **13F honesty is non-negotiable and easy to lose in a re-cut**: a 13F is a quarter-end holdings
-  **snapshot**, not transactions. Any buy/sell is **derived by diffing quarters** and must read as
-  derived, carrying the long-only / ~45-day-lag caveats (`CLAUDE.md`, `DISCLOSURES.institutional_13f`).
-- **Insider Forms 3/4/5 are as-reported**, and Acquired/Disposed is the reported code — never a
-  buy/sell judgment. The existing copy gets this right; don't paraphrase it away.
-- **13D/G has a structured-XML coverage floor (~mid-2025)** — surface it, don't hide an empty result.
+*(The `beneficial` → `institutional` alias is a **phase-2** change: §04 is where 13D/G lands and that
+needs data. Phase 1 leaves `/beneficial` alone.)*
+
+---
+
+## 🔑 THE UNLOCK: the prototype RENDERS. Port against ground truth, not by eye.
+
+**This is what the previous three attempts did not have.** They read `prototype.dc.html` as *source*
+and ported by eye — which is exactly how the `+ Also in this section` pattern survived five rounds of
+review unnoticed.
+
+`prototype.dc.html` is a dc-runtime/React export that pulls React + ReactDOM + Babel from unpkg.
+Served over HTTP **with outbound internet**, it renders live. Verified 2026-07-30.
+
+```bash
+docker run -d --rm --name proto-srv --network stock_profiler_default \
+  -v "$PWD/docs/design/sector-app-prototype-v3:/srv:ro" -w /srv \
+  python:3.11-slim python -m http.server 9000
+# from a container on that network: http://proto-srv:9000/prototype.dc.html
+#   it opens on Sectors → click sidebar "Companies", then the view rail's "Institutional"
+#   sections are #i1…#i7 (each has a data-screen-label); content column is 694px at a 1440 viewport
+docker rm -f proto-srv    # when finished
+```
+
+**Use it to:** capture per-section ground-truth screenshots and **diff each ported section against
+its capture before starting the next**; read the prototype's exact sample values out of its DOM
+(satisfying D-literals precisely rather than inventing numbers); and read computed CSS per element
+instead of guessing from inline styles.
+
+**Serving our own app for comparison** (the seeded fixture publishes no port of its own):
+
+```bash
+docker compose --profile e2e run --rm -d -p 8000:8000 --name p5a-preview e2e-app
+# → http://localhost:8000/company/AAPL/institutional
+docker stop p5a-preview
+```
+
+---
+
+## Progress (attempt 4)
+
+- [x] **P1a** existing Institutional view → `/institutional-legacy`, **listed in the rail** as
+      "Institutional (legacy)". Rail is now Overview · Financial history · Insider · Institutional ·
+      Institutional (legacy) · 13D/G. The period selector + the entity bar's Period cell follow the
+      LEGACY view; the port is not period-scoped. All 5 company URLs verified 200.
+- [x] **P1b** blank `/institutional` live: the undismissable NOT-REAL-DATA banner, the prototype's
+      in-view header (breadcrumb + source line), and the seven section shells with the prototype's
+      headings and scope notes verbatim. `renderInstitutionalPort()` in `company.js`; CSS namespace
+      `.ip-*` in `company.css`. No console errors.
+- [ ] **P1c** ⬅ **NEXT** capture prototype ground truth → `v3-p5a-institutional/prototype-ground-truth/`
+- [ ] **P1d** ⬅ **NEXT** port the prototype's CSS primitives
+- [ ] **P1e-§01** ⬅ **NEXT** build §01 only, diff it, **then STOP for the operator's read on the
+      fidelity bar** before §02–§07
+- [ ] **P1e-rest** §02 → §07, screenshot-diffing each against its capture before starting the next
+- [ ] **P1f** port the prototype's chart builders (D-protocharts)
+- [ ] **P1g** full-page diff vs the prototype
+- [ ] **🚦 OPERATOR GATE — verify the design port.** Phase 2 does not start until this passes.
+- [ ] **P2** plumb real data in, literal by literal, until none remain
+- [ ] 4 QA · 4b operator verification
+
+⚠️ **Working tree is UNCOMMITTED** (4 files: `_active.md`, `company.js`, `company.css`, `shell.js`).
+Nothing is committed on this branch — it is still at `master` (`9d0d10f`).
+
+---
+
+## ▶ NEXT (resume here): P1c → P1d → §01, then STOP
+
+**Scope of this run: P1c, P1d, and §01 ONLY.** §01 is the fidelity probe — build it, diff it against
+the prototype, show the operator, and get their read on whether that is the bar **before** spending
+six more sections on the wrong one. Do not run ahead to §02.
+
+### P1c — capture ground truth
+
+Serve the prototype and our app (both commands are under "THE UNLOCK" above), navigate the prototype
+to Companies → Institutional, and screenshot `#i1`…`#i7` individually plus the full page into
+`docs/delivery/v3-p5a-institutional/prototype-ground-truth/`. Content column is **694px** at a 1440
+viewport — match that width when diffing, or every proportion will read wrong.
+
+**Also extract the literals from the live DOM while you are there** (D-literals). Do not hand-type
+them from the notes below.
+
+### P1d — the CSS primitives §01 needs
+
+Port from the prototype's own inline styles, then verify with `getComputedStyle` on the live render:
+the **card** (`--bg-card`, 1px `--border`, 12px radius, `--shadow`, 15px/16px padding) · the
+**accent-edged strip** (3px `--accent` left border) · the **tint panel** (`--bg-tint`,
+1px `--border-tint`, 9px radius) · the **micro-label** (mono 9.5px, 0.1em, uppercase,
+`--mono-muted`) · the **tile grid** (`repeat(auto-fit,minmax(180px,1fr))`, **1px gap on a `--rule`
+background**, 10px radius, overflow hidden) · the **`ƒ DERIVED` badge** · the **dashed value cue**
+(the click affordance is a `border-bottom` on the VALUE ITSELF) · the **expander bar** · the
+**vertical cell divider** (1px × 38px `--rule`).
+
+### P1e-§01 — the elements, in order (prototype :1699–1894)
+
+1. **Freshness strip** — 4 cells separated by 1px vertical rules, wrapping: `REGISTER AS OF` ·
+   `NEXT 13F WINDOW CLOSES` · `FILINGS SINCE THE SNAPSHOT` (value in `--accent-ink`) ·
+   `CONFIRMED IN LAST 30 DAYS`. Each cell: mono 9.5px uppercase label / mono 15px 600 value / mono
+   10px note. Then a top rule and **two prose lines** (the 45-day lag line, the Section 13(f) scope
+   line) at 12.5px `--ink-body`.
+2. **Card "Since the last 13F"** — title + scope note + `Base 13F ↗` link + a **`ƒ DERIVED` chip**;
+   a tint panel carrying `Base register + Filed since = Adjusted register` (three cells, mono 17px
+   values, `+` and `=` as mono 15px `--mono-muted` glyphs between them); the micro-label
+   `WHERE THE REGISTER MOVED · PRIOR QUARTER TO CURRENT`; a legend `○ prior quarter ● current`;
+   **the dumbbell chart**; its caption; then the **expander bar** (`+ ALSO IN THIS SECTION` +
+   `filing-by-filing detail since the snapshot · how fast each form arrives`).
+3. **Tile grid**, 4 tiles — `REPORTING MANAGERS` · `SHARES REPORTED` · `INSTITUTIONAL SHARE`
+   (carries a `ƒ DERIVED` chip) · `INSIDER OWNERSHIP`. Values are mono 22px 600 with the **dashed
+   underline cue**; each has a mono 10px note beneath.
+
+The **dumbbell** is the one chart §01 needs — port the prototype's builder (D-protocharts), not
+`ClearyFi.dumbbellChart`. Its anatomy: row label right-aligned in a left gutter, hollow dot = prior
+quarter, filled = current, connector between, **signed delta right-aligned outside the plot**,
+colour = manager type.
+
+### Cross-check only — values seen on a 2026-07-30 capture
+
+⚠️ **The prototype seeds its sample data from the ticker**, so a different focal company renders
+different numbers. Take the literals from the DOM (P1c); these are a **sanity check that you are
+looking at the right elements**, not the source:
+
+`1Q26` · `filed 2026-05-12 · 73 days since filed` · `2026-08-14` / `in 21 days` · `6` filings since ·
+`32%` confirmed · base `767M` + `9.7M` = `776M` (`61.6% of shares outstanding`, `3 of 6 filings
+applied`) · tiles `1,669` / `767M` / `60.8%` / `6.4%` · dumbbell rows `Hedge fund H +4.9M`,
+`Active manager D +4.4M`, `Sovereign fund G +2.6M`, `Index manager C +1.8M`, `Pension system F
++0.7M`, `Index manager B −1.4M`, `Active manager E −2.7M`, `Index manager A −10.5M`.
+
+**Note the shapes, which do not vary:** quarters render as **`1Q26`**, never `Mar 31, 2026`; manager
+names in the prototype's sample data are TYPE names; deltas carry an explicit sign.
+
+### Done-when, for this run
+
+- `#ip-01` rendered, screenshotted at a 694px content column, and **diffed side by side against
+  `proto-i1.png`**, with the differences you can still see listed honestly rather than declared
+  absent.
+- No backend call added. No literal outside §01. The banner still at the top.
+- **Then stop and ask the operator** whether §01 is the fidelity bar, before building §02–§07.
+
+---
+
+## 🗄 Attempt 3 is archived, not lost — mine it, don't rebuild it
+
+Branch **`v3-p5a-attempt3-archive`** (commit `1429955`, local, never pushed). Restore any single file:
+
+```bash
+git checkout v3-p5a-attempt3-archive -- <path>
+git branch -D v3-p5a-attempt3-archive     # to discard it entirely
+```
+
+**Worth pulling from it rather than re-deriving** (each was verified working):
+
+| What | Why it may be worth having |
+|---|---|
+| `src/secfin/normalize/register.py` + 4 endpoints + `period_meta` + 37 tests | The whole **phase-2** backend, already built and green: `share_vector`, `concentration` (HHI / effective-N / Gini / "half the register"), `turnover`, `tenure`, `stable_capital_share`, each carrying `status` + `reason` + `formula` + `population` + `cannot`. Zero DuckDB, zero batch jobs, zero new ingest. |
+| **fix 1** — `ClearyFi.chartWidth()` + `.page { width: 100% }` | A **real, product-wide layout bug**, unrelated to this view: charts were authored at the mount width, then silently downscaled by their own card (Plot's `max-width:100%` scales text too — measured 854→816, 419→381); collapsed `:empty` mounts measured 0 and fell back to a default; and `.page` was sized by its CONTENT, not the viewport (64→952→1070px on /manager as content landed — the likely cause of V3-P4's "content column squeezed to 171px"). |
+| **fix 2** — `coHoldingNetwork` label placement | Candidate-offset placement + drop, per `STYLE_GUIDE` §12. |
+| `scripts/seed_fixture.py` 13F `filed` dates | Fixture filed *on* quarter-end is impossible (a 13F is due ~45 days after); lagged to 31–44 days. |
+| The delivery trail | `1-brief.md` (32 ACs) · `2-architecture.md` · `0-element-inventory.md` (as-built, every row with a verdict) · `4-qa.md` · `4b-manual-verification.md` · `5-design-port-plan.md` |
+| `prototype-ground-truth/*.png` | The captures; or just regenerate them with the commands above. |
+
+⚠️ Attempts 1 and 2 are separately preserved on branch **`v3-p5-company-institutional`** (`0ce1146`).
+**Do not build on or delete either archive branch.**
+
+---
+
+## Inherited lessons — these cost real rounds. Don't re-learn them.
+
+1. **Open the prototype per ELEMENT, not per phase.** Diff the element list of the prototype section
+   against what you built, one line at a time. Now that it renders, diff the *screenshots*.
+2. **Ten of V3-P4's defects were visible ONLY in a screenshot** — phantom grid cells, a 73-label axis
+   smear, a content column squeezed to 171px, a chart ignoring its container. The e2e exit code was
+   green for every one. **Eyeball every shot.**
+3. **Verify a failing assertion before reporting it.** Six of P4's "failures" and four of attempt 3's
+   were the script's fault: `innerText` of a **collapsed** container (a `<details>`, or anything
+   `hidden`) is empty **by design** — use `textContent` or open the affordance first. Also:
+   `fullPage` screenshots misplace `position: sticky`/`fixed` elements, which looks like an overlap
+   bug and isn't.
+4. **A chart built inside a hidden container measures 0** and silently authors at its fallback width.
+   Mount on first reveal.
+5. **`selectTab()` early-returns when the view is already active** — any "jump to view X carrying
+   state" hand-off must handle the already-there case. P4 shipped exactly that bug.
+6. **Ask, don't guess, on ambiguous design feedback.** P4's four clarifying questions each prevented
+   a wrong cycle; the two items guessed at both came back.
+
+### Two honesty tensions phase 2 must resolve (seen in the prototype's own §01)
+
+The prototype draws figures we either cannot source or have deliberately refused to compute. Phase 1
+ports them **as drawn** — the operator is verifying design. **Phase 2 must re-apply the honesty
+calls**, and each one changes the layout, so each needs an operator decision rather than a silent
+revert:
+
+- **"Confirmed in last 30 days · 32%"** — we do not track filing confirmations.
+- **The adjusted register** (`767M + 9.7M = 776M`) — summing a 13D/G *total* + a Form 4 *transaction*
+  + a 13F *holding* invents a share count nobody filed. Attempt 3 omitted it deliberately and the
+  operator's Batch B passed on exactly that reasoning.
 
 ---
 
 ## Parallel track (NOT the active task) — V3-P3, cheap metadata unlock
 
-`ROADMAP_APP_V3` §6: P3 is **backend-only, no UI, depends on nothing**, and can run alongside the
-company phases. Start it with its own `/deliver` in a separate session and branch, or promote it
-here if P5 stalls.
-
-**Request:** Store **8-K item codes + acceptance timestamps** from the `/submissions/` JSON we
-already fetch. Turns the shell's "What's moving" feed from a placeholder into a real feed, unblocks
-**P8**, and **makes V3-P4's right-rail Filing-timeline placeholder real** without moving it.
-
-**Evidence already gathered:**
-- `filings.recent` is **already parsed**: `sec/insider.py:_recent_filings()` (:49) walks those
-  parallel arrays (`form`, `accessionNumber`, `filingDate`, `primaryDocument`) filtered to Forms
-  3/4/5; `sec/client.py:116` provides `submissions_url()`. `institutional.py` does the same for 13F.
-  **Generalizing that filter is most of the work.**
-- So the "cheap" claim holds: **no new SEC endpoint, no new fetch, no new dependency**.
-- ⚠️ **Verify before designing:** confirm `items` (8-K item codes) and `acceptanceDateTime` are
-  actually present in `filings.recent`, against a real payload fetched with our own compliant
-  User-Agent (generic tools get 403'd by SEC's WAF). The roadmap asserts it; treat it as
-  "verify, don't assume".
-- **Guardrail 8:** single-writer ingest path, parsers never open the DB; storage behind a
-  repository interface; no raw SQL in the API.
-
----
+`ROADMAP_APP_V3` §6: **backend-only, no UI, depends on nothing** — can run alongside. Store **8-K item
+codes + acceptance timestamps** from the `/submissions/` JSON we already fetch. Turns the shell's
+"What's moving" feed from a placeholder into a real feed, unblocks **P8**, and makes V3-P4's
+right-rail Filing-timeline placeholder real without moving it. `sec/insider.py:_recent_filings()`
+already walks those parallel arrays filtered to Forms 3/4/5 — generalizing that filter is most of the
+work. ⚠️ **Verify `items` and `acceptanceDateTime` are actually present** in a real payload fetched
+with our own compliant User-Agent before designing; the roadmap asserts it.
 
 ## Previous task
 
-### ✅ V3-P4 DONE (2026-07-28) — operator CONFIRMED at 4b, **merged to master**
-Commit `50e0c16`, merged as **`94c3c70`** (not pushed — `master` is local-only).
-Trail: `docs/delivery/v3-p4-company-recut/`.
-**✅ No merge trap:** P5 branches off a `master` that already contains P4. P0, P1 and P2 each hit
-that trap; P2 and P4 were merged immediately to end the pattern.
-
-**What P4 shipped.** `/company/{symbol}` re-cut into **Overview** (`hub`) and **Financial history**
-(`history`). Full-stack: `GET /companies/{symbol}/profile` and
-`GET /companies/{symbol}/statements/{s}/condensed`; `ClearyFi.metricTile` and
-`ClearyFi.metricSeriesChart`; a sticky comparison tray; a right-rail Filing-timeline placeholder;
-`VIEW_ALIASES`; and `equity_multiplier`/`dio`/`dpo`/`ccc` surfaced after being computed-but-invisible.
-~4,370 lines. Verified on `master` after merge: **pytest 572 · e2e 43 shots, 0 threw, 2 pre-existing**.
-
-**Discoveries P5 inherits as fact, not assumption:**
-- **companyfacts carries NUMERIC facts only.** `dei:AuditorName`, `EntityFilerCategory`,
-  `EntityIncorporationStateCountryCode`, NAICS and HQ are **text** facts → structurally absent from
-  our store. `EntityNumberOfEmployees` exists **7 times in the whole DB**. Don't plan a surface
-  around them.
-- **`company_profiles` has `name` + `sic` + `sic_description` for 8,917 CIKs**, now served by
-  `/companies/{symbol}/profile`.
-- **`/metrics` returns a per-metric `trend` array** (intra-year quarters, ≤4 points) — free
-  sparkline data, but it is **NOT year-over-year**; P4 labels it `· 4 quarters` for that reason.
-
-### ✅ V3-P2 DONE (2026-07-27) — merged as `ec079c2`
-One shell (`static/shell.js` + `shell.css`), the D2 subject nav, URL-as-state,
-`/sectors-legacy` decommissioned. **P4–P7 all run on this shell.**
+### ✅ V3-P4 DONE (2026-07-28) — merged to master as `94c3c70`
+`/company/{symbol}` re-cut into **Overview** (`hub`) and **Financial history** (`history`).
+Trail: `docs/delivery/v3-p4-company-recut/`. Discoveries P5 inherits as fact:
+**companyfacts carries NUMERIC facts only** (`dei:AuditorName`, NAICS, HQ, employee count are text →
+structurally absent from our store); **`company_profiles` has name + SIC for 8,917 CIKs**;
+`/metrics` returns a per-metric `trend` array that is **intra-year quarters, not year-over-year**.

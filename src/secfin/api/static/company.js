@@ -347,7 +347,7 @@
   // V3-P4: `fundamentals` -> `hub` (Overview), `statements` -> `history` (Financial history).
   // Legacy slugs still resolve -- shell.js's VIEW_ALIASES maps them before the unknown-slug
   // fallback, so every indexed /company/{sym}/statements URL keeps landing on the right view.
-  var VIEW_SLUGS = ["hub", "history", "insider", "institutional", "beneficial"];
+  var VIEW_SLUGS = ["hub", "history", "insider", "institutional", "institutional-legacy", "beneficial"];
 
   /* The entity control bar (v3 prototype :85-108) — the focal company's identity, restricted to
    * what this page already resolves. Two deliberate omissions, both honesty calls:
@@ -426,7 +426,9 @@
   // a period, so they honestly report that instead of borrowing another view's period.
   function periodLabelForBar() {
     if (NON_PERIOD_TABS.indexOf(state.tab) !== -1) return "latest filings";
-    if (state.tab === "institutional") return state.instValue ? quarterLabel(state.instValue) : null;
+    if (state.tab === "institutional-legacy") return state.instValue ? quarterLabel(state.instValue) : null;
+    // The design port is not period-scoped: it renders prototype literals, not a quarter.
+    if (state.tab === "institutional") return null;
     var v = state.tab === "hub" ? state.fundValue : state.stmtValue;
     if (!v) return null;
     var p = v.split("|");
@@ -458,7 +460,7 @@
   function updatePeriodControl() {
     // Only Institutional still uses the shared top-bar control (its 13F-quarter axis loads
     // async and has no card of its own). Overview and Financial history own their controls.
-    var usesTopBar = state.tab === "institutional";
+    var usesTopBar = state.tab === "institutional-legacy";
     $("controls").hidden = !usesTopBar;
     $("period-control").hidden = true;
     if (usesTopBar) return; // renderInstitutional reveals + populates it once its axis loads
@@ -477,7 +479,7 @@
         })
         .join("");
       if (state.fundValue) sel.value = state.fundValue;
-    } else if (state.tab === "institutional") {
+    } else if (state.tab === "institutional-legacy") {
       // Axis is the 13F quarter-ends holdings exist for; value IS the quarter-end string.
       $("period-label").textContent = "Quarter (13F)";
       sel.innerHTML = (state.instPeriods || [])
@@ -498,7 +500,7 @@
 
   function onPeriodChange(e) {
     if (state.tab === "hub") state.fundValue = e.target.value;
-    else if (state.tab === "institutional") state.instValue = e.target.value;
+    else if (state.tab === "institutional-legacy") state.instValue = e.target.value;
     else state.stmtValue = e.target.value;
     render();
   }
@@ -566,7 +568,8 @@
     if (state.tab === "hub") renderOverview();
     else if (state.tab === "history") renderHistory();
     else if (state.tab === "insider") renderInsider();
-    else if (state.tab === "institutional") renderInstitutional();
+    else if (state.tab === "institutional") renderInstitutionalPort();
+    else if (state.tab === "institutional-legacy") renderInstitutional();
     else renderBeneficial();
   }
 
@@ -624,7 +627,121 @@
     );
   }
 
-  // ---------- Institutional (13F) ownership — issuer view ----------
+  /* ==========================================================================================
+   * INSTITUTIONAL — PROTOTYPE DESIGN PORT   (V3-P5a attempt 4, PHASE 1)
+   *
+   * Operator workflow, 2026-07-30: **design first, data second.** Phase 1 ports the v3 prototype's
+   * Institutional view -- its markup, its CSS, its chart builders, and ITS OWN SAMPLE VALUES --
+   * onto this blank page, with NO backend calls whatsoever. The operator verifies fidelity against
+   * the prototype. Only then does phase 2 replace the literals with real filings data.
+   *
+   * Why the workflow changed: three attempts failed on fidelity and none on data or honesty. The
+   * last one passed 44 driven QA assertions and two of the operator's own hands-on batches, and was
+   * still rejected -- it had the prototype's STRUCTURE built out of the PRODUCT'S COMPONENTS.
+   * Removing data from the equation makes fidelity verifiable on its own.
+   *
+   * ⚠️ THE LITERALS ARE A SCAFFOLD, NOT DATA. Every value rendered here in phase 1 is copied from
+   * the prototype; nothing is fetched, nothing is derived, and no figure describes any real company.
+   * The banner says so, at the top, undismissable. The honesty rules are suspended ONLY for this
+   * unshipped scaffold. **Phase 2 is not done until no literal remains.**
+   *
+   * GROUND TRUTH: the prototype RENDERS -- it is a React/dc-runtime export. Serve it and diff each
+   * ported section against a screenshot of the real thing; do NOT port by reading the markup, which
+   * is how the "+ Also in this section" pattern survived five rounds of review unnoticed. The two
+   * commands are in docs/delivery/_active.md ("THE UNLOCK").
+   *
+   * CSS NAMESPACE: `.ip-*` (institutional port), in company.css under the matching banner. It
+   * deliberately shares NOTHING with `.ov-card` / `.stmt-table` / `.plot-chart` / `.cond-*` --
+   * reusing that vocabulary is precisely what produced "leftovers from previous design".
+   * ========================================================================================== */
+
+  // The prototype's seven sections: its `data-screen-label` and the scope note beside each heading,
+  // verbatim (prototype.dc.html :1699, :1896, :2041, :2316, :2498, :2609, :2701).
+  var IP_SECTIONS = [
+    ["01", "Register snapshot", "13F-HR register, freshness and what has been filed since"],
+    ["02", "Register over time & holders", "how the register has moved, and who is in it"],
+    ["03", "Flows & concentration", "position changes, how the register is distributed, how concentrated it is"],
+    ["04", "Ownership & stewardship", "5% filings, voting behavior and the activism trail"],
+    ["05", "Holder behavior", "how long managers stay in the register, and at what level they hold"],
+    ["06", "Register limits & supply", "what the register cannot tell you, and what supply is dated ahead"],
+    ["07", "Reference", "forms and rules used on this page"],
+  ];
+
+  function renderInstitutionalPort() {
+    $("legend").innerHTML = "";
+    // No disclosure() in phase 1: that copy describes REAL data, and there is none on this page.
+    $("disclosure").innerHTML = "";
+    $("controls").hidden = true;      // no period selector -- nothing here is period-scoped yet
+    $("period-control").hidden = true;
+
+    $("view").innerHTML =
+      ipBanner() +
+      ipViewHeader() +
+      IP_SECTIONS.map(function (sec) {
+        return (
+          '<section class="ip-sec" id="ip-' + sec[0] + '">' +
+          ipSecHead(sec[0], sec[1], sec[2]) +
+          '<div class="ip-sec-body" data-ip-body="' + sec[0] + '"></div>' +
+          "</section>"
+        );
+      }).join("");
+  }
+
+  /* The phase-1 banner. Loud, and NOT dismissible: a page of prototype literals must never be
+   * mistakable for filings data -- not for a moment, and not by us either. Uses the ext/caveat
+   * colour family (STYLE_GUIDE §1), the product's reserve for "flag / doesn't reconcile", never the
+   * accent, which means interaction. */
+  function ipBanner() {
+    return (
+      '<div class="ip-banner" role="alert">' +
+      '<div class="ip-banner-title">⚠ Static design port — not real data</div>' +
+      '<div class="ip-banner-body">Every value on this page is a literal copied from the v3 ' +
+      "prototype. Nothing is fetched, nothing is derived, and no figure here describes this or any " +
+      "other company. The page exists so the DESIGN can be verified on its own, before any data is " +
+      "plumbed in (V3-P5a phase 1). The Institutional view that does carry real filings data is in " +
+      'the rail as <strong>Institutional (legacy)</strong>.</div>' +
+      "</div>"
+    );
+  }
+
+  /* The prototype's in-view header (:1684-1697): sector › name › ticker › view, over a heavy rule,
+   * with the source line and EDGAR links on the right. Built from the page's own resolved profile
+   * where it has one -- the header is chrome, not a figure, so it is not part of the literal
+   * scaffold and does not need the banner's warning. */
+  function ipViewHeader() {
+    var prof = state.profile || {};
+    var crumbs = "";
+    if (prof.sic_description) {
+      crumbs += '<span class="ip-vh-sector">' + P.esc(prof.sic_description) + "</span>" +
+        '<span class="ip-vh-sep">›</span>';
+    }
+    crumbs += '<span class="ip-vh-name">' + P.esc(prof.name || symbol.toUpperCase()) + "</span>" +
+      '<span class="ip-vh-ticker">' + P.esc(symbol.toUpperCase()) + "</span>" +
+      '<span class="ip-vh-view">Institutional ownership</span>';
+    return (
+      '<div class="ip-view-header">' + crumbs +
+      '<span class="ip-vh-meta">13F-HR · SC 13D/G · DEF 14A · share counts only, no market values</span>' +
+      "</div>"
+    );
+  }
+
+  /* The prototype's section header (:1700-1704): accent mono number, Hanken 800 title at 19px, the
+   * scope note on the SAME line, over a 2px ink rule. Deliberately NOT company.js's secHead(),
+   * which is P4's vocabulary at a different size. */
+  function ipSecHead(n, title, note) {
+    return (
+      '<div class="ip-sec-head">' +
+      '<span class="ip-sec-n">' + P.esc(n) + "</span>" +
+      '<h2 class="ip-sec-title">' + P.esc(title) + "</h2>" +
+      '<span class="ip-sec-note">' + P.esc(note) + "</span>" +
+      "</div>"
+    );
+  }
+
+  /* ---------- Institutional (13F) ownership — issuer view · NOW THE LEGACY VIEW ----------
+   * Reached only at /company/{symbol}/institutional-legacy (V3-P5a attempt 4). Unchanged from
+   * master and listed in the rail so the design port can be compared against it. It is NOT the
+   * target design. Delete this and everything it calls once the port is accepted. */
 
   var ACTION_LABEL = { new: "New", added: "Added", reduced: "Reduced", exited: "Exited", unchanged: "Unchanged" };
 
