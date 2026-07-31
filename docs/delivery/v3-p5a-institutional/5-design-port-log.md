@@ -14,6 +14,25 @@ The prototype is a dc-runtime/React export that **renders live** when served ove
 attempts ported it by reading `prototype.dc.html` as source and comparing by eye; all three were
 rejected on fidelity. This run compares against the running page instead.
 
+> ### ⚠️ The port includes the prototype's FUNCTIONALITY, not only its appearance
+>
+> *(Operator, 2026-07-31 — `_active.md`'s **D-behaviour**. It supersedes §01's original "every
+> affordance is inert, wired in phase 2", which cost a rebuild.)*
+>
+> A section is ported when its markup, its CSS, its charts **and its controls** match. Every
+> expander, lightbox, derivation panel, view toggle and relabelling the prototype has is **live in
+> phase 1** — only the DATA waits for phase 2.
+>
+> **And behaviour is the one thing the markup cannot tell you.** The handlers are compiled away in
+> the React export; `literals-open.json`, the inline styles and the outerHTML all show a control
+> that does nothing. **Drive the running prototype and read back what happened** — that is the only
+> source. `click.js` · `overlay.js` · `where.js` · `two.js` to learn it, `drive.js` to assert it,
+> then re-diff the default states so a new control has not moved the resting rendering.
+>
+> Two standing traps: a `<span>` that becomes a `<button>` takes the UA's grey (~15/255 — under a
+> 32/255 diff, visible only in `>8`), so it needs `background: transparent`; and the prototype has
+> behavioural bugs of its own — port the mechanism, do the sane thing, and **list the deviation**.
+
 ```bash
 # 1. serve the prototype
 docker run -d --rm --name proto-srv --network stock_profiler_default \
@@ -34,15 +53,26 @@ docker run --rm --user root --network stock_profiler_default \
 # 5. positional diff, element by element                  (tools/boxes.js, run against both)
 ```
 
-`tools/` holds five scripts, all re-runnable for §02–§07:
+`tools/` began as five scripts and is now the full kit. **Appearance:**
 
 | script | what it does |
 |---|---|
-| `capture.js` | drives the prototype to Companies → Institutional; PNG per section, `literals.json` (every element's text + computed CSS), `tokens.json` |
-| `ours.js` | same section from our app, pinned to the prototype's exact column and origin; PNG + geometry |
-| `boxes.js` | every text box's position/size relative to its section, for a numeric diff |
-| `shot.js` | plain screenshots at 1440 / 900 / 430, no harness tricks |
-| `frac.js` | fractional geometry at 1× and 2× — catches layout that only breaks at one device pixel ratio |
+| `capture.js` / `capture-open.js` | drives the prototype to Companies → Institutional; PNG per section, `literals.json` / `literals-open.json` (every element's text + computed CSS + outerHTML), `tokens.json` |
+| `shot2.js` | one section, either app, collapsed or open, matched column, `SNAP=1`, sticky chrome hidden, explicit clip, optional `CLICK` to capture an OPENED state |
+| `compare.py` | every property mismatch, matched by text — **run it before the pixel diff** |
+| `diff.js` · `align.js` · `crop.js` | canvas pixel diff with row bands · the best-fit shift (layout difference vs the same pixels a fraction off) · proto/ours/diff stacked for one y-range |
+| `text.js` · `lines.js` · `chain.js` · `hprec.js` · `frac.js` | per-run widths · per-line-box geometry · ancestor chain with margins/padding · full-precision 4dp heights · 1× vs 2× |
+
+**Behaviour** — none of this can be read from the markup, only from the running page:
+
+| script | what it does |
+|---|---|
+| `click.js` | click one control; report what appeared, disappeared and changed, plus a screenshot. ⚠️ its added/removed detection reuses element ids between snapshots — trust `changed` and the screenshot, verify add/remove another way |
+| `overlay.js` | dump the overlay a control opened: tree, boxes and computed styles |
+| `where.js` | where the revealed panel actually lands, its size, and whose chain it sits in |
+| `two.js` · `after.js` | a toggle's second state · which controls exist and are visible after an interaction |
+| `controls.js` | **step 1 of every section**: inventory every button, link and toggle, and flag the ones still unwired |
+| `drive.js` | the end-to-end assertion pass over every live affordance — 64 checks today |
 
 ### What the capture settled up front
 
@@ -103,6 +133,13 @@ Artifacts: `proto-i1.png` · `ours-i1.png` · `diff-i1.png` (amplified ×6) · `
    0.23px wide of the capture and the link 2.4px, with different glyphs.
 
 ### The dumbbell (decision D-protocharts)
+
+> 📌 **The prototype is moving its charts to d3** (operator, 2026-07-31) — interactive versions of
+> the same charts. **We continue as we are for now**: eleven hand-authored SVG builders, nothing
+> pre-built for d3. See `_active.md`'s D-protocharts for what that will and will not disturb. The
+> short version: d3 is already vendored so nothing about the dependency changes, but
+> **`prototype-ground-truth/` and every recovered series in `IP01`–`IP04` are snapshots of TODAY's
+> prototype** and must be re-captured and re-recovered — not adapted — the day it lands.
 
 Ported as the prototype builds it — hand-authored SVG on a fixed `viewBox` at `width:100%`, not
 `ClearyFi.dumbbellChart`. Geometry is authored once in viewBox units and the browser scales it, so
@@ -230,7 +267,509 @@ pixel-identical only because every element was measured, and four of its defects
 without measuring. Building six more sections at lower rigour is exactly what produced three
 rejected attempts. The tooling to do it is now in place and re-runnable.
 
+---
+
+## Third run — §02 Register over time & holders
+
+**Collapsed: pixel-identical.** Height 808px in both. Of 2.2M pixels, 32 differ by more than
+32/255 — four 4-pixel spots at the right edge of the two mini charts, where the end-marker circle's
+centre is carried at full precision in the prototype and rounded to three decimals here.
+
+Element boxes (`tools/boxes.js`, 71 in the prototype): **5 flagged, all comparator artifacts** —
+the badge/expander nesting seen in §01, plus "Net change this quarter: −33 holders" being one text
+node here and two there.
+
+### Chart builders ported (three more)
+
+`ipAreaChart` (mini area with a five-tick value axis), `ipStackedArea` (nine-quarter 100% stack),
+`ipSparkline` (per-series normalised, shape not level). All three are hand-authored SVG on a fixed
+`viewBox`, like §01's dumbbell — never Plot, never measuring a container.
+
+Every series was **recovered numerically from the captured SVG path data**, not transcribed:
+the two mini charts, the five stacked bands across nine quarters, and all twelve sparklines.
+
+### Five more defects the measurement caught
+
+1. **`⤡ Expand` chip 2px too tall** — same root cause as §01's badge: the prototype's is a
+   `<button>` on the UA's `normal` line box (13px), a `<span>` inherits the body's. Every element
+   below it in the card sat 3px low.
+2. **§02's card heads use an 11px bottom margin, §01's 12px.** The prototype genuinely differs by a
+   pixel between sections, and a pixel there moves everything under it.
+3. **`var(--gaap)` does not exist in this app** — ours is `--gaap-color`. The second chart's line
+   silently vanished (invalid custom property → `stroke` falls back to none, `fill` to black) and
+   its end marker turned black. Second token whose name differs from the prototype's, after
+   `--rule` → `--border-tint-rule`.
+4. **Axis tick labels are not computable from a rounded maximum.** The prototype's own maxima are
+   fractional (~1814.2, ~837.8), so quarters of a rounded max print 210M/629M where it prints
+   209M/628M. The ticks are now carried as literals.
+5. **The legend's proportion bar and its prior-quarter tick carry `opacity: 0.55`** — invisible in
+   a computed-style dump that only asks for `background-color`, and worth 7,400 differing pixels.
+   Also `min-width: 20px` on the track, so a 4% band still reads as a bar.
+
+### §02's expander — rebuilt after getting it wrong
+
+I first built the expander body from the section's *text*, and got a flat list of eight manager
+rows. The prototype has something else entirely: a card containing a **3×4 grid of twelve
+per-manager sparkline panels**, then a **ten-row table**, each with its own header, sub-bar and
+caption. Reading the text instead of the tree is precisely the failure this method exists to
+prevent; the side-by-side caught it immediately.
+
+Rebuilt against the tree. **Expanded height is now 2026.8px against the prototype's 2025.8px**, and
+the structure matches — but **~5.7% of pixels still differ**, concentrated in the panel grid
+(bands repeating every ~124px, the panel row pitch) and the card head above it. That is one more
+measurement pass, not a rebuild: `tools/boxes.js` against `#i2` with the expanders open will name
+it the way it named the five above.
+
+**Honesty note carried into the port:** both figures in a panel's footer are `--ink-soft`
+regardless of direction. Each panel is scaled to its own range, and the prototype's own caption says
+to read the trajectory and the printed figures rather than the relative heights — so a colour there
+would score a shape it explicitly tells you not to read as one.
+
+### State at the end of this run
+
+| | §01 | §02 collapsed | §02 expanded | §03–§07 |
+|---|---|---|---|---|
+| height matches | ✅ 1127 | ✅ 808 | ~1px (2026.8 v 2025.8) | — |
+| pixels > 32/255 | 1 | 32 | ~320k (5.7%) | — |
+| built | ✅ incl. expander | ✅ | structure ✅, fidelity pass outstanding | ❌ empty shells |
+
+e2e: 44 shots, every company view `errors=0`, only the two pre-existing sectorapp 502s.
+
+---
+
+## Fourth run — the columns were wrong app-wide (operator, 2026-07-31)
+
+The operator spotted the middle column looking squeezed and the rail squashed. Measured at 1440:
+
+| band | prototype | ours (before) | |
+|---|---:|---:|---|
+| sidebar | 210 | 210 | ✓ |
+| page padding | **28** | **32** | +4 |
+| view rail | **178** | **132** | **−46** |
+| gap | 20 | 20 | ✓ |
+| **content column** | **694** | **732** | **+38** |
+| gap | 20 | 20 | ✓ |
+| right rail | 262 | 262 | ✓ |
+
+`1440 = 210 + 28 + 178 + 20 + 694 + 20 + 262 + 28` — the prototype's frame resolves exactly. Ours
+did not, so the rail gave the space to the content column: **six of the seven jump-list labels
+wrapped to two lines and "Register limits & supply" wrapped to three** (the prototype wraps three of
+seven). That was the visible squashing.
+
+Three rules, all shell-wide, changed **app-wide on the operator's call**:
+
+```
+style.css   .page            padding 12px 32px 72px  ->  12px 28px 72px
+shell.css   .shell-rail      width 132px             ->  178px
+shell.css   .shell-viewport  max-width 960px         ->  976px   (694 + 20 + 262)
+```
+
+The `max-width` mattered: at 960 the cap bound *before* the content reached its designed width, so
+widening the rail alone would have landed the column on 678px rather than 694px.
+
+**Result: rail 238/178, content 436/694, right rail 1150/262, jump-list heights
+`[28,28,43,43,28,43,28]` — identical to the prototype's, band for band.**
+
+### Blast radius, checked rather than assumed
+
+- e2e: 44 shots, no new failures; only the two pre-existing sectorapp 502s.
+- Every company view, `/sectors`, `/sectors?view=company`, `/compare`, `/screen`, `/manager`, at
+  1440 **and** 1280: no horizontal scroll, no element escaping the viewport, no page errors.
+- Two pages report SVGs authored wider than their mount — `/company/{sym}/institutional-legacy` (3)
+  and `/manager` (4). **Pre-existing**, confirmed by re-measuring with V3-P2's widths restored: the
+  same 3 and 4, and the gap actually *narrows* slightly under the new columns. This is the
+  `ClearyFi.chartWidth()` bug that attempt 3's "fix 1" addressed; that fix lives only on the archive
+  branch and is not on this one.
+- **§01 re-diffed: now 0 pixels above 32/255** (was 1). §02: 30 (was 32). Both heights still exact.
+
 ## Open question for the operator
 
 **Is §01 the fidelity bar?** It is pixel-identical at the prototype's own column, and the four
 defects above are the kind only a measurement finds. §02–§07 follow the same method if so.
+*(Answered 2026-07-30: yes. §02–§07 follow it.)*
+
+---
+
+## Fifth run — §02's remaining 68k pixels, and two capture bugs behind most of them
+
+Picking up the one item left open: §02 expanded still differed on ~68k pixels / 19 bands, in two
+clusters — a pair of full-width bands high in the section that the *collapsed* diff did not show,
+and one band per row of the ten-row manager table.
+
+**Result: all four states are now at §01's bar — zero bands, and 0 / 0 / 30 / 34 pixels above
+32/255.** Two of the four defects were in the *measurement*, not the port, and both had been
+quietly inflating every §02 number reported so far.
+
+| state | pixels ≠ | >8/255 | >32/255 | bands | height |
+|---|---:|---:|---:|---:|---|
+| §01 collapsed | 704 | 36 | **0** | **0** | 1127 = 1127 |
+| §01 expanded | 659 | 50 | **0** | **0** | 1700 = 1700 |
+| §02 collapsed | 220 | 77 | 30 | **0** | 808 = 808 |
+| §02 expanded | 1160 | 147 | 34 | **0** | 2025.8 = 2025.8 |
+
+The 30/34 are the mini charts' end-marker circles, whose centres the prototype carries at full
+precision and we round to three decimals. Four spots, four pixels each.
+
+### Two measurement bugs — both made the port look worse than it was
+
+1. **The captures were rasterised at different sub-pixel origins.** §01's capture pinned the
+   section's fractional origin (see "the method", above); §02's did not — ours landed on `.8438`
+   against the prototype's `.5`. Chrome snaps line boxes to device pixels, so that alone rewrote
+   every glyph's antialiasing and produced two full-width bands that were not layout at all.
+   Now handled by `tools/shot2.js`, which takes `FRACX`/`FRACY` and shifts the column to match.
+2. **`captureBeyondViewport` paints sticky chrome into the middle of a tall section.** Any section
+   taller than the 1200px viewport — §02 open is 2026px — gets the topbar composited ~380px down
+   the clip. It looked like a real band because our topbar and the prototype's genuinely differ
+   there (`⌘K` vs `Ctrl K`, and its `API REFERENCE ↗` chip). `HIDESTICKY=1` hides every
+   `position: fixed|sticky` element outside the section, on **both** sides, before the shot.
+   ⚠️ §01 collapsed is 1127px and never hit this, which is why it never appeared before §02.
+
+### Three real defects, all invisible to a 32/255 pixel diff
+
+3. **The manager table carried one ink and one size where the prototype has three of each.**
+   Read off the render: the name is `--ink-body` (rgb 84,79,70), the two count columns `--ink` at
+   **11.5px**, and the Δ column `--ink-soft` at **11px**. Ours had every cell at 11px/`--ink`,
+   which darkened the name and the Δ *and* shifted both right-aligned count columns — that was the
+   band under each of the ten rows.
+4. **The expander button had no `background`, so it took the UA's `buttonface` grey** — in both
+   states. Against the card's cream that is 10–25/255: *under* the diff threshold in the closed
+   state, and under it again in the open state where the prototype paints `--accent-wash` (#F3E4D5)
+   vs the same grey. It only surfaced on a `>8` pass. Closed is `transparent`, open is
+   `--accent-wash` + `--accent-ink`.
+5. **`.ip-chip` was `--ink-muted` where the prototype is `--ink-soft`** — a 15/255 difference, also
+   invisible at 32.
+
+### The font stacks: four, not two, and not guessable
+
+The `Δ` in §02's caption "…as of 1Q26 · Δ is quarter over quarter in shares" drifted everything
+after it: 390.44px in the prototype, 390.03px here. Cause is the one §01 already hit twice (`ƒ`,
+`↗`): **the glyph is absent from the loaded Google-Fonts subset, so the *fallback* decides its
+width** — and the prototype's stacks are not ours.
+
+Comparing every element's computed `font-family` across §01 and §02 gives a rule that is *almost*
+"HTML bare, SVG with fallback", with real exceptions:
+
+| stack | who gets it |
+|---|---|
+| `"IBM Plex Mono"` | most HTML that declares a mono font |
+| `"Hanken Grotesk"` | `.ip-sec-title`, `.ip-card-title` |
+| `"IBM Plex Mono", monospace` | every SVG `<text>`, **and** §02's panel component (`.ip-panel-cls`, `.ip-panel-foot`) |
+| `"Hanken Grotesk", sans-serif` | SVG labels, `.ip-panel-name`, `.ip-mtab-name` |
+
+Now four port-local variables (`--ip-mono`, `--ip-sans`, `--ip-mono-fb`, `--ip-sans-fb`) rather
+than `--font-mono` / `--font-sans`, which are *both* fallback stacks. ⚠️ **Phase 2 must revisit
+this**: a real filer name can carry glyphs outside the latin subset, and a bare stack renders those
+in the UA default rather than a monospace.
+
+### Tooling added — this is what §03–§07 should be built with
+
+| script | what it does |
+|---|---|
+| `shot2.js` | one section, either app, collapsed or open, at a matched column **and** matched fractional origin, with sticky chrome hidden. Replaces the ad-hoc per-section shot scripts. |
+| `diff.js` | pixel diff computed in Chromium's own canvas (no image deps): counts at three thresholds, contiguous **row bands**, hot columns, amplified diff PNG. Bands are the signal; scattered pixels are antialiasing. |
+| `crop.js` | the same region from both captures stacked proto / ours / diff, zoomable — turns a band's y-range into something you can actually look at. |
+| `text.js` | every element's box, font, letter-spacing, colour, and per-text-node run widths. Localises a drift to one run. |
+| `compare.py` | matches elements by text and reports every property mismatch. **This is the one that finds what a pixel diff cannot** — defects 3, 4 and 5 above, and all 72 font-stack mismatches. |
+
+Run order per section: capture both → `compare.py` (properties) → `diff.js` (rasterisation) →
+`crop.js` on any band that survives.
+
+Also re-checked at **device pixel ratio 1**, where §01's badge defect only became a whole pixel:
+§01 expanded 2 pixels above 32/255, §02 expanded 2, **zero bands in both**.
+
+### e2e
+
+44 shots. `institutional`, `institutional-legacy`, `institutional-nolocation` all `errors=0`; every
+company view `errors=0`. The two `sectorapp-company` / `sectorapp-company-refocus` failures are the
+same pre-existing 502s on `/sectors?view=company&symbol=900001` (a synthetic fixture CIK), on pages
+this change does not touch. No `pytest` run — no Python changed.
+
+---
+
+## Sixth run — §03 Flows & concentration, and the measurement bug it exposed
+
+§03 is the biggest section in the view: **3016.5px open**, 600 nodes, four hand-authored charts,
+eight sub-components across three cards and a two-row expander. It came out **pixel-clean in both
+states on the first build** — but only after a defect in the *comparison* was found, and that
+defect had been silently degrading every diff in this port.
+
+| state | pixels ≠ | >8/255 | >32/255 | bands | height |
+|---|---:|---:|---:|---:|---|
+| §03 collapsed | 1269 | 52 | **0** | **0** | 1832.5 = 1832.5 |
+| §03 expanded | 1001 | 78 | **0** | **0** | 3016.5 = 3016.5 |
+| §03 expanded @1× | 422 | 5 | 2 | **0** | — |
+
+`compare.py`: **218 of 218 texts matched**, and every remaining property mismatch is one of the
+three known comparator artifacts.
+
+### The measurement bug: matching the viewport fraction is not enough
+
+The first diff of §03 read **200,685 pixels over 32/255 in 111 bands** — while every DOM box, every
+line box, every wrapper in the chain and all four SVGs measured **identical to three decimals**, at
+both device pixel ratios, in both states. `tools/align.js` (written for exactly this) then showed
+what was happening: the top of the capture aligned at `dy 0` with a *perfect zero*, and everything
+below the Lorenz curve aligned at `dy −2` with a *perfect zero*. Not a layout difference — the same
+pixels, one CSS pixel apart.
+
+**Cause: Chrome snaps each paint op to the device-pixel grid, and that grid is anchored to the
+DOCUMENT, not the viewport.** Two pages whose sections sit at the same *viewport* offset but
+different *document* offsets round some glyph runs up and some down. Below a certain point the
+rounding diverges and everything after it is a pixel out. It cannot be seen in any DOM measurement,
+because the DOM is right.
+
+`shot2.js` now takes `SNAP=1`, which shifts the pinned column (ours) or the section itself (the
+prototype, which has no column to pin) so the section's **document-space** top is integral on both
+sides. One flag: **200,685 → 6,003 pixels, 111 bands → 4.**
+
+⚠️ This affected §01 and §02 too. Both were re-measured with `SNAP=1` and are unchanged or slightly
+better — but a section whose content happened to straddle a rounding boundary could have been
+declared clean when it was not, or chased for a defect it did not have.
+
+### Two real defects, both fabricated literals
+
+The 4 bands that survived were in one card, and `compare.py` had already named them: I had
+transcribed the domicile card's last two rows as *Ireland 2.5% / Other · undisclosed 1.3%*. The
+prototype's are **Norway · sovereign fund 1.6% / Rest of world 2.2%** — I had read eight rows of the
+markup and invented the ninth and tenth. One overlap row was wrong the same way (*4 of 5 peers* for
+*5 of 5*). After the fix: **0 pixels over 32/255, 0 bands.**
+
+This is the failure mode D-literals exists to prevent, and the reason `compare.py` runs before the
+pixel diff: an invented literal that happens to be the right *length* is invisible to the eye and
+nearly invisible to a pixel diff.
+
+### The four chart builders, and how their series were recovered
+
+Every series was recovered numerically from the captured SVG and **round-trip-checked** — recompute
+the geometry from the recovered numbers and it must reproduce the prototype's own coordinates.
+
+| builder | recovery | check |
+|---|---|---|
+| `ipDivergingBars` | bar pixel heights ÷ the largest, carried back through a 74.25M maximum (the absolute scale is arbitrary — only each value over the largest is drawn) | the net rule is `add − red`, and recomputing it reproduces all six rule positions to 1e-4px |
+| `ipRankedShare` | each manager's share is the **first difference of the cumulative curve's circle centres**, which carry full precision; the printed `15.0%` etc. are rounded and are separate literals | reproduces all ten bar heights to **5e-14** |
+| `ipLorenz` | 61 cumulative-share points off the path; x fitted to `38.24 + 4.2384i` | reproduces all 61 printed abscissae at the prototype's own 1dp |
+| `ipPeerMatrix` | 30 cells, each carrying **both** the printed percentage and the capture's own `fill-opacity` — the opacity is not a linear function of the rounded percentage | the label flips to the card colour above 0.47: checked against all 30 cells, **0 misses** |
+
+Two things worth carrying forward: the ranked chart draws **two scales in one frame** (the line on
+the 0–100% axis, the bars scaled so the largest fills half the plot) — the prototype's own choice,
+and its caption says so; and §03 confirms §01's finding that **manager colour is carried per row,
+not derived** — Idx A/B/C are accent, Act D is `#a88c5f`, Act E is `#8b8579`, Sov G is accent again.
+
+### New tooling
+
+| script | what it does |
+|---|---|
+| `align.js` | finds the (dx, dy) device-pixel shift that best aligns a REGION of one capture onto the other. Answers what a band cannot: *is this a layout difference, or the same pixels drawn a fraction off?* This is the tool that found the paint-grid bug. |
+| `hprec.js` | full-precision (4dp) geometry of a section, its children and every SVG — for when two sides report the same one-decimal height |
+| `lines.js` | per-LINE-BOX geometry: line-height, half-leading, where each line actually starts |
+| `chain.js` | walks an anchor's ancestor chain and following siblings with margins/padding/borders — the only probe that sees a WRAPPER, which no text-based comparison can |
+
+---
+
+## Seventh run — the three affordances made live (operator, 2026-07-31)
+
+`⤡ Expand`, `ƒ DERIVED` and `Treemap` were `<span>`s that rendered identically and did nothing.
+They are now real controls, ported from the **running** prototype — a control's behaviour is not in
+its markup, so each was driven with `tools/click.js` / `overlay.js` / `where.js` and its result read
+back before anything was written.
+
+### What each one actually does
+
+| control | behaviour, read off the prototype |
+|---|---|
+| **⤡ Expand** | opens a lightbox: `rgba(28,26,22,.55)` backdrop, a `--bg-card` dialog (`max-width 1360px`, `max-height 92vh`), head with the modal's OWN title + note + a `CLOSE` button, body `min-height: min(58vh, 520px)`. The chart is **re-authored at the dialog's measured inner width** — the card's 660-unit viewBox becomes 1316 — never scaled up. Each of the five chips has its own title/note, none of them the card's. |
+| **ƒ DERIVED** | reveals a `--bg-tint` "how this is computed" panel (formula, one row per input with its source filing, then a caveat) and flips its own label to `ƒ HIDE`. |
+| **Treemap** | swaps the ranked chart for a squarified treemap, swaps the caption, and moves the pressed state. `⤡ Expand` then opens the TREEMAP, under its own title ("Who holds what · area is share of the 13F-reported register"). |
+
+Chart builders are now width-parameterised, generalised from the two widths the prototype renders
+at and verified against both: `ipRankedShare` `X1 = W−46`, `YB = H−58`, bar `min(54, step·0.6)`;
+`ipAreaChart` `X1 = W−14`, `YB = H−34`; `ipDivergingBars` `X1 = W−12`; `ipPeerMatrix` scales by
+`W/370`.
+
+### Three defects the driving pass caught in my own work
+
+1. **The lightbox head was never closed** — the body rendered *inside* the flex head, so the title
+   and CLOSE sat at the bottom of an empty dialog. Visible immediately in the first driven capture.
+2. **I hid `⤡ Expand` in treemap view.** `click.js`'s added/removed detection reuses element ids
+   across snapshots, so it wrongly reported the chip as removed. Querying the prototype's live
+   button list settled it: the chip **stays** (`vis: true, w: 68`). Fixed, and the probe's limits
+   noted — a comparator that can be wrong is worse than no comparator unless you know where.
+3. **`button.ip-chip` took the UA's grey.** The same trap as `.ip-expander-btn`, hit again the
+   moment a `<span>` became a `<button>`: only ~15/255 against the card, so it passed a 32/255 diff
+   and showed up only as `>8` climbing from 80 to 4,636 pixels on §02. **Any span that becomes a
+   button needs `background: transparent`.**
+
+### Two deliberate deviations, both listed
+
+- **The derivation panel's placement.** The prototype renders it in a single shared slot at a fixed
+  position — **`y 343`, a direct child of the section, between the first card and "Since the last
+  13F"** — no matter which badge opened it. Clicking the badge on the tiles (`y 938`) opens a panel
+  600px above it, next to an unrelated card. We render it under the block it explains, at full
+  section width. Porting the shared slot would be porting a bug; say the word and it goes back.
+- **§01's card-head badge opens nothing in the prototype** — it flips its label and changes not one
+  other pixel (verified: two clicks return the DOM to byte-identical). Ported as a label-only
+  toggle rather than inventing a panel for it.
+- **The treemap in the lightbox.** The prototype **re-squarifies** at the modal's aspect
+  (`1316×658`), so its cells are arranged differently there. We scale the card's own layout, which
+  keeps every cell's share of the area exact but not its position. Its markup does not expose the
+  squarify variant.
+
+Left inert, and named so: `Set intersections`, `Trend`, and the clickable "Effective holders" stat.
+
+### Verified
+
+- **`tools/drive.js`, 28 driven assertions, 0 failures** — every lightbox by title and viewBox,
+  Escape / Close / backdrop dismissal, the panel's hidden→shown→hidden cycle with its label and
+  `aria-expanded`, both chart views with their captions and pressed states, and zero page or
+  console errors across the whole pass.
+- **No regression in the default rendering.** All six section states re-diffed: heights unchanged,
+  **still zero bands**, still 0 / 0 / 30 / 34 / 0 / 0 pixels above 32/255.
+- e2e: 44 shots, all three institutional shots `errors=0`, only the two pre-existing sectorapp 502s.
+
+---
+
+## Eighth run — §04 Ownership & stewardship, the first section built under D-behaviour
+
+The first section ported with the control inventory as **step 1** rather than an afterthought, and
+it shows: **1961px exact on the first build, 104 of 104 texts matched, 0 pixels above 32/255, 0
+bands, in both states and at both device pixel ratios.**
+
+| state | pixels ≠ | >8/255 | >32/255 | bands | height |
+|---|---:|---:|---:|---:|---|
+| §04 collapsed | 92 | 2 | **0** | **0** | 1487 = 1487 |
+| §04 expanded | 15,106 | **4** | **0** | **0** | 1961 = 1961 |
+| §04 expanded @1× | 3,433 | **0** | **0** | **0** | — |
+
+`compare.py`: **104 / 104**, one property mismatch and it is the known expander nesting artifact.
+
+### The inventory came first, and it changed the order of work
+
+`tools/controls.js` against `#i4` before anything was written: **6 controls — four `↗` links, one
+`⤡ Expand`, one expander. No `ƒ DERIVED` badges and no view toggles.** That mattered immediately:
+the unresolved D1 deviation (derivation-panel placement) sets a precedent §04 would have inherited,
+and the inventory proved §04 does not touch it. The build could start without waiting on that
+ruling. Under the old order I would have found that out at the end.
+
+Ours ships **6 controls, 0 inert.**
+
+### What §04 contains
+
+Two cards above the fold — **Beneficial ownership filings** (a lane chart, one lane per 5%-threshold
+holder, then the current filings on file) and **Voting behavior** (four headline tiles, a 100% bar
+per ballot item split for/against/abstain, then the managers who voted against management) — and two
+behind the expander: **Vote-weighted ownership** and **Activism trail**.
+
+`ipLaneChart` is the ninth chart builder. Its x positions were **recovered from the captured SVG**
+(the prototype maps filing dates onto a time axis we do not have), like §01's dumbbell. Two layout
+rules were derived and both reproduce all four lanes exactly: event labels alternate 16/32px below
+the lane so neighbours cannot collide, and the last label right-anchors at the frame when its dot
+sits past x=600.
+
+### Two defects, both the same class
+
+1. **I invented two ballot items.** The markup I had read was truncated at row 2, so rows 3 and 4
+   went in from memory as *"Ratify auditor 91.8% / 8.2%"* and *"Elect directors (slate)"*. The
+   prototype's are **"Election of directors (slate) · all elected · 91.7 / 8.3 / 0.0"** and
+   **"Ratification of auditor · approved · 97.3 / 2.4 / 0.3"** — different wording, different
+   figures, different order. `compare.py` named all six strings before a single pixel was compared.
+   **Second time in two sections** (§03's domicile rows were the first). The rule that keeps
+   catching it: *extract the literals mechanically, never fill a gap from memory.*
+2. **The caption and one apostrophe were paraphrased** — the real caption ends "…ordered by the
+   against share. Totals are the certified figures in 8-K Item 5.07.", and the prototype uses a
+   straight apostrophe in "manager's" where I had typed a curly one.
+
+Also caught by reading rather than by luck: §04's markup uses **`var(--gaap)`** again, which does
+not exist here (ours is `--gaap-color`) — an invalid custom property makes the against-segment's
+background fall back to nothing and the bar silently loses a colour. Third token-name mismatch after
+`--rule` and §02's own `--gaap`.
+
+### §04's links go somewhere different
+
+§01–§03 link at EDGAR **full-text search**; §04's four links go at the registrant's **own filings by
+CIK** (`cgi-bin/browse-edgar`, types `SC 13` and `8-K`) except `N-PX ↗`, which is full-text search.
+`ipLink` now takes a target. The driving pass asserts the split (3 CIK-based + 1 N-PX).
+
+`drive.js` is now **53 assertions, 0 failures**, including §04's lightbox
+("Beneficial ownership filings · one lane per holder above the 5% threshold", `0 0 1316 278`).
+No regression in §01–§03: heights identical, zero bands, `>32/255` unchanged.
+
+---
+
+## Ninth run — §05 Holder behavior
+
+| state | pixels ≠ | >8/255 | >32/255 | bands | height |
+|---|---:|---:|---:|---:|---|
+| §05 collapsed | 31 | 4 | **0** | **0** | 780 = 780 |
+| §05 expanded | 12,414 | **4** | **0** | **0** | 1177 = 1177 |
+| §05 expanded @1× | 3,676 | **0** | **0** | **0** | — |
+
+`compare.py`: **99 / 99**. **5 controls, 0 inert.** `drive.js` now **64 assertions, 0 failures**.
+
+### The inventory answered a question that was blocking
+
+§05 has **two `ƒ DERIVED` badges**, so it inherits D1 — the unruled deviation about where a
+derivation panel opens. Driving them settled it before a line was written: **§05's panels land at
+the bottom of their own card** (measured y700, w660, inside the card, no next sibling). That is
+what the port already does. **§01's shared-slot behaviour is the prototype's outlier, not its
+pattern** — which strengthens the case for the D1 deviation rather than weakening it, and meant §05
+could be built without waiting on the ruling.
+
+Tenth chart builder: **`ipCohortGrid`**, a triangular retention heatmap — 9 entry cohorts × a
+shrinking row of quarters, 45 cells. Like §03's peer matrix, each cell carries **both** the printed
+retention and the capture's own `fill-opacity` (the opacity is computed from the unrounded share, so
+it cannot be derived from the label), and the value flips to the card colour above 0.46 — the
+threshold that separates the capture's two groups (darkest `--ink` cell 0.449, lightest `--bg-card`
+0.468).
+
+### Three defects, and two were structural
+
+1. **A caption I never extracted.** The funds card ends with **two** sentences in two spans, and my
+   regex found only the first. `compare.py` named the missing one immediately.
+2. **`line-height` on the stat value.** §05's headline stats declare **no** line-height where §03's
+   declare `1`. At `normal` a 19px value box is ~25px instead of 19 — **5px**, and every element
+   below it in the card moved. Third distinct size for this one component across three sections
+   (26px / 21px / 19px), and now a third distinct line-height too. *The prototype does not
+   normalise its own components; stop expecting it to.*
+3. **The expander bar is a GRID ITEM here.** The prototype puts it inside the section's grid with
+   `grid-column: 1 / -1`, so it picks up the grid's own 14px gap on both sides. I had it as a
+   sibling *after* the grid, which lost 14px, and the revealed card then needed `--flush` because a
+   grid item carries no card margin of its own. Two structural pixels-of-nothing worth 30px in
+   total, invisible in any text comparison — only `hprec.js` on the grid's children showed it.
+
+`var(--gaap)` appeared for the **fourth** time (the fund weight bars). Still `--gaap-color` here.
+
+### Where the port stands after §05
+
+| | §01 | §02 | §03 | §04 | §05 | §06–§07 |
+|---|---|---|---|---|---|---|
+| collapsed, >32/255 | **0** | 30 | **0** | **0** | **0** | — |
+| expanded, >32/255 | **0** | 34 | **0** | **0** | **0** | — |
+| bands, either state | **0** | **0** | **0** | **0** | **0** | — |
+| height | exact | exact | exact | exact | exact | — |
+| controls live | ✅ 3/4* | ✅ 7/7 | ✅ 19/19 | ✅ 6/6 | ✅ 5/5 | — |
+| built | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ empty shells |
+
+\* §01's card-head badge opens nothing in the prototype either — a listed deviation, not a gap.
+
+§02's 30/34 are the mini charts' end-marker circles (full precision in the capture, three decimals
+here) — four spots, four pixels each. Remaining: **§06 1304px · §07 540**, ≈1,844px.
+
+**Twelve chart builders so far**, all hand-authored SVG on a fixed `viewBox`: `ipDumbbell` ·
+`ipAreaChart` · `ipStackedArea` · `ipSparkline` · `ipDivergingBars` · `ipRankedShare` · `ipLorenz` ·
+`ipPeerMatrix` · `ipTreemap` · `ipUpset` · `ipLaneChart` · `ipCohortGrid`. Every series in them was recovered
+numerically from the capture and round-trip-checked. 📌 **All twelve expire when the prototype's d3
+charts land** — see D-protocharts.
+
+e2e: 44 shots, `institutional` / `institutional-legacy` / `institutional-nolocation` all
+`errors=0`, only the two pre-existing `sectorapp-company*` 502s on a synthetic fixture CIK. No
+`pytest` run — no Python changed.
+
+### Known comparator artifacts — not defects, don't chase them
+
+`compare.py` reports these on every section; they are structural, not visual:
+- **badge / expander / table cell**: the prototype nests `<button><span>text</span></button>` and a
+  grid cell `<span><span>value</span></span>`; ours puts the text directly in the outer element, so
+  the two tools measure different boxes (ours = the 64/54/58px track, theirs = the 41.4px text).
+- **inline vs block captions**: our `<span>` caption reports its widest line (588px) where the
+  prototype's `<div>` reports the container (660px). Same wrap points, same height, same pixels.
+- **split text nodes**: the prototype splits `index / passive · 13F-HR · filed 2026-05-11` into
+  three spans plus separators; ours is one string. Identical rendering.

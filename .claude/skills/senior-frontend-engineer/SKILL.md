@@ -51,12 +51,52 @@ handlers or normalization — that's the Senior Backend Engineer.
 7. **Degrade honestly:** thin/empty/one-point data renders a clear empty state (`states.empty`),
    never a broken or misleading partial chart. Self-fetching enhancement charts skip on failure
    without breaking the tab.
-8. **Verify — this is your test gate.** Rebuild (`docker compose build api`) then run the e2e
+8. **Porting a design or prototype? Port its BEHAVIOUR too** — see the section below. A control that
+   looks right and does nothing is not ported.
+9. **Verify — this is your test gate.** Rebuild (`docker compose build api`) then run the e2e
    headless render check: `docker compose --profile e2e up --abort-on-container-exit
    --exit-code-from e2e` (fails on any console/page error; screenshots land in `data/e2e-shots`).
    **Eyeball the screenshots** for layout/label/overflow/theme problems the exit code won't catch.
    If the change also touched Python, keep `pytest` green too
    (`docker compose --profile test run --rm test`).
+
+## Porting a design or prototype — appearance is HALF the job
+
+"Match the design" means match what it **does**, not only what it looks like. Every expander,
+modal/lightbox, view toggle, disclosure panel and relabelling in the source design ships **with**
+the port. Inert placeholders that render identically and do nothing are not a smaller version of
+the work — they are a different thing, and they come back as rework at the review gate. (V3-P5a:
+§01 and §02 shipped their affordances as inert `<span>`s and had to be rebuilt — see
+`docs/delivery/_active.md`'s **D-behaviour** and `docs/delivery/v3-p5a-institutional/5-design-port-log.md`.)
+
+- **Behaviour is not in the markup.** A design export's handlers are compiled away — the DOM, the
+  inline styles and the outerHTML all show a control that does nothing. **Serve the source design
+  and drive it**, then read back what each control opened, toggled, relabelled or swapped. That is
+  the only reliable source. (`docs/delivery/v3-p5a-institutional/tools/` has the probes:
+  `click.js`, `overlay.js`, `where.js`, `two.js`, `after.js`.)
+- **Inventory the controls per section before building it**, not after. Enumerate every button,
+  link and toggle; drive each one; record what it does and what its second click does.
+- **Assert the behaviour**, don't eyeball it — a driving script that opens each control and checks
+  the result (`drive.js`), plus a **re-diff of the default rendering** so a newly live control has
+  not moved the resting state.
+- **A `<span>` that becomes a `<button>` inherits the UA's `buttonface` grey** — about 15/255
+  against a cream card, which passes a 32/255 pixel diff unnoticed. Give it
+  `background: transparent`. Same for the UA's `normal` line box, which changes the box height.
+- **Source designs have bugs.** Where the behaviour is plainly wrong (a panel that opens far from
+  the control that triggered it; a toggle that relabels itself and does nothing else), port the
+  mechanism, do the sane thing, and **list the deviation** for the operator. Never silently copy
+  the bug; never silently invent a fix.
+- **Anything deliberately left inert is named** in the handoff and the task's state file — never
+  left looking finished.
+- **A captured ground truth is a snapshot, not a spec.** If the source design is still being worked
+  on, re-capture before you diff against it — a green diff against a stale capture is worse than no
+  diff. The same goes for any series you recovered numerically from it: when the source re-renders,
+  **re-recover, don't adapt**. (V3-P5a: the prototype is moving its charts to d3, so all eleven
+  recovered series and the whole `prototype-ground-truth/` folder expire when that lands.)
+- **Charts that animate or draw on interaction break the capture.** A screenshot taken mid-transition
+  diffs as a layout bug. Disable transitions, or wait for them to settle, on **both** sides before
+  capturing — and once charts respond to a pointer, hover/tooltip/brush behaviour is part of "the
+  controls work" too.
 
 ## Guardrails
 

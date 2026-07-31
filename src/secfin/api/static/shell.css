@@ -218,7 +218,11 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 /* ---------- view rail + viewport (pages with 2+ views) ---------- */
 
 .shell-body { display: flex; gap: 20px; align-items: flex-start; }
-.shell-rail { width: 132px; flex: none; position: sticky; top: 74px; }
+/* 178px is the prototype's. At V3-P2's 132px the Institutional view's section jump list wrapped
+   six of its seven labels to two lines and one to three; the prototype wraps three. Widening the
+   rail is also what lands the content column on its designed 694px -- see .page's note in app.css
+   for the full arithmetic. */
+.shell-rail { width: 178px; flex: none; position: sticky; top: 74px; }
 .shell-rail-label {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -276,7 +280,10 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
   color: var(--mono-muted);
   padding: 0 4px;
 }
-.shell-viewport { flex: 1; min-width: 0; max-width: 960px; }
+/* 976 = 694 content + 20 + 262 right rail. The old 960 cap bound BEFORE the content reached its
+   designed width, so raising it is what lets the arithmetic above resolve. On a page with no right
+   rail the viewport simply takes the whole 976. */
+.shell-viewport { flex: 1; min-width: 0; max-width: 976px; }
 
 /* Below 1024px the rail stops being a column and rides above the content as a scrollable strip --
    a 132px sticky column on a phone would eat half the width. */

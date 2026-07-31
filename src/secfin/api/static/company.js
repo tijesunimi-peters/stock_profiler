@@ -762,7 +762,7 @@
 
     // Sections build one at a time, in order, each diffed against its capture before the next
     // starts (P1e). A section with no builder yet renders as an empty shell.
-    var IP_BODIES = { "01": ipSection01 };
+    var IP_BODIES = { "01": ipSection01, "02": ipSection02, "03": ipSection03, "04": ipSection04, "05": ipSection05 };
 
     $("view").innerHTML =
       ipBanner() +
@@ -778,6 +778,7 @@
       }).join("");
 
     ipBindExpanders();
+    ipBindAffordances();
     ipWatchSections();
   }
 
@@ -986,8 +987,8 @@
       '<div class="ip-card-head">' +
       '<h3 class="ip-card-title">Since the last 13F</h3>' +
       '<span class="ip-card-note">faster forms, by EDGAR acceptance time · base and adjusted shown separately</span>' +
-      '<span class="ip-card-link">Base 13F ↗</span>' +
-      '<span class="ip-badge">ƒ derived</span>' +
+      ipLink("Base 13F ↗") +
+      ipBadge("") +
       "</div>" +
       '<div class="ip-tint ip-eq">' + eq + "</div>" +
       '<div class="ip-micro ip-micro--block">Where the register moved · prior quarter to current</div>' +
@@ -1078,7 +1079,7 @@
         .map(function (t) {
           var head = t.derived
             ? '<span class="ip-tile-head"><span class="ip-micro">' + P.esc(t.label) + "</span>" +
-              '<span class="ip-badge">ƒ derived</span></span>'
+              ipBadge("01-share") + "</span>"
             : '<span class="ip-micro">' + P.esc(t.label) + "</span>";
           return (
             '<div class="ip-tile">' + head +
@@ -1088,7 +1089,10 @@
           );
         })
         .join("") +
-      "</div>"
+      "</div>" +
+      /* Full section width, a sibling of the tile grid — the prototype measures 694px for this
+         panel. Inside the tile it is ~200px wide and the source column clips. */
+      ipDerivationPanel("01-share")
     );
   }
 
@@ -1143,6 +1147,1879 @@
       'Change in reported position for the ' + rows.length + ' managers that moved most, prior quarter to current">' +
       parts.join("") +
       "</svg>"
+    );
+  }
+
+  /* ============================ §02 · Register over time & holders ============================
+   * Ground truth: proto-i2.png / proto-i2-open.png + literals-open.json.
+   * ⚠️ EVERY VALUE IS A PROTOTYPE LITERAL. Chart series were RECOVERED from the captured SVG path
+   * data (the same technique as §01's dumbbell), not transcribed by eye. */
+  var IP02 = {
+    quarters5: ["1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+    quarters9: ["1Q24", "3Q24", "1Q25", "3Q25", "1Q26"],   // only every other one is labelled
+    /* Tick labels are carried as LITERALS rather than computed. The prototype's own axis maxima
+     * are fractional (~1814.2 and ~837.8), so computing the quarters from a rounded max lands one
+     * off on two of them -- 210M/629M where the prototype prints 209M/628M. */
+    managers: { values: [1509, 1560, 1612, 1633, 1681], axisMax: 1814, color: "var(--accent)",
+      ticks: ["0", "454", "907", "1361", "1814"] },
+    shares: { values: [722.8, 733.2, 742.6, 764.7, 776.3], axisMax: 838, color: "var(--gaap-color)",
+      ticks: ["0M", "209M", "419M", "628M", "838M"] },
+    netChange: "Net change this quarter: −33 holders",
+    // Stacked manager mix, nine quarters. `share` is the band's own share per quarter.
+    mix: [
+      { label: "Index / passive", pct: "40%", prior: "40%", color: "#c0703a", share: [0.424, 0.4286, 0.4195, 0.4182, 0.4071, 0.4117, 0.4097, 0.4013, 0.3981] },
+      { label: "Active fundamental", pct: "33%", prior: "33%", color: "#3d6a8a", share: [0.2961, 0.3006, 0.3104, 0.3078, 0.3162, 0.3208, 0.3188, 0.3279, 0.3338] },
+      { label: "Hedge fund", pct: "14%", prior: "14%", color: "#8b8579", share: [0.1422, 0.1396, 0.137, 0.139, 0.1429, 0.1396, 0.1403, 0.1396, 0.139] },
+      { label: "Pension & sovereign", pct: "9%", prior: "9%", color: "#a88c5f", share: [0.0994, 0.0942, 0.0948, 0.0968, 0.0968, 0.0922, 0.0935, 0.0942, 0.0942] },
+      { label: "Other", pct: "4%", prior: "4%", color: "#4e4a42", share: [0.0383, 0.037, 0.0383, 0.0383, 0.037, 0.0357, 0.0377, 0.037, 0.0351] },
+    ],
+    mixCaption: "Share of the 13F-reported register by manager type, nine quarters. Colour is categorical identity only.",
+    topTen: { value: "69.9%", note: "Share of 13F-reported holdings held by the ten largest reporting managers." },
+    /* Expander. The prototype puts TWO things behind the bar, not one: a 3x4 grid of per-manager
+     * sparkline panels, then a table of the ten largest. `spark` is each series normalised 0..1,
+     * recovered from the captured SVG path data. */
+    panels: [
+      { name: "Index manager A", cls: "index / passive", shares: "112.4M", delta: "\u2193 \u221216%", color: "#c0703a", spark: [1, 0.689, 0.653, 0.617, 0.639, 0.325, 0.289, 0.256, 0] },
+      { name: "Index manager B", cls: "index / passive", shares: "81.5M", delta: "\u2193 \u22124%", color: "#c0703a", spark: [0.761, 0.497, 1, 0.736, 0.561, 0.294, 0.8, 0.533, 0] },
+      { name: "Index manager C", cls: "index / passive", shares: "37.3M", delta: "\u2191 +9%", color: "#c0703a", spark: [0.203, 0, 0.278, 0.508, 0.694, 0.925, 0.769, 1, 0.933] },
+      { name: "Active manager D", cls: "insurance", shares: "42.9M", delta: "\u2191 +36%", color: "#a88c5f", spark: [0, 0.25, 0.317, 0.381, 0.592, 0.658, 0.722, 0.789, 1] },
+      { name: "Active manager E", cls: "hedge fund", shares: "48.7M", delta: "\u2193 \u221213%", color: "#8b8579", spark: [1, 0.917, 0.833, 0.747, 0.664, 0.253, 0.167, 0.083, 0] },
+      { name: "Pension system F", cls: "sovereign", shares: "51.7M", delta: "\u2193 \u22127%", color: "#a88c5f", spark: [1, 0.706, 0.339, 0.725, 0.358, 0.064, 0.375, 0.081, 0] },
+      { name: "Sovereign fund G", cls: "index / passive", shares: "33.6M", delta: "\u2191 +4%", color: "#c0703a", spark: [0.336, 0, 0.292, 0.522, 0.814, 0.478, 0.769, 1, 0.722] },
+      { name: "Hedge fund H", cls: "quantitative", shares: "37.2M", delta: "\u2191 +21%", color: "#8b8579", spark: [0, 0.064, 0.128, 0.469, 0.531, 0.594, 0.658, 1, 0.947] },
+      { name: "Insurance manager I", cls: "pension", shares: "42.1M", delta: "\u2191 +30%", color: "#a88c5f", spark: [0, 0.181, 0.139, 0.319, 0.547, 0.725, 0.686, 0.867, 1] },
+      { name: "Endowment J", cls: "index / passive", shares: "45.5M", delta: "\u2193 \u221211%", color: "#c0703a", spark: [1, 0.814, 0.594, 0.742, 0.589, 0.406, 0.186, 0, 0.181] },
+      { name: "Quant manager K", cls: "pension", shares: "13.0M", delta: "\u2191 +21%", color: "#a88c5f", spark: [0, 0.089, 0.178, 0.267, 0.583, 0.672, 0.761, 0.85, 1] },
+      { name: "Bank trust L", cls: "hedge fund", shares: "10.9M", delta: "\u2191 +16%", color: "#8b8579", spark: [0, 0.169, 0.375, 0.542, 0.675, 0.494, 0.7, 0.867, 1] },
+    ],
+    panelsNote: "Each panel is rebuilt from that manager\u2019s own 13F-HR filings as they were filed. Panels are scaled independently, so read the trajectory and the printed figures, not the relative heights.",
+    table: [
+      { name: "Index manager A", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-11", shares: "114.8M", pct: "9.11%", delta: "\u2193 \u22128.4%" },
+      { name: "Index manager B", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-14", shares: "82.7M", pct: "6.57%", delta: "\u2193 \u22121.7%" },
+      { name: "Index manager C", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-03", shares: "38.2M", pct: "3.03%", delta: "\u2191 +5.0%" },
+      { name: "Active manager D", meta: "insurance \u00b7 13F-HR \u00b7 13G \u00b7 filed 2026-05-06", shares: "42.2M", pct: "3.35%", delta: "\u2191 +11.7%" },
+      { name: "Active manager E", meta: "hedge fund \u00b7 13F-HR \u00b7 filed 2026-05-09", shares: "48.0M", pct: "3.81%", delta: "\u2193 \u22125.3%" },
+      { name: "Pension system F", meta: "sovereign \u00b7 13F-HR \u00b7 filed 2026-05-13", shares: "50.8M", pct: "4.03%", delta: "\u2191 +1.4%" },
+      { name: "Sovereign fund G", meta: "index / passive \u00b7 13F-HR \u00b7 13G \u00b7 filed 2026-05-02", shares: "34.4M", pct: "2.73%", delta: "\u2191 +8.1%" },
+      { name: "Hedge fund H", meta: "quantitative \u00b7 13F-HR \u00b7 filed 2026-05-05", shares: "37.7M", pct: "2.99%", delta: "\u2191 +14.8%" },
+      { name: "Insurance manager I", meta: "pension \u00b7 13F-HR \u00b7 filed 2026-05-14", shares: "42.4M", pct: "3.37%", delta: "\u2193 \u22122.2%" },
+      { name: "Endowment J", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-03", shares: "44.5M", pct: "3.53%", delta: "\u2191 +4.6%" },
+    ],
+    holdersNote: "Managers are named as they appear on the cover of the 13F-HR; affiliated entities file separately and are not consolidated here.",
+  };
+
+  function ipSection02() {
+    return (
+      '<div class="ip-grid2">' + ip02OverTime() + ip02Mix() + "</div>" +
+      ipExpander(
+        "Also in this section",
+        "each manager over nine quarters · the largest reporting managers",
+        ip02Holders()
+      )
+    );
+  }
+
+  function ip02OverTime() {
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Register over time</h3>' +
+      '<span class="ip-card-note">holder count and reported shares, five quarters</span>' +
+      ipChip("02-register") +
+      ipLink("13F filings ↗") +
+      "</div>" +
+      '<div class="ip-micro ip-micro--tight">Reporting managers</div>' +
+      ipAreaChart(IP02.managers, IP02.quarters5) +
+      '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported (M)</div>' +
+      ipAreaChart(IP02.shares, IP02.quarters5) +
+      '<div class="ip-caption">' + P.esc(IP02.netChange) + "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip02Mix() {
+    var legend = IP02.mix
+      .map(function (m) {
+        return (
+          '<div class="ip-legend-row">' +
+          '<div class="ip-legend-head">' +
+          '<span class="ip-legend-id"><span class="ip-swatch" style="background:' + m.color + '"></span>' +
+          '<span class="ip-legend-label">' + P.esc(m.label) + "</span></span>" +
+          '<span class="ip-legend-pct">' + P.esc(m.pct) + "</span>" +
+          "</div>" +
+          '<div class="ip-bar"><div class="ip-bar-fill" style="width:' + P.esc(m.pct) +
+          ";background:" + m.color + '"></div>' +
+          '<div class="ip-bar-tick" style="left:' + P.esc(m.prior) + '"></div></div>' +
+          '<div class="ip-bar-note">tick: prior quarter <span>' + P.esc(m.prior) + "</span></div>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Manager mix</h3>' +
+      '<span class="ip-card-note">classification assigned by ClearyFi</span>' +
+      ipBadge("02-mix") +
+      "</div>" +
+      ipDerivationPanel("02-mix") +
+      ipStackedArea(IP02.mix, IP02.quarters9) +
+      '<div class="ip-caption">' + P.esc(IP02.mixCaption) + "</div>" +
+      '<div class="ip-legend">' + legend + "</div>" +
+      '<div class="ip-topten">' +
+      '<div class="ip-topten-head"><span class="ip-topten-label">Top ten managers</span>' +
+      '<span class="ip-topten-val"><span>' + P.esc(IP02.topTen.value) + "</span></span></div>" +
+      '<div class="ip-topten-foot"><span class="ip-topten-note"><span>' + P.esc(IP02.topTen.note) +
+      "</span></span>" +
+      ipBadge("02-topten") + "</div>" +
+      ipDerivationPanel("02-topten") +
+      "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip02Panels() {
+    return IP02.panels
+      .map(function (m) {
+        return (
+          '<div class="ip-panel" style="border-left-color:' + m.color + '">' +
+          '<div class="ip-panel-name">' + P.esc(m.name) + "</div>" +
+          '<div class="ip-panel-cls">' + P.esc(m.cls) + "</div>" +
+          ipSparkline(m.spark, m.color) +
+          '<div class="ip-panel-foot"><span>' + P.esc(m.shares) + "</span>" +
+          "<span>" + P.esc(m.delta) + "</span></div>" +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  function ip02Holders() {
+    var panels = ip02Panels();
+    var rows = IP02.table
+      .map(function (r) {
+        return (
+          '<div class="ip-mtab-row">' +
+          '<span class="ip-mtab-id"><span class="ip-mtab-name">' + P.esc(r.name) + "</span>" +
+          '<span class="ip-mtab-meta">' + P.esc(r.meta) + "</span></span>" +
+          '<span class="ip-mtab-num">' + P.esc(r.shares) + "</span>" +
+          '<span class="ip-mtab-num">' + P.esc(r.pct) + "</span>" +
+          '<span class="ip-mtab-num ip-mtab-num--delta">' + P.esc(r.delta) + "</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Largest reporting managers</h3>' +
+      '<span class="ip-card-note">13F-HR, position as of 1Q26 · Δ is quarter over quarter in shares</span>' +
+      ipLink("Read the 13F table ↗") +
+      "</div>" +
+      '<div class="ip-subbar">' +
+      '<span class="ip-micro">Reported shares, nine quarters · one panel per manager</span>' +
+      ipChip("02-panels") +
+      "</div>" +
+      '<div class="ip-panels">' + panels + "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(IP02.panelsNote) + "</span></div>" +
+      '<div class="ip-mtab-head"><span>Manager · classification</span>' +
+      '<span class="ip-r">Shares</span><span class="ip-r">% out</span><span class="ip-r">Δ qoq</span></div>' +
+      rows +
+      '<div class="ip-caption"><span>' + P.esc(IP02.holdersNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* ---------- §02's three chart builders, ported from the prototype's own SVG ----------
+   * Same approach as §01's dumbbell: hand-authored SVG on a fixed viewBox, geometry in viewBox
+   * units, never measuring the container. All constants are the prototype's. */
+
+  // Mini area chart with a five-tick value axis. `preserveAspectRatio="none"` is the prototype's:
+  // it lets the chart stretch to the card without reserving a fixed aspect.
+  function ipAreaChart(spec, labels, W, H) {
+    W = W || 306; H = H || 120;
+    // Read off the prototype at both of the widths it renders: card 306x120, modal 1316x260.
+    var X0 = 52, X1 = W - 14, YB = H - 34, YT = 14;
+    var step = (X1 - X0) / (spec.values.length - 1);
+    var y = function (v) { return YB - (v / spec.axisMax) * (YB - YT); };
+    var ticks = spec.ticks.map(function (label, i) {
+      var ty = YB - (i * (YB - YT)) / 4;
+      return "<g>" +
+        '<line x1="' + X0 + '" y1="' + ty + '" x2="' + X1 + '" y2="' + ty + '" stroke="var(--rule)" stroke-width="1"></line>' +
+        '<text x="44" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="ip-ax">' +
+        P.esc(label) + "</text></g>";
+    });
+    var pts = spec.values.map(function (v, i) {
+      return (i ? "L" : "M") + (X0 + i * step).toFixed(1) + " " + y(v).toFixed(1);
+    }).join(" ");
+    var last = spec.values[spec.values.length - 1];
+    return (
+      '<div class="ip-chart"><svg width="100%" viewBox="0 0 ' + W + " " + H + '" ' +
+      'preserveAspectRatio="none" style="display:block" role="img" aria-label="' +
+      P.esc(labels[0]) + " to " + P.esc(labels[labels.length - 1]) + '">' +
+      ticks.join("") +
+      '<path d="' + pts + " L" + X1 + " " + YB + " L" + X0 + " " + YB +
+      ' Z" fill="var(--accent-wash)" opacity="0.5"></path>' +
+      '<path d="' + pts + '" fill="none" stroke="' + spec.color + '" stroke-width="1.8" stroke-linejoin="round"></path>' +
+      '<circle cx="' + X1 + '" cy="' + y(last).toFixed(3) + '" r="3" fill="' + spec.color + '"></circle>' +
+      labels.map(function (l, i) {
+        return '<text x="' + (X0 + i * step) + '" y="' + (H - 12) + '" text-anchor="middle" class="ip-ax-x">' + P.esc(l) + "</text>";
+      }).join("") +
+      "</svg></div>"
+    );
+  }
+
+  // Nine-quarter 100% stacked area. Bands are separated by a hairline in the CARD's colour rather
+  // than a stroke of their own, which is what keeps the boundaries readable at 0.52 opacity.
+  function ipStackedArea(bands, labels) {
+    var X0 = 42, X1 = 296, YB = 164, YT = 10, W = 306, H = 190;
+    var n = bands[0].share.length;
+    var step = (X1 - X0) / (n - 1);
+    var span = YB - YT;
+    var ticks = [0, 25, 50, 75, 100].map(function (p) {
+      var ty = YB - (p / 100) * span;
+      return '<line x1="' + X0 + '" y1="' + ty + '" x2="' + X1 + '" y2="' + ty + '" stroke="var(--rule)" stroke-width="1"></line>' +
+        '<text x="35" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' + p + "%</text>";
+    });
+    var floor = [];
+    for (var i = 0; i < n; i++) floor.push(YB);
+    var paths = bands.map(function (b) {
+      var top = b.share.map(function (s, i) { return floor[i] - s * span; });
+      var d = top.map(function (yv, i) {
+        return (i ? "L" : "M") + (X0 + i * step).toFixed(1) + " " + yv.toFixed(1);
+      }).join(" ");
+      for (var j = n - 1; j >= 0; j--) d += " L" + (X0 + j * step).toFixed(1) + " " + floor[j].toFixed(1);
+      d += " Z";
+      floor = top;
+      return '<path d="' + d + '" fill="' + b.color +
+        '" opacity="0.52" stroke="var(--bg-card)" stroke-width="0.8"></path>';
+    });
+    // Nine quarters, five labels -- the prototype labels every other one.
+    var xl = labels.map(function (l, i) {
+      return '<text x="' + (X0 + i * 2 * step).toFixed(1) + '" y="182" text-anchor="middle" class="ip-ax2">' +
+        P.esc(l) + "</text>";
+    });
+    return (
+      '<div class="ip-chart"><svg width="100%" viewBox="0 0 ' + W + " " + H + '" ' +
+      'preserveAspectRatio="xMidYMid meet" style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Share of the register by manager type, nine quarters">' +
+      ticks.join("") + paths.join("") + xl.join("") + "</svg></div>"
+    );
+  }
+
+  // Sparkline: the series is normalised to its own range, so it shows shape, never level.
+  function ipSparkline(series, color) {
+    var X0 = 4, X1 = 209, YB = 46, YT = 10, W = 213, H = 52;
+    var step = (X1 - X0) / (series.length - 1);
+    var d = series.map(function (s, i) {
+      return (i ? "L" : "M") + (X0 + i * step).toFixed(1) + " " + (YB - s * (YB - YT)).toFixed(1);
+    }).join(" ");
+    var lastY = (YB - series[series.length - 1] * (YB - YT)).toFixed(1);
+    return (
+      '<svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" ' +
+      'style="display:block" role="img" aria-label="Nine-quarter shape, level not shown">' +
+      '<path d="' + d + " L" + X1 + " " + H + " L" + X0 + " " + H + ' Z" fill="' + color + '" opacity="0.13"></path>' +
+      '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.7"></path>' +
+      '<circle cx="' + X1 + '" cy="' + lastY + '" r="2.8" fill="' + color + '"></circle>' +
+      "</svg>"
+    );
+  }
+
+  /* ============================ §03 · Flows & concentration ============================
+   * Every number below is a prototype literal. The four chart series were RECOVERED NUMERICALLY
+   * from the captured SVG (docs/delivery/v3-p5a-institutional/prototype-ground-truth), never
+   * transcribed by eye — see 5-design-port-log.md for the recovery and its round-trip checks. */
+  var IP03 = {
+    quarters6: ["4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+    /* Diverging flows. `add`/`red` are in millions of shares; the net rule is add − red, which is
+     * what the prototype draws (verified: recomputing the net reproduces all six rule positions to
+     * 1e-4 px). The absolute scale is arbitrary — geometry depends only on each value over the
+     * largest — so these are the capture's pixel heights carried back through a 74.25M maximum. */
+    flows: {
+      add: [46.7915, 33.0622, 74.25, 60.5207, 53.2178, 39.4886],
+      red: [45.5331, 58.4042, 19.7907, 32.6619, 39.5084, 52.3796],
+      ticks: ["+74M", "+37M", "+0M", "−37M", "−74M"],
+    },
+    // The printed table is rounded to one decimal and carried separately from the chart series.
+    flowRows: [
+      ["4Q24", "+46.8M", "−45.5M", "+1.3M"],
+      ["1Q25", "+33.1M", "−58.4M", "−25.3M"],
+      ["2Q25", "+74.2M", "−19.8M", "+54.4M"],
+      ["3Q25", "+60.5M", "−32.7M", "+27.9M"],
+      ["4Q25", "+53.2M", "−39.5M", "+13.7M"],
+      ["1Q26", "+39.5M", "−52.4M", "−12.9M"],
+    ],
+    flowsNote:
+      "Gross adds and reductions are aggregated across every reporting manager. A quarter with " +
+      "large gross flows and a small net is a change of hands, not a change of ownership level.",
+    countLabel: "This quarter by manager count · 1Q26 vs 4Q25",
+    counts: [
+      { label: "New positions", value: "56", note: "10.4M" },
+      { label: "Added to", value: "371", note: "29.0M" },
+      { label: "Reduced", value: "127", note: "45.8M" },
+      { label: "Exited", value: "89", note: "6.6M" },
+    ],
+    countsNote:
+      "Counts are managers; share figures are the aggregate change in reported shares. " +
+      "Direction is described, not scored.",
+    /* Ranked share. `share` is each manager's own percentage — recovered as the first difference
+     * of the cumulative curve's circle centres, which carry full precision in the capture. It
+     * reproduces all ten bar heights to 5e-14. `pct` is what the prototype PRINTS above each bar
+     * (rounded), which is not the same number. */
+    ranked: {
+      rows: [
+        { label: "Idx  A", pct: "15.0%", share: 14.975066, color: "#c0703a" },
+        { label: "Idx  B", pct: "10.8%", share: 10.787787, color: "#c0703a" },
+        { label: "Idx  C", pct: "5.0%", share: 4.982992, color: "#c0703a" },
+        { label: "Act  D", pct: "5.5%", share: 5.504772, color: "#a88c5f" },
+        { label: "Act  E", pct: "6.3%", share: 6.261352, color: "#8b8579" },
+        { label: "Pen  F", pct: "6.6%", share: 6.626597, color: "#a88c5f" },
+        { label: "Sov  G", pct: "4.5%", share: 4.487302, color: "#c0703a" },
+        { label: "HF  H", pct: "4.9%", share: 4.91777, color: "#8b8579" },
+        { label: "Ins  I", pct: "5.5%", share: 5.530861, color: "#a88c5f" },
+        { label: "End  J", pct: "5.8%", share: 5.804795, color: "#c0703a" },
+      ],
+      // The dotted line is its own cumulative series (the same ten managers a quarter earlier),
+      // not a transform of the solid one.
+      prior: [16.7816, 28.1034, 32.9885, 38.046, 44.8276, 51.5517, 55.8046, 60.2299, 66.0345, 71.7241],
+      legend: "─ cumulative share of the register     ··· same managers, prior quarter",
+      ticks: ["0%", "25%", "50%", "75%", "100%"],
+    },
+    rankedNote:
+      "Bars are each manager’s share of the 13F-reported register; the solid line is the running " +
+      "total, the dotted line the same ten managers one quarter earlier. Everything past the " +
+      "tenth manager is the remaining 30%.",
+    effective: { value: "17", of: "1,669" },
+    /* Lorenz. 61 cumulative-share points, then the jump to (100%, 100%) — the last bucket is a
+     * sliver of managers carrying 70% of the register, which is the whole point of the curve. */
+    lorenz: [
+      0.0581, 0.0581, 0.1163, 0.1163, 0.1744, 0.1744, 0.2326, 0.2907, 0.3488, 0.3488, 0.407,
+      0.4651, 0.5233, 0.6395, 0.6977, 0.814, 0.8721, 0.9884, 1.1047, 1.2209, 1.3953, 1.5698,
+      1.7442, 1.9186, 2.093, 2.3256, 2.5581, 2.8488, 3.0814, 3.4302, 3.7209, 4.0698, 4.4186,
+      4.8256, 5.2326, 5.6977, 6.1628, 6.686, 7.2093, 7.7907, 8.4302, 9.0698, 9.7093, 10.4651,
+      11.1628, 11.9767, 12.7907, 13.6628, 14.593, 15.5814, 16.5698, 17.6163, 18.7209, 19.8837,
+      21.0465, 22.3256, 23.6047, 25.0, 26.3953, 27.907, 29.4186,
+    ],
+    hhiNote:
+      "HHI is computed on each manager's share of 13F-reported holdings; the effective number of " +
+      "holders is 10,000 ÷ HHI. Affiliated entities that file separately count separately, which " +
+      "raises the effective number.",
+    domicile: [
+      { label: "United States · Pennsylvania", pct: "26.1%", prior: "25.7%", shares: "200M" },
+      { label: "United States · New York", pct: "21.1%", prior: "20.2%", shares: "162M" },
+      { label: "United States · California", pct: "15.6%", prior: "15.9%", shares: "120M" },
+      { label: "United States · Massachusetts", pct: "10.7%", prior: "11.2%", shares: "82M" },
+      { label: "Canada", pct: "7.4%", prior: "7.4%", shares: "57M" },
+      { label: "United Kingdom", pct: "6.1%", prior: "6%", shares: "47M" },
+      { label: "Switzerland", pct: "5.2%", prior: "5.4%", shares: "40M" },
+      { label: "Singapore", pct: "4.0%", prior: "3.9%", shares: "30M" },
+      { label: "Norway · sovereign fund", pct: "1.6%", prior: "1.7%", shares: "12M" },
+      { label: "Rest of world", pct: "2.2%", prior: "2.2%", shares: "17M" },
+    ],
+    domicileNote:
+      "Domicile is the business address on the 13F-HR cover page — where the manager files from, " +
+      "not where the capital originates.",
+    domicileTick: " The tick on each bar is the same group one quarter earlier.",
+    /* Peer matrix. Each cell carries BOTH the printed percentage and the capture's own
+     * fill-opacity: the opacity is not a linear function of the rounded percentage. The label
+     * flips to the card colour above 0.47 — a rule checked against all 30 cells, 0 misses. */
+    peers: ["AVGO", "NVDA", "AMD", "INTC", "TXN", "QCOM"],
+    matrix: [
+      [null, [56, 0.4443], [51, 0.3867], [28, 0.152], [61, 0.4913], [25, 0.1242]],
+      [[65, 0.5383], null, [52, 0.4039], [29, 0.1587], [60, 0.4837], [26, 0.1306]],
+      [[62, 0.5017], [55, 0.4308], null, [33, 0.2036], [61, 0.4934], [23, 0.12]],
+      [[65, 0.5366], [58, 0.456], [63, 0.5136], null, [63, 0.5165], [25, 0.1207]],
+      [[64, 0.5239], [55, 0.4249], [53, 0.4067], [29, 0.1579], null, [24, 0.12]],
+      [[65, 0.5347], [57, 0.4553], [48, 0.3537], [28, 0.1474], [57, 0.4553], null],
+    ],
+    matrixNote:
+      "Cell is the share of the ROW issuer's reporting managers that also report the column " +
+      "issuer, so the matrix is deliberately asymmetric — a smaller register overlapping a larger " +
+      "one reads high in one direction and low in the other.",
+    overlapLabel: "Largest holders, and how many peers they also hold",
+    overlap: [
+      { name: "Index manager A", peers: "4 of 5 peers", pct: "9.11%" },
+      { name: "Index manager B", peers: "5 of 5 peers", pct: "6.57%" },
+      { name: "Index manager C", peers: "3 of 5 peers", pct: "3.03%" },
+      { name: "Active manager D", peers: "4 of 5 peers", pct: "3.35%" },
+      { name: "Active manager E", peers: "4 of 5 peers", pct: "3.81%" },
+    ],
+    overlapNote:
+      "Overlap counts managers whose 13F-HR reports both issuers in the same quarter. A high " +
+      "overlap usually reflects index construction rather than a view on either company.",
+    attribution: [
+      { label: "13F-reported institutional", value: "767M", pct: "60.8%", src: "13F-HR" },
+      { label: "Insider & affiliate", value: "80M", pct: "6.4%", src: "DEF 14A, Forms 3/4/5" },
+      { label: "Strategic 13D stakes", value: "0M", pct: "0.0%", src: "SC 13D" },
+      { label: "Unreported residual", value: "413M", pct: "32.8%", src: "no filing obligation" },
+    ],
+    residualNote:
+      "The residual is what no filing accounts for — retail holders and managers below the $100M " +
+      "13(f) threshold. It is a remainder, not a measurement.",
+    stable: { weighted: "44%", first: "13%" },
+    cohorts: [
+      { label: "Held 8+ quarters", pct: "27%", weight: "1.00" },
+      { label: "4–7 quarters", pct: "34%", weight: "0.50" },
+      { label: "2–3 quarters", pct: "26%", weight: "0.25" },
+      { label: "First quarter held", pct: "13%", weight: "0.00" },
+    ],
+    cohortsNote:
+      "Stable-capital share weights each cohort by tenure: 8+ quarters counts fully, 4–7 at half, " +
+      "2–3 at a quarter, first-quarter holders at zero. The weights are ours and shown so they " +
+      "can be argued with.",
+  };
+
+  function ipSection03() {
+    return (
+      ip03Flows() +
+      ip03WhoHolds() +
+      '<div class="ip-grid2 ip-grid2--tight">' + ip03Concentration() + "</div>" +
+      ipExpander(
+        "Also in this section",
+        "manager domicile · peer overlap · where every share sits · stable-capital share",
+        '<div class="ip-grid2">' + ip03Domicile() + ip03Overlap() + "</div>" +
+          '<div class="ip-grid2 ip-grid2--tight">' + ip03Attribution() + ip03Stable() + "</div>"
+      )
+    );
+  }
+
+  function ip03Flows() {
+    var rows = IP03.flowRows
+      .map(function (r) {
+        return (
+          '<div class="ip-flowtab-row">' +
+          '<span class="ip-flowtab-q">' + P.esc(r[0]) + "</span>" +
+          '<span class="ip-flowtab-v">' + P.esc(r[1]) + "</span>" +
+          '<span class="ip-flowtab-v">' + P.esc(r[2]) + "</span>" +
+          '<span class="ip-flowtab-v ip-flowtab-v--net">' + P.esc(r[3]) + "</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    var tiles = IP03.counts
+      .map(function (c) {
+        return (
+          '<div class="ip-ftile">' +
+          '<span class="ip-micro">' + P.esc(c.label) + "</span>" +
+          '<span class="ip-ftile-val">' + P.esc(c.value) + "</span>" +
+          '<span class="ip-ftile-note"><span>' + P.esc(c.note) + "</span> of shares</span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head">' +
+      '<h3 class="ip-card-title">Position changes over time</h3>' +
+      '<span class="ip-card-note">shares added above the axis, reduced below · rule marks the net</span>' +
+      ipChip("03-flows") +
+      ipLink("13F filings ↗") +
+      "</div>" +
+      ipDivergingBars(IP03.flows, IP03.quarters6) +
+      '<div class="ip-flowtab-head"><span>Quarter</span><span class="ip-r">Added</span>' +
+      '<span class="ip-r">Reduced</span><span class="ip-r">Net</span></div>' +
+      rows +
+      '<div class="ip-caption">' + P.esc(IP03.flowsNote) + "</div>" +
+      '<div class="ip-micro ip-micro--block">' + P.esc(IP03.countLabel) + "</div>" +
+      '<div class="ip-ftiles">' + tiles + "</div>" +
+      '<div class="ip-caption">' + P.esc(IP03.countsNote) + "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip03WhoHolds() {
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head">' +
+      '<h3 class="ip-card-title">Who holds what</h3>' +
+      '<span class="ip-card-note">ranked manager share of the 13F-reported register · 1Q26</span>' +
+      '<div class="ip-toggles" data-ip-group="03-ranked">' +
+      '<button type="button" class="ip-toggle ip-toggle--on" data-ip-view="cumulative" aria-pressed="true">Cumulative share</button>' +
+      '<button type="button" class="ip-toggle" data-ip-view="treemap" aria-pressed="false">Treemap</button>' +
+      "</div>" +
+      ipChip("03-ranked") +
+      ipLink("13F table ↗") +
+      "</div>" +
+      '<div data-ip-chart="03-ranked">' + ipRankedShare(IP03.ranked) + "</div>" +
+      '<div class="ip-caption" data-ip-note="03-ranked">' + P.esc(IP03.rankedNote) + "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip03Concentration() {
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">How concentrated the register is</h3>' +
+      '<span class="ip-card-note">HHI · effective holders · Lorenz</span>' +
+      "</div>" +
+      '<div class="ip-stat-row ip-stat-row--baseline">' +
+      '<div class="ip-stat ip-stat--live" role="button" tabindex="0" data-ip-trend="effective" aria-expanded="false">' +
+      '<span class="ip-micro">Effective holders</span>' +
+      '<span class="ip-stat-val"><span>' + P.esc(IP03.effective.value) + "</span></span>" +
+      '<span class="ip-stat-note">of <span>' + P.esc(IP03.effective.of) +
+      "</span> reporting · click for the trend and the constituents</span>" +
+      "</div>" +
+      "</div>" +
+      ipTrendPanel("effective") +
+      ipLorenz(IP03.lorenz) +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP03.hhiNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip03Domicile() {
+    var rows = IP03.domicile
+      .map(function (d) {
+        return (
+          '<div class="ip-dom-row">' +
+          '<span class="ip-dom-label"><span>' + P.esc(d.label) + "</span></span>" +
+          '<span class="ip-track"><span class="ip-track-fill" style="width:' + P.esc(d.pct) + '"></span>' +
+          '<span class="ip-track-tick" style="left:' + P.esc(d.prior) + '"></span></span>' +
+          '<span class="ip-dom-val"><span>' + P.esc(d.shares) + "</span></span>" +
+          '<span class="ip-dom-pct"><span>' + P.esc(d.pct) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head">' +
+      '<h3 class="ip-card-title">Manager domicile</h3>' +
+      '<span class="ip-card-note">13F-HR cover page address</span>' +
+      "</div>" +
+      rows +
+      '<div class="ip-caption"><span>' + P.esc(IP03.domicileNote) + "</span>" +
+      P.esc(IP03.domicileTick) + "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip03Overlap() {
+    var rows = IP03.overlap
+      .map(function (o) {
+        return (
+          '<div class="ip-peer-row">' +
+          '<span class="ip-peer-name"><span>' + P.esc(o.name) + "</span></span>" +
+          '<span class="ip-peer-peers"><span>' + P.esc(o.peers) + "</span></span>" +
+          '<span class="ip-peer-pct"><span>' + P.esc(o.pct) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--split">' +
+      '<div class="ip-head-group">' +
+      '<h3 class="ip-card-title">Overlap with sector peers</h3>' +
+      '<span class="ip-card-note">managers reporting both issuers</span>' +
+      "</div>" +
+      '<div class="ip-toggles" data-ip-group="03-overlap">' +
+      '<button type="button" class="ip-toggle ip-toggle--on" data-ip-view="matrix" aria-pressed="true">Peer matrix</button>' +
+      '<button type="button" class="ip-toggle" data-ip-view="sets" aria-pressed="false">Set intersections</button>' +
+      ipChip("03-matrix") +
+      "</div>" +
+      "</div>" +
+      '<div data-ip-chart="03-overlap">' + ipPeerMatrix(IP03.peers, IP03.matrix) + "</div>" +
+      '<div class="ip-caption" data-ip-note="03-overlap">' + P.esc(IP03.matrixNote) + "</div>" +
+      '<div class="ip-micro ip-micro--peers">' + P.esc(IP03.overlapLabel) + "</div>" +
+      rows +
+      '<div class="ip-caption"><span>' + P.esc(IP03.overlapNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip03Attribution() {
+    var rows = IP03.attribution
+      .map(function (a) {
+        return (
+          '<div class="ip-attr">' +
+          '<div class="ip-attr-head">' +
+          '<span class="ip-attr-label"><span>' + P.esc(a.label) + "</span></span>" +
+          '<span class="ip-attr-val"><span>' + P.esc(a.value) + "</span> · <span>" +
+          P.esc(a.pct) + "</span></span>" +
+          "</div>" +
+          '<div class="ip-attr-bar"><div class="ip-attr-fill" style="width:' + P.esc(a.pct) + '"></div></div>' +
+          '<div class="ip-attr-src"><span>' + P.esc(a.src) + "</span></div>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Where every share sits</h3>' +
+      '<span class="ip-card-note">shares outstanding, fully attributed</span>' +
+      "</div>" +
+      rows +
+      '<div class="ip-attr-foot">' +
+      '<span class="ip-attr-foot-label">Residual over time</span>' +
+      '<button type="button" class="ip-minibtn" data-ip-trend="residual" aria-expanded="false">Trend</button>' +
+      "</div>" +
+      ipTrendPanel("residual") +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP03.residualNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip03Stable() {
+    var rows = IP03.cohorts
+      .map(function (c) {
+        return (
+          '<div class="ip-coh-row">' +
+          '<span class="ip-coh-label"><span>' + P.esc(c.label) + "</span></span>" +
+          '<span class="ip-coh-bar"><span class="ip-coh-fill" style="width:' + P.esc(c.pct) + '"></span></span>' +
+          '<span class="ip-coh-share"><span>' + P.esc(c.pct) + "</span></span>" +
+          '<span class="ip-coh-weight"><span>' + P.esc(c.weight) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Stable-capital share</h3>' +
+      '<span class="ip-card-note">register weighted by holding tenure</span>' +
+      "</div>" +
+      '<div class="ip-stat-row">' +
+      '<div class="ip-stat">' +
+      '<span class="ip-micro">Tenure-weighted stable</span>' +
+      '<span class="ip-stat-val ip-stat-val--sm"><span>' + P.esc(IP03.stable.weighted) + "</span></span>" +
+      "</div>" +
+      '<div class="ip-stat">' +
+      '<span class="ip-micro">First-quarter holders</span>' +
+      '<span class="ip-stat-val ip-stat-val--sm ip-stat-val--plain"><span>' +
+      P.esc(IP03.stable.first) + "</span></span>" +
+      "</div>" +
+      "</div>" +
+      '<div class="ip-coh-head"><span>Cohort</span><span></span>' +
+      '<span class="ip-r">Share</span><span class="ip-r">Weight</span></div>' +
+      rows +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP03.cohortsNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* ============================ §04 · Ownership & stewardship ============================
+   * Every value is a prototype literal. The lane chart's x positions were RECOVERED from the
+   * captured SVG (the prototype maps filing dates to a time axis we do not have), like §01's
+   * dumbbell — read back, never invented. */
+  var IP04 = {
+    // Quarter gridlines: x and label, straight off the capture.
+    laneGrid: [[228.3412, "2025-03"], [344.911, "2025-06"], [461.4807, "2025-09"], [576.7834, "2025-12"]],
+    lanes: [
+      { name: "Index manager B", form: "SC 13G",
+        events: [[215.6706, "10.3%", "initial"], [399.3947, "11.3%", "amendment 1"], [622.3976, "11.6%", "amendment 2"]] },
+      { name: "Activist partners LP", form: "SC 13G",
+        events: [[223.273, "12.9%", "initial"], [389.2582, "12.5%", "amendment 1"], [630, "13.7%", "amendment 2"]] },
+      { name: "Strategic holder Inc.", form: "SC 13G",
+        events: [[203, "7.1%", "initial"], [348.7122, "8.1%", "amendment 1"], [448.8101, "7.7%", "amendment 2"], [559.0445, "7.4%", "amendment 3"]] },
+    ],
+    laneNote:
+      "Each lane is one holder above the 5% threshold; the dot is a filing and the figure above it " +
+      "the stake reported in that filing. 13D and 13G are the holder\u2019s own categorical choice of " +
+      "form, shown as identity, not judgment.",
+    filings: [
+      { name: "Index manager B", purpose: "Passive — held in the ordinary course of business",
+        latest: "Amendment 3 · 2026-03-23", form: "SC 13G", stake: "11.6%" },
+      { name: "Activist partners LP", purpose: "Passive — held in the ordinary course of business",
+        latest: "Amendment 1 · 2026-02-02", form: "SC 13G", stake: "13.7%" },
+      { name: "Strategic holder Inc.", purpose: "Passive — held in the ordinary course of business",
+        latest: "Amendment 5 · 2026-06-08", form: "SC 13G", stake: "7.4%" },
+    ],
+    filingsNote:
+      "13D and 13G are categorical filing choices, not a judgment about the holder. Purpose language " +
+      "is quoted in condensed form from Item 4.",
+    voteTiles: [
+      ["Say-on-pay support", "59.5%", true],
+      ["Director withhold", "8.3%", true],
+      ["Turnout", "80.2%", false],
+      ["Ballot items", "5", false],
+    ],
+    // Ordered by the against share, which is what the micro-label above them says.
+    voteItems: [
+      { item: "Report on political spending", who: "shareholder", outcome: "not approved", forPct: "16.4%", against: "83.6%", abstain: "0.0%" },
+      { item: "Say-on-pay (advisory)", who: "management", outcome: "approved", forPct: "59.5%", against: "40.5%", abstain: "0.0%" },
+      { item: "Election of directors (slate)", who: "management", outcome: "all elected", forPct: "91.7%", against: "8.3%", abstain: "0.0%" },
+      { item: "Ratification of auditor", who: "management", outcome: "approved", forPct: "97.3%", against: "2.4%", abstain: "0.3%" },
+    ],
+    voteItemsNote:
+      "Every bar is 100% of the shares voted on that item, split for / against / abstain-or-withheld, " +
+      "ordered by the against share. Totals are the certified figures in 8-K Item 5.07.",
+    dissenters: [
+      ["Pension system F", "against say-on-pay", "18.5M"],
+      ["Index manager C", "withheld from 2 directors", "9.6M"],
+      ["Index manager B", "for the shareholder proposal", "36.3M"],
+      ["Index manager A", "against auditor ratification", "27.4M"],
+    ],
+    votingNote:
+      "Outcomes are certified in 8-K Item 5.07. Manager-level votes come from each fund's N-PX and " +
+      "are reported for the most recent annual meeting.",
+    voteWeighted: [
+      ["Voted with management", "46%", "var(--accent)"],
+      ["Voted against at least one item", "40%", "var(--gaap-color)"],
+      ["No N-PX record", "14%", "var(--ink-soft)"],
+    ],
+    dissentShares: "310M",
+    voteWeightedNote:
+      "Shares are matched from 13F-HR to the filing manager's N-PX record for the most recent annual " +
+      "meeting, and reconciled against the certified outcome in 8-K Item 5.07 — dissent here is at " +
+      "least the institutional portion of the largest against-vote on the ballot. Managers with no " +
+      "N-PX on file, including non-fund managers not subject to it, are reported separately rather " +
+      "than assumed either way.",
+    activism: {
+      head: "No SC 13D on file — every holder above the 5% threshold has filed on Schedule 13G.",
+      sub: "3 beneficial ownership filings currently on file, all passive · no cooperation or standstill agreement filed as an 8-K exhibit.",
+      note:
+        "Item 4 is the holder's own stated purpose. Amendments are required when that purpose " +
+        "materially changes — the sequence is the record, not an inference.",
+    },
+  };
+
+  function ipSection04() {
+    return (
+      ip04Beneficial() +
+      ip04Voting() +
+      ipExpander(
+        "Also in this section",
+        "vote-weighted ownership · the activism trail",
+        '<div class="ip-vw-wrap">' + ip04VoteWeighted() + "</div>" + ip04Activism()
+      )
+    );
+  }
+
+  function ip04Beneficial() {
+    var rows = IP04.filings
+      .map(function (f) {
+        return (
+          '<div class="ip-bo-row">' +
+          '<div class="ip-bo-id">' +
+          '<span class="ip-bo-name"><span>' + P.esc(f.name) + "</span></span>" +
+          '<span class="ip-bo-purpose"><span>' + P.esc(f.purpose) + "</span></span>" +
+          '<span class="ip-bo-latest"><span>' + P.esc(f.latest) + "</span></span>" +
+          "</div>" +
+          '<span class="ip-bo-form"><span>' + P.esc(f.form) + "</span></span>" +
+          '<span class="ip-bo-stake"><span>' + P.esc(f.stake) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Beneficial ownership filings</h3>' +
+      '<span class="ip-card-note">SC 13D / 13G · above the 5% threshold</span>' +
+      ipLink("Read the filings ↗", IP_EDGAR_SC13) +
+      "</div>" +
+      '<div class="ip-subbar ip-subbar--tight">' +
+      '<span class="ip-micro">Filing history · stake as reported in each filing</span>' +
+      ipChip("04-lanes") +
+      "</div>" +
+      '<div data-ip-chart="04-lanes">' + ipLaneChart(IP04, 660, 278) + "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(IP04.laneNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--block">Current filings on file</div>' +
+      rows +
+      '<div class="ip-caption">' + P.esc(IP04.filingsNote) + "</div>" +
+      "</div>"
+    );
+  }
+
+  function ip04Voting() {
+    var tiles = IP04.voteTiles
+      .map(function (t) {
+        return (
+          '<div class="ip-vtile">' +
+          '<span class="ip-micro">' + P.esc(t[0]) + "</span>" +
+          '<span class="ip-vtile-val' + (t[2] ? "" : " ip-vtile-val--plain") + '"><span>' +
+          P.esc(t[1]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    var items = IP04.voteItems
+      .map(function (v) {
+        return (
+          '<div class="ip-vote">' +
+          '<div class="ip-vote-head">' +
+          '<span class="ip-vote-item"><span>' + P.esc(v.item) + "</span></span>" +
+          '<span class="ip-vote-meta"><span>' + P.esc(v.who) + "</span> · <span>" +
+          P.esc(v.outcome) + "</span></span>" +
+          "</div>" +
+          '<div class="ip-vote-bar">' +
+          '<div class="ip-vote-for" style="width:' + P.esc(v.forPct) + '"></div>' +
+          '<div class="ip-vote-against" style="width:' + P.esc(v.against) + '"></div>' +
+          '<div class="ip-vote-abstain" style="width:' + P.esc(v.abstain) + '"></div>' +
+          "</div>" +
+          '<div class="ip-vote-legend"><span>for <span>' + P.esc(v.forPct) + "</span></span>" +
+          "<span>against <span>" + P.esc(v.against) + "</span></span>" +
+          "<span>abstain / withheld <span>" + P.esc(v.abstain) + "</span></span></div>" +
+          "</div>"
+        );
+      })
+      .join("");
+    var dissent = IP04.dissenters
+      .map(function (d) {
+        return (
+          '<div class="ip-vm-row">' +
+          '<span class="ip-vm-name"><span>' + P.esc(d[0]) + "</span></span>" +
+          '<span class="ip-vm-how"><span>' + P.esc(d[1]) + "</span></span>" +
+          '<span class="ip-vm-shares"><span>' + P.esc(d[2]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Voting behavior</h3>' +
+      '<span class="ip-card-note">8-K Item 5.07 outcomes · manager-level votes from N-PX</span>' +
+      ipLink("Read Item 5.07 ↗", IP_EDGAR_8K) +
+      ipLink("N-PX ↗", IP_EDGAR_NPX) +
+      "</div>" +
+      '<div class="ip-vtiles">' + tiles + "</div>" +
+      '<div class="ip-micro ip-micro--votes">How each item was voted · ordered by the against share</div>' +
+      items +
+      '<div class="ip-caption"><span>' + P.esc(IP04.voteItemsNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--dissent">Managers voting against management</div>' +
+      dissent +
+      '<div class="ip-caption"><span>' + P.esc(IP04.votingNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip04VoteWeighted() {
+    var rows = IP04.voteWeighted
+      .map(function (r) {
+        return (
+          '<div class="ip-vw">' +
+          '<div class="ip-vw-head"><span class="ip-vw-label"><span>' + P.esc(r[0]) + "</span></span>" +
+          '<span class="ip-vw-val"><span>' + P.esc(r[1]) + "</span></span></div>" +
+          '<div class="ip-vw-bar"><div class="ip-vw-fill" style="width:' + P.esc(r[1]) +
+          ";background:" + r[2] + '"></div></div>' +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Vote-weighted ownership</h3>' +
+      '<span class="ip-card-note">13F shares matched to the manager\'s N-PX record</span>' +
+      "</div>" +
+      rows +
+      '<div class="ip-vw-foot">' +
+      '<span class="ip-vw-foot-label">Shares behind a dissenting vote</span>' +
+      '<span class="ip-vw-foot-val"><span>' + P.esc(IP04.dissentShares) + "</span></span>" +
+      "</div>" +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP04.voteWeightedNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip04Activism() {
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Activism trail</h3>' +
+      '<span class="ip-card-note">SC 13D amendments · 8-K Item 1.01 exhibits</span>' +
+      ipLink("Read the 13D chain ↗", IP_EDGAR_SC13) +
+      "</div>" +
+      '<div class="ip-act">' +
+      '<span class="ip-act-head"><span>' + P.esc(IP04.activism.head) + "</span></span>" +
+      '<span class="ip-act-sub"><span>' + P.esc(IP04.activism.sub) + "</span></span>" +
+      "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(IP04.activism.note) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* One lane per 5%-threshold holder: a line through that holder's filings, a dot per filing, the
+   * stake above it and the amendment label below. Event labels alternate 16/32px below the lane so
+   * neighbouring ones cannot collide, and the last label right-anchors at the frame when its dot is
+   * near the right edge -- both rules reproduce all four of the prototype's lanes exactly. */
+  function ipLaneChart(spec, W, H) {
+    var k = W / 660;
+    var grid = spec.laneGrid
+      .map(function (g) {
+        var x = g[0] * k;
+        return '<line x1="' + x + '" y1="16" x2="' + x + '" y2="' + (H - 20) +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + x + '" y="' + (H - 6) + '" text-anchor="middle" class="ip-ax2">' +
+          P.esc(g[1]) + "</text>";
+      })
+      .join("");
+    var lanes = spec.lanes
+      .map(function (lane, li) {
+        var y = 60 + li * 76;
+        var xs = lane.events.map(function (e) { return e[0] * k; });
+        var last = xs.length - 1;
+        return (
+          '<text x="' + 175 * k + '" y="' + (y - 4) + '" text-anchor="end" class="ip-lane-name">' +
+          P.esc(lane.name) + "</text>" +
+          '<text x="' + 175 * k + '" y="' + (y + 15) + '" text-anchor="end" class="ip-ax2">' +
+          P.esc(lane.form) + "</text>" +
+          '<line x1="' + xs[0] + '" y1="' + y + '" x2="' + xs[last] + '" y2="' + y +
+          '" stroke="var(--accent)" stroke-width="1.6" opacity="0.4"></line>' +
+          lane.events.map(function (e, i) {
+            var x = xs[i];
+            var isLast = i === last;
+            var dot = isLast
+              ? '<circle cx="' + x + '" cy="' + y + '" r="5" fill="var(--accent)" stroke="var(--accent)" stroke-width="1.6"></circle>'
+              : '<circle cx="' + x + '" cy="' + y + '" r="4" fill="var(--bg-card)" stroke="var(--accent)" stroke-width="1.6"></circle>';
+            var below = i % 2 ? 32 : 16;
+            var lbl = isLast && e[0] > 600
+              ? '<text x="' + (658 * k) + '" y="' + (y + below) + '" text-anchor="end" class="ip-lane-ev">' + P.esc(e[2]) + "</text>"
+              : '<text x="' + x + '" y="' + (y + below) + '" text-anchor="middle" class="ip-lane-ev">' + P.esc(e[2]) + "</text>";
+            return dot +
+              '<text x="' + x + '" y="' + (y - 12) + '" text-anchor="middle" class="ip-lane-pct">' +
+              P.esc(e[1]) + "</text>" + lbl;
+          }).join("")
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="One lane per holder above the 5% threshold, a dot per filing">' +
+      grid + lanes + "</svg></div>"
+    );
+  }
+
+  /* ============================ §05 · Holder behavior ============================
+   * Prototype literals throughout. The cohort heatmap carries BOTH the printed retention and the
+   * capture's own fill-opacity per cell: the opacity is computed from the unrounded share, so it
+   * is not recoverable from the label (same as §03's peer matrix). */
+  var IP05 = {
+    stats: [
+      ["Register turnover", "26.1%", true, "05-turnover"],
+      ["Median holding period", "5.9 quarters", false, "05-tenure"],
+    ],
+    cohorts: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+    // Triangular: cohort r has 9-r observed quarters. [printed value, fill-opacity].
+    retention: [
+      [[100, 0.7], [97, 0.6796], [81, 0.5807], [71, 0.5172], [67, 0.494], [54, 0.4173], [46, 0.3677], [41, 0.3364], [40, 0.3273]],
+      [[100, 0.7], [83, 0.5962], [79, 0.5686], [72, 0.524], [64, 0.4744], [54, 0.4154], [52, 0.4035], [48, 0.3797]],
+      [[100, 0.7], [82, 0.5913], [73, 0.5302], [67, 0.4935], [63, 0.4682], [51, 0.3932], [44, 0.3502]],
+      [[100, 0.7], [88, 0.6255], [74, 0.5393], [60, 0.4492], [54, 0.4123], [46, 0.3665]],
+      [[100, 0.7], [84, 0.5999], [74, 0.5358], [67, 0.4969], [64, 0.4772]],
+      [[100, 0.7], [83, 0.5941], [78, 0.565], [71, 0.519]],
+      [[100, 0.7], [80, 0.5781], [69, 0.508]],
+      [[100, 0.7], [82, 0.589]],
+      [[100, 0.7]],
+    ],
+    retentionNote:
+      "Each row is the managers that first appeared in the register that quarter; each cell is the " +
+      "share of that cohort still reporting a position N quarters later. A manager dropping below " +
+      "the $100M reporting threshold reads as an exit.",
+    tenure: [
+      ["Held 8+ quarters", "27%"],
+      ["4–7 quarters", "34%"],
+      ["2–3 quarters", "26%"],
+      ["First quarter held", "13%"],
+    ],
+    tenureNote:
+      "Computed by matching manager CIKs across consecutive 13F-HR filings. Managers falling below " +
+      "the reporting threshold appear as exits.",
+    funds: [
+      { fund: "Balanced allocation fund", manager: "Index manager B", asOf: "2026-04-30", bar: "26%", ofFund: "0.98%", shares: "15.46M", delta: "↑ +2.1%" },
+      { fund: "Dividend appreciation fund", manager: "Active manager D", asOf: "2026-04-30", bar: "46%", ofFund: "1.74%", shares: "9.80M", delta: "↓ −6.9%" },
+      { fund: "Total market index fund", manager: "Insurance manager I", asOf: "2026-04-30", bar: "75%", ofFund: "2.86%", shares: "4.14M", delta: "↓ −15.8%" },
+      { fund: "Large-cap growth fund", manager: "Index manager A", asOf: "2026-04-30", bar: "95%", ofFund: "3.62%", shares: "23.78M", delta: "↑ +15.2%" },
+    ],
+    fundsNote:
+      "N-PORT reports monthly holdings at the individual fund level, more granular and more current " +
+      "than the manager-level 13F. Share counts shown; position values in N-PORT are market-derived " +
+      "and excluded here.",
+    fundsNote2:
+      "Share of fund is the position as a percentage of the fund\u2019s reported portfolio, from the " +
+      "same N-PORT filing.",
+  };
+
+  function ipSection05() {
+    /* The expander bar and what it reveals are GRID ITEMS here, not siblings after the grid — the
+     * prototype gives the bar `grid-column: 1 / -1` and lets the grid's own 14px gap space it.
+     * Outside the grid it loses that gap, and the whole lower half of the section rides 14px high. */
+    return (
+      '<div class="ip-grid1">' +
+      ip05Persistence() +
+      ipExpander("Also in this section", "fund-level N-PORT positions, monthly", ip05Funds()) +
+      "</div>"
+    );
+  }
+
+  function ip05Persistence() {
+    var stats = IP05.stats
+      .map(function (t) {
+        return (
+          '<div class="ip-stat">' +
+          '<span class="ip-micro">' + P.esc(t[0]) + "</span>" +
+          '<span class="ip-stat-val ip-stat-val--19' + (t[2] ? "" : " ip-stat-val--plain") +
+          '"><span>' + P.esc(t[1]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    var tenure = IP05.tenure
+      .map(function (t) {
+        return (
+          '<div class="ip-coh-row ip-coh-row--3">' +
+          '<span class="ip-coh-label"><span>' + P.esc(t[0]) + "</span></span>" +
+          '<span class="ip-coh-bar"><span class="ip-coh-fill" style="width:' + P.esc(t[1]) + '"></span></span>' +
+          '<span class="ip-coh-share"><span>' + P.esc(t[1]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Holder persistence</h3>' +
+      '<span class="ip-card-note">CIK matched across consecutive 13F-HR filings</span>' +
+      ipBadge("05-turnover") + ipBadge("05-tenure") +
+      "</div>" +
+      '<div class="ip-stat-row ip-stat-row--05">' + stats + "</div>" +
+      '<div class="ip-subbar ip-subbar--tight">' +
+      '<span class="ip-micro">Retention by entry cohort · % of cohort still reporting</span>' +
+      ipChip("05-cohorts") +
+      "</div>" +
+      ipCohortGrid(IP05, 660, 274) +
+      '<div class="ip-caption"><span>' + P.esc(IP05.retentionNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--block">Register today, by tenure</div>' +
+      tenure +
+      '<div class="ip-caption"><span>' + P.esc(IP05.tenureNote) + "</span></div>" +
+      ipDerivationPanel("05-turnover") +
+      ipDerivationPanel("05-tenure") +
+      "</div>"
+    );
+  }
+
+  function ip05Funds() {
+    var rows = IP05.funds
+      .map(function (f) {
+        return (
+          '<div class="ip-fund-row">' +
+          '<span class="ip-fund-id">' +
+          '<span class="ip-fund-name"><span>' + P.esc(f.fund) + "</span></span>" +
+          '<span class="ip-fund-meta"><span>' + P.esc(f.manager) + "</span> · as of <span>" +
+          P.esc(f.asOf) + "</span></span>" +
+          '<span class="ip-fund-weight">' +
+          '<span class="ip-fund-bar"><span class="ip-fund-fill" style="width:' + P.esc(f.bar) + '"></span></span>' +
+          '<span class="ip-fund-pct"><span>' + P.esc(f.ofFund) + "</span> of fund</span>" +
+          "</span></span>" +
+          '<span class="ip-fund-shares"><span>' + P.esc(f.shares) + "</span></span>" +
+          '<span class="ip-fund-delta"><span>' + P.esc(f.delta) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Fund-level positions</h3>' +
+      '<span class="ip-card-note">N-PORT · monthly, named funds</span>' +
+      ipLink("Read N-PORT ↗", IP_EDGAR_NPORT) +
+      "</div>" +
+      rows +
+      '<div class="ip-caption"><span>' + P.esc(IP05.fundsNote) + "</span> <span>" +
+      P.esc(IP05.fundsNote2) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* Cohort retention heatmap: one row per entry cohort, one cell per quarter since, the cell's
+   * wash carrying the retention. Triangular by construction -- a cohort has no future. The label
+   * flips to the card colour above 0.46 opacity, the threshold that separates the capture's own
+   * two groups (its darkest --ink cell is 0.449, its lightest --bg-card cell 0.468). */
+  function ipCohortGrid(spec, W, H) {
+    var k = W / 660;
+    var X0 = 63 * k, CW = 63 * k, STEP = 65 * k, Y0 = 31, RH = 24, RSTEP = 26;
+    var heads = spec.retention[0]
+      .map(function (_, i) {
+        return '<text x="' + (X0 + i * STEP + CW / 2) + '" y="20" text-anchor="middle" class="ip-ax2">Q' +
+          (i + 1) + "</text>";
+      })
+      .join("") +
+      '<text x="' + 54 * k + '" y="20" text-anchor="end" class="ip-ax2">entered</text>';
+    var rows = spec.retention
+      .map(function (row, r) {
+        var y = Y0 + r * RSTEP;
+        return (
+          '<text x="' + 54 * k + '" y="' + (y + RH / 2) +
+          '" text-anchor="end" dominant-baseline="middle" class="ip-coh-lbl">' +
+          P.esc(spec.cohorts[r]) + "</text>" +
+          row.map(function (c, i) {
+            var x = X0 + i * STEP;
+            return '<rect x="' + x + '" y="' + y + '" width="' + CW + '" height="' + RH +
+              '" rx="2" fill="var(--accent)" fill-opacity="' + c[1] + '"></rect>' +
+              '<text x="' + (x + CW / 2) + '" y="' + (y + RH / 2) +
+              '" text-anchor="middle" dominant-baseline="middle" class="ip-coh-val' +
+              (c[1] >= 0.46 ? " ip-coh-val--on" : "") + '">' + c[0] + "</text>";
+          }).join("")
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Share of each entry cohort still reporting N quarters later">' +
+      heads + rows + "</svg></div>"
+    );
+  }
+
+  /* ============================ the port's three live affordances ============================
+   * Ported from the RUNNING prototype, not from its markup — a control's behaviour is not in the
+   * DOM. Each was driven with tools/click.js + tools/overlay.js and its result read back.
+   *
+   *   ⤡ Expand    -> a lightbox. Backdrop + dialog + head (title · note · CLOSE) + the card's
+   *                  chart RE-AUTHORED at the dialog's inner width, not scaled up. The prototype
+   *                  gives each modal its own title and note, distinct from the card's.
+   *   ƒ DERIVED   -> toggles a "how this is computed" panel and flips its own label to ƒ HIDE.
+   *   Treemap     -> swaps the ranked chart for a treemap, swaps the caption, and HIDES the
+   *                  ⤡ Expand chip (there is no larger view of a treemap).
+   *
+   * Everything still renders prototype literals — these are design behaviours, not data. */
+
+  var IP_TREND_NOTE =
+    "Rebuilt from each quarter's filings as they were filed — later amendments are not backfilled.";
+
+  /* Both trend panels: series recovered from the captured path y-coordinates through the panel's
+   * own axis (0.0-35.6% and 0-18), and the tick labels carried as literals like every other axis
+   * in this port. */
+  var IP_TRENDS = {
+    residual: {
+      title: "Unreported residual",
+      value: "32.8%",
+      delta: "→ 0.6% over nine quarters",
+      quarters: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+      series: { values: [32.9676, 32.6417, 32.2907, 31.9648, 32.9175, 32.5915, 32.2656, 31.9397, 32.767],
+        axisMax: 35.6, color: "var(--accent)", ticks: ["0.0%", "8.9%", "17.8%", "26.7%", "35.6%"] },
+    },
+    effective: {
+      title: "Effective number of holders",
+      value: "17",
+      delta: "↑ +6.0% over nine quarters",
+      quarters: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+      series: { values: [16.0, 16.2, 16.3, 16.5, 16.6, 16.8, 16.9, 17.0, 17.0],
+        axisMax: 18, color: "var(--accent)", ticks: ["0", "5", "9", "14", "18"] },
+      measures: [
+        ["HHI", "589", "effective holders is 10,000 ÷ HHI", true],
+        ["Gini", "0.84", "inequality across holders, from the curve below", true],
+        ["Half the register", "7", "managers hold 50%", false],
+      ],
+    },
+  };
+
+  /* Set-intersections (UpSet) view of the overlap card. Eight exclusive combinations; the dot
+   * matrix and the connector line are derived from each combination's membership, and the bar
+   * scale is the largest count on the prototype's own 150px plot. */
+  var IP_UPSET = {
+    peers: ["AVGO", "TXN", "NVDA", "AMD"],
+    rows: [
+      { label: "AVGO + TXN + NVDA", members: [1, 1, 1, 0], n: 283, share: "17%" },
+      { label: "AVGO + TXN + NVDA + AMD", members: [1, 1, 1, 1], n: 277, share: "17%" },
+      { label: "AVGO + TXN + AMD", members: [1, 1, 0, 1], n: 235, share: "14%" },
+      { label: "AVGO + TXN", members: [1, 1, 0, 0], n: 222, share: "13%" },
+      { label: "AVGO + NVDA + AMD", members: [1, 0, 1, 1], n: 192, share: "12%" },
+      { label: "AVGO + NVDA", members: [1, 0, 1, 0], n: 189, share: "11%" },
+      { label: "AVGO + AMD", members: [1, 0, 0, 1], n: 144, share: "9%" },
+      { label: "AVGO only", members: [1, 0, 0, 0], n: 127, share: "8%" },
+    ],
+    ticks: ["0", "142", "283"],
+    note:
+      "Each bar is the number of managers whose 13F reports exactly that combination — exclusive, " +
+      "not cumulative. The bars sum to 1,669, the full AVGO register.",
+  };
+
+  var IP_TREEMAP = {
+    vb: [660, 343],
+    // Squarified layout recovered from the capture. Reimplementing squarify would not reproduce
+    // it cell-for-cell; the geometry IS the prototype's, read off its own render.
+    cells: [
+      [1, 1, 196.8, 341, null, "All other reporting managers", "18.32%"],
+      [199.8, 1, 168.03, 197.37, 0.4286, "Index manager A", "9.11%"],
+      [199.8, 200.37, 168.03, 141.63, 0.3591, "Index manager B", "6.57%"],
+      [369.83, 1, 152.91, 94.84, 0.29, "Pension system F", "4.03%"],
+      [369.83, 97.84, 152.91, 89.5, 0.2839, "Active manager E", "3.81%"],
+      [524.75, 1, 134.25, 94.44, 0.2764, "Endowment J", "3.53%"],
+      [524.75, 97.44, 134.25, 89.89, 0.2718, "Insurance manager I", "3.37%"],
+      [369.83, 189.34, 151.51, 79.18, 0.2714, "Active manager D", "3.35%"],
+      [369.83, 270.52, 151.51, 71.48, 0.2627, "Index manager C", "3.03%"],
+      [523.34, 189.34, 135.66, 78.87, 0.2616, "Hedge fund H", "2.99%"],
+      [523.34, 270.21, 135.66, 71.79, 0.2545, "Sovereign fund G", "2.73%"],
+    ],
+    note:
+      "Percentages are of shares outstanding. Managers below the ten largest are grouped; " +
+      "affiliated entities that file separately are not consolidated.",
+  };
+
+  /* UpSet plot: one bar per exclusive combination, over a dot matrix that says which issuers the
+   * combination holds. All constants are the prototype's own (viewBox 720x270). */
+  /* UpSet plot: one bar per exclusive combination, over a dot matrix saying which issuers that
+   * combination holds. TWO measured layouts, card and lightbox — the prototype does not scale one
+   * into the other (its gutter, row pitch and dot radius all change), so both are carried as read.
+   * Only the bar step is derived: plot width / count, first centre half a step in. */
+  var IP_UPSET_LAYOUT = {
+    card:  { W: 720,  H: 270, X0: 132, X1: 710,  YB: 162, YT: 12, ROW0: 184.5, ROWSTEP: 17, R: 4, BANDH: 15, BAND: 128, BANDW: 586 },
+    modal: { W: 1316, H: 480, X0: 190, X1: 1306, YB: 312, YT: 12, ROW0: 349,   ROWSTEP: 30, R: 7, BANDH: 28, BAND: 186, BANDW: 1124 },
+  };
+
+  function ipUpset(spec, size) {
+    var L = IP_UPSET_LAYOUT[size || "card"];
+    var max = spec.rows.reduce(function (m, r) { return Math.max(m, r.n); }, 0);
+    var step = (L.X1 - L.X0) / spec.rows.length;
+    var cx = function (i) { return L.X0 + step / 2 + i * step; };
+    var rowY = function (r) { return L.ROW0 + r * L.ROWSTEP; };
+    var grid = spec.ticks
+      .map(function (label, i) {
+        var y = L.YB - (i * (L.YB - L.YT)) / 2;
+        return '<line x1="' + L.X0 + '" y1="' + y + '" x2="' + L.X1 + '" y2="' + y +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + (L.X0 - 8) + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-ax">' +
+          P.esc(label) + "</text>";
+      })
+      .join("");
+    // Bands stripe ALTERNATE rows (1 and 3), not every row -- read off both captures.
+    var bands = spec.peers
+      .map(function (t, r) {
+        var y = rowY(r);
+        // Every row gets a band; the even ones are transparent. That is the prototype's own DOM,
+        // and emitting only the visible two renders identically but counts differently.
+        return '<rect x="' + L.BAND + '" y="' + (y - L.BANDH / 2) + '" width="' + L.BANDW +
+          '" height="' + L.BANDH + '" fill="' + (r % 2 ? "var(--bg-tint)" : "transparent") +
+          '" opacity="0.7"></rect>' +
+          '<text x="' + (L.X0 - 12) + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-upset-row">' +
+          P.esc(t) + "</text>";
+      })
+      .join("");
+    var cols = spec.rows
+      .map(function (row, i) {
+        var h = (row.n / max) * (L.YB - L.YT);
+        var x = cx(i);
+        var on = row.members.map(function (m, r) { return m ? rowY(r) : null; })
+          .filter(function (v) { return v !== null; });
+        var link = on.length > 1
+          ? '<line x1="' + x + '" y1="' + on[0] + '" x2="' + x + '" y2="' + on[on.length - 1] +
+            '" stroke="var(--ink-soft)" stroke-width="1.5"></line>'
+          : "";
+        return (
+          '<rect x="' + (x - 15) + '" y="' + (L.YB - h) + '" width="30" height="' + h +
+          '" fill="var(--accent)" opacity="0.55" rx="2"></rect>' +
+          '<text x="' + x + '" y="' + (L.YB - h - 4) + '" text-anchor="middle" class="ip-upset-n">' +
+          row.n + "</text>" + link +
+          row.members.map(function (m, r) {
+            return m
+              ? '<circle cx="' + x + '" cy="' + rowY(r) + '" r="' + L.R + '" fill="var(--ink)" opacity="1"></circle>'
+              : '<circle cx="' + x + '" cy="' + rowY(r) + '" r="' + L.R + '" fill="var(--border-strong)" opacity="0.5"></circle>';
+          }).join("")
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + L.W + " " + L.H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Managers by the exact combination of peer issuers they report">' +
+      grid + bands + cols + "</svg></div>"
+    );
+  }
+
+  // The combination table under the card's UpSet plot (the lightbox shows the plot alone).
+  function ipCombTable(spec) {
+    return (
+      '<div class="ip-comb-head"><span>Combination held</span>' +
+      '<span class="ip-r">Managers</span><span class="ip-r">Share</span></div>' +
+      spec.rows.map(function (r) {
+        return '<div class="ip-comb-row"><span class="ip-comb-label">' + P.esc(r.label) + "</span>" +
+          '<span class="ip-comb-n">' + r.n + "</span>" +
+          '<span class="ip-comb-share">' + P.esc(r.share) + "</span></div>";
+      }).join("")
+    );
+  }
+
+  function ipTreemap(spec, W, H) {
+    var kx = W ? W / spec.vb[0] : 1;
+    var ky = H ? H / spec.vb[1] : 1;
+    var body = spec.cells
+      .map(function (c) {
+        var fill = c[4] === null
+          ? 'fill="var(--bg-tint)" fill-opacity="1"'
+          : 'fill="var(--accent)" fill-opacity="' + c[4] + '"';
+        var x = c[0] * kx, y = c[1] * ky;
+        return (
+          '<rect x="' + x + '" y="' + y + '" width="' + c[2] * kx + '" height="' + c[3] * ky + '" ' +
+          fill + ' stroke="var(--bg-card)" stroke-width="1.5" rx="3"></rect>' +
+          '<text x="' + (x + 7) + '" y="' + (y + 16) + '" class="ip-tm-name">' + P.esc(c[5]) + "</text>" +
+          '<text x="' + (x + 7) + '" y="' + (y + 31) + '" class="ip-tm-pct">' + P.esc(c[6]) + "</text>"
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + (W || spec.vb[0]) + " " + (H || spec.vb[1]) + '" ' +
+      'preserveAspectRatio="none" style="display:block" role="img" ' +
+      'aria-label="Register by manager, area proportional to share">' + body + "</svg></div>"
+    );
+  }
+
+  /* --- the derivation panels behind ƒ DERIVED ---
+   * Each is the prototype's own copy, read out of the panel it opens. §01's card-head badge is a
+   * deliberate exception: in the prototype it flips its label and opens nothing (its equation
+   * strip is already on the page), so it is ported as a label-only toggle. Noted rather than
+   * "fixed" — inventing a panel would be inventing content. */
+  var IP_DERIVATIONS = {
+    "01-share": {
+      formula: "Sum of 13F-reported shares ÷ cover-page shares outstanding",
+      inputs: [
+        ["13F-reported shares", "every 13F-HR naming this issuer, current quarter"],
+        ["Shares outstanding", "cover page of the most recent 10-Q"],
+      ],
+      note:
+        "Numerator and denominator come from different filings with different as-of dates. " +
+        "The 13F register lags the cover page by up to 45 days.",
+    },
+    "02-mix": {
+      formula: "Assigned by ClearyFi, not a filed field",
+      inputs: [
+        ["Basis", "the manager's own registration and fund filings — ADV brochure language, N-PORT fund objectives, 13F cover"],
+      ],
+      note: "Form 13F contains no strategy field. This label is our judgment and should be treated as such.",
+    },
+    "05-turnover": {
+      formula: "Managers entering or exiting ÷ managers in the prior quarter",
+      inputs: [
+        ["Entries and exits", "manager CIKs matched across consecutive 13F-HR filings"],
+        ["Prior-quarter base", "manager count in the preceding quarter"],
+      ],
+      note:
+        "A manager falling below the $100M reporting threshold appears as an exit even if it still " +
+        "holds the shares.",
+    },
+    "05-tenure": {
+      formula: "Median consecutive quarters a manager appears in the register",
+      inputs: [["Appearance history", "13F-HR filings back to 1Q22"]],
+      note:
+        "Truncated at the start of the observation window: managers holding since before 1Q22 are " +
+        "counted from 1Q22.",
+    },
+    "02-topten": {
+      formula: "Shares held by the ten largest reporting managers ÷ all 13F-reported shares",
+      inputs: [
+        ["Manager holdings", "13F-HR information table"],
+        ["Total reported", "sum across all reporting managers"],
+      ],
+      note:
+        "Affiliated entities that file separately are counted separately, which understates " +
+        "concentration for large fund families.",
+    },
+  };
+
+  function ipBadge(key) {
+    // A real <button> now, not the inert <span> phase 1 started with. The line-height is still
+    // pinned: the prototype's is a button on the UA's `normal` line box (11px), and a span's is
+    // a fraction higher -- a whole device pixel at 2x. See the §01 log.
+    return (
+      '<button type="button" class="ip-badge"' + (key ? ' data-ip-derive="' + key + '"' : "") +
+      ' aria-expanded="false">ƒ derived</button>'
+    );
+  }
+
+  /* The inline trend panel behind `TREND` and the clickable "Effective holders" stat — the same
+   * component in both places, reusing ipAreaChart at the prototype's 632x190. */
+  function ipTrendPanel(key) {
+    var t = IP_TRENDS[key];
+    if (!t) return "";
+    return (
+      '<div class="ip-trend" data-ip-trend-for="' + key + '" hidden>' +
+      '<div class="ip-trend-head">' +
+      '<span class="ip-trend-title"><span>' + P.esc(t.title) + "</span></span>" +
+      '<span class="ip-trend-val"><span>' + P.esc(t.value) + "</span></span>" +
+      '<span class="ip-trend-delta"><span>' + P.esc(t.delta) + "</span></span>" +
+      "</div>" +
+      ipAreaChart(t.series, t.quarters, 632, 190) +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP_TREND_NOTE) + "</span></div>" +
+      (t.measures ? ipMeasures(t.measures) : "") +
+      "</div>"
+    );
+  }
+
+  function ipMeasures(list) {
+    return (
+      '<div class="ip-micro ip-measures-label">The measures behind it</div>' +
+      '<div class="ip-measures">' +
+      list.map(function (m) {
+        return (
+          '<div class="ip-measure">' +
+          '<span class="ip-micro">' + P.esc(m[0]) + "</span>" +
+          '<span class="ip-measure-val' + (m[3] ? "" : " ip-measure-val--plain") + '"><span>' +
+          P.esc(m[1]) + "</span></span>" +
+          '<span class="ip-measure-note">' + P.esc(m[2]) + "</span>" +
+          "</div>"
+        );
+      }).join("") +
+      "</div>"
+    );
+  }
+
+  function ipDerivationPanel(key) {
+    var d = IP_DERIVATIONS[key];
+    if (!d) return "";
+    var rows = d.inputs
+      .map(function (r) {
+        return (
+          '<div class="ip-deriv-row"><span class="ip-deriv-key"><span>' + P.esc(r[0]) + "</span></span>" +
+          '<span class="ip-deriv-src"><span>' + P.esc(r[1]) + "</span></span></div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-deriv" data-ip-deriv-for="' + key + '" hidden>' +
+      '<div class="ip-micro">How this is computed</div>' +
+      '<div class="ip-deriv-formula"><span>' + P.esc(d.formula) + "</span></div>" +
+      rows +
+      '<div class="ip-deriv-note"><span>' + P.esc(d.note) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* --- the ⤡ Expand lightbox ---
+   * The chart is re-authored at the dialog's measured inner width. Authoring at the mount width
+   * (rather than letting a 660-unit viewBox stretch) is the same rule as everywhere else in the
+   * port: a scaled SVG scales its TEXT too. */
+  var IP_LIGHTBOX = {
+    "02-register": {
+      title: "Register over time",
+      note: "reporting managers, then shares reported · five quarters",
+      render: function (w) {
+        return (
+          '<div class="ip-micro ip-micro--tight">Reporting managers</div>' +
+          ipAreaChart(IP02.managers, IP02.quarters5, w, 260) +
+          '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported (M)</div>' +
+          ipAreaChart(IP02.shares, IP02.quarters5, w, 260)
+        );
+      },
+    },
+    "02-panels": {
+      title: "Largest managers over time",
+      note: "reported shares, nine quarters, one panel per manager",
+      render: function () { return '<div class="ip-panels">' + ip02Panels() + "</div>"; },
+    },
+    "03-flows": {
+      title: "Position changes over time",
+      note: "shares added above the axis, reduced below · rule marks the net",
+      render: function (w) { return ipDivergingBars(IP03.flows, IP03.quarters6, w, 210); },
+    },
+    /* View-aware, like the prototype's: opening Expand while the treemap is showing opens the
+     * TREEMAP, under its own title. Verified by driving both states. */
+    "03-ranked": {
+      title: function () {
+        return ipRankedView === "treemap" ? "Who holds what" : "Cumulative share of the register";
+      },
+      note: function () {
+        return ipRankedView === "treemap"
+          ? "area is share of the 13F-reported register"
+          : "ranked manager share with the running total, prior quarter ghosted";
+      },
+      render: function (w) {
+        if (ipRankedView !== "treemap") return ipRankedShare(IP03.ranked, w, 460);
+        /* ⚠ DEVIATION, listed: the prototype RE-SQUARIFIES the treemap at the modal's aspect, so
+         * its cells are arranged differently there. We scale the card's own layout to the modal
+         * viewBox instead — every cell keeps its exact share of the area, but not its position.
+         * Reproducing the re-squarified arrangement needs the prototype's squarify variant, which
+         * its markup does not expose. */
+        return ipTreemap(IP_TREEMAP, w, Math.round((w * 658) / 1316));
+      },
+    },
+    "05-cohorts": {
+      title: "Holder persistence by entry cohort",
+      note: "share of each entry cohort still reporting N quarters later",
+      render: function (w) { return ipCohortGrid(IP05, w, 274); },
+    },
+    "04-lanes": {
+      title: "Beneficial ownership filings",
+      note: "one lane per holder above the 5% threshold",
+      render: function (w) { return ipLaneChart(IP04, w, 278); },
+    },
+    /* View-aware, like "03-ranked": Expand opens whichever view the card is showing. Both titles
+     * and notes are the prototype's own, driven out of it. */
+    "03-matrix": {
+      title: function () {
+        return ipOverlapView === "sets" ? "Manager set intersections" : "Peer overlap matrix";
+      },
+      note: function () {
+        return ipOverlapView === "sets"
+          ? "exclusive combinations across AVGO, TXN, NVDA, AMD"
+          : "share of the row issuer's managers that also report the column issuer";
+      },
+      render: function (w) {
+        if (ipOverlapView === "sets") return ipUpset(IP_UPSET, "modal");
+        return ipPeerMatrix(IP03.peers, IP03.matrix, Math.round((w * 936) / 1316));
+      },
+    },
+  };
+
+  function ipText(v) { return typeof v === "function" ? v() : v; }
+
+  /* The prototype's five "↗" links are real anchors to EDGAR full-text search, all to the same
+   * target. Ported as real anchors. ⚠ PHASE 2: the query is the prototype's own issuer (AVGO),
+   * like every other literal on this page — it becomes the viewed symbol when the data lands. */
+  var IP_EDGAR_13F = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=13F-HR";
+  // §04 links at the registrant's own filings, by CIK -- a different EDGAR endpoint from §01-§03's
+  // full-text search. Both are the prototype's own targets.
+  var IP_EDGAR_SC13 =
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=SC%2013&dateb=&owner=include&count=40";
+  var IP_EDGAR_8K =
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=8-K&dateb=&owner=include&count=40";
+  var IP_EDGAR_NPX = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PX";
+  var IP_EDGAR_NPORT = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PORT";
+
+  function ipLink(label, href) {
+    return '<a class="ip-card-link" href="' + (href || IP_EDGAR_13F) + '" target="_blank" rel="noopener">' +
+      P.esc(label) + "</a>";
+  }
+
+  function ipChip(key) {
+    return '<button type="button" class="ip-chip" data-ip-open="' + key + '">⤡ Expand</button>';
+  }
+
+  var ipLastFocus = null;
+  var ipRankedView = "cumulative";
+  var ipOverlapView = "matrix";
+
+  function ipOpenLightbox(key) {
+    var spec = IP_LIGHTBOX[key];
+    if (!spec) return;
+    ipCloseLightbox();
+    ipLastFocus = document.activeElement;
+    var back = document.createElement("div");
+    back.className = "ip-lb";
+    back.setAttribute("role", "dialog");
+    back.setAttribute("aria-modal", "true");
+    back.setAttribute("aria-label", ipText(spec.title));
+    back.innerHTML =
+      '<div class="ip-lb-dialog" tabindex="-1">' +
+      '<div class="ip-lb-head"><div class="ip-lb-id">' +
+      '<span class="ip-lb-title"><span>' + P.esc(ipText(spec.title)) + "</span></span>" +
+      '<span class="ip-lb-note"><span>' + P.esc(ipText(spec.note)) + "</span></span></div>" +
+      '<button type="button" class="ip-lb-close">Close</button></div>' +
+      '<div class="ip-lb-body"></div></div>';
+    document.body.appendChild(back);
+    // Measure first, author second -- the chart must be built AT the width it will occupy.
+    var body = back.querySelector(".ip-lb-body");
+    var w = Math.round(body.getBoundingClientRect().width) + 2;
+    body.innerHTML = spec.render(w);
+    var close = back.querySelector(".ip-lb-close");
+    close.addEventListener("click", ipCloseLightbox);
+    back.addEventListener("mousedown", function (e) { if (e.target === back) ipCloseLightbox(); });
+    // Focus the dialog, not the Close button: focus must move into the modal (a11y), but ringing
+    // a control the user did not choose would also be the one visible difference from the
+    // prototype's own open state.
+    back.querySelector(".ip-lb-dialog").focus();
+  }
+
+  function ipCloseLightbox() {
+    var el = document.querySelector(".ip-lb");
+    if (!el) return;
+    el.remove();
+    if (ipLastFocus && document.contains(ipLastFocus)) ipLastFocus.focus();
+    ipLastFocus = null;
+  }
+
+  // One delegated listener for all three affordances, bound once per render.
+  function ipBindAffordances() {
+    var view = $("view");
+    if (!view) return;
+    view.addEventListener("click", function (e) {
+      var open = e.target.closest("[data-ip-open]");
+      if (open) { ipOpenLightbox(open.getAttribute("data-ip-open")); return; }
+
+      var badge = e.target.closest("[data-ip-derive]");
+      if (badge) {
+        var key = badge.getAttribute("data-ip-derive");
+        var panel = view.querySelector('[data-ip-deriv-for="' + key + '"]');
+        var open2 = badge.getAttribute("aria-expanded") !== "true";
+        badge.setAttribute("aria-expanded", open2 ? "true" : "false");
+        badge.textContent = open2 ? "ƒ hide" : "ƒ derived";
+        if (panel) panel.hidden = !open2;
+        return;
+      }
+
+      var trend = e.target.closest("[data-ip-trend]");
+      if (trend) {
+        var tkey = trend.getAttribute("data-ip-trend");
+        var tpanel = view.querySelector('[data-ip-trend-for="' + tkey + '"]');
+        if (tpanel) {
+          var show = tpanel.hidden;
+          tpanel.hidden = !show;
+          trend.setAttribute("aria-expanded", show ? "true" : "false");
+        }
+        return;
+      }
+
+      var view2 = e.target.closest("[data-ip-view]");
+      if (view2 && !view2.classList.contains("ip-toggle--on")) {
+        var group = view2.parentNode;
+        [].forEach.call(group.querySelectorAll("[data-ip-view]"), function (b) {
+          b.classList.toggle("ip-toggle--on", b === view2);
+          b.setAttribute("aria-pressed", b === view2 ? "true" : "false");
+        });
+        ipSwitchChart(group.getAttribute("data-ip-group"), view2.getAttribute("data-ip-view"));
+      }
+    });
+    // The stat is a div with role=button, so it needs its own keyboard activation.
+    view.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      var t = e.target.closest('[role="button"][data-ip-trend]');
+      if (!t) return;
+      e.preventDefault();
+      t.click();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") ipCloseLightbox();
+    });
+  }
+
+  // Chart-view toggles. Only "Who holds what" has a second view built; the rest are inert and
+  // stay on their first view (declared without a data-ip-view so they cannot be selected).
+  function ipSwitchChart(group, view) {
+    if (group === "03-overlap") return ipSwitchOverlap(view);
+    if (group !== "03-ranked") return;
+    var mount = document.querySelector('[data-ip-chart="03-ranked"]');
+    var note = document.querySelector('[data-ip-note="03-ranked"]');
+    var chip = document.querySelector('[data-ip-open="03-ranked"]');
+    if (!mount) return;
+    ipRankedView = view;
+    if (view === "treemap") {
+      mount.innerHTML = ipTreemap(IP_TREEMAP);
+      if (note) note.textContent = IP_TREEMAP.note;
+    } else {
+      mount.innerHTML = ipRankedShare(IP03.ranked);
+      if (note) note.textContent = IP03.rankedNote;
+    }
+    if (chip) chip.hidden = false;   // the prototype keeps it in both views
+  }
+
+  function ipSwitchOverlap(view) {
+    ipOverlapView = view;
+    var mount = document.querySelector('[data-ip-chart="03-overlap"]');
+    var note = document.querySelector('[data-ip-note="03-overlap"]');
+    if (!mount) return;
+    if (view === "sets") {
+      mount.innerHTML = ipUpset(IP_UPSET) + ipCombTable(IP_UPSET);
+      if (note) note.textContent = IP_UPSET.note;
+    } else {
+      mount.innerHTML = ipPeerMatrix(IP03.peers, IP03.matrix);
+      if (note) note.textContent = IP03.matrixNote;
+    }
+  }
+
+  /* ---------- §03's four chart builders ----------
+   * Same rule as §01/§02: hand-authored SVG on a fixed viewBox, geometry in viewBox units, never
+   * measuring the container. Every constant is read off the prototype's own SVG. */
+
+  // Diverging bars: adds above the axis, reductions below, a rule at the net. The largest of the
+  // twelve magnitudes lands exactly on the top gridline, which is what sets the scale.
+  function ipDivergingBars(spec, labels, W, H) {
+    W = W || 660; H = H || 210;
+    var X0 = 54, X1 = W - 12, ZERO = 97, TOP = 20.64;
+    var span = ZERO - TOP;
+    var max = Math.max.apply(null, spec.add.concat(spec.red));
+    var slot = (X1 - X0) / labels.length;
+    var px = function (v) { return (v / max) * span; };
+    var grid = spec.ticks
+      .map(function (label, i) {
+        var y = TOP + (i * span * 2) / 4;
+        var stroke = i === 2 ? "var(--mono-muted)" : "var(--rule)";
+        return (
+          "<g>" +
+          '<line x1="' + X0 + '" y1="' + y + '" x2="' + X1 + '" y2="' + y +
+          '" stroke="' + stroke + '" stroke-width="1"></line>' +
+          '<text x="46" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-ax">' +
+          P.esc(label) + "</text></g>"
+        );
+      })
+      .join("");
+    var bw = Math.min(46, slot * 0.47);
+    var bars = labels
+      .map(function (q, i) {
+        var x = X0 + i * slot + (slot - bw) / 2;
+        var up = px(spec.add[i]);
+        var down = px(spec.red[i]);
+        var net = ZERO - px(spec.add[i] - spec.red[i]);
+        return (
+          '<rect x="' + x + '" y="' + (ZERO - up) + '" width="' + bw + '" height="' + up +
+          '" fill="var(--accent)" opacity="0.55"></rect>' +
+          '<rect x="' + x + '" y="' + ZERO + '" width="' + bw + '" height="' + down +
+          '" fill="var(--ink-soft)" opacity="0.5"></rect>' +
+          '<line x1="' + (x - 4) + '" y1="' + net + '" x2="' + (x + bw + 4) + '" y2="' + net +
+          '" stroke="var(--ink)" stroke-width="2"></line>' +
+          '<text x="' + (x + bw / 2) + '" y="' + (H - 10) + '" text-anchor="middle" class="ip-ax">' +
+          P.esc(q) + "</text>"
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" ' +
+      'style="display:block" role="img" aria-label="Shares added and reduced by quarter">' +
+      grid + bars + "</svg></div>"
+    );
+  }
+
+  /* Ranked share + cumulative curve. Two scales in one frame, which is the prototype's own choice:
+   * the LINE is on the 0-100% axis, the BARS are scaled so the largest fills half the plot. They
+   * are not comparable by height and the caption says so. */
+  function ipRankedShare(spec, W, H) {
+    W = W || 660; H = H || 250;
+    // Generalised from the two widths the prototype renders: card 660x250, modal 1316x460.
+    var X0 = 44, X1 = W - 46, YB = H - 58, YT = 18;
+    var axis = (YB - YT) / 100;              // px per percentage point, for the cumulative line
+    var maxShare = spec.rows.reduce(function (m, r) { return Math.max(m, r.share); }, 0);
+    var barScale = (YB - YT) / 2 / maxShare; // largest bar = half the plot height
+    var step = (X1 - X0) / spec.rows.length;
+    var bw = Math.min(54, step * 0.6);
+    var cx = function (i) { return X0 + step / 2 + i * step; };
+    var grid = spec.ticks
+      .map(function (label, i) {
+        var y = YB - i * 25 * axis;
+        return (
+          '<line x1="' + X0 + '" y1="' + y + '" x2="' + X1 + '" y2="' + y +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + (X1 + 8) + '" y="' + y + '" dominant-baseline="middle" class="ip-ax2">' +
+          P.esc(label) + "</text>"
+        );
+      })
+      .join("") +
+      '<line x1="' + X0 + '" y1="' + YB + '" x2="' + X1 + '" y2="' + YB +
+      '" stroke="var(--mono-muted)" stroke-width="1"></line>';
+    var bars = spec.rows
+      .map(function (r, i) {
+        var h = r.share * barScale;
+        var y = YB - h;
+        return (
+          '<rect x="' + (cx(i) - bw / 2) + '" y="' + y + '" width="' + bw + '" height="' + h +
+          '" fill="' + r.color + '" opacity="0.5" rx="2"></rect>' +
+          '<text x="' + cx(i) + '" y="' + (y - 5) + '" text-anchor="middle" class="ip-ax-val">' +
+          P.esc(r.pct) + "</text>" +
+          '<text x="' + cx(i) + '" y="' + (YB + 14) + '" text-anchor="middle" class="ip-ax">' +
+          P.esc(r.label) + "</text>"
+        );
+      })
+      .join("");
+    var cum = [];
+    spec.rows.reduce(function (t, r, i) {
+      cum[i] = t + r.share;
+      return cum[i];
+    }, 0);
+    var path = function (values) {
+      return values
+        .map(function (v, i) {
+          return (i ? "L" : "M") + cx(i) + " " + (YB - v * axis).toFixed(1);
+        })
+        .join(" ");
+    };
+    var dots = cum
+      .map(function (v, i) {
+        return '<circle cx="' + cx(i) + '" cy="' + (YB - v * axis) + '" r="2.8" fill="var(--ink)"></circle>';
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Ten largest managers and the cumulative share of the register">' +
+      grid + bars +
+      '<path d="' + path(spec.prior) + '" fill="none" stroke="var(--mono-muted)" stroke-width="1.5" stroke-dasharray="4 3"></path>' +
+      '<path d="' + path(cum) + '" fill="none" stroke="var(--ink)" stroke-width="2"></path>' +
+      dots +
+      '<text x="' + X0 + '" y="' + (H - 8) + '" class="ip-ax2">' + P.esc(spec.legend) + "</text>" +
+      "</svg></div>"
+    );
+  }
+
+  /* Lorenz curve. `cum` is the cumulative share of the register at each equal step through the
+   * managers, sorted smallest first; the final segment jumps to (100%, 100%) because the last
+   * sliver of managers carries most of the register. The dashed diagonal is perfect equality. */
+  function ipLorenz(cum) {
+    var X0 = 34, X1 = 296, YB = 186, YT = 14, W = 306, H = 220;
+    var axisY = (YB - YT) / 100;
+    // Fitted to the capture: x0 = 38.24, step = 4.2384 reproduces all 61 printed abscissae at the
+    // prototype's own one-decimal precision. The interior stops short of X1; the last segment is
+    // the jump.
+    var x = function (i) { return (38.24 + i * 4.2384).toFixed(1); };
+    var ticks = ["0%", "25%", "50%", "75%", "100%"];
+    var grid = ticks
+      .map(function (label, i) {
+        var y = YB - i * 25 * axisY;
+        var tx = X0 + (i * 25 * (X1 - X0)) / 100;
+        return (
+          '<line x1="' + X0 + '" y1="' + y + '" x2="' + X1 + '" y2="' + y +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="28" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-ax">' +
+          P.esc(label) + "</text>" +
+          '<text x="' + tx + '" y="201" text-anchor="middle" class="ip-ax">' + P.esc(label) + "</text>"
+        );
+      })
+      .join("");
+    var pts = cum
+      .map(function (v, i) {
+        return (i ? "L" : "M") + x(i) + " " + (YB - v * axisY).toFixed(1);
+      })
+      .join(" ") +
+      " L" + X1.toFixed(1) + " " + YT.toFixed(1) + " L" + X1.toFixed(1) + " " + YT.toFixed(1);
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" ' +
+      'style="display:block" role="img" aria-label="Lorenz curve of the register">' +
+      grid +
+      '<line x1="' + X0 + '" y1="' + YB + '" x2="' + X1 + '" y2="' + YT +
+      '" stroke="var(--mono-muted)" stroke-width="1" stroke-dasharray="4 4"></line>' +
+      '<path d="' + pts + " L" + X1 + " " + YB + ' Z" fill="var(--accent-wash)" opacity="0.55"></path>' +
+      '<path d="' + pts + '" fill="none" stroke="var(--accent)" stroke-width="2"></path>' +
+      '<text x="170" y="216" text-anchor="middle" class="ip-ax">share of reporting managers</text>' +
+      "</svg></div>"
+    );
+  }
+
+  /* Peer overlap matrix. Deliberately asymmetric — cell (row, col) is the share of the ROW
+   * issuer's managers that also report the COLUMN issuer. The diagonal is inert. */
+  function ipPeerMatrix(labels, cells, W) {
+    W = W || 370;
+    var k = W / 370, O = 59 * k, S = 52 * k, C = 50 * k;
+    var heads = labels
+      .map(function (t, i) {
+        var c = O + i * S + C / 2;
+        return (
+          '<text x="' + c + '" y="' + 50 * k + '" text-anchor="middle" class="ip-mx-head">' + P.esc(t) + "</text>" +
+          '<text x="' + 50 * k + '" y="' + c + '" text-anchor="end" dominant-baseline="middle" class="ip-mx-head">' +
+          P.esc(t) + "</text>"
+        );
+      })
+      .join("");
+    var body = cells
+      .map(function (row, r) {
+        return row
+          .map(function (cell, c) {
+            var x = O + c * S;
+            var y = O + r * S;
+            if (!cell) {
+              return (
+                '<rect x="' + x + '" y="' + y + '" width="' + C + '" height="' + C +
+                '" rx="2" fill="var(--bg-tint)" fill-opacity="1" stroke="var(--bg-card)" stroke-width="1"></rect>'
+              );
+            }
+            // Above 0.47 the wash is dark enough that the label has to flip to the card colour.
+            var onDark = cell[1] >= 0.47;
+            return (
+              '<rect x="' + x + '" y="' + y + '" width="' + C + '" height="' + C +
+              '" rx="2" fill="var(--accent)" fill-opacity="' + cell[1] +
+              '" stroke="var(--bg-card)" stroke-width="1"></rect>' +
+              '<text x="' + (x + C / 2) + '" y="' + (y + C / 2) +
+              '" text-anchor="middle" dominant-baseline="middle" class="ip-mx-val' +
+              (onDark ? " ip-mx-val--on" : "") + '">' + cell[0] + "%</text>"
+            );
+          })
+          .join("");
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + W + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block" role="img" aria-label="Manager overlap with sector peers">' +
+      heads + body + "</svg></div>"
     );
   }
 

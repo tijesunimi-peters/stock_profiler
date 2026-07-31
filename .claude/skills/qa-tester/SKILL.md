@@ -76,6 +76,11 @@ driving the flow. Check:
   alpha/timing/price/"beats the market" language, per the honesty posture).
 - **Affordances & a11y**: interactive controls are reachable and show their state (selected,
   focus-visible); the status/provenance vocabulary is present where derived numbers appear.
+- **Every control actually does something.** Click each one and record what happened. A button,
+  toggle, chip or disclosure that renders perfectly and does nothing is a **defect**, not an
+  unfinished nicety — for a design/prototype port especially, where "matches the design" includes
+  matching its behaviour (see the Senior Frontend Engineer skill). Anything deliberately inert must
+  be named as such in the engineer's handoff; if it isn't, fail it.
 - **Consistency**: matches the STYLE_GUIDE and the company-hub reference — reuses the shared
   components rather than a one-off look.
 

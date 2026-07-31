@@ -3,11 +3,13 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: manual      ← §01 built + diffed; PAUSED for the operator's read on the
-  fidelity bar before §02-§07. No PM/architect stage this attempt; see below.
+branch: v3-p5a-institutional @ `40ef977` (clean off `master` 9d0d10f — **attempt 4**)
+next_stage: frontend    ← phase 1 design port, IN PROGRESS. §01–§05 DONE (both states, zero
+  bands, controls live). §06 is next; §06–§07 not started. The `manual` gate is the operator's
+  🚦 FIDELITY gate below, and it does not fire until all seven sections are ported.
+  No PM/architect stage this attempt; see below.
 qa_cycles: 0
-updated: 2026-07-30
+updated: 2026-07-31
 
 ---
 
@@ -31,11 +33,49 @@ body. Automation cannot see that, which is why three green builds were rejected.
 
 | Phase | Scope | Gate |
 |---|---|---|
-| **1 — design port** | Port the prototype's Institutional view onto a **fresh blank page**: its markup, its CSS, its chart builders, **and its own sample values**. **ZERO backend calls. Nothing fetched. No data plumbing.** | **🚦 Operator verifies the design is faithful** |
+| **1 — design port** | Port the prototype's Institutional view onto a **fresh blank page**: its markup, its CSS, its chart builders, **its behaviour**, **and its own sample values**. **ZERO backend calls. Nothing fetched. No data plumbing.** | **🚦 Operator verifies the design is faithful** |
 | **2 — data plumbing** | Replace every literal with real filings data, keeping the ported design intact | QA + 4b |
 
 The point: fidelity becomes verifiable **on its own**, with nothing else moving. Attempts 1–3 all
 built design and data together, so every fidelity miss surfaced late and every fix risked the data.
+
+## ⚠️ "DESIGN" MEANS BEHAVIOUR TOO — a section is not ported until its controls work
+
+**The design port is not a screenshot.** Every affordance the prototype has must be **live** in
+phase 1: what it opens, what it toggles, what it relabels, what it swaps. A control that renders
+identically and does nothing is **not** a ported control — it is a picture of one, and it will come
+back at the fidelity gate. §01 and §02 shipped their affordances as inert `<span>`s and had to be
+rebuilt (see the seventh run in the log).
+
+**A control's behaviour is not in the markup.** You cannot read it out of `literals-open.json`, the
+inline styles, or the outerHTML — the prototype is a React export and its handlers are compiled
+away. **You have to drive the running prototype and read back what happened.** `tools/click.js`
+(what appeared/disappeared/changed + a screenshot), `tools/overlay.js` (dump the overlay a control
+opened, with computed styles), `tools/where.js` (where the revealed panel actually lands, and in
+whose chain), `tools/two.js` (two clicks — a toggle's second state). Then `tools/drive.js` asserts
+the behaviour end to end.
+
+**Per section, the affordance checklist is part of "done":**
+
+1. Enumerate every `<button>`, `<a>` and toggle in the section (`literals-open.json`'s tree, or
+   `tools/after.js`).
+2. Drive each one in the prototype and record: what it opens/toggles, its own label change, where
+   the revealed content lands, and what the second click does.
+3. Build it, then **drive OURS the same way** and assert the same result (`tools/drive.js`).
+4. Re-diff the section's DEFAULT states — a control that changed the resting rendering is a
+   regression, not a feature.
+5. Anything deliberately left inert must be **named in the log and the state file**, never left to
+   look finished.
+
+**Two traps, both already paid for:**
+- **A `<span>` that becomes a `<button>` inherits the UA's `buttonface` grey** — ~15/255 against
+  the card, which sails under a 32/255 pixel diff and only shows in the `>8` count. Every such
+  element needs `background: transparent`. Hit three times now (`.ip-expander-btn`, `.ip-chip`, and
+  the badge).
+- **The prototype has behavioural bugs.** Where its behaviour is plainly wrong (a panel that opens
+  600px from its own control; a badge that flips its label and does nothing else), port the
+  mechanism, do the sane thing, and **list the deviation** — do not silently copy the bug, and do
+  not silently invent a fix.
 
 ---
 
@@ -53,8 +93,43 @@ built design and data together, so every fidelity miss surfaced late and every f
    scaffold; and **phase 2 is not done until no literal remains.**
 3. **D-protocharts** — **port the prototype's own chart builders**, don't reuse ours. Our
    `ClearyFi.*` builders and their chrome are part of what read as "old design".
+
+   📌 **HEADS-UP (operator, 2026-07-31): the prototype is moving its charts to d3**, which will make
+   them interactive. **The decision for now is to CONTINUE AS WE ARE** — the twelve hand-authored
+   SVG builders stay, nothing is pre-built for d3, and no section waits on it. Do not speculate
+   about what the d3 version will look like; port what is on the server today.
+
+   **What it will and will not disturb, so the next session doesn't guess:**
+
+   *Unaffected.* d3 is **already vendored** (`static/vendor/d3.min.js`, loaded before Plot) — no new
+   dependency, no CSP change, the guardrail holds. `STYLE_GUIDE` §6 already allows d3 builders and
+   §12's label-placement rules apply to them. D-protocharts itself is unchanged: still the
+   prototype's builders, still never `ClearyFi.*`. The measurement method is unchanged.
+
+   *Invalidated the day it lands.* **`prototype-ground-truth/` is a snapshot of TODAY's prototype**
+   — every PNG, `literals.json` and `literals-open.json`. Re-capture the lot before diffing anything
+   against it; a green diff against a stale capture is worse than no diff. And **every series in
+   `IP01`–`IP05` was recovered numerically from a static SVG** (bar heights, path coordinates, the
+   fill-opacities in the peer matrix, the treemap's squarified rects, the lane chart's x positions).
+   If d3 lays those out even slightly differently, the recovered numbers and the layout constants
+   derived from them are both wrong — **re-recover, do not adapt**.
+
+   *New work it creates.* Two things:
+   - **The capture assumes a settled, static SVG.** A d3 chart that animates on load, or that only
+     draws on interaction, will be captured mid-transition. `shot2.js` will need the transitions
+     disabled (or a settle-wait) on **both** sides before it fires.
+   - **D-behaviour extends into the charts.** Hover states, tooltips, brushing, zoom — once the
+     charts respond to a pointer, "the controls work" covers them too, and `drive.js` has to drive
+     chart internals rather than just buttons. Budget for that; it is a bigger job than the button
+     pass was.
 4. **D-clean-master** — attempt 4 starts from a **clean master**. Nothing is carried over in the
    working tree, including attempt 3's backend and its fixes.
+5. **D-behaviour** *(added 2026-07-31)* — **porting the design includes porting the FUNCTIONALITY.**
+   Every control the prototype has is live in phase 1: expanders, lightboxes, derivation panels,
+   chart-view toggles, and anything else that responds to a click. Phase 1 is design *and its
+   behaviour*, with no data behind it; only the DATA waits for phase 2. A section with inert
+   controls is not finished. Deviations and anything deliberately left inert are listed, not
+   quietly dropped. See "DESIGN MEANS BEHAVIOUR TOO" above for the method.
 
 ### 🔒 Still in force from 2026-07-28 (settled before attempt 3; unchanged)
 
@@ -135,7 +210,228 @@ docker stop p5a-preview
       **right rail** = the prototype's frame with OUR honest empty state, NOT its nine sample
       filings (no filing index until V3-P3, and P4 deliberately refused to invent one); **rail
       scope** = the ported view only, other views unchanged; **narrow widths** = port as drawn.
-- [ ] **P1e-§02…§07** ⬅ **WE ARE HERE.** Not started. See "the measured remainder" below.
+- [x] **P1e-§02** built. **Collapsed is pixel-identical** (808px both; 32 pixels above 32/255, in
+      four 4-pixel spots at the mini charts' end markers). Three more chart builders ported
+      (`ipAreaChart`, `ipStackedArea`, `ipSparkline`), every series recovered numerically from the
+      captured SVG path data. ⚠️ **Its EXPANDER is structurally right but not yet pixel-clean**:
+      2026.8px against 2025.8px, ~5.7% of pixels differing, concentrated in the 12-panel grid and
+      the card head above it. One measurement pass (`tools/boxes.js` on `#i2` with expanders open),
+      not a rebuild.
+- [x] **Columns fixed app-wide** (operator, 2026-07-31). The port's content column was 732px, not
+      the prototype's 694px, and the view rail 132px against its 178px — so six of seven jump-list
+      labels wrapped to two lines and one to three. Three rules, all shell-wide:
+      `.page` padding 32→**28**, `.shell-rail` 132→**178**, `.shell-viewport` max-width 960→**976**
+      (= 694 + 20 + 262; at 960 the cap bound before the column reached its designed width).
+      `1440 = 210 + 28 + 178 + 20 + 694 + 20 + 262 + 28`. Now identical to the prototype band for
+      band. Checked: e2e clean, no overflow on any page at 1440 or 1280, and §01 improved to
+      **0 pixels** above 32/255.
+      ⚠️ `/manager` (4) and the legacy Institutional view (3) render SVGs authored wider than their
+      mount — **pre-existing**, confirmed by re-measuring with the old widths. That is the
+      `ClearyFi.chartWidth()` bug fix 1 solved on the archive branch; it is NOT on this branch and
+      is worth pulling across.
+- [x] **§02's two cards resized to the prototype** (operator, 2026-07-31). Root cause was a class of
+      transcription error worth remembering: **`getComputedStyle` RESOLVES `grid-template-columns`
+      to the tracks it worked out at that width.** The capture read back `340px 340px`, which is the
+      *answer* at a 694px column, not the rule — the prototype declares
+      `repeat(auto-fit, minmax(320px, 1fr))`. Pinned at 340px the cards stopped filling any wider
+      column. **Five grids were transcribed this way** and are now the prototype's own declarations:
+      `.ip-grid2`, `.ip-panels`, `.ip-mtab-*` (`minmax(120px,1.6fr) 64px 54px 58px`, gap 8 not 9),
+      `.ip-ftab-*` and `.ip-speed-row` in §01. **Always read grid rules from the raw inline style,
+      never from the computed dump.** Verified across widths: cards now 340/420/445 at
+      1440/1600/1920 — identical to the prototype at every one.
+      Also found: each expander panel carries a **3px left edge in its manager's own colour** plus a
+      1px border on the other three sides. I had one border instead of both, which cost 2px of panel
+      height and compounded into an 8px shortfall.
+- [x] **§02's expander panel grid fixed** (operator, 2026-07-31). Height now **exact** (2025.8 =
+      2025.8); pixels above 32/255 fell 316k → **68k** and bands 49 → 19. Three defects, all found
+      by `tools/boxes2.js` (the boxes probe with expanders opened):
+      1. **The panel's border.** It carries a 1px border on three sides AND a 3px left edge in its
+         manager's colour. I had only the 3px edge — 2px of panel height lost, compounding into an
+         8px shortfall down four rows.
+      2. **`.ip-card-head--tight` was scoped to `.ip-grid2`.** §02's THIRD card ("Largest reporting
+         managers") lives inside the expander, not the grid, so it kept §01's 12px margin and
+         pushed the entire panel grid down 1px. Now a modifier on all three of §02's heads.
+      3. **The manager table's header margin is 16px, not §01's filing table's 14px.** Another
+         per-section pixel the prototype does not normalise; it put the ten-row table 2px high.
+      After these the panel grid measures dx/dw/dh **all zero** against the prototype.
+- [x] **§02 DONE — all four states at §01's bar** (2026-07-31). Zero bands everywhere; pixels above
+      32/255 are **0 / 0 / 30 / 34** for §01 collapsed, §01 expanded, §02 collapsed, §02 expanded
+      (the 30/34 are the mini charts' end-marker circles, whose centres the prototype carries at
+      full precision and we round to 3dp — four spots, four pixels each). §02 expanded went
+      **68k → 34**. Heights exact in all four.
+      **Two of the four defects were in the MEASUREMENT, and had been inflating every §02 number:**
+      1. The two captures rasterised at **different fractional origins** (ours `.8438`, the
+         prototype's `.5`) — §01 pinned it, §02 never did. That alone was the two upper bands.
+      2. **`captureBeyondViewport` paints sticky chrome into a tall section's clip.** §02 open is
+         2026px against a 1200px viewport, so the topbar composited ~380px down — and it looked
+         real because our topbar and the prototype's genuinely differ (`⌘K` vs `Ctrl K`, its
+         `API REFERENCE ↗` chip). §01 collapsed is 1127px and never hit it.
+      **Three real defects, every one invisible at a 32/255 threshold:** the manager table carried
+      one ink + one size where the prototype has three of each (name `--ink-body`, counts `--ink`
+      11.5px, Δ `--ink-soft` 11px — that was the band under each of the ten rows); the expander
+      button had no `background` so it took the UA's grey in **both** states (10–25/255, under the
+      threshold twice over); `.ip-chip` was `--ink-muted` for `--ink-soft` (15/255).
+      Re-checked at **DPR 1** as well (where §01's badge defect only became a whole pixel): 2
+      pixels above 32/255 in each expanded section, zero bands. e2e 44 shots, all three
+      institutional shots `errors=0`, only the two pre-existing sectorapp 502s.
+      **Preview is up on `http://localhost:8010/company/AAPL/institutional`**
+      (`docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app` — host
+      8000 is taken by the running `api` container).
+- [x] **§03 DONE — the biggest section, clean in both states** (2026-07-31). 3016.5px open, 600
+      nodes, four hand-authored charts, eight sub-components. **0 pixels above 32/255 and 0 bands
+      in both states**; `compare.py` matched **218 of 218 texts**. Heights exact (1832.5 / 3016.5).
+      **But the first diff read 200,685 pixels / 111 bands with every DOM box, line box, wrapper
+      and SVG identical to three decimals.** `tools/align.js` showed the top aligning at `dy 0`
+      with a perfect zero and everything below the Lorenz at `dy −2` with a perfect zero — the
+      same pixels, one CSS px apart.
+      ⚠️ **THE MEASUREMENT BUG, and it affected §01/§02 too: matching the VIEWPORT fraction is not
+      enough.** Chrome snaps each paint op to the device-pixel grid, and that grid is anchored to
+      the **document**, not the viewport — two pages at the same viewport offset but different
+      document offsets round some glyph runs up and some down, and below the divergence everything
+      is a pixel out. Invisible to every DOM measurement, because the DOM is right. `shot2.js`
+      now takes **`SNAP=1`**, which makes the section's document-space top integral on both sides:
+      **200,685 → 6,003 pixels, 111 bands → 4.** §01/§02 re-measured with it — unchanged or
+      slightly better, but a section straddling a rounding boundary could have been declared clean
+      when it was not. **Always pass `SNAP=1`.**
+      The 4 surviving bands were **fabricated literals**: I read eight rows of the domicile card's
+      markup and invented the ninth and tenth (*Ireland / Other · undisclosed* for the prototype's
+      *Norway · sovereign fund / Rest of world*), plus one wrong overlap row. `compare.py` had
+      already named all three — which is why it runs BEFORE the pixel diff.
+- [x] **The three affordances are LIVE** (operator, 2026-07-31): `⤡ Expand`, `ƒ DERIVED`, `Treemap`.
+      Ported from the RUNNING prototype — behaviour is not in the markup, so each was driven and
+      read back first. Expand opens a lightbox with its OWN title/note and the chart **re-authored
+      at the dialog's measured width** (660→1316 viewBox, never scaled); ƒ DERIVED reveals a
+      "how this is computed" panel and flips to ƒ HIDE; Treemap swaps chart + caption + pressed
+      state, and Expand then opens the treemap under its own title. Chart builders are now
+      width-parameterised. **`tools/drive.js`: 28 driven assertions, 0 failures**; all six section
+      states re-diffed with **no regression** (still zero bands, still 0/0/30/34/0/0 above 32/255);
+      e2e 44 shots, institutional `errors=0`.
+      ⚠️ **Three defects this caught, two of them mine:** the lightbox head was never closed (body
+      rendered inside it); I hid Expand in treemap view on a bad read from `click.js` (its
+      added/removed detection reuses element ids — the prototype KEEPS the chip); and
+      `button.ip-chip` took the UA's grey the moment the span became a button — **~15/255, under
+      the 32 threshold, visible only in the `>8` count**. Any span that becomes a button needs
+      `background: transparent`.
+      🔶 **Three deviations for the operator to rule on** (all listed in the log):
+      1. The prototype puts the derivation panel in ONE shared slot at a fixed position (y343,
+         between the first card and "Since the last 13F") whatever badge opened it — so the tile
+         badge at y938 opens a panel 600px above itself. We render it under the block it explains.
+      2. §01's card-head badge opens nothing in the prototype (label-only, verified byte-identical
+         over two clicks). Ported as label-only rather than inventing a panel.
+      3. The prototype RE-SQUARIFIES the treemap at the lightbox's aspect; we scale the card's
+         layout (areas exact, arrangement not). Its markup does not expose the squarify variant.
+      Still inert and named: `Set intersections`, `Trend`, the clickable "Effective holders" stat.
+- [x] **§04 DONE — the first section built under D-behaviour, and the cleanest yet** (2026-07-31).
+      **1961px exact on the first build**, `compare.py` **104/104 texts**, **0 pixels above 32/255
+      and 0 bands** in BOTH states and at BOTH device pixel ratios. **6 controls, 0 inert.**
+      Doing the inventory FIRST paid immediately: it proved §04 has no `ƒ DERIVED` badges and no
+      view toggles, so the unresolved D1 deviation could not block it — under the old order that
+      would have surfaced at the end. Ninth chart builder: `ipLaneChart` (one lane per 5%-threshold
+      holder; x positions recovered from the captured SVG, two label-placement rules derived and
+      both reproduce all four lanes exactly). §04's links go to the registrant's own filings by CIK
+      (`cgi-bin/browse-edgar`), not §01–§03's full-text search — `ipLink` now takes a target.
+      ⚠️ **Two defects, both the same class as §03's: I invented literals rather than reading them.**
+      Ballot items 3 and 4 went in from memory ("Ratify auditor 91.8/8.2", "Elect directors
+      (slate)") because the markup I'd read was truncated; the prototype's are "Election of
+      directors (slate) · all elected · 91.7/8.3/0.0" and "Ratification of auditor · approved ·
+      97.3/2.4/0.3". `compare.py` named all six strings before a single pixel was compared. Also
+      paraphrased a caption and one apostrophe. **Extract literals mechanically; never fill a gap
+      from memory.** And `var(--gaap)` appeared again (ours is `--gaap-color`) — third token-name
+      mismatch, would have silently dropped a bar segment's colour.
+      `drive.js` now **53 assertions, 0 failures**; §01–§03 re-diffed with no regression; e2e 44
+      shots, institutional `errors=0`.
+- [x] **§05 DONE** (2026-07-31). Height exact (1177), `compare.py` **99/99**, **0 above 32/255 and
+      0 bands** in both states and at both DPRs, **5 controls, 0 inert**. Tenth builder:
+      `ipCohortGrid` (triangular retention heatmap, 45 cells, each carrying both the printed value
+      and the capture's own fill-opacity).
+      **The inventory unblocked D1**: §05 has two `ƒ DERIVED` badges, so it inherits the unruled
+      deviation — but driving them showed **§05's panels open at the bottom of their own card**,
+      which is what the port already does. **§01's shared slot is the prototype's outlier, not its
+      pattern.** That strengthens D1 rather than weakening it, and let §05 proceed without a ruling.
+      ⚠️ **Two structural defects no text comparison can see**, both found by `hprec.js` on the
+      grid's children: §05's stat value declares **no `line-height`** where §03's declares `1` (5px
+      taller, moving everything below it — third distinct size AND third distinct line-height for
+      the same component across three sections), and **the expander bar is a GRID ITEM** here
+      (`grid-column: 1/-1`), so it takes the grid's 14px gap; as a sibling after the grid it lost
+      that, and the revealed card then needed `--flush`. 30px in total. Plus a caption I never
+      extracted (the funds card ends with TWO sentences in two spans) and `var(--gaap)` for the
+      fourth time.
+      `drive.js` **64 assertions, 0 failures**; §01–§04 re-diffed, no regression.
+- [ ] **P1e-§06…§07** ⬅ Not started (§06 1304px · §07 540 — ≈1,844px). **Each is done only when its
+      MARKUP, its CSS, its charts AND its controls are ported** — see D-behaviour. Start with
+      `tools/controls.js` on the section; the inventory is step 1, not an afterthought.
+- [x] **Retro-fit sweep DONE** (2026-07-31) — D-behaviour applied across §01–§03. `Set intersections`
+      (a whole UpSet plot + its 8-row combination table), `Trend` and the clickable "Effective
+      holders" stat (an inline trend panel + "the measures behind it"), and all five `↗` links (real
+      anchors to EDGAR, `target=_blank rel=noopener`) are live. **`tools/controls.js`: 30 controls,
+      exactly 1 unwired** — §01's card-head badge, which opens nothing in the prototype either, and
+      `drive.js` asserts it is the only one. **`tools/drive.js`: 49 assertions, 0 failures.**
+      No rendering regression: all six states, heights identical, zero bands, >32/255 at
+      0/0/30/34/0/0. Trail: **`4-qa.md`** + **`4b-manual-verification.md`** (operator ran batches
+      A–C by hand, all passed).
+      ⚠️ **The operator found the one defect no script caught**: the overlap card's `⤡ Expand`
+      always opened the peer matrix, even with `Set intersections` showing. I had shipped that as a
+      *listed gap* because my probe couldn't open the modal in the prototype — **the probe was
+      wrong** (the overlap card is inside the expander, which I hadn't opened). Opening it, the
+      prototype answered in one call: "Manager set intersections · exclusive combinations across
+      AVGO, TXN, NVDA, AMD", viewBox `0 0 1316 480`. **Lesson: a gap you cannot characterise is a
+      gap in the PROBE until proven otherwise — re-drive it before writing it down as by-design.**
+      Diffing that view then found three more of my own: the UpSet had bands on all four rows (the
+      prototype stripes alternate), bars at 0.55 not 0.5 opacity, and row labels in the 9px axis
+      style instead of 10px/600 `--ink`. **I had asserted the UpSet's structure but never pixel-
+      diffed it** — 437 → 64 pixels above threshold once fixed.
+- [ ] **Open with the operator** (in `4b-manual-verification.md`): step 7b re-check after the fix,
+      steps 13–15, and a ruling on the four listed deviations (panel placement · §01's label-only
+      badge · the scaled-not-re-squarified treemap in the lightbox · keyboard access on the stat).
+
+### §02's defects — the same classes keep recurring, check for them first
+
+1. **Chip/badge line box** — the prototype's are `<button>`s on the UA's `normal` line box; a
+   `<span>` inherits the body's and comes out 2px taller. **Third time this has bitten.**
+2. **Card-head bottom margin is 11px in §02, 12px in §01.** The prototype differs by a pixel
+   between sections; do not normalise it.
+3. **`var(--gaap)` does not exist here — ours is `--gaap-color`.** An invalid custom property makes
+   `stroke` fall back to none and `fill` to black, so a chart line silently disappears. Second
+   token name that differs, after `--rule` → `--border-tint-rule`. **Check every `var()` you copy.**
+4. **Axis ticks are literals, not computed.** The prototype's maxima are fractional (~1814.2,
+   ~837.8); quarters of a rounded max print 210M/629M for its 209M/628M.
+5. **`opacity` is invisible in a computed-style dump** that only asks for `background-color`. The
+   legend bar and its tick are at 0.55 — 7,400 differing pixels. **Add `opacity` to the probe.**
+
+6. **A pixel diff at 32/255 cannot see a wrong colour token or a UA background.** `--ink-muted` for
+   `--ink-soft` is 15/255; a `<button>`'s default grey against the card cream is 10–25/255. Three
+   of §02's defects hid there. **Run `tools/compare.py` (property-by-property, matched by text)
+   BEFORE the pixel diff** — it names them; the image cannot.
+7. **Font stacks: the prototype uses FOUR, and which one an element gets is not guessable.** Bare
+   `"IBM Plex Mono"` / `"Hanken Grotesk"` on most HTML, the `-fb` pair (with generic fallback) on
+   every SVG `<text>` **and** on §02's panel component and the manager-name classes. It matters
+   only where a glyph is missing from the loaded subset — `ƒ`, `↗`, `Δ` so far — but there the
+   *fallback* sets the width and everything after it drifts. Port-local `--ip-mono`, `--ip-sans`,
+   `--ip-mono-fb`, `--ip-sans-fb`; never `--font-mono`/`--font-sans`, which are both fallback
+   stacks. ⚠️ **Phase 2 must revisit**: a real filer name can carry glyphs outside the latin
+   subset, and a bare stack renders those in the UA default rather than a monospace.
+
+⚠️ **And the one process failure:** I built §02's expander from the section's TEXT and produced a
+flat list of eight rows. The prototype has a 3×4 grid of twelve sparkline panels followed by a
+ten-row table. **Read the tree, never the text.**
+
+### The tooling §04–§07 should be built with (all re-runnable, in `tools/`)
+
+**The loop, in order:** read the section's TREE out of `literals-open.json`'s `html` (never its
+text) → recover every chart series numerically from the captured SVG and **round-trip-check it** →
+build → `compare.py` → `diff.js` → `crop.js`/`align.js` on whatever survives.
+
+| script | what it does |
+|---|---|
+| `shot2.js` | one section, either app, collapsed or open, matched column, **`SNAP=1` always**, sticky chrome hidden, explicit clip |
+| `compare.py` | every property mismatch, matched by text. **Runs BEFORE the pixel diff** — it finds wrong colour tokens, wrong font stacks and invented literals, none of which a 32/255 threshold can see |
+| `diff.js` | canvas pixel diff: three thresholds, contiguous **row bands**, hot columns. Bands are the signal; scattered pixels are antialiasing |
+| `align.js` | the (dx,dy) shift that best aligns a region. Answers *"layout difference, or the same pixels drawn a fraction off?"* — it found the paint-grid bug |
+| `crop.js` | proto/ours/diff stacked for one y-range, zoomable — turns a band into something you can look at |
+| `text.js` · `lines.js` · `chain.js` · `hprec.js` | per-run widths · per-line-box geometry · ancestor chain with margins/padding (the only probe that sees a WRAPPER) · full-precision 4dp heights |
+
+`compare.py` reports three **known artifacts** on every section — button/cell nesting, inline-vs-
+block caption boxes, and split text nodes. Don't chase them; they're listed in the log.
 - [ ] **P1e-rest** §02 → §07, screenshot-diffing each against its capture before starting the next
 - [ ] **P1f** the remaining prototype chart builders (D-protocharts) — §01's dumbbell is done
 - [ ] **P1g** full-page diff vs the prototype
@@ -143,9 +439,8 @@ docker stop p5a-preview
 - [ ] **P2** plumb real data in, literal by literal, until none remain
 - [ ] 4 QA · 4b operator verification
 
-⚠️ **Working tree is UNCOMMITTED** (`company.css`, `company.js`, `shell.js`, `shell.css`,
-`scripts/headless_check.js`, and the new `docs/delivery/v3-p5a-institutional/`). Branch is at
-`54d1522`.
+✅ **Committed** as `40ef977` — "§02–§05 ported, and every control made live" (46 files, +5,461).
+`735a14f` before it carried P1a–P1e-§01 and both rails. Nothing pushed.
 
 ## The measured remainder — read before starting §02
 
@@ -162,10 +457,14 @@ Ground truth for all seven sections is captured **with the expanders open**
 §04–§06 not yet inventoried. Every one is a hand-authored SVG on a fixed `viewBox` in the
 prototype, like §01's dumbbell — never Plot.
 
-**Method, unchanged and non-negotiable:** capture → build → `tools/boxes.js` (numeric) → pin the
-column AND its fractional origin → pixel diff. §01 only reached pixel-identical because every
-element was measured; four of its five defects were invisible by eye. Building six sections faster
-than that is precisely what produced three rejected attempts.
+**Method, non-negotiable** *(superseded in detail by "The tooling §04–§07 should be built with"
+above — this is the shape of it)*: read the tree → **inventory and drive the section's controls** →
+recover the chart series numerically → build markup **and behaviour** → `compare.py` → pin the
+column, its fractional origin AND its document-space origin (`SNAP=1`) → pixel diff → `drive.js`
+→ re-diff the default states. §01 only reached pixel-identical because every element was measured;
+four of its five defects were invisible by eye, and its controls still had to be rebuilt later
+because they were ported as pictures. Building six sections faster than that is precisely what
+produced three rejected attempts.
 
 ### What the second run added, beyond §01
 
@@ -212,10 +511,11 @@ layout difference.
 
 ### Deliberate, listed differences in §01 (not oversights)
 
-- **Every affordance is inert** — the two `ƒ DERIVED` badges, `Base 13F ↗`, and the
-  `+ ALSO IN THIS SECTION` bar are `<span>`s that render identically and do nothing. Nothing exists
-  behind them in phase 1. The expander's revealed content is **not** built (§01's element list
-  covers the bar, not what is behind it). Wired in phase 2.
+- ~~**Every affordance is inert** — the two `ƒ DERIVED` badges, `Base 13F ↗`, and the
+  `+ ALSO IN THIS SECTION` bar are `<span>`s that render identically and do nothing... wired in
+  phase 2.~~ ❌ **OVERTURNED 2026-07-31 by D-behaviour.** This was the wrong call and it cost a
+  rebuild: phase 1 ports the behaviour too. The expander, both badges and the chips are now live;
+  `Base 13F ↗` and the remaining links are on the retro-fit list above.
 - **The dumbbell's `prior`/`current` were recovered**, not invented: read back from the captured
   SVG's x positions via `x = 210 + v/123.43 × 372`. They reproduce the geometry to <0.1px *and*
   every one rounds to the delta the prototype prints — that agreement is the proof the scale was

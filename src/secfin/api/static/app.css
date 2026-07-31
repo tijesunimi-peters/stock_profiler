@@ -33,7 +33,10 @@
 .page {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 12px 32px 72px;
+  /* 28px, not 32: the v3 prototype's frame is 210 sidebar + 28 + 178 rail + 20 + 694 content +
+     20 + 262 right rail + 28, which is exactly 1440. At 32 the content column came out 38px wide
+     of the design and the view rail had to give the space back. (V3-P5a, measured 2026-07-31.) */
+  padding: 12px 28px 72px;
 }
 
 .masthead-top {

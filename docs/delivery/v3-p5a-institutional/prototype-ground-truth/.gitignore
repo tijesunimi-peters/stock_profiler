@@ -22,3 +22,19 @@ crop-*.png
 proto-institutional-full.png
 proto-institutional-full-open.png
 proto-institutional-viewport.png
+
+# Working captures from the measurement passes — short-name pairs (p<N> = prototype, o<N> = ours),
+# the click/drive screenshots, and the per-run probe dumps. All regenerable in minutes; the
+# committed reference is proto-i<N>.png / proto-i<N>-open.png plus the literal dumps above.
+p[0-9]*.png
+o[0-9]*.png
+x-*.png
+y-*.png
+bo-*.json
+boxes-*-i[0-9].json
+proto-i?-c.png
+proto-i?-o.png
+proto-i?-o1x.png
+proto-i?-tall.png
+proto-i?-deriv.png
+proto-i?-open-1x.png
