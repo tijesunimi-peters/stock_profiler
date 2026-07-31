@@ -325,7 +325,15 @@
   // ---------- view rail ----------
 
   /* Returns a DOM node (consistent with app.js's chartCard() and D5 -- builders return nodes).
-   * opts: { subject | views:[[slug,label]], active, note, onSelect(slug) } */
+   *
+   * opts: { subject | views:[[slug,label]], active, note, onSelect(slug),
+   *         sections:[[id,n,label]], activeSection, onSection(id) }
+   *
+   * `sections` is OPTIONAL and off by default: a view that is a single long page with numbered
+   * sections (the v3 Institutional view is the first) declares them and gets a jump list under
+   * the views, separated by a rule. A view that declares none renders exactly what it did before,
+   * so no other page changes. Added for V3-P5a (operator, 2026-07-30) -- the prototype carries this
+   * list in the same rail, and without it the rail's left edge does not match the design. */
   function rail(opts) {
     opts = opts || {};
     var views = opts.views || VIEWS[opts.subject] || [];
@@ -350,6 +358,41 @@
       });
       nav.appendChild(btn);
     });
+
+    if (opts.sections && opts.sections.length) {
+      var secRule = document.createElement("div");
+      secRule.className = "shell-rail-rule";
+      nav.appendChild(secRule);
+
+      var secLabel = document.createElement("div");
+      secLabel.className = "shell-rail-label";
+      secLabel.textContent = "Sections";
+      nav.appendChild(secLabel);
+
+      var list = document.createElement("div");
+      list.className = "shell-sections";
+      opts.sections.forEach(function (s) {
+        // A real anchor, not a button: jumping to a section on the page you are already on is
+        // navigation, and it should survive middle-click, keyboard and a copied URL.
+        var a = document.createElement("a");
+        a.className = "shell-sec" + (s[0] === opts.activeSection ? " active" : "");
+        a.href = "#" + s[0];
+        if (s[0] === opts.activeSection) a.setAttribute("aria-current", "true");
+        var n = document.createElement("span");
+        n.className = "shell-sec-n";
+        n.textContent = s[1];
+        var t = document.createElement("span");
+        t.className = "shell-sec-t";
+        t.textContent = s[2];
+        a.appendChild(n);
+        a.appendChild(t);
+        if (opts.onSection) {
+          a.addEventListener("click", function () { opts.onSection(s[0]); });
+        }
+        list.appendChild(a);
+      });
+      nav.appendChild(list);
+    }
 
     if (opts.note) {
       var rule = document.createElement("div");

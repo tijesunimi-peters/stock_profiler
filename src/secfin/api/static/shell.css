@@ -245,6 +245,30 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 .shell-rail-btn:hover { background: var(--bg-badge); color: var(--ink); }
 .shell-rail-btn.active { background: var(--accent-wash); color: var(--accent-ink); border-color: var(--accent-wash); }
 .shell-rail-rule { height: 1px; background: var(--rule); margin: 12px 4px; }
+
+/* Section jump list (V3-P5a) — only rendered for a view that declares sections. Read off the v3
+   prototype's own rail: mono 11.5px, the number in a fixed 20px gutter, and the active row marked
+   by a 2px accent edge and a wash rather than a filled pill (the filled pill is the VIEW's
+   affordance; a section is a place on the page you are already on, not a different page). */
+.shell-sections { display: flex; flex-direction: column; gap: 1px; }
+.shell-sec {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 7px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-left: 2px solid transparent;
+  border-radius: 0 6px 6px 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+.shell-sec:hover { background: var(--bg-badge); color: var(--ink); }
+.shell-sec.active { background: var(--accent-wash); border-left-color: var(--accent); color: var(--accent-ink); }
+.shell-sec-n { font-size: 9.5px; color: var(--mono-muted); }
+.shell-sec.active .shell-sec-n { color: var(--accent-ink); }
 .shell-rail-note {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -271,7 +295,11 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
   .shell-rail-btn { width: auto; flex: none; margin-bottom: 0; white-space: nowrap; }
   .shell-rail-label,
   .shell-rail-rule,
-  .shell-rail-note { display: none; }
+  .shell-rail-note,
+  /* The jump list is a wide-screen affordance. Folded into a horizontal strip it would double the
+     rail's length and compete with the views for the same scroll; on a phone the sections are a
+     thumb-flick apart anyway. */
+  .shell-sections { display: none; }
   .shell-viewport { max-width: none; }
 }
 

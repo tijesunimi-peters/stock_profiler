@@ -1,0 +1,516 @@
+{
+ "h": 1127,
+ "out": [
+  {
+   "t": "01",
+   "x": 0,
+   "y": 8,
+   "w": 13.2,
+   "h": 14
+  },
+  {
+   "t": "Register snapshot",
+   "x": 23.2,
+   "y": 0,
+   "w": 154.4,
+   "h": 25
+  },
+  {
+   "t": "13F-HR register, freshness and what has been filed since",
+   "x": 187.6,
+   "y": 9,
+   "w": 336,
+   "h": 13
+  },
+  {
+   "t": "Register as of",
+   "x": 19,
+   "y": 94,
+   "w": 228,
+   "h": 13
+  },
+  {
+   "t": "1Q26",
+   "x": 19,
+   "y": 110,
+   "w": 36,
+   "h": 19
+  },
+  {
+   "t": "filed ·",
+   "x": 19,
+   "y": 132,
+   "w": 228,
+   "h": 13
+  },
+  {
+   "t": "2026-05-12",
+   "x": 55,
+   "y": 132,
+   "w": 60,
+   "h": 13
+  },
+  {
+   "t": "73 days since filed",
+   "x": 133,
+   "y": 132,
+   "w": 114,
+   "h": 13
+  },
+  {
+   "t": "Next 13F window closes",
+   "x": 284,
+   "y": 94,
+   "w": 146.3,
+   "h": 13
+  },
+  {
+   "t": "2026-08-14",
+   "x": 284,
+   "y": 110,
+   "w": 90,
+   "h": 19
+  },
+  {
+   "t": "in",
+   "x": 284,
+   "y": 132,
+   "w": 146.3,
+   "h": 13
+  },
+  {
+   "t": "21 days",
+   "x": 302,
+   "y": 132,
+   "w": 42,
+   "h": 13
+  },
+  {
+   "t": "Filings since the snapshot",
+   "x": 467.3,
+   "y": 94,
+   "w": 172.9,
+   "h": 13
+  },
+  {
+   "t": "6",
+   "x": 467.3,
+   "y": 110,
+   "w": 9,
+   "h": 19
+  },
+  {
+   "t": "faster forms applied below",
+   "x": 467.3,
+   "y": 132,
+   "w": 172.9,
+   "h": 13
+  },
+  {
+   "t": "Confirmed in last 30 days",
+   "x": 19,
+   "y": 163,
+   "w": 426,
+   "h": 13
+  },
+  {
+   "t": "32%",
+   "x": 19,
+   "y": 179,
+   "w": 27,
+   "h": 19
+  },
+  {
+   "t": "share of reported holdings confirmed by some filing in the last 30 days",
+   "x": 19,
+   "y": 201,
+   "w": 426,
+   "h": 13
+  },
+  {
+   "t": "13F-HR is filed within 45 days of quarter end — this register is as of 1Q26, filed May 2026, and is not a real-time holder list.",
+   "x": 19,
+   "y": 238,
+   "w": 620.7,
+   "h": 35.8
+  },
+  {
+   "t": "Section 13(f) covers managers with over $100M in 13(f) securities. Holdings below reporting thresholds and non-13F holders are not represented.",
+   "x": 19,
+   "y": 280.5,
+   "w": 642.6,
+   "h": 35.8
+  },
+  {
+   "t": "Since the last 13F",
+   "x": 17,
+   "y": 365,
+   "w": 121.3,
+   "h": 20
+  },
+  {
+   "t": "faster forms, by EDGAR acceptance time · base and adjusted shown separately",
+   "x": 147.3,
+   "y": 370,
+   "w": 450,
+   "h": 13
+  },
+  {
+   "t": "Base 13F ↗",
+   "x": 606.3,
+   "y": 370,
+   "w": 62.4,
+   "h": 13
+  },
+  {
+   "t": "ƒ derived",
+   "x": 24,
+   "y": 397,
+   "w": 52.4,
+   "h": 11
+  },
+  {
+   "t": "Base register",
+   "x": 31,
+   "y": 440,
+   "w": 186,
+   "h": 13
+  },
+  {
+   "t": "767M",
+   "x": 31,
+   "y": 455,
+   "w": 40.8,
+   "h": 22
+  },
+  {
+   "t": "13F-HR · 1Q26, filed 2026-05-12",
+   "x": 31,
+   "y": 479,
+   "w": 186,
+   "h": 13
+  },
+  {
+   "t": "+",
+   "x": 233,
+   "y": 435,
+   "w": 9,
+   "h": 19
+  },
+  {
+   "t": "Filed since",
+   "x": 258,
+   "y": 440,
+   "w": 132,
+   "h": 13
+  },
+  {
+   "t": "+9.7M",
+   "x": 258,
+   "y": 455,
+   "w": 51,
+   "h": 22
+  },
+  {
+   "t": "of filings applied",
+   "x": 258,
+   "y": 479,
+   "w": 132,
+   "h": 13
+  },
+  {
+   "t": "3",
+   "x": 258,
+   "y": 479,
+   "w": 6,
+   "h": 13
+  },
+  {
+   "t": "6",
+   "x": 288,
+   "y": 479,
+   "w": 6,
+   "h": 13
+  },
+  {
+   "t": "=",
+   "x": 406,
+   "y": 435,
+   "w": 9,
+   "h": 19
+  },
+  {
+   "t": "Adjusted register",
+   "x": 431,
+   "y": 440,
+   "w": 162,
+   "h": 13
+  },
+  {
+   "t": "776M",
+   "x": 431,
+   "y": 455,
+   "w": 40.8,
+   "h": 22
+  },
+  {
+   "t": "of shares outstanding",
+   "x": 431,
+   "y": 479,
+   "w": 162,
+   "h": 13
+  },
+  {
+   "t": "61.6%",
+   "x": 431,
+   "y": 479,
+   "w": 30,
+   "h": 13
+  },
+  {
+   "t": "Where the register moved · prior quarter to current",
+   "x": 17,
+   "y": 518,
+   "w": 660,
+   "h": 13
+  },
+  {
+   "t": "○ prior quarter    ● current",
+   "x": 227,
+   "y": 541,
+   "w": 142.5,
+   "h": 13
+  },
+  {
+   "t": "Hedge fund H",
+   "x": 147.3,
+   "y": 571.3,
+   "w": 69.8,
+   "h": 15
+  },
+  {
+   "t": "+4.9M",
+   "x": 608,
+   "y": 572.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Active manager D",
+   "x": 126.3,
+   "y": 598.3,
+   "w": 90.8,
+   "h": 15
+  },
+  {
+   "t": "+4.4M",
+   "x": 608,
+   "y": 599.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Sovereign fund G",
+   "x": 129,
+   "y": 625.3,
+   "w": 88,
+   "h": 15
+  },
+  {
+   "t": "+2.6M",
+   "x": 608,
+   "y": 626.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Index manager C",
+   "x": 130,
+   "y": 652.3,
+   "w": 87,
+   "h": 15
+  },
+  {
+   "t": "+1.8M",
+   "x": 608,
+   "y": 653.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Pension system F",
+   "x": 128.8,
+   "y": 679.3,
+   "w": 88.7,
+   "h": 15
+  },
+  {
+   "t": "+0.7M",
+   "x": 608,
+   "y": 680.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Index manager B",
+   "x": 131.2,
+   "y": 706.3,
+   "w": 85.8,
+   "h": 15
+  },
+  {
+   "t": "−1.4M",
+   "x": 608,
+   "y": 707.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Active manager E",
+   "x": 127.5,
+   "y": 733.3,
+   "w": 89.8,
+   "h": 15
+  },
+  {
+   "t": "−2.7M",
+   "x": 608,
+   "y": 734.2,
+   "w": 31.5,
+   "h": 14
+  },
+  {
+   "t": "Index manager A",
+   "x": 130.8,
+   "y": 760.3,
+   "w": 86.8,
+   "h": 15
+  },
+  {
+   "t": "−10.5M",
+   "x": 608,
+   "y": 761.2,
+   "w": 37.8,
+   "h": 14
+  },
+  {
+   "t": "Hollow is the position as reported in the prior quarter’s 13F, filled the current register. Colour is manager type, the same encoding used everywhere on this page. Direction is described, not scored.",
+   "x": 17,
+   "y": 806,
+   "w": 660,
+   "h": 26
+  },
+  {
+   "t": "+ Also in this section",
+   "x": 28,
+   "y": 872,
+   "w": 143,
+   "h": 13
+  },
+  {
+   "t": "filing-by-filing detail since the snapshot · how fast each form arrives",
+   "x": 194,
+   "y": 872,
+   "w": 426,
+   "h": 13
+  },
+  {
+   "t": "Reporting managers",
+   "x": 15,
+   "y": 938,
+   "w": 202,
+   "h": 13
+  },
+  {
+   "t": "1,669",
+   "x": 15,
+   "y": 952,
+   "w": 66,
+   "h": 29
+  },
+  {
+   "t": "13F-HR filers reporting a position",
+   "x": 15,
+   "y": 984,
+   "w": 202,
+   "h": 26
+  },
+  {
+   "t": "Shares reported",
+   "x": 246,
+   "y": 938,
+   "w": 202,
+   "h": 13
+  },
+  {
+   "t": "767M",
+   "x": 246,
+   "y": 952,
+   "w": 52.8,
+   "h": 29
+  },
+  {
+   "t": "of shares outstanding",
+   "x": 246,
+   "y": 984,
+   "w": 202,
+   "h": 13
+  },
+  {
+   "t": "1260M",
+   "x": 264,
+   "y": 984,
+   "w": 30,
+   "h": 13
+  },
+  {
+   "t": "Institutional share",
+   "x": 477,
+   "y": 940,
+   "w": 126.4,
+   "h": 13
+  },
+  {
+   "t": "ƒ derived",
+   "x": 616.4,
+   "y": 941,
+   "w": 52.4,
+   "h": 11
+  },
+  {
+   "t": "60.8%",
+   "x": 477,
+   "y": 956,
+   "w": 66,
+   "h": 29
+  },
+  {
+   "t": "13F shares over cover-page shares out",
+   "x": 477,
+   "y": 988,
+   "w": 202,
+   "h": 26
+  },
+  {
+   "t": "Insider ownership",
+   "x": 15,
+   "y": 1041,
+   "w": 202,
+   "h": 13
+  },
+  {
+   "t": "6.4%",
+   "x": 15,
+   "y": 1055,
+   "w": 52.8,
+   "h": 29
+  },
+  {
+   "t": "DEF 14A beneficial ownership table",
+   "x": 15,
+   "y": 1087,
+   "w": 202,
+   "h": 26
+  }
+ ]
+}

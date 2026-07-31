@@ -52,11 +52,16 @@ const PAGES = process.env.PAGES
       ["statements-cashflow-chart-wmt", "/company/WMT?tab=statements&stmt=cashflow"],
       ["statements-segments", "/company/AAPL?tab=statements&stmt=segments"],
       ["trend", "/company/AAPL?trend=net_margin"],
+      // V3-P5a phase 1: `institutional` is now the prototype design port (static literals, no
+      // fetch); the view that carries real filings data moved to `institutional-legacy` and is
+      // listed in the rail beside it. Both are shot until the port is accepted and the legacy
+      // view is deleted.
       ["institutional", "/company/AAPL?tab=institutional"],
+      ["institutional-legacy", "/company/AAPL?tab=institutional-legacy"],
       // JPM's holders have no reported location -> exercises the holder-geography EMPTY STATE
       // (no-mappable-location -> honest note + tallies, never a blank map). Regression guard for
-      // docs/delivery/institutional-tab-viz/4-qa.md round 3.
-      ["institutional-nolocation", "/company/JPM?tab=institutional"],
+      // docs/delivery/institutional-tab-viz/4-qa.md round 3. Follows the data to the legacy slug.
+      ["institutional-nolocation", "/company/JPM?tab=institutional-legacy"],
       ["manager", "/manager/1067983"],
       ["compare", "/compare?symbols=AAPL,JPM,WMT"],
       ["trajectories", "/compare?symbols=AAPL,JPM,WMT&view=trajectories&metric=net_margin"],
@@ -152,7 +157,7 @@ const PAGES = process.env.PAGES
         await new Promise((r) => setTimeout(r, 1800));
       }
       if (name === "institutional-nolocation") {
-        // The institutional tab groups its panels behind a Holders/Geography/Activity sub-strip
+        // The legacy institutional view groups its panels behind a Holders/Geography/Activity sub-strip
         // (Holders is the default view). The holder-geography EMPTY STATE this case guards now
         // lives under the Geography sub-tab, so click into it before the screenshot -- otherwise
         // the regression guard would only ever render the Holders group and silently rot.

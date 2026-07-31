@@ -4,7 +4,8 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: frontend    ← PHASE 1, design port. No PM/architect stage this attempt; see below.
+next_stage: manual      ← §01 built + diffed; PAUSED for the operator's read on the
+  fidelity bar before §02-§07. No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-07-30
 
@@ -114,94 +115,128 @@ docker stop p5a-preview
 - [x] **P1b** blank `/institutional` live: the undismissable NOT-REAL-DATA banner, the prototype's
       in-view header (breadcrumb + source line), and the seven section shells with the prototype's
       headings and scope notes verbatim. `renderInstitutionalPort()` in `company.js`; CSS namespace
-      `.ip-*` in `company.css`. No console errors.
-- [ ] **P1c** ⬅ **NEXT** capture prototype ground truth → `v3-p5a-institutional/prototype-ground-truth/`
-- [ ] **P1d** ⬅ **NEXT** port the prototype's CSS primitives
-- [ ] **P1e-§01** ⬅ **NEXT** build §01 only, diff it, **then STOP for the operator's read on the
-      fidelity bar** before §02–§07
+      `.ip-*` in `company.css`.  *(P1a+P1b committed as `54d1522`, pushed.)*
+- [x] **P1c** prototype ground truth captured → `v3-p5a-institutional/prototype-ground-truth/`
+      (PNG per section `#i1`…`#i7` + full page, `literals.json` = every element's text AND computed
+      CSS, `tokens.json`). Re-runnable: `v3-p5a-institutional/tools/{capture,ours,boxes,shot,frac}.js`.
+      **Two things this settled:** the prototype's tokens are byte-identical to `style.css`'s (only
+      `--rule` → `--border-tint-rule` is renamed), and it loads the same Google Fonts request we
+      already do — so nothing had to be vendored or re-picked.
+- [x] **P1d** the prototype's CSS primitives ported under `.ip-*`, read off the live render with
+      `getComputedStyle` rather than inferred from its markup.
+- [x] **P1e-§01** built and diffed. **Pixel-identical**: of 3.1M pixels, 753 differ at all, 48 by
+      more than 8/255, exactly **1** by more than 32/255, and there are **zero contiguous bands**.
+      69 of 73 element boxes match to under 0.01px (the other 4 are a nesting artifact — see the
+      log); section height 1127px in both, at 1× and 2×.
+- [x] **🚦 OPERATOR READ (2026-07-30): §01 IS the fidelity bar** — with one gap the operator caught
+      that I had not surfaced: the prototype's Institutional view has a **right rail** and a
+      **SECTIONS jump list**, and the port had neither. Both now built. Four more decisions taken:
+      **pacing** = build §02–§07 then show; **expanders** = build and wire them (done for §01);
+      **right rail** = the prototype's frame with OUR honest empty state, NOT its nine sample
+      filings (no filing index until V3-P3, and P4 deliberately refused to invent one); **rail
+      scope** = the ported view only, other views unchanged; **narrow widths** = port as drawn.
+- [ ] **P1e-§02…§07** ⬅ **WE ARE HERE.** Not started. See "the measured remainder" below.
 - [ ] **P1e-rest** §02 → §07, screenshot-diffing each against its capture before starting the next
-- [ ] **P1f** port the prototype's chart builders (D-protocharts)
+- [ ] **P1f** the remaining prototype chart builders (D-protocharts) — §01's dumbbell is done
 - [ ] **P1g** full-page diff vs the prototype
 - [ ] **🚦 OPERATOR GATE — verify the design port.** Phase 2 does not start until this passes.
 - [ ] **P2** plumb real data in, literal by literal, until none remain
 - [ ] 4 QA · 4b operator verification
 
-⚠️ **Working tree is UNCOMMITTED** (4 files: `_active.md`, `company.js`, `company.css`, `shell.js`).
-Nothing is committed on this branch — it is still at `master` (`9d0d10f`).
+⚠️ **Working tree is UNCOMMITTED** (`company.css`, `company.js`, `shell.js`, `shell.css`,
+`scripts/headless_check.js`, and the new `docs/delivery/v3-p5a-institutional/`). Branch is at
+`54d1522`.
+
+## The measured remainder — read before starting §02
+
+Ground truth for all seven sections is captured **with the expanders open**
+(`literals-open.json`, `proto-i<N>-open.png`). Section heights, open:
+
+| §01 | §02 | §03 | §04 | §05 | §06 | §07 | total |
+|---|---|---|---|---|---|---|---|
+| 1700 | 2026 | 3017 | 1961 | 1177 | 1304 | 540 | **11,725px** |
+
+§01 is finished, expander included. §02–§07 are empty shells: ~10,000px of design and roughly
+**eight more chart builders** to port — paired mini bar charts and a nine-quarter stacked area
+(§02); a diverging flow chart, a ranked bar list, a cumulative-share curve and a treemap (§03);
+§04–§06 not yet inventoried. Every one is a hand-authored SVG on a fixed `viewBox` in the
+prototype, like §01's dumbbell — never Plot.
+
+**Method, unchanged and non-negotiable:** capture → build → `tools/boxes.js` (numeric) → pin the
+column AND its fractional origin → pixel diff. §01 only reached pixel-identical because every
+element was measured; four of its five defects were invisible by eye. Building six sections faster
+than that is precisely what produced three rejected attempts.
+
+### What the second run added, beyond §01
+
+- **`shell.js`'s `rail()` takes an optional `sections` list** — a view that declares none renders
+  exactly what it did before, so no other page changed. Labels are the prototype's SHORT forms.
+- **Right rail** on the ported view: `.ip-rr-*`, its own namespace, so P4's signed-off rail is
+  untouched. Column went 960px → **732px** (the prototype's is 694px; the 38px is our 132px view
+  rail against its 178px, which is V3-P2's settled width and not the port's to change).
+- **Expanders are real.** Bar toggles the block after it and relabels itself `− Hide`. §01's body
+  is built: six-filing table, exclusion caveat, five-row "how fast each form arrives".
+- **Scroll-spy: two bugs found by measuring.** An `IntersectionObserver` band was reliably off by
+  one (`scroll-margin-top` parks the target inside it while the previous section is still there);
+  the rect test that replaced it then missed by **exactly one pixel** (sections land at top=121,
+  the line was 120). Clicking a rail link now marks its own target and holds the scroll handler
+  off 900ms. ⚠️ Driving `scrollIntoView` at the LAST sections still marks the previous one — the
+  page cannot scroll them under the line. Re-check once §02–§07 have real height.
+- **§01 re-diffed after all of it: still zero bands, still 1 pixel above 32/255.**
 
 ---
 
-## ▶ NEXT (resume here): P1c → P1d → §01, then STOP
+## What §01 cost, and what it caught — read this before §02
 
-**Scope of this run: P1c, P1d, and §01 ONLY.** §01 is the fidelity probe — build it, diff it against
-the prototype, show the operator, and get their read on whether that is the bar **before** spending
-six more sections on the wrong one. Do not run ahead to §02.
+Full record: **`docs/delivery/v3-p5a-institutional/5-design-port-log.md`**. The four defects the
+numeric diff found and the eye did not:
 
-### P1c — capture ground truth
+1. **`style.css`'s `h2` rule leaked in** (`line-height: 1.12; letter-spacing: -0.03em`) — the
+   section title came out 9.6px narrower and 3.7px shorter, and pushed *every element below it* up
+   by 3.7px. This is precisely what "leftovers from previous design" means, and it is invisible
+   without measuring. **Assume more of these; measure every section.**
+2. **Badge line box** — the prototype's badge is a `<button>` (UA `line-height: normal` → 11px); a
+   `<span>` inherits the body's. Survived rounding at 1× and became a whole extra pixel at 2×.
+   **Check every section at both device pixel ratios** (`tools/frac.js`).
+3. **`text-wrap: pretty`** — the prototype sets it on exactly three things in §01 and nowhere else.
+   It changes where last lines break.
+4. **Font fallback** — the prototype declares `"IBM Plex Mono"` with NO generic fallback on the
+   badge and the `↗` link; `ƒ`→U+0191 and `↗`→U+2197 are absent from that font, so the fallback
+   decides the box width.
 
-Serve the prototype and our app (both commands are under "THE UNLOCK" above), navigate the prototype
-to Companies → Institutional, and screenshot `#i1`…`#i7` individually plus the full page into
-`docs/delivery/v3-p5a-institutional/prototype-ground-truth/`. Content column is **694px** at a 1440
-viewport — match that width when diffing, or every proportion will read wrong.
+**The method, in order:** capture → build → `boxes.js` (numeric, catches layout) → pin our column
+AND its fractional origin → pixel diff (catches rasterisation). Pinning the origin matters: Chrome
+snaps line boxes to device pixels, so a half-pixel difference in where the section starts rounds one
+line of a paragraph differently from its neighbours and fills the diff with noise that is not a
+layout difference.
 
-**Also extract the literals from the live DOM while you are there** (D-literals). Do not hand-type
-them from the notes below.
+### Deliberate, listed differences in §01 (not oversights)
 
-### P1d — the CSS primitives §01 needs
+- **Every affordance is inert** — the two `ƒ DERIVED` badges, `Base 13F ↗`, and the
+  `+ ALSO IN THIS SECTION` bar are `<span>`s that render identically and do nothing. Nothing exists
+  behind them in phase 1. The expander's revealed content is **not** built (§01's element list
+  covers the bar, not what is behind it). Wired in phase 2.
+- **The dumbbell's `prior`/`current` were recovered**, not invented: read back from the captured
+  SVG's x positions via `x = 210 + v/123.43 × 372`. They reproduce the geometry to <0.1px *and*
+  every one rounds to the delta the prototype prints — that agreement is the proof the scale was
+  recovered rather than guessed.
+- **Colour is carried per row**, not derived: the prototype paints "Active manager D" `#a88c5f` but
+  "Active manager E" `#8b8579`, so its type→colour rule keys off something its labels don't expose.
+  Only three colours appear across §01–§04. **§02/§03 should settle it.**
+- **Narrow widths**: below ~600px the freshness strip stacks and its 1px vertical rules strand
+  between cells, reading as stray marks. The prototype's own CSS, ported as written. Needs a
+  decision if we care.
 
-Port from the prototype's own inline styles, then verify with `getComputedStyle` on the live render:
-the **card** (`--bg-card`, 1px `--border`, 12px radius, `--shadow`, 15px/16px padding) · the
-**accent-edged strip** (3px `--accent` left border) · the **tint panel** (`--bg-tint`,
-1px `--border-tint`, 9px radius) · the **micro-label** (mono 9.5px, 0.1em, uppercase,
-`--mono-muted`) · the **tile grid** (`repeat(auto-fit,minmax(180px,1fr))`, **1px gap on a `--rule`
-background**, 10px radius, overflow hidden) · the **`ƒ DERIVED` badge** · the **dashed value cue**
-(the click affordance is a `border-bottom` on the VALUE ITSELF) · the **expander bar** · the
-**vertical cell divider** (1px × 38px `--rule`).
+### e2e
 
-### P1e-§01 — the elements, in order (prototype :1699–1894)
-
-1. **Freshness strip** — 4 cells separated by 1px vertical rules, wrapping: `REGISTER AS OF` ·
-   `NEXT 13F WINDOW CLOSES` · `FILINGS SINCE THE SNAPSHOT` (value in `--accent-ink`) ·
-   `CONFIRMED IN LAST 30 DAYS`. Each cell: mono 9.5px uppercase label / mono 15px 600 value / mono
-   10px note. Then a top rule and **two prose lines** (the 45-day lag line, the Section 13(f) scope
-   line) at 12.5px `--ink-body`.
-2. **Card "Since the last 13F"** — title + scope note + `Base 13F ↗` link + a **`ƒ DERIVED` chip**;
-   a tint panel carrying `Base register + Filed since = Adjusted register` (three cells, mono 17px
-   values, `+` and `=` as mono 15px `--mono-muted` glyphs between them); the micro-label
-   `WHERE THE REGISTER MOVED · PRIOR QUARTER TO CURRENT`; a legend `○ prior quarter ● current`;
-   **the dumbbell chart**; its caption; then the **expander bar** (`+ ALSO IN THIS SECTION` +
-   `filing-by-filing detail since the snapshot · how fast each form arrives`).
-3. **Tile grid**, 4 tiles — `REPORTING MANAGERS` · `SHARES REPORTED` · `INSTITUTIONAL SHARE`
-   (carries a `ƒ DERIVED` chip) · `INSIDER OWNERSHIP`. Values are mono 22px 600 with the **dashed
-   underline cue**; each has a mono 10px note beneath.
-
-The **dumbbell** is the one chart §01 needs — port the prototype's builder (D-protocharts), not
-`ClearyFi.dumbbellChart`. Its anatomy: row label right-aligned in a left gutter, hollow dot = prior
-quarter, filled = current, connector between, **signed delta right-aligned outside the plot**,
-colour = manager type.
-
-### Cross-check only — values seen on a 2026-07-30 capture
-
-⚠️ **The prototype seeds its sample data from the ticker**, so a different focal company renders
-different numbers. Take the literals from the DOM (P1c); these are a **sanity check that you are
-looking at the right elements**, not the source:
-
-`1Q26` · `filed 2026-05-12 · 73 days since filed` · `2026-08-14` / `in 21 days` · `6` filings since ·
-`32%` confirmed · base `767M` + `9.7M` = `776M` (`61.6% of shares outstanding`, `3 of 6 filings
-applied`) · tiles `1,669` / `767M` / `60.8%` / `6.4%` · dumbbell rows `Hedge fund H +4.9M`,
-`Active manager D +4.4M`, `Sovereign fund G +2.6M`, `Index manager C +1.8M`, `Pension system F
-+0.7M`, `Index manager B −1.4M`, `Active manager E −2.7M`, `Index manager A −10.5M`.
-
-**Note the shapes, which do not vary:** quarters render as **`1Q26`**, never `Mar 31, 2026`; manager
-names in the prototype's sample data are TYPE names; deltas carry an explicit sign.
-
-### Done-when, for this run
-
-- `#ip-01` rendered, screenshotted at a 694px content column, and **diffed side by side against
-  `proto-i1.png`**, with the differences you can still see listed honestly rather than declared
-  absent.
-- No backend call added. No literal outside §01. The banner still at the top.
-- **Then stop and ask the operator** whether §01 is the fidelity bar, before building §02–§07.
+44 shots. `institutional`, `institutional-legacy`, `institutional-nolocation` all `errors=0`.
+**One real regression found and fixed:** the P1a re-route silently broke the holder-geography
+regression guard (`institutional-nolocation` clicks `#inst-subtabs`, which now lives at the legacy
+slug) — it had been failing since `54d1522`. Repointed, plus a shot added for the port.
+Two failures remain and are **pre-existing, confirmed by stashing this run's changes and
+re-running**: `sectorapp-company` (errors=8) and `sectorapp-company-refocus` (errors=14), both 502s
+on `/sectors?view=company&symbol=900001`, a synthetic fixture CIK, on pages this change never
+touches. No `pytest` run — no Python changed.
 
 ---
 

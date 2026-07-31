@@ -207,6 +207,7 @@
     trayHidden: false,
     instValue: null, // quarter-end string selected on Institutional
     instGroup: "holders", // Institutional sub-view: "holders" | "geography" | "activity"
+    ipSection: "ip-01", // Institutional port: which numbered section the rail's jump list marks
     stmtMode: "table", // income + balance sheet: "table" | "chart" (audit-first default)
     vizCache: {}, // "statement|year|period" -> viz response (lazy). Series: "statement|series".
   };
@@ -445,6 +446,11 @@
       subject: "companies",
       active: state.tab,
       onSelect: selectTab,
+      // Only the ported Institutional view is a numbered long page today; every other view
+      // declares nothing and renders exactly the rail it did before.
+      sections: state.tab === "institutional" ? IP_RAIL_SECTIONS : null,
+      activeSection: state.ipSection,
+      onSection: ipJumpTo,
     }));
   }
 
@@ -565,6 +571,7 @@
     renderRightRail();
     renderTray(); // pinned across views; re-asserted because #view was just rebuilt
     clearSectionNav(); // the "On this page" rail belongs to the Overview snapshot only
+    if (state.tab !== "institutional") ipUnwatchSections(); // the port's rail jump list is gone
     if (state.tab === "hub") renderOverview();
     else if (state.tab === "history") renderHistory();
     else if (state.tab === "insider") renderInsider();
@@ -667,6 +674,85 @@
     ["07", "Reference", "forms and rules used on this page"],
   ];
 
+  /* The rail's jump list. NOTE the labels are the prototype's SHORT forms, not the section
+   * headings -- it writes "Over time & holders" in the rail and "Register over time & holders"
+   * over the section. Read off the rendered rail (prototype-ground-truth/rails.json). */
+  var IP_RAIL_SECTIONS = [
+    ["ip-01", "01", "Register snapshot"],
+    ["ip-02", "02", "Over time & holders"],
+    ["ip-03", "03", "Flows & concentration"],
+    ["ip-04", "04", "Ownership & stewardship"],
+    ["ip-05", "05", "Holder behavior"],
+    ["ip-06", "06", "Register limits & supply"],
+    ["ip-07", "07", "Reference"],
+  ];
+
+  /* Keep the rail's jump list in step with what you are actually reading.
+   *
+   * Deliberately a rect test, not an IntersectionObserver. An observer band is only as good as its
+   * rootMargin, and the first version was reliably off by one: `scrollIntoView` honours the
+   * section's `scroll-margin-top`, which lands the section just inside the band while the previous
+   * one is still inside it too, so a jump to §03 marked §02. This asks the question directly --
+   * the current section is the last one whose top has passed under the sticky topbar. */
+  /* Where a section counts as "the one you are reading". It must clear `.ip-sec`'s own
+   * `scroll-margin-top` (86px) plus its 22px margin, because a jump from the rail parks the target
+   * at exactly that offset -- measured at 121px, which a 120px line missed by one pixel and marked
+   * the PREVIOUS section. 150 clears it with room, and sections are hundreds of pixels tall, so
+   * nothing else can be in range. */
+  var IP_SPY_LINE = 150;
+  var ipSpyOn = false;
+  var ipSpyQueued = false;
+
+  var ipSpyHeldUntil = 0;
+
+  // Repaint the rail only -- re-rendering the view here would fight the scroll.
+  function ipPaintSection(id) {
+    state.ipSection = id;
+    document.querySelectorAll(".shell-sec").forEach(function (a) {
+      var on = a.getAttribute("href") === "#" + id;
+      a.classList.toggle("active", on);
+      if (on) a.setAttribute("aria-current", "true");
+      else a.removeAttribute("aria-current");
+    });
+  }
+
+  function ipMarkSection() {
+    ipSpyQueued = false;
+    if (!ipSpyOn || Date.now() < ipSpyHeldUntil || !document.getElementById("ip-01")) return;
+    var mark = IP_RAIL_SECTIONS[0][0];
+    IP_RAIL_SECTIONS.forEach(function (s) {
+      var el = document.getElementById(s[0]);
+      if (el && el.getBoundingClientRect().top <= IP_SPY_LINE) mark = s[0];
+    });
+    if (mark !== state.ipSection) ipPaintSection(mark);
+  }
+
+  /* Clicking a jump link marks that section outright and holds the scroll handler off while the
+   * smooth scroll runs. Without the hold, asking for the last section marks a different one: the
+   * page cannot always scroll far enough to bring it under the line, so the rect test settles on
+   * the previous one and the rail contradicts what you just clicked. */
+  function ipJumpTo(id) {
+    ipSpyHeldUntil = Date.now() + 900;
+    ipPaintSection(id);
+  }
+
+  function ipOnScroll() {
+    if (ipSpyQueued) return;
+    ipSpyQueued = true;
+    window.requestAnimationFrame(ipMarkSection);
+  }
+
+  function ipWatchSections() {
+    ipSpyOn = true;
+    window.removeEventListener("scroll", ipOnScroll);
+    window.addEventListener("scroll", ipOnScroll, { passive: true });
+    ipMarkSection();
+  }
+
+  // Called when any other view renders: the listener stays attached but stops doing work, and the
+  // guard above means it can never touch a rail that no longer has a jump list.
+  function ipUnwatchSections() { ipSpyOn = false; }
+
   function renderInstitutionalPort() {
     $("legend").innerHTML = "";
     // No disclosure() in phase 1: that copy describes REAL data, and there is none on this page.
@@ -674,17 +760,63 @@
     $("controls").hidden = true;      // no period selector -- nothing here is period-scoped yet
     $("period-control").hidden = true;
 
+    // Sections build one at a time, in order, each diffed against its capture before the next
+    // starts (P1e). A section with no builder yet renders as an empty shell.
+    var IP_BODIES = { "01": ipSection01 };
+
     $("view").innerHTML =
       ipBanner() +
       ipViewHeader() +
       IP_SECTIONS.map(function (sec) {
+        var body = IP_BODIES[sec[0]] ? IP_BODIES[sec[0]]() : "";
         return (
           '<section class="ip-sec" id="ip-' + sec[0] + '">' +
           ipSecHead(sec[0], sec[1], sec[2]) +
-          '<div class="ip-sec-body" data-ip-body="' + sec[0] + '"></div>' +
+          '<div class="ip-sec-body" data-ip-body="' + sec[0] + '">' + body + "</div>" +
           "</section>"
         );
       }).join("");
+
+    ipBindExpanders();
+    ipWatchSections();
+  }
+
+  /* The prototype's expander bars really do expand (operator, 2026-07-30). One delegated handler
+   * for the whole view: the bar toggles the block that follows it and rewrites its own label, so a
+   * section that adds an expander later needs no wiring. */
+  var ipExpandersBound = false;
+
+  function ipBindExpanders() {
+    var view = $("view");
+    if (!view || ipExpandersBound) return;
+    ipExpandersBound = true;   // delegated on #view, which outlives every re-render
+    view.addEventListener("click", function (ev) {
+      var btn = ev.target.closest && ev.target.closest(".ip-expander-btn");
+      if (!btn || !view.contains(btn)) return;
+      var bar = btn.parentNode;
+      var body = bar.nextElementSibling;
+      if (!body || !body.classList.contains("ip-expander-body")) return;
+      var open = body.hasAttribute("hidden");
+      if (open) body.removeAttribute("hidden");
+      else body.setAttribute("hidden", "");
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      // The prototype's open label is "− Hide", not the inverse of the closed one.
+      btn.textContent = open ? "− Hide" : "+ " + btn.getAttribute("data-ip-label");
+      btn.classList.toggle("open", open);
+    });
+  }
+
+  /* One expander: the bar (button + note) and the block it reveals. `hidden` on the body, so the
+   * collapsed page is exactly the prototype's collapsed page. */
+  function ipExpander(label, note, bodyHtml) {
+    return (
+      '<div class="ip-expander">' +
+      '<button type="button" class="ip-expander-btn" aria-expanded="false" data-ip-label="' +
+      P.esc(label) + '">+ ' + P.esc(label) + "</button>" +
+      '<span class="ip-expander-note"><span>' + P.esc(note) + "</span></span>" +
+      "</div>" +
+      '<div class="ip-expander-body" hidden>' + bodyHtml + "</div>"
+    );
   }
 
   /* The phase-1 banner. Loud, and NOT dismissible: a page of prototype literals must never be
@@ -735,6 +867,282 @@
       '<h2 class="ip-sec-title">' + P.esc(title) + "</h2>" +
       '<span class="ip-sec-note">' + P.esc(note) + "</span>" +
       "</div>"
+    );
+  }
+
+  /* ============================ §01 · Register snapshot ============================
+   * Ground truth: prototype-ground-truth/proto-i1.png + literals.json (the captured DOM, with
+   * per-element computed CSS). Everything below is copied from that capture — never hand-typed
+   * from the prototype's source, which is how earlier attempts drifted.
+   *
+   * ⚠️ EVERY NUMBER AND DATE HERE IS A PROTOTYPE LITERAL. See the banner at the top of the page.
+   * Phase 2 replaces all of them; §01 is done when this object is empty. */
+  var IP01 = {
+    freshness: [
+      { label: "Register as of", value: "1Q26", note: 'filed <span>2026-05-12</span> · <span>73 days since filed</span>' },
+      { label: "Next 13F window closes", value: "2026-08-14", note: "in <span>21 days</span>" },
+      { label: "Filings since the snapshot", value: "6", accent: true, note: "faster forms applied below" },
+      {
+        label: "Confirmed in last 30 days",
+        value: "32%",
+        note: "<span>share of reported holdings confirmed by some filing in the last 30 days</span>",
+      },
+    ],
+    lag: "13F-HR is filed within 45 days of quarter end — this register is as of 1Q26, filed May 2026, and is not a real-time holder list.",
+    scope: "Section 13(f) covers managers with over $100M in 13(f) securities. Holdings below reporting thresholds and non-13F holders are not represented.",
+    equation: [
+      { label: "Base register", value: "767M", note: "<span>13F-HR · 1Q26, filed 2026-05-12</span>" },
+      { op: "+", label: "Filed since", value: "+9.7M", accent: true, note: "<span>3</span> of <span>6</span> filings applied" },
+      { op: "=", label: "Adjusted register", value: "776M", note: "<span>61.6%</span> of shares outstanding" },
+    ],
+    tiles: [
+      { label: "Reporting managers", value: "1,669", note: "13F-HR filers reporting a position" },
+      { label: "Shares reported", value: "767M", note: "of <span>1260M</span> shares outstanding" },
+      { label: "Institutional share", value: "60.8%", derived: true, note: "13F shares over cover-page shares out" },
+      { label: "Insider ownership", value: "6.4%", note: "DEF 14A beneficial ownership table" },
+    ],
+    // Inside §01's expander: every filing accepted since the snapshot.
+    filings: [
+      { form: "SC 13G/A", filer: "Index manager B", what: "position crossed a 5% increment", deadline: "5 business days", applied: "applied", shares: "+6.5M", accepted: "2026-07-16 16:12 ET" },
+      { form: "SC 13D/A", filer: "Founder trust", what: "Item 4 amended", deadline: "2 business days", applied: "applied", shares: "−2.4M", accepted: "2026-07-05 09:41 ET" },
+      { form: "N-PORT", filer: "Active manager D", what: "monthly fund holdings, June", deadline: "monthly", applied: "applied", shares: "+5.6M", accepted: "2026-07-16 07:55 ET" },
+      { form: "Form 4", filer: "CFO", what: "insider disposition, code S", deadline: "2 business days", applied: "not applied · insider, not 13F", shares: "−3,000 sh", accepted: "2026-07-18 18:03 ET" },
+      { form: "Form 144", filer: "SVP, Engineering", what: "notice of proposed sale", deadline: "at time of order", applied: "not applied · may not settle", shares: "−10,000 sh", accepted: "2026-07-15 11:27 ET" },
+      { form: "8-K 5.07", filer: "Registrant", what: "annual meeting vote results certified", deadline: "4 business days", applied: "not applied · no holdings effect", shares: "—", accepted: "2026-06-08 17:30 ET" },
+    ],
+    filingsNote: "Only filings that change the 13F-reported register are applied. Insider forms and the Form 144 notice are shown for context but excluded — 144 is a proposed sale that may never settle, and Section 16 holdings are not 13F holdings. Holders with no filing obligation are unchanged by construction; this is not a live holder list.",
+    speed: [
+      ["Form 4 / 144", "2 business days · at order", "insider side, fastest"],
+      ["SC 13D/A", "2 business days", "material change by a 5% holder"],
+      ["SC 13G/A", "5 business days", "passive holder crossing a threshold"],
+      ["N-PORT", "monthly", "named fund positions"],
+      ["13F-HR", "45 days after quarter end", "the full register, slowest"],
+    ],
+    /* Dumbbell rows. `prior`/`current` are millions of shares, recovered from the captured SVG's x
+     * positions (x = 210 + v/123.43 × 372). They reproduce the prototype's geometry to under a
+     * tenth of a pixel AND round to its printed deltas — which is the cross-check that the scale
+     * was recovered correctly rather than guessed.
+     *
+     * `color` is carried per row because the prototype's own type→colour rule is not recoverable
+     * from §01 alone: it paints "Active manager D" #a88c5f but "Active manager E" #8b8579, so the
+     * encoding keys off something in its sample data that the label does not expose. §02/§03 use
+     * the same three-colour scale and should settle it. */
+    dumbbell: [
+      { label: "Hedge fund H", prior: 15.978, current: 20.837, delta: "+4.9M", color: "#8b8579" },
+      { label: "Active manager D", prior: 20.917, current: 25.338, delta: "+4.4M", color: "#a88c5f" },
+      { label: "Sovereign fund G", prior: 14.96, current: 17.538, delta: "+2.6M", color: "#c0703a" },
+      { label: "Index manager C", prior: 19.519, current: 21.338, delta: "+1.8M", color: "#c0703a" },
+      { label: "Pension system F", prior: 33.236, current: 33.937, delta: "+0.7M", color: "#a88c5f" },
+      { label: "Index manager B", prior: 67.267, current: 65.837, delta: "−1.4M", color: "#c0703a" },
+      { label: "Active manager E", prior: 33.823, current: 31.137, delta: "−2.7M", color: "#8b8579" },
+      { label: "Index manager A", prior: 108.463, current: 97.936, delta: "−10.5M", color: "#c0703a" },
+    ],
+  };
+
+  function ipSection01() {
+    return ip01Freshness() + ip01SinceLast13F() + ip01Tiles();
+  }
+
+  // The accent-edged card: how fresh the register is, then the two things it is not.
+  function ip01Freshness() {
+    var cells = IP01.freshness
+      .map(function (c) {
+        return (
+          '<div class="ip-strip-cell">' +
+          '<span class="ip-micro">' + P.esc(c.label) + "</span>" +
+          '<span class="ip-strip-val' + (c.accent ? " ip-strip-val--accent" : "") + '">' +
+          "<span>" + P.esc(c.value) + "</span></span>" +
+          '<span class="ip-strip-note">' + c.note + "</span>" +
+          "</div>"
+        );
+      })
+      .join('<div class="ip-vrule"></div>');
+    return (
+      '<div class="ip-card ip-card--edge">' +
+      '<div class="ip-strip">' + cells + "</div>" +
+      '<div class="ip-prose"><span><span>' + P.esc(IP01.lag) + "</span></span>" +
+      "<span><span>" + P.esc(IP01.scope) + "</span></span></div>" +
+      "</div>"
+    );
+  }
+
+  // The card that states the 13F's own staleness and then shows where the register moved.
+  function ip01SinceLast13F() {
+    var eq = IP01.equation
+      .map(function (c) {
+        var cell =
+          '<div class="ip-eq-cell">' +
+          '<span class="ip-eq-label ip-card-note">' + P.esc(c.label) + "</span>" +
+          '<span class="ip-eq-val' + (c.accent ? " ip-eq-val--accent" : "") + '">' +
+          "<span>" + P.esc(c.value) + "</span></span>" +
+          '<span class="ip-eq-note">' + c.note + "</span>" +
+          "</div>";
+        if (!c.op) return cell;
+        return '<div class="ip-eq-part"><span class="ip-eq-op">' + P.esc(c.op) + "</span>" + cell + "</div>";
+      })
+      .join("");
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head">' +
+      '<h3 class="ip-card-title">Since the last 13F</h3>' +
+      '<span class="ip-card-note">faster forms, by EDGAR acceptance time · base and adjusted shown separately</span>' +
+      '<span class="ip-card-link">Base 13F ↗</span>' +
+      '<span class="ip-badge">ƒ derived</span>' +
+      "</div>" +
+      '<div class="ip-tint ip-eq">' + eq + "</div>" +
+      '<div class="ip-micro ip-micro--block">Where the register moved · prior quarter to current</div>' +
+      '<div class="ip-chart">' + ipDumbbell(IP01.dumbbell) + "</div>" +
+      '<div class="ip-caption">Hollow is the position as reported in the prior quarter’s 13F, filled ' +
+      "the current register. Colour is manager type, the same encoding used everywhere on this page. " +
+      "Direction is described, not scored.</div>" +
+      ipExpander(
+        "Also in this section",
+        "filing-by-filing detail since the snapshot · how fast each form arrives",
+        ip01ExpanderBody()
+      ) +
+      "</div>"
+    );
+  }
+
+  /* §01's expander: every filing accepted since the snapshot, whether it was applied to the
+   * register, and how fast each form type arrives. All literals. */
+  function ip01ExpanderBody() {
+    var rows = IP01.filings
+      .map(function (f) {
+        return (
+          '<div class="ip-ftab-row">' +
+          '<span class="ip-ftab-form"><span>' + P.esc(f.form) + "</span></span>" +
+          '<span class="ip-ftab-what">' +
+          "<span><span>" + P.esc(f.filer) + "</span> · <span>" + P.esc(f.what) + "</span></span>" +
+          '<span class="ip-ftab-dl">deadline: <span>' + P.esc(f.deadline) + "</span> · <span>" +
+          P.esc(f.applied) + "</span></span>" +
+          "</span>" +
+          '<span class="ip-ftab-sh"><span>' + P.esc(f.shares) + "</span></span>" +
+          '<span class="ip-ftab-at"><span>' + P.esc(f.accepted) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    var speed = IP01.speed
+      .map(function (s) {
+        return (
+          '<div class="ip-speed-row">' +
+          '<span class="ip-speed-form"><span>' + P.esc(s[0]) + "</span></span>" +
+          '<span class="ip-speed-dl"><span>' + P.esc(s[1]) + "</span></span>" +
+          '<span class="ip-speed-note"><span>' + P.esc(s[2]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-ftab-head"><span>Form</span><span>Filer · what changed</span>' +
+      '<span class="ip-r">Shares</span><span class="ip-r">Accepted</span></div>' +
+      rows +
+      '<div class="ip-caption"><span>' + P.esc(IP01.filingsNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--block">How fast each form arrives</div>' +
+      speed
+    );
+  }
+
+  /* The right rail on the ported view (operator, 2026-07-30): the prototype's Filing-timeline
+   * FRAME, our honest empty state inside it. The prototype fills it with nine sample filings; we
+   * do not have a filing index until V3-P3, and fabricating one is exactly what P4 refused to do —
+   * the page's banner covers the numbers in the content column, not an invented filing history.
+   * Scoped to this view only; Overview and Financial history keep P4's rail untouched. */
+  function ipRightRail() {
+    return (
+      '<div class="ip-rr-card">' +
+      '<div class="ip-rr-eyebrow">Filing timeline</div>' +
+      '<div class="ip-rr-sub">every form as filed</div>' +
+      '<div class="ip-rr-filters">' +
+      TIMELINE_FILTERS.map(function (f) {
+        return '<span class="ip-rr-filter" title="Filing timeline filters arrive with the ' +
+          'filing-index ingest">' + P.esc(f) + "</span>";
+      }).join("") +
+      "</div>" +
+      '<div class="ip-rr-empty"><span class="ex21-dash">—</span>' +
+      "<p>Not available yet. The full filing index — every form this registrant has filed, with " +
+      "its date — is not part of the structured data we store today.</p></div>" +
+      '<a class="ip-rr-link" href="' + edgarUrl("") + '" target="_blank" rel="noopener">' +
+      "All filings on EDGAR ↗</a>" +
+      '<div class="ip-rr-note">The register on this page is built from 13F-HR, SC 13D/G and ' +
+      "DEF 14A. When the filing index lands, this rail lists every form as filed.</div>" +
+      "</div>"
+    );
+  }
+
+  function ip01Tiles() {
+    return (
+      '<div class="ip-tiles">' +
+      IP01.tiles
+        .map(function (t) {
+          var head = t.derived
+            ? '<span class="ip-tile-head"><span class="ip-micro">' + P.esc(t.label) + "</span>" +
+              '<span class="ip-badge">ƒ derived</span></span>'
+            : '<span class="ip-micro">' + P.esc(t.label) + "</span>";
+          return (
+            '<div class="ip-tile">' + head +
+            '<span class="ip-tile-val"><span>' + P.esc(t.value) + "</span></span>" +
+            '<span class="ip-tile-note">' + t.note + "</span>" +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  /* The prototype's dumbbell, ported as its own builder (decision D-protocharts) rather than
+   * reused from ClearyFi.dumbbellChart — the shared builders bring their card chrome and their
+   * mono eyebrow with them, which is part of what read as "leftovers from previous design".
+   *
+   * Hand-authored SVG on a fixed viewBox at width:100%: geometry is authored once in viewBox units
+   * and the browser scales it, so this never measures its container.
+   *
+   * Anatomy, per row: the label right-aligned in a left gutter · a full-width track rule · a hollow
+   * dot for the prior quarter and a filled one for the current · a connector between them · the
+   * signed delta right-aligned OUTSIDE the plot. All eight constants below are the prototype's. */
+  var IP_DB = {
+    width: 660,      // viewBox units; the card's inner width at the prototype's 694px column
+    gutter: 210,     // right edge of the label gutter == left edge of the track
+    trackEnd: 582,
+    deltaX: 591,
+    firstRow: 41.5,
+    rowStep: 27,
+    tailPad: 27.5,
+    legendY: 12,
+    domainMax: 123.43,   // millions of shares spanning gutter → trackEnd
+  };
+
+  function ipDumbbell(rows) {
+    var g = IP_DB;
+    var height = g.firstRow + (rows.length - 1) * g.rowStep + g.tailPad;
+    var span = g.trackEnd - g.gutter;
+    var x = function (v) { return (g.gutter + (v / g.domainMax) * span).toFixed(2); };
+    var parts = [
+      '<text x="' + g.gutter + '" y="' + g.legendY + '" class="ip-db-legend">○ prior quarter    ● current</text>',
+    ];
+    rows.forEach(function (r, i) {
+      var y = g.firstRow + i * g.rowStep;
+      parts.push(
+        '<line x1="' + g.gutter + '" y1="' + y + '" x2="' + g.trackEnd + '" y2="' + y + '" class="ip-db-track"></line>',
+        '<text x="' + (g.gutter - 10) + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-db-label">' +
+          P.esc(r.label) + "</text>",
+        '<line x1="' + x(r.prior) + '" y1="' + y + '" x2="' + x(r.current) + '" y2="' + y +
+          '" stroke="' + r.color + '" stroke-width="2.4" opacity="0.5"></line>',
+        '<circle cx="' + x(r.prior) + '" cy="' + y + '" r="4" fill="var(--bg-card)" stroke="' + r.color +
+          '" stroke-width="1.5"></circle>',
+        '<circle cx="' + x(r.current) + '" cy="' + y + '" r="4.6" fill="' + r.color + '"></circle>',
+        '<text x="' + g.deltaX + '" y="' + y + '" dominant-baseline="middle" class="ip-db-delta">' +
+          P.esc(r.delta) + "</text>"
+      );
+    });
+    return (
+      '<svg class="ip-db" width="100%" viewBox="0 0 ' + g.width + " " + height + '" ' +
+      'preserveAspectRatio="xMidYMid meet" role="img" aria-label="' +
+      'Change in reported position for the ' + rows.length + ' managers that moved most, prior quarter to current">' +
+      parts.join("") +
+      "</svg>"
     );
   }
 
@@ -1778,6 +2186,13 @@
   function renderRightRail() {
     var host = $("rightRail");
     if (!host) return;
+    // The ported Institutional view carries the prototype's own rail frame (V3-P5a); Overview and
+    // Financial history keep P4's. Every other view still has none.
+    if (state.tab === "institutional") {
+      host.hidden = false;
+      host.innerHTML = ipRightRail();
+      return;
+    }
     var onP4View = state.tab === "hub" || state.tab === "history";
     host.hidden = !onP4View;
     if (!onP4View) { host.innerHTML = ""; return; }

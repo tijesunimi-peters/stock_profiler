@@ -1,0 +1,1576 @@
+{
+ "rows": [
+  {
+   "d": 0,
+   "tag": "section",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 1,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "borderBottom": "2px solid rgb(28, 26, 22)",
+    "rowGap": "10px",
+    "columnGap": "10px"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "span",
+   "text": "01",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "span",
+   "text": "Register snapshot",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "span",
+   "text": "13F-HR register, freshness and what has been ",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 1,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(231, 224, 211)",
+    "borderBottom": "1px solid rgb(231, 224, 211)"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "rowGap": "18px",
+    "columnGap": "18px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "3px",
+    "columnGap": "3px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Register as of",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "1Q26",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "filed ·",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "2026-05-12",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "73 days since filed",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "3px",
+    "columnGap": "3px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Next 13F window closes",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "2026-08-14",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "in",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "21 days",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "3px",
+    "columnGap": "3px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Filings since the snapshot",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "6",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "faster forms applied below",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "3px",
+    "columnGap": "3px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Confirmed in last 30 days",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "32%",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "share of reported holdings confirmed by some ",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(229, 223, 211)",
+    "rowGap": "5px",
+    "columnGap": "5px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "13F-HR is filed within 45 days of quarter end",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Section 13(f) covers managers with over $100M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 1,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(231, 224, 211)",
+    "borderBottom": "1px solid rgb(231, 224, 211)"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "rowGap": "9px",
+    "columnGap": "9px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "Since the last 13F",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "faster forms, by EDGAR acceptance time · base",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "a",
+   "text": "Base 13F ↗",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "button",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(216, 209, 196)",
+    "borderBottom": "1px solid rgb(216, 209, 196)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "ƒ derived",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "borderTop": "1px solid rgb(226, 218, 203)",
+    "borderBottom": "1px solid rgb(226, 218, 203)",
+    "rowGap": "16px",
+    "columnGap": "16px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "2px",
+    "columnGap": "2px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Base register",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "767M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "13F-HR · 1Q26, filed 2026-05-12",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "rowGap": "16px",
+    "columnGap": "16px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "+",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "2px",
+    "columnGap": "2px"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "Filed since",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 6,
+   "tag": "span",
+   "text": "+9.7M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "of filings applied",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 6,
+   "tag": "span",
+   "text": "3",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 6,
+   "tag": "span",
+   "text": "6",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "rowGap": "16px",
+    "columnGap": "16px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "=",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "2px",
+    "columnGap": "2px"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "Adjusted register",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 6,
+   "tag": "span",
+   "text": "776M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "of shares outstanding",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 6,
+   "tag": "span",
+   "text": "61.6%",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "Where the register moved · prior quarter to c",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "svg",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "maxWidth": "100%"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "○ prior quarter    ● current",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Hedge fund H",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "+4.9M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Active manager D",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "+4.4M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Sovereign fund G",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "+2.6M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Index manager C",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "+1.8M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Pension system F",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "+0.7M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Index manager B",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "−1.4M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Active manager E",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "−2.7M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "Index manager A",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "line",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "circle",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "text",
+   "text": "−10.5M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "whiteSpace": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "Hollow is the position as reported in the pri",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "borderTop": "1px solid rgb(229, 223, 211)",
+    "rowGap": "12px",
+    "columnGap": "12px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "button",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(216, 209, 196)",
+    "borderBottom": "1px solid rgb(216, 209, 196)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "+ Also in this section",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "filing-by-filing detail since the snapshot · ",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 1,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(229, 223, 211)",
+    "borderBottom": "1px solid rgb(229, 223, 211)",
+    "rowGap": "1px",
+    "columnGap": "1px"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "5px",
+    "columnGap": "5px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "Reporting managers",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderBottom": "1px dashed rgb(139, 133, 121)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "1,669",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "13F-HR filers reporting a position",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "5px",
+    "columnGap": "5px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "Shares reported",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderBottom": "1px dashed rgb(139, 133, 121)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "767M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "of shares outstanding",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "1260M",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "5px",
+    "columnGap": "5px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "wrap",
+    "rowGap": "6px",
+    "columnGap": "6px"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "Institutional share",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "button",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderTop": "1px solid rgb(216, 209, 196)",
+    "borderBottom": "1px solid rgb(216, 209, 196)"
+   }
+  },
+  {
+   "d": 5,
+   "tag": "span",
+   "text": "ƒ derived",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderBottom": "1px dashed rgb(139, 133, 121)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "60.8%",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "13F shares over cover-page shares out",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 2,
+   "tag": "div",
+   "text": "",
+   "css": {
+    "flexDirection": "column",
+    "flexWrap": "nowrap",
+    "rowGap": "5px",
+    "columnGap": "5px"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "Insider ownership",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap",
+    "borderBottom": "1px dashed rgb(139, 133, 121)"
+   }
+  },
+  {
+   "d": 4,
+   "tag": "span",
+   "text": "6.4%",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  },
+  {
+   "d": 3,
+   "tag": "span",
+   "text": "DEF 14A beneficial ownership table",
+   "css": {
+    "flexDirection": "row",
+    "flexWrap": "nowrap"
+   }
+  }
+ ],
+ "chain": [
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 694,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "block",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 694,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "1320px",
+   "display": "block",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 1174,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "flex",
+   "gridTemplateColumns": "none",
+   "gap": "20px",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "main",
+   "cls": "",
+   "w": 1230,
+   "padding": "16px 28px 72px",
+   "margin": "0px",
+   "maxWidth": "1440px",
+   "display": "block",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 1230,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "flex",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 1440,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "flex",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgb(246, 243, 238)"
+  },
+  {
+   "tag": "div",
+   "cls": "sc-host",
+   "w": 1440,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "block",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  },
+  {
+   "tag": "div",
+   "cls": "",
+   "w": 1440,
+   "padding": "0px",
+   "margin": "0px",
+   "maxWidth": "none",
+   "display": "block",
+   "gridTemplateColumns": "none",
+   "gap": "normal",
+   "background": "rgba(0, 0, 0, 0)"
+  }
+ ],
+ "head": [
+  {
+   "tag": "div",
+   "h": 64,
+   "text": "Semiconductors\n›\nAVGO\nAVGO\nInstitutional ownership\n13F-HR · SC 13D/G · DEF 14A · share counts only, no market values\n13F filings mentioning AVGO ↗\nProxy ↗"
+  }
+ ],
+ "fonts": {
+  "body": "\"Hanken Grotesk\", system-ui, sans-serif"
+ },
+ "faces": [],
+ "links": [
+  "https://fonts.googleapis.com/",
+  "https://fonts.gstatic.com/",
+  "https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+ ]
+}

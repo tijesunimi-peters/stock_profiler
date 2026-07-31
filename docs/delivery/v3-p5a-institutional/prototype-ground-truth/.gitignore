@@ -1,0 +1,24 @@
+# Regenerable build output — not committed.
+#
+# Everything here is produced by ../tools/*.js. What IS committed is the prototype's own
+# per-section capture (proto-i<N>.png, proto-i<N>-open.png) and the literal/CSS dumps, because
+# those are the reference the port is verified against: the prototype renders only by pulling
+# React from unpkg, so if that ever stops working the ground truth is gone and unreproducible.
+#
+# These, by contrast, are re-made in about two minutes on every run:
+
+# our side of the diff
+ours-*.png
+ours-i1-geometry.json
+boxes-ours.json
+
+# the comparisons themselves
+diff-*.png
+sxs-*.png
+crop-*.png
+
+# full-page shots — 5.4MB between them, and the per-section captures above cover the same ground.
+# Regenerate with tools/capture.js + tools/capture-open.js when P1g (the full-page diff) runs.
+proto-institutional-full.png
+proto-institutional-full-open.png
+proto-institutional-viewport.png
