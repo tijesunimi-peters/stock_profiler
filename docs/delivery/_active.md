@@ -3,7 +3,7 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional @ `ae0244f` (clean off `master` 9d0d10f — **attempt 4**)
+branch: v3-p5a-institutional @ `6c42d19` (clean off `master` 9d0d10f — **attempt 4**)
 next_stage: manual      ← ⏸ PHASE 1 IS COMPLETE and waiting on the operator's 🚦 FIDELITY GATE.
   All seven sections built and measured, P1g done. Nothing proceeds to phase 2 (data plumbing)
   until the operator has looked at the port and accepted the design.
@@ -467,7 +467,9 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
 - [ ] **P2** plumb real data in, literal by literal, until none remain
 - [ ] 4 QA · 4b operator verification
 
-✅ **Committed** as `ae0244f` — "§02–§05 ported, and every control made live" (46 files, +5,461).
+✅ **Phase 1 is fully committed.** `6c42d19` (§06 + §07 + P1g) on `ae0244f` (§02–§05 + the
+affordances) on `735a14f` (§01 + both rails) on `54d1522` (the scaffold). Nothing pushed.
+Previously:  `ae0244f` — "§02–§05 ported, and every control made live" (46 files, +5,461).
 `735a14f` before it carried P1a–P1e-§01 and both rails. Nothing pushed.
 
 ## The measured remainder — read before starting §02
