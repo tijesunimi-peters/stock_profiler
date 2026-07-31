@@ -3,7 +3,7 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional @ `40ef977` (clean off `master` 9d0d10f — **attempt 4**)
+branch: v3-p5a-institutional @ `ae0244f` (clean off `master` 9d0d10f — **attempt 4**)
 next_stage: frontend    ← phase 1 design port, IN PROGRESS. §01–§05 DONE (both states, zero
   bands, controls live). §06 is next; §06–§07 not started. The `manual` gate is the operator's
   🚦 FIDELITY gate below, and it does not fire until all seven sections are ported.
@@ -439,7 +439,7 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
 - [ ] **P2** plumb real data in, literal by literal, until none remain
 - [ ] 4 QA · 4b operator verification
 
-✅ **Committed** as `40ef977` — "§02–§05 ported, and every control made live" (46 files, +5,461).
+✅ **Committed** as `ae0244f` — "§02–§05 ported, and every control made live" (46 files, +5,461).
 `735a14f` before it carried P1a–P1e-§01 and both rails. Nothing pushed.
 
 ## The measured remainder — read before starting §02
