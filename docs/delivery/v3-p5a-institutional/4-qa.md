@@ -8,8 +8,9 @@ data plumbing. This is the gate for *this* change.
 
 **Branch:** `v3-p5a-institutional` (uncommitted, on top of `735a14f`)
 **Preview:** `http://localhost:8010/company/AAPL/institutional`
-**Change class:** **interactive / logic** → operator hands-on verification is **required and
-blocking**.
+**Change class:** rendered surface → operator hands-on verification is **required and blocking**.
+*(As of the 2026-07-31 policy this is true of every rendered change, not only interactive ones —
+the "accepted at the QA-tester level" route no longer exists.)*
 **Verdict: PASS — pending manual UI verification** (see `4b-manual-verification.md`).
 
 ---

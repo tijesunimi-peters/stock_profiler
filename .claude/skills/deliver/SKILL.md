@@ -102,9 +102,13 @@ operator-gated); it lives in the working tree and survives session boundaries on
    `4b-manual-verification.md` interactively** — walk them through the checks in batches (e.g.
    `AskUserQuestion`), collect ✅/❌ per row + the overall verdict, clarify any "differs" (it may be
    by-design), and transcribe their answers into the file. (If they'd rather fill it themselves,
-   hand it over blank.) **Confirmed / accepted** (a pure-layout/placeholder change may be *accepted at
-   the QA-tester level* without a hands-on run) → `next_stage: done`. **Defect found** → treat as a QA
-   failure: loop back to the owning engineer (below), bump `qa_cycles`, then re-QA.
+   hand it over blank.) **⛔ The hands-on run is MANDATORY for every change with a rendered
+   surface** (operator, 2026-07-31 — this replaced the earlier rule that let a pure-layout or
+   CSS-only change be accepted on the QA tester's own evidence; that option is gone, and only a
+   backend-only change with no rendered surface is exempt). **Confirmed** → `next_stage: done`.
+   **Defect found** → treat as a QA failure: loop back to the owning engineer (below), bump
+   `qa_cycles`, then re-QA. There is no third outcome — `/deliver` never advances a rendered change
+   to `done` on automated evidence alone.
 
 ## QA failure → loop back (bounded)
 
@@ -119,8 +123,11 @@ lower the bar.
 
 - **Pauses at the operator manual-verification gate** (`next_stage: manual`) after a green QA report —
   `/deliver` emits `4b-manual-verification.md` and STOPs for the operator to hand-run and sign off.
-- **Ends when the operator confirms/accepts** (`next_stage: done`). A green QA report + a
-  completed/accepted questionnaire unlocks a deploy *request* — it is **not** a deploy.
+  **This pause is unconditional for anything with a rendered surface**; there is no change class
+  that skips it.
+- **Ends when the operator confirms** (`next_stage: done`) — which requires them to have hand-run
+  `4b-manual-verification.md`; see the MANDATORY note in step 5. A green QA report + a completed
+  questionnaire unlocks a deploy *request* — it is **not** a deploy.
 - **Never commits, pushes, or deploys.** Engineer stages commit only when explicitly asked; DevOps
   (deploy) is a separate operator-gated stage (`/devops-engineer`) outside this run. End by
   summarizing the QA verdict and the operator's next options (commit the branch / request a deploy).

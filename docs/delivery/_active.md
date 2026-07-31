@@ -124,7 +124,19 @@ the behaviour end to end.
      pass was.
 4. **D-clean-master** — attempt 4 starts from a **clean master**. Nothing is carried over in the
    working tree, including attempt 3's backend and its fixes.
-5. **D-behaviour** *(added 2026-07-31)* — **porting the design includes porting the FUNCTIONALITY.**
+5. **D-manual-gate** *(added 2026-07-31)* — **the operator's hands-on verification step is
+   MANDATORY and is never stood in for.** Every change with a rendered surface requires the operator
+   to hand-run `4b-manual-verification.md` and sign off; the QA tester's own scripted driving pass
+   and eyeballed screenshots are evidence for the report, **never acceptance**. This supersedes the
+   2026-07-22 policy that let a pure-layout or CSS-only change be "accepted at the QA-tester level" —
+   **that option is gone**, and the only sign-off outcomes are **Confirmed** or **Defect found**.
+   The single exception is a backend-only change with no rendered surface, which must still be
+   stated in the report rather than skipped silently. Recorded in `.claude/skills/qa-tester/SKILL.md`
+   and `.claude/skills/deliver/SKILL.md`.
+   *Why:* the gate keeps catching what the scripts pass over — the `company-fidelity` dead-end
+   recovery bug, and then V3-P5a's overlap-`⤡ Expand` defect, which **71 green driven assertions
+   missed** because I had written the gap off as by-design.
+6. **D-behaviour** *(added 2026-07-31)* — **porting the design includes porting the FUNCTIONALITY.**
    Every control the prototype has is live in phase 1: expanders, lightboxes, derivation panels,
    chart-view toggles, and anything else that responds to a click. Phase 1 is design *and its
    behaviour*, with no data behind it; only the DATA waits for phase 2. A section with inert

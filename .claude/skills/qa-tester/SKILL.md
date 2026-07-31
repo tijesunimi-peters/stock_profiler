@@ -118,37 +118,39 @@ together in a live browser.
 The manual UI verification is the operator's **interactive acceptance** of the change (recorded in
 `4b-manual-verification.md`, below) — walk them through it when present.
 
-**Which changes need the operator hands-on step vs. QA-tester-level acceptance** (operator policy,
-2026-07-22):
+### ⛔ MANDATORY — the operator hands-on step is never skipped and never stood in for
 
-- **Interactive / logic changes → operator hands-on is required.** Anything that changes behaviour,
-  interaction, state, data flow, or a new/altered control (a new view, a re-focus, a default resolver,
-  a dropdown that recomputes, an error/recovery path). A human must drive it by hand before the
-  verdict advances — this gate has caught real defects the scripts passed over (e.g. the
-  `company-fidelity` dead-end recovery bug). This is a **blocking** gate for these changes.
-- **Pure-layout / CSS-only changes → QA-tester level may stand in.** If the change is *only* layout/
-  styling with **no** interaction or logic change, the QA-tester's own **scripted driving pass +
-  eyeballed screenshots** may serve as the manual verification (record it as "accepted at the
-  QA-tester level"). Still write the manual script; just note it was satisfied at the QA-tester level.
-- **You classify the change and say which applies in the report.** When in doubt, treat it as
-  interactive and request the operator hands-on. The operator can always accept at the QA-tester
-  level, but you should not skip the hands-on for an interactive change on your own judgment.
+**Operator policy, 2026-07-31. This supersedes the 2026-07-22 policy, which let a pure-layout or
+CSS-only change be "accepted at the QA-tester level" without a human driving it. That escape hatch
+is GONE.**
+
+- **Every change with a rendered surface requires the operator to hand-run
+  `4b-manual-verification.md` and sign off.** Not just interactive or logic changes — *every* one,
+  including pure-layout, CSS-only, copy-only and placeholder changes.
+- **You do not classify your way out of it.** There is no longer a category that the QA tester can
+  accept on its own evidence. Your scripted driving pass and your eyeballed screenshots are
+  evidence for the report; they are **not** acceptance.
+- **The verdict stays `PASS — pending manual UI verification` until the operator returns an
+  outcome.** Never "ready to deploy" on automated evidence alone. Surface the pending step
+  explicitly, every time.
+- **"Accepted at the QA-tester level" is no longer a valid sign-off.** Do not offer it in the
+  questionnaire and do not record it. The only outcomes are **Confirmed** or **Defect found**.
+- **The single exception, unchanged:** a **backend-only** change with no rendered surface. Say so in
+  the report rather than omitting the step silently.
+
+*Why it hardened:* the hands-on gate keeps catching what the scripts pass over — the
+`company-fidelity` dead-end recovery bug, and later the V3-P5a overlap-`⤡ Expand` defect, which
+71 green driven assertions missed because the tester had written the gap off as by-design.
 
 - **Write a numbered manual-verification script** in `4-qa.md` under `## Manual UI verification`: the
   exact hands-on click-through for a person to run — the URL to open, each interaction in order, and
   the **expected result** of each. Cover the primary flow plus the key states and edge cases from the
   questionnaire (empty, error, N/A-not-0, the risky interaction). Keep it concrete and short enough
   to run in a few minutes.
-- **Gate the verdict on it (interactive changes).** Until the operator has run the script and
-  confirmed, the verdict is **"PASS — pending manual UI verification"**, never "ready to deploy".
-  Record the operator's outcome in the doc (confirmed + date, or the discrepancy they found). **Do
-  not** hand off "ready to deploy" on automated evidence alone for an interactive change — surface the
-  pending manual step to the operator explicitly. (Pure-layout changes accepted at the QA-tester level
-  may go straight to "ready to deploy" — say so in the report.)
+- **Gate the verdict on it.** Record the operator's outcome in the doc (confirmed + date, or the
+  discrepancy they found).
 - If a manual step contradicts the automated result, that's a **defect** → loop back to the owning
   engineer (below), don't wave it through.
-- **Backend-only changes** (no rendered surface) are exempt from the manual UI step — say so in the
-  report rather than omitting it silently.
 
 ## Operator manual-verification questionnaire — `4b-manual-verification.md` (required after the report)
 
@@ -168,7 +170,7 @@ just handed over: present the checks to the operator **one batch at a time** (e.
 `AskUserQuestion` — the primary flow + the key states/edge cases + a11y + the honesty scan, ~4 rows
 per prompt), collect their ✅/❌ per row and any note, resolve any ambiguity they raise (a "differs"
 may be by-design — clarify before calling it a defect), then ask the **overall verdict** (Confirmed /
-Accepted at QA-tester level / Defect found). Transcribe their answers verbatim into
+Defect found — there is no QA-tester-level option). Transcribe their answers verbatim into
 `4b-manual-verification.md` and mark it **completed**. If the operator prefers to fill the file
 themselves, leave the Result/Notes columns blank for them — but offer the interactive walk-through
 first. Either way, the recorded verdict is the operator's interactive acceptance.
@@ -182,11 +184,10 @@ The questionnaire is derived from the `4-qa.md` manual script + the acceptance c
 - A **numbered checklist table**: each row = Step · Expected result · AC · **Result (✅/❌)** (blank
   for the operator) · **Notes** (blank). Cover the primary flow + the key states/edge cases + a11y +
   the honesty scan — the same ground as the `4-qa.md` script, but with blank Result/Notes columns.
-- An **overall sign-off block**: verdict (Confirmed / Accepted at QA-tester level / Defect found),
-  operator name, date, and a free-text discrepancy field.
-- Classify per the policy above: **interactive/logic → blocking** (verdict stays "PASS — pending
-  manual UI verification" until the operator signs off); **pure-layout/placeholder → non-blocking**
-  (may be accepted at the QA-tester level — say so, but still emit the questionnaire).
+- An **overall sign-off block**: verdict (**Confirmed** / **Defect found** — nothing else), operator
+  name, date, and a free-text discrepancy field.
+- **Every rendered change is blocking.** The verdict stays "PASS — pending manual UI verification"
+  until the operator signs off. There is no non-blocking category any more.
 - When the operator returns an outcome, **record it in this file** (checked verdict + date, or the
   discrepancy). A ❌ is a defect → loop back to the owning engineer.
 
@@ -211,7 +212,7 @@ operator-fillable questionnaire described above. `4-qa.md` is *your* record of w
   `docs/delivery/<task-slug>/4-qa.md`): the verdict, the evidence, an explicit "ready to deploy" or
   "blocked by X", **and a pointer to `4b-manual-verification.md`** for the operator to run. For a UI
   change the honest verdict is **"PASS — pending manual UI verification"** until the operator confirms
-  the questionnaire; only *then* is it "ready to deploy". (A pure-layout/placeholder change may be
-  "accepted at the QA-tester level" — still emit the questionnaire so the operator can review.) A
+  the questionnaire; only *then* is it "ready to deploy". This holds for **every** rendered change,
+  layout-only ones included — see the MANDATORY block above. A
   green QA report + a completed/accepted questionnaire unlocks a deployment *request* — never the
   deployment itself (that stays operator-gated).

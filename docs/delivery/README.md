@@ -99,14 +99,23 @@ between them, or the handoff is lost.
    drifts toward Track 2 (free-text / LLM summarization) or cross-company screening ahead
    of its milestone, or implies price/market data — **STOP and flag it**; do not design or
    build it. See `CLAUDE.md` § "Scope".
-2. **Interactive-acceptance gate (stage 4→4b).** After a green QA report, the QA stage emits an
-   operator-fillable questionnaire (`4b-manual-verification.md`) — the operator's **interactive
-   acceptance** of the qa-tester-reported change. The change **pauses for the operator to walk the
-   checks (interactively — e.g. batched `AskUserQuestion`) and sign off** before it can advance; QA's
-   own evidence is never the acceptance. For interactive/logic changes this is **blocking**; a
-   pure-layout/placeholder change may be "accepted at the QA-tester level" — but the questionnaire is
-   emitted either way (backend-only changes with no UI are exempt). A defect found here loops back to
-   the owning engineer.
+2. **Interactive-acceptance gate (stage 4→4b) — MANDATORY, no exceptions bar backend-only.**
+   After a green QA report, the QA stage emits an operator-fillable questionnaire
+   (`4b-manual-verification.md`) — the operator's **interactive acceptance** of the
+   qa-tester-reported change. The change **pauses for the operator to walk the checks
+   (interactively — e.g. batched `AskUserQuestion`) and sign off** before it can advance; QA's own
+   evidence is never the acceptance.
+
+   **Operator policy, 2026-07-31:** this is **blocking for every change with a rendered surface** —
+   layout-only, CSS-only, copy-only and placeholder changes included. The earlier rule that let
+   those be "accepted at the QA-tester level" **has been removed**, and the only sign-off outcomes
+   are **Confirmed** or **Defect found**. The single exception is a backend-only change with no
+   rendered surface, which must still be stated in the report rather than skipped silently. A defect
+   found here loops back to the owning engineer.
+
+   *Why it hardened:* the gate keeps catching what the scripts pass over — the `company-fidelity`
+   dead-end recovery bug, and V3-P5a's overlap-`⤡ Expand` defect, which 71 green driven assertions
+   missed.
 3. **Deployment gate (stage 5).** The DevOps role **deploys only after explicit
    confirmation from the operator, every time.** No auto-deploy, no "while I'm here." It
    never buys or provisions paid resources (domains, droplets, services) — those are the

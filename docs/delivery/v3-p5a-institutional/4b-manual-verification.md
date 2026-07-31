@@ -9,7 +9,7 @@ prototype's. QA's own evidence does not accept a change — this does.
 | **QA verdict** | PASS — pending this verification (`4-qa.md`; 49 driven assertions, 0 failures) |
 | **URL** | **http://localhost:8010/company/AAPL/institutional** |
 | **If it isn't up** | `docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app` (host 8000 is the running `api` container). To compare against the prototype: `docker run -d --rm --name proto-srv -p 9000:9000 -v "$PWD/docs/design/sector-app-prototype-v3:/srv:ro" -w /srv python:3.11-slim python -m http.server 9000` → http://localhost:9000/prototype.dc.html |
-| **Class** | Interactive / logic → **blocking**. The verdict stays "pending" until you sign off. |
+| **Class** | **Blocking, unconditionally** (operator policy 2026-07-31 — every rendered change needs the hands-on run). The verdict stays "pending" until you sign off. |
 
 ### The load-bearing rule for this change
 
@@ -62,8 +62,11 @@ Each is a place where I did **not** copy the prototype. `4-qa.md` §7 has the me
 ## Sign-off
 
 - [ ] **Confirmed** — I drove it and I accept it
-- [ ] **Accepted at the QA-tester level** — I did not hand-run it; the automated evidence stands
 - [ ] **Defect found** — details below
+
+*(The "accepted at the QA-tester level" option was removed by operator policy on 2026-07-31: the
+hands-on run is mandatory for every change with a rendered surface. QA's automated evidence is
+evidence, never acceptance.)*
 
 **Operator:** ______________________  **Date:** ______________
 
