@@ -827,8 +827,35 @@ Both totals match to the pixel, and `align.js` reports a **perfect zero at (0,0)
 boundaries** — which is the direct evidence the inter-section spacing is right. A spacing error
 would shift everything below it and band the rest of the image.
 
-**Phase 1's build and its measurement are complete.** What remains is the operator's 🚦 fidelity
-gate, plus the four listed deviations and step 7b in `4b-manual-verification.md`.
+**Phase 1's build and its measurement are complete.**
+
+---
+
+## 🚦 The gate — passed, 2026-07-31, and the one thing every measurement missed
+
+Walked interactively with the operator against the running prototype. Verdict: **"Confirmed — the
+design is faithful."** §04–§07 and the whole-page rhythm came back *indistinguishable*; all four
+listed deviations were accepted as built; steps 1–15 of `4b-manual-verification.md` all pass.
+
+**One defect, and it is the important part of this entry.** §01–§03 raised: *"the left rail is not
+fixed like in the prototype."*
+
+`.shell-rail` **was** `position: sticky; top: 74px` — correct, and correct since V3-P2. But its
+mount host (`#viewRail` / `#railHost`) is a flex item of `.shell-body { align-items: flex-start }`,
+so it shrink-wrapped to the rail's own **549px**. A sticky element is bounded by its parent's box,
+so the rail came unstuck the moment you scrolled past 549px and rode away with the page. The
+prototype's `<nav>` is a direct child of the ~7,300px flex row, which is why its rail stays put.
+Fixed shell-wide with `.shell-rail-host { align-self: stretch; }` and the class added at both mount
+points. After a 2,500px scroll our rail now sits at **y = 74**, the same as the prototype's.
+
+**Why fifteen tools and 71 assertions missed it:** every diff in this port is a *static capture of
+one scroll position*. Sticky behaviour does not exist at a scroll position — it exists in the
+**difference between two**, and nothing in the tooling compared those. `tools/rail.js` now does:
+probe the rail before and after a scroll, on both sides.
+
+That is the second defect the hands-on gate has caught that the automation could not (after the
+overlap `⤡ Expand`), and it is the argument behind **D-manual-gate**: pixel-perfect and fully
+driven is still not the same as *used*.
 
 ### Where the port stands after §05
 

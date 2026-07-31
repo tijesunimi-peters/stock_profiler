@@ -4,9 +4,10 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `6c42d19` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: manual      ← ⏸ PHASE 1 IS COMPLETE and waiting on the operator's 🚦 FIDELITY GATE.
-  All seven sections built and measured, P1g done. Nothing proceeds to phase 2 (data plumbing)
-  until the operator has looked at the port and accepted the design.
+next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+  is faithful". Phase 1 is ACCEPTED. **PHASE 2 — data plumbing — is now unblocked**: replace every
+  prototype literal with real filings data, keeping the ported design intact, then QA + 4b.
+  Start from the archived attempt-3 backend (see the archive table below) rather than rebuilding it.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-07-31
@@ -394,7 +395,22 @@ docker stop p5a-preview
       sections is right — the one thing per-section diffs cannot see.
       Run at 1×: a 2× capture of 11,856 CSS px is 23,712 device rows, past Chrome's 16,384 canvas
       limit, so the diff cannot be computed at all. Every section was already measured at 2×.
-- [ ] **🚦 OPERATOR GATE — verify the design port.** Phase 1's build and measurement are COMPLETE.
+- [x] **🚦 OPERATOR GATE PASSED — 2026-07-31.** Walked interactively; verdict **"Confirmed — the
+      design is faithful"**. §04–§07 and the whole-page rhythm came back "indistinguishable"; §01–§03
+      raised **one defect: the left rail was not fixed like the prototype's** (fixed, below). All
+      four listed deviations (D1 panel placement · D2 the label-only badge · D3 the scaled treemap ·
+      D4 keyboard on the stat) **accepted as built**. Steps 1–15 of `4b-manual-verification.md` all
+      pass, 7b included. Trail: `4b-manual-verification.md`.
+      ⚠️ **The rail defect, and why nothing caught it.** `.shell-rail` WAS `position: sticky;
+      top: 74px` — correct since V3-P2. But its mount host (`#viewRail` / `#railHost`) is a flex
+      item of `.shell-body { align-items: flex-start }`, so it shrink-wrapped to the rail's own
+      **549px**; a sticky element is bounded by its parent's box, so the rail came unstuck the
+      moment you scrolled past that. The prototype's `<nav>` is a direct child of the ~7,300px flex
+      row. Fixed shell-wide with `.shell-rail-host { align-self: stretch; }`. **Every diff in this
+      port is a static capture of ONE scroll position — sticky behaviour only exists in the
+      difference between two, and nothing in the tooling compared them.** `tools/rail.js` now does.
+      Second time the hands-on gate caught what the automation could not.
+- [ ] ~~**🚦 OPERATOR GATE — verify the design port.**~~ Phase 1's build and measurement are COMPLETE.
       **Ours:** `http://localhost:8010/company/AAPL/institutional`
       **Prototype:** `http://localhost:9000/prototype.dc.html` → sidebar "Companies" → view rail
       "Institutional". Both are up now; to restart them see "THE UNLOCK" above (the prototype needs

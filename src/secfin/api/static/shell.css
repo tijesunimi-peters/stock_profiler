@@ -222,6 +222,13 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
    six of its seven labels to two lines and one to three; the prototype wraps three. Widening the
    rail is also what lands the content column on its designed 694px -- see .page's note in app.css
    for the full arithmetic. */
+/* The rail's MOUNT HOST must span the row, or the sticky rail has nowhere to travel.
+   `.shell-body` is `align-items: flex-start`, so the host shrink-wraps to the rail's own height
+   (549px) — and a sticky element is bounded by its parent's box, so the rail unstuck itself the
+   moment you scrolled past 549px and rode away with the page. The prototype's <nav> is a direct
+   child of the 7,300px flex row, which is why its rail stays put. Caught by the operator at the
+   V3-P5a fidelity gate; every measurement passed because a static capture cannot see it. */
+.shell-rail-host { align-self: stretch; }
 .shell-rail { width: 178px; flex: none; position: sticky; top: 74px; }
 .shell-rail-label {
   font-family: var(--font-mono);

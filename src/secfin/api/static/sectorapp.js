@@ -350,7 +350,7 @@
       // shell: view rail · viewport (960px cap) · right rail (Sector: sector snapshot + feed + how-to;
       // Company: focal filer snapshot + how-to; Compare: A/B snapshot + how-to; Qualitative: Track-2
       // how-to note, no data). The right rail hides < 1240px (CSS) so the content keeps its room.
-      '<div class="pa-body shell-body"><div id="railHost"></div><div class="pa-viewport shell-viewport" id="viewport"></div>' +
+      '<div class="pa-body shell-body"><div id="railHost" class="shell-rail-host"></div><div class="pa-viewport shell-viewport" id="viewport"></div>' +
       (state.view === "sector" || (state.view === "company" && state.focalCik) || state.view === "compare" || state.view === "qual" ? rightRailHtml() : "") + "</div>" +
       "</main></div>";
     mountRail();
