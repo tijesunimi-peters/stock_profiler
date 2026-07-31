@@ -762,7 +762,7 @@
 
     // Sections build one at a time, in order, each diffed against its capture before the next
     // starts (P1e). A section with no builder yet renders as an empty shell.
-    var IP_BODIES = { "01": ipSection01, "02": ipSection02, "03": ipSection03, "04": ipSection04, "05": ipSection05 };
+    var IP_BODIES = { "01": ipSection01, "02": ipSection02, "03": ipSection03, "04": ipSection04, "05": ipSection05, "06": ipSection06, "07": ipSection07 };
 
     $("view").innerHTML =
       ipBanner() +
@@ -1341,7 +1341,11 @@
     // Read off the prototype at both of the widths it renders: card 306x120, modal 1316x260.
     var X0 = 52, X1 = W - 14, YB = H - 34, YT = 14;
     var step = (X1 - X0) / (spec.values.length - 1);
-    var y = function (v) { return YB - (v / spec.axisMax) * (YB - YT); };
+    /* `axisMin` defaults to 0 but §06's amendment rate runs 2.9-11.6: its bottom gridline is not
+     * zero. Storing the series pre-offset would reproduce the picture and hand phase 2 a set of
+     * numbers that are not the quantity they claim to be. */
+    var lo = spec.axisMin || 0;
+    var y = function (v) { return YB - ((v - lo) / (spec.axisMax - lo)) * (YB - YT); };
     var ticks = spec.ticks.map(function (label, i) {
       var ty = YB - (i * (YB - YT)) / 4;
       return "<g>" +
@@ -2266,6 +2270,337 @@
     );
   }
 
+  /* ============================ §06 · Register limits & supply ============================ */
+  var IP06 = {
+    supply: [
+      "No lock-up restrictions currently on file",
+      "No tender offer on file",
+      "No Form 25 or Form 15 filed",
+    ],
+    // Windows on a shared time axis; x positions recovered from the capture, like §04's lanes.
+    timeline: {
+      grid: [[233.2381, ""], [311.8901, "Jan 26"], [387.9634, "Mar 26"], [466.6154, "May 26"], [545.2674, "Jul 26"]],
+      today: [574.9231, "today"],
+      rows: [
+        { name: "10b5-1 cooling-off", sub: "Rule 10b5-1 · 90 days", x: 250, w: 116.044,
+          mark: 366.044, label: "first trade eligible", anchor: "start" },
+        { name: "Next 13F window", sub: "13F-HR · 45 days", x: 543.978, w: 58.022,
+          mark: 602, label: "filing deadline", anchor: "end" },
+      ],
+    },
+    timelineNote:
+      "Only windows that are actually on file appear here — a row exists when a filing dates it. " +
+      "Dates come from the filings themselves. A registration or an expiry establishes when shares " +
+      "may be sold; it does not say that any sale occurred.",
+    supplyNote:
+      "Registration statements establish which shares may be resold; they do not indicate that a " +
+      "sale occurred.",
+    // One dot per Form 144 notice: [cx, cy, r, under a 10b5-1 plan]. Positions and radii are the
+    // capture's own -- the prototype places by filing date and sizes by shares proposed.
+    notices: {
+      yTicks: [[166, "0k sh"], [128.5, "13k sh"], [91, "26k sh"], [53.5, "39k sh"], [16, "52k sh"]],
+      xTicks: [[133.9277, "2026-03"], [243.7349, "2026-04"], [350, "2026-05"], [459.8072, "2026-06"], [566.0723, "2026-07"]],
+      dots: [
+        [644, 76.145, 7.8699, true], [622.747, 102.232, 7.2601, false], [495.229, 145.71, 5.8389, true],
+        [477.518, 47.159, 8.4505, true], [410.217, 35.565, 8.6625, false], [392.506, 61.652, 8.1703, true],
+        [314.578, 79.043, 7.8069, true], [293.325, 108.029, 7.1083, true], [272.072, 148.609, 5.7025, false],
+        [165.807, 64.551, 8.112, true], [144.554, 50.058, 8.3959, true], [123.301, 35.565, 8.6625, false],
+        [73.711, 93.536, 7.4752, true], [56, 134.116, 6.3052, true],
+      ],
+      legend: "● under a 10b5-1 plan    ○ no plan referenced",
+    },
+    noticesNote:
+      "One dot per Form 144 notice on file, placed by filing date and sized by shares proposed — the " +
+      "four most recent are listed below. Filled dots reference a Rule 10b5-1 plan. A notice is " +
+      "permission to sell, not a sale — Form 4 records what settled.",
+    recent: [
+      ["General Counsel", "under a Rule 10b5-1 plan adopted 2026-02-20", "31,000 sh", "2026-07-23"],
+      ["SVP, Engineering", "no plan referenced", "22,000 sh", "2026-07-17"],
+      ["EVP, Operations", "under a Rule 10b5-1 plan adopted 2026-01-09", "7,000 sh", "2026-06-11"],
+      ["CEO", "under a Rule 10b5-1 plan adopted 2026-01-09", "41,000 sh", "2026-06-06"],
+    ],
+    planNotes: [
+      "6 officers and directors with 10b5-1 plans referenced in the trailing year",
+      "Adoption-to-first-trade intervals meet the 90-day cooling-off requirement in every plan on file",
+      "No Item 405 delinquencies disclosed",
+    ],
+    form144Note:
+      "Form 144 is a notice of proposed sale — forward-looking, and not every notice results in a " +
+      "trade. Form 4 records what actually settled.",
+    mechanics: [
+      "No confidential treatment requests on file this quarter",
+      "14 amended 13F-HR filings restating a prior position",
+      "Index-manager share counts stepped up together in 3Q25 — consistent with an index inclusion event",
+      "Median filing lag 40 days after quarter end",
+    ],
+    // Acceptance-lag histogram. Counts recovered from the bar heights and they come out integral,
+    // which is the check that the axis was recovered rather than guessed.
+    lag: {
+      counts: [3, 2, 9, 20, 41, 84, 118, 163, 89, 71, 43, 16, 5, 4],
+      axisMax: 163,
+      yTicks: ["0", "82", "163"],
+      xLabels: [[0, "33"], [2, "35"], [4, "37"], [6, "39"], [8, "41"], [10, "43"], [12, "45"]],
+      median: { i: 7, label: "median 40" },
+      caption: "days after quarter end",
+    },
+    lagNote:
+      "Distribution of EDGAR acceptance lag across this quarter’s 13F-HR filings, in days after " +
+      "quarter end. The statutory deadline is 45 days, so the register is never complete before then.",
+    amendments: {
+      values: [4.9119, 2.9, 9.8833, 7.8714, 3.972, 10.9553, 8.9434, 6.9315, 6.7995],
+      axisMin: 2.9, axisMax: 11.6, color: "var(--gaap-color)",
+      ticks: ["2.9", "5.1", "7.3", "9.5", "11.6"],
+    },
+    quarters9: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
+    amendmentsNote:
+      "Amended 13F-HR filings per 100 filings in the register, by quarter. Amendments restate a " +
+      "position already reported — a higher rate means the first read of a quarter is less reliable.",
+    mechanicsNote: "Mechanics describe the completeness of the register itself, not the company.",
+  };
+
+  function ipSection06() {
+    return (
+      '<div class="ip-grid2">' +
+      ip06Supply() +
+      ipExpander(
+        "Also in this section",
+        "insider filings beyond Form 4 · how complete the register itself is",
+        '<div class="ip-grid2 ip-grid2--nested">' + ip06Form144() + ip06Mechanics() + "</div>"
+      ) +
+      "</div>"
+    );
+  }
+
+  function ip06Supply() {
+    return (
+      '<div class="ip-card ip-card--flush ip-card--full">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Supply-side events</h3>' +
+      '<span class="ip-card-note">S-1 / S-3 · SC TO · Form 25 / 15</span>' +
+      "</div>" +
+      '<div class="ip-facts">' +
+      IP06.supply.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
+      "</div>" +
+      '<div class="ip-subbar ip-subbar--windows">' +
+      '<span class="ip-micro">Windows and expiries ahead</span>' +
+      ipChip("06-windows") +
+      "</div>" +
+      ipTimeline(IP06.timeline, 660, 154) +
+      '<div class="ip-caption"><span>' + P.esc(IP06.timelineNote) + "</span></div>" +
+      '<div class="ip-caption ip-caption--10"><span>' + P.esc(IP06.supplyNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip06Form144() {
+    var rows = IP06.recent
+      .map(function (r) {
+        return (
+          '<div class="ip-notice-row">' +
+          '<span class="ip-notice-id"><span class="ip-notice-who"><span>' + P.esc(r[0]) + "</span></span>" +
+          '<span class="ip-notice-plan"><span>' + P.esc(r[1]) + "</span></span></span>" +
+          '<span class="ip-notice-sh"><span>' + P.esc(r[2]) + "</span></span>" +
+          '<span class="ip-notice-date"><span>' + P.esc(r[3]) + "</span></span>" +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Insider filings beyond Form 4</h3>' +
+      '<span class="ip-card-note">Form 144 · Rule 10b5-1 · Item 405</span>' +
+      ipLink("Form 144 ↗", IP_EDGAR_144) +
+      ipLink("Form 4 ↗", IP_EDGAR_F4) +
+      "</div>" +
+      '<div class="ip-subbar ip-subbar--tight">' +
+      '<span class="ip-micro">Proposed sales by date and size</span>' +
+      ipChip("06-notices") +
+      "</div>" +
+      ipBubbles(IP06.notices, 660, 200) +
+      '<div class="ip-caption"><span>' + P.esc(IP06.noticesNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--block">Most recent notices</div>' +
+      rows +
+      '<div class="ip-planlist">' +
+      IP06.planNotes.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
+      "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(IP06.form144Note) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  function ip06Mechanics() {
+    return (
+      '<div class="ip-card ip-card--flush">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Register mechanics</h3>' +
+      '<span class="ip-card-note">completeness of the register itself</span>' +
+      "</div>" +
+      '<div class="ip-facts ip-facts--7">' +
+      IP06.mechanics.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
+      "</div>" +
+      '<div class="ip-micro ip-micro--block">Acceptance lag across this quarter’s filings</div>' +
+      ipHistogram(IP06.lag, 306, 175) +
+      '<div class="ip-caption"><span>' + P.esc(IP06.lagNote) + "</span></div>" +
+      '<div class="ip-micro ip-micro--block">Amendments per 100 filings</div>' +
+      ipAreaChart(IP06.amendments, IP06.quarters9, 306, 160) +
+      '<div class="ip-caption"><span>' + P.esc(IP06.amendmentsNote) + "</span></div>" +
+      '<div class="ip-caption ip-caption--10"><span>' + P.esc(IP06.mechanicsNote) + "</span></div>" +
+      "</div>"
+    );
+  }
+
+  /* Windows and expiries on a shared time axis: one row per dated window, a rounded band for its
+   * span, a rule at the date that matters and a "today" marker across the frame. */
+  function ipTimeline(spec, W, H) {
+    var k = W / 660;
+    var grid = spec.grid
+      .map(function (g) {
+        var x = g[0] * k;
+        return '<line x1="' + x + '" y1="22" x2="' + x + '" y2="' + (H - 20) +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          (g[1] ? '<text x="' + x + '" y="' + (H - 6) + '" text-anchor="middle" class="ip-ax2">' +
+            P.esc(g[1]) + "</text>" : "");
+      })
+      .join("") +
+      '<line x1="' + spec.today[0] * k + '" y1="18" x2="' + spec.today[0] * k + '" y2="' + (H - 20) +
+      '" stroke="var(--ink)" stroke-width="1.6"></line>' +
+      '<text x="' + (spec.today[0] * k + 5) + '" y="26" class="ip-tl-today">' + P.esc(spec.today[1]) + "</text>";
+    var rows = spec.rows
+      .map(function (r, i) {
+        var y = 53 + i * 46;
+        return (
+          '<text x="' + 240 * k + '" y="' + y + '" text-anchor="end" class="ip-lane-name">' +
+          P.esc(r.name) + "</text>" +
+          '<text x="' + 240 * k + '" y="' + (y + 14) + '" text-anchor="end" class="ip-ax2">' +
+          P.esc(r.sub) + "</text>" +
+          '<rect x="' + r.x * k + '" y="' + (y - 9) + '" width="' + r.w * k +
+          '" height="22" rx="5" fill="var(--accent)" opacity="0.38" stroke="var(--accent)" stroke-width="1"></rect>' +
+          '<line x1="' + r.mark * k + '" y1="' + (y - 12) + '" x2="' + r.mark * k + '" y2="' + (y + 16) +
+          '" stroke="var(--accent-ink)" stroke-width="2"></line>' +
+          (r.anchor === "end"
+            ? '<text x="' + (r.mark * k - 6) + '" y="' + (y - 12) + '" text-anchor="end" class="ip-tl-mark">' + P.esc(r.label) + "</text>"
+            : '<text x="' + (r.mark * k + 6) + '" y="' + (y + 5) + '" text-anchor="start" class="ip-tl-mark">' + P.esc(r.label) + "</text>")
+        );
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" aria-label="Dated windows and expiries ahead">' +
+      grid + rows + "</svg></div>"
+    );
+  }
+
+  /* One dot per Form 144 notice, placed by filing date and sized by shares proposed. Filled dots
+   * reference a 10b5-1 plan; hollow ones do not. Positions and radii are the capture's. */
+  function ipBubbles(spec, W, H) {
+    var k = W / 660;
+    var grid = spec.yTicks
+      .map(function (t) {
+        return '<line x1="' + 56 * k + '" y1="' + t[0] + '" x2="' + (W - 16) + '" y2="' + t[0] +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + 49 * k + '" y="' + t[0] + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' +
+          P.esc(t[1]) + "</text>";
+      })
+      .join("") +
+      spec.xTicks.map(function (t) {
+        var x = t[0] * k;
+        return '<line x1="' + x + '" y1="16" x2="' + x + '" y2="' + (H - 34) +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + x + '" y="' + (H - 10) + '" text-anchor="middle" class="ip-ax2">' + P.esc(t[1]) + "</text>";
+      }).join("");
+    var dots = spec.dots
+      .map(function (d) {
+        return d[3]
+          ? '<circle cx="' + d[0] * k + '" cy="' + d[1] + '" r="' + d[2] * k +
+            '" fill="var(--accent)" fill-opacity="0.5" stroke="var(--accent)" stroke-width="1.5"></circle>'
+          : '<circle cx="' + d[0] * k + '" cy="' + d[1] + '" r="' + d[2] * k +
+            '" fill="var(--bg-card)" fill-opacity="1" stroke="var(--accent)" stroke-width="1.5"></circle>';
+      })
+      .join("");
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Form 144 notices by filing date and shares proposed">' +
+      grid + dots +
+      '<text x="' + (W - 16) + '" y="18" text-anchor="end" class="ip-ax2">' + P.esc(spec.legend) + "</text>" +
+      "</svg></div>"
+    );
+  }
+
+  // Acceptance-lag histogram, with the median called out where it falls.
+  function ipHistogram(spec, W, H) {
+    var k = W / 306;
+    var X0 = 42.54 * k, BW = 13.0629 * k, STEP = 18.1429 * k, YB = H - 34, YT = 14;
+    var grid = spec.yTicks
+      .map(function (label, i) {
+        var y = YB - (i * (YB - YT)) / (spec.yTicks.length - 1);
+        return '<line x1="' + 40 * k + '" y1="' + y + '" x2="' + (W - 12) + '" y2="' + y +
+          '" stroke="var(--rule)" stroke-width="1"></line>' +
+          '<text x="' + 34 * k + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' +
+          P.esc(label) + "</text>";
+      })
+      .join("");
+    var bars = spec.counts
+      .map(function (c, i) {
+        var h = (c / spec.axisMax) * (YB - YT);
+        return '<rect x="' + (X0 + i * STEP) + '" y="' + (YB - h) + '" width="' + BW +
+          '" height="' + h + '" fill="var(--accent)" opacity="0.45" rx="1.5"></rect>';
+      })
+      .join("") +
+      spec.xLabels.map(function (l) {
+        return '<text x="' + (X0 + l[0] * STEP + BW / 2) + '" y="' + (YB + 13) +
+          '" text-anchor="middle" class="ip-ax">' + P.esc(l[1]) + "</text>";
+      }).join("");
+    var mx = X0 + spec.median.i * STEP + BW / 2;
+    return (
+      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
+      'style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Distribution of EDGAR acceptance lag in days after quarter end">' +
+      grid + bars +
+      '<line x1="' + mx + '" y1="' + YT + '" x2="' + mx + '" y2="' + YB +
+      '" stroke="var(--ink)" stroke-width="1.6" stroke-dasharray="4 3"></line>' +
+      '<text x="' + (mx + 5) + '" y="' + (YT + 9) + '" class="ip-tl-mark">' + P.esc(spec.median.label) + "</text>" +
+      '<text x="' + 167 * k + '" y="' + (H - 4) + '" text-anchor="middle" class="ip-ax2">' +
+      P.esc(spec.caption) + "</text>" +
+      "</svg></div>"
+    );
+  }
+
+  /* ============================ §07 · Reference ============================
+   * A flat glossary: what each source is, and what it cannot tell you. No controls — the only
+   * section in the view with none, confirmed by tools/controls.js against the prototype. */
+  var IP07 = [
+    ["13F-HR", "Quarterly holdings report from an institutional manager with over $100M in Section 13(f) securities. Filed within 45 days of quarter end."],
+    ["SC 13D / 13G", "Beneficial ownership above 5%. 13D is for holders who may seek to influence control; 13G is the passive short form."],
+    ["N-PX", "Annual record of how a fund voted every proxy it held. The only public source for manager-level voting."],
+    ["N-PORT", "Monthly portfolio holdings report from a registered fund, filed at the individual fund level."],
+    ["Form 4", "Insider transaction report, due two business days after the trade. Code A is an acquisition, D a disposition, S an open-market sale."],
+    ["Form 144", "Notice of a proposed sale of restricted or control securities, filed when the order is placed. Not every notice results in a trade."],
+    ["Rule 10b5-1", "A pre-arranged trading plan. Since 2023 a 90-day cooling-off period applies between adoption and the first trade for officers and directors."],
+    ["Item 405", "The proxy disclosure naming insiders who filed Section 16 reports late."],
+    ["8-K Item 5.07", "Certified results of a shareholder vote, due four business days after the meeting."],
+    ["Section 13(f) threshold", "The $100M in listed holdings that triggers 13F reporting. Smaller managers never appear in the register."],
+  ];
+
+  function ipSection07() {
+    return (
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Forms and rules used on this page</h3>' +
+      '<span class="ip-card-note">what each source is, and what it cannot tell you</span>' +
+      "</div>" +
+      '<div class="ip-ref">' +
+      IP07.map(function (r) {
+        return '<div class="ip-ref-item">' +
+          '<span class="ip-ref-form"><span>' + P.esc(r[0]) + "</span></span>" +
+          '<span class="ip-ref-desc"><span>' + P.esc(r[1]) + "</span></span></div>";
+      }).join("") +
+      "</div>" +
+      "</div>"
+    );
+  }
+
   /* ============================ the port's three live affordances ============================
    * Ported from the RUNNING prototype, not from its markup — a control's behaviour is not in the
    * DOM. Each was driven with tools/click.js + tools/overlay.js and its result read back.
@@ -2627,6 +2962,16 @@
         return ipTreemap(IP_TREEMAP, w, Math.round((w * 658) / 1316));
       },
     },
+    "06-windows": {
+      title: "Windows and expiries ahead",
+      note: "every dated window currently on file",
+      render: function (w) { return ipTimeline(IP06.timeline, w, 154); },
+    },
+    "06-notices": {
+      title: "Form 144 notices",
+      note: "proposed sales by filing date and size",
+      render: function (w) { return ipBubbles(IP06.notices, w, 200); },
+    },
     "05-cohorts": {
       title: "Holder persistence by entry cohort",
       note: "share of each entry cohort still reporting N quarters later",
@@ -2669,6 +3014,10 @@
     "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=8-K&dateb=&owner=include&count=40";
   var IP_EDGAR_NPX = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PX";
   var IP_EDGAR_NPORT = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PORT";
+  var IP_EDGAR_144 =
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=144&dateb=&owner=include&count=40";
+  var IP_EDGAR_F4 =
+    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=4&dateb=&owner=include&count=40";
 
   function ipLink(label, href) {
     return '<a class="ip-card-link" href="' + (href || IP_EDGAR_13F) + '" target="_blank" rel="noopener">' +

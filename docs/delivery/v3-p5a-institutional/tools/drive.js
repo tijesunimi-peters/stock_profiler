@@ -29,7 +29,9 @@ const q = (p, fn, ...a) => p.evaluate(fn, ...a);
                               ["03-ranked", "Cumulative share of the register"],
                               ["02-register", "Register over time"],
                               ["04-lanes", "Beneficial ownership filings"],
-                              ["05-cohorts", "Holder persistence by entry cohort"]]) {
+                              ["05-cohorts", "Holder persistence by entry cohort"],
+                              ["06-windows", "Windows and expiries ahead"],
+                              ["06-notices", "Form 144 notices"]]) {
     await clickSel('[data-ip-open="' + key + '"]');
     await wait(600);
     const got = await q(p, () => {
@@ -239,6 +241,16 @@ const q = (p, fn, ...a) => p.evaluate(fn, ...a);
   check("§04's links point at the registrant's own EDGAR filings (SC 13, 8-K, N-PX)",
     links04.length === 4 && links04.filter((h) => /CIK=0527298/.test(h)).length === 3 &&
     links04.filter((h) => /forms=N-PX/.test(h)).length === 1, JSON.stringify(links04.length));
+
+  var all = await q(p, () => {
+    const secs = ["ip-01","ip-02","ip-03","ip-04","ip-05","ip-06","ip-07"];
+    return secs.map((id) => {
+      const r = document.getElementById(id);
+      return r ? r.querySelectorAll("button,a").length : -1;
+    });
+  });
+  check("all seven sections render, §07 with no controls at all",
+    all.length === 7 && all.every((n) => n >= 0) && all[6] === 0, JSON.stringify(all));
 
   check("the only unwired control is §01's label-only badge (the prototype opens nothing there)",
     inert.length === 1 && /DERIVED|HIDE/i.test(inert[0]), JSON.stringify(inert));

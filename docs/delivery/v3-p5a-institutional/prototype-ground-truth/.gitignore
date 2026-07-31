@@ -38,3 +38,6 @@ proto-i?-o1x.png
 proto-i?-tall.png
 proto-i?-deriv.png
 proto-i?-open-1x.png
+# P1g full-run captures (§01's top to §07's bottom) — 11,856px tall and regenerable with
+# shot2.js SEL=#i1 SEL2=#i7.
+full-*.png

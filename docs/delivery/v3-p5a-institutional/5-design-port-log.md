@@ -72,7 +72,7 @@ docker run --rm --user root --network stock_profiler_default \
 | `where.js` | where the revealed panel actually lands, its size, and whose chain it sits in |
 | `two.js` · `after.js` | a toggle's second state · which controls exist and are visible after an interaction |
 | `controls.js` | **step 1 of every section**: inventory every button, link and toggle, and flag the ones still unwired |
-| `drive.js` | the end-to-end assertion pass over every live affordance — 64 checks today |
+| `drive.js` | the end-to-end assertion pass over every live affordance — 71 checks today |
 
 ### What the capture settled up front
 
@@ -736,6 +736,99 @@ threshold that separates the capture's two groups (darkest `--ink` cell 0.449, l
    total, invisible in any text comparison — only `hprec.js` on the grid's children showed it.
 
 `var(--gaap)` appeared for the **fourth** time (the fund weight bars). Still `--gaap-color` here.
+
+---
+
+## Tenth run — §06 and §07, and phase 1's build is complete
+
+| state | pixels ≠ | >8/255 | >32/255 | bands | height |
+|---|---:|---:|---:|---:|---|
+| §06 collapsed | **1** | **0** | **0** | **0** | 524 = 524 |
+| §06 expanded | 17,721 | **0** | **0** | **0** | 1303.97 = 1303.97 |
+| §06 expanded @1× | 4,139 | **0** | **0** | **0** | — |
+| §07 collapsed | **0** | **0** | **0** | **0** | 540 = 540 |
+| §07 expanded | 15,468 | **0** | **0** | **0** | 540.08 = 540.08 |
+| §07 expanded @1× | 3,483 | **0** | **0** | **0** | — |
+
+`compare.py`: §06 **99/99**, §07 **25/25 with ZERO property mismatches** — the only section with
+none, because it has no expander and no badge, so none of the three nesting artifacts apply.
+§07 collapsed is **byte-identical**: not one pixel differs.
+
+**§06: 5 controls, 0 inert. §07: 0 controls** — the only section in the view with none, which
+`tools/controls.js` confirmed against the prototype before anything was built.
+
+### Three more builders, and one reuse that needed a real change
+
+`ipTimeline` (dated windows on a shared axis, with a "today" rule), `ipBubbles` (one dot per Form 144
+notice, placed by filing date and sized by shares proposed; filled = under a 10b5-1 plan), and
+`ipHistogram` (acceptance lag, with the median called out where it falls). Twelve → **fifteen**.
+
+The amendments-per-100 chart is `ipAreaChart` again — but its **bottom gridline is 2.9, not 0**.
+`ipAreaChart` gained an `axisMin` rather than storing the series pre-offset: the picture would have
+been identical either way, and phase 2 would have inherited a set of numbers that are not the
+quantity they claim to be. The recovered series round-trips exactly, and the histogram's recovered
+counts come out as **clean integers** (3, 2, 9, 20, 41, 84, 118, 163, 89, 71, 43, 16, 5, 4) — which
+is the evidence its axis was recovered rather than guessed.
+
+### One structural defect, worth 689px
+
+§06's expander bar and the two cards it reveals are **grid items** of the section's own
+`repeat(auto-fit, minmax(320px, 1fr))` grid, and the bar carries `grid-column: 1 / -1`. Ours put the
+bar and both cards inside a single grid item, so the bar landed in a 340px column — its note wrapped
+to two lines — and the two cards stacked instead of sharing a row. **1992px against 1304.**
+`compare.py` had already matched 99/99 texts at that point: the words were right and the layout was
+not, which is exactly the split those two tools exist to separate. Fixed with `grid-column: 1 / -1`
+on `.ip-expander` / `.ip-expander-body` (inert wherever they are not grid items, so it is safe to
+state once) and a nested grid for the revealed pair.
+
+`var(--gaap)` appeared for the **fifth** time, in the amendments line.
+
+### Where the port stands after §07
+
+**All seven sections are built.** Fourteen states measured, at both device pixel ratios:
+
+| | §01 | §02 | §03 | §04 | §05 | §06 | §07 |
+|---|---|---|---|---|---|---|---|
+| collapsed, >32/255 | **0** | 30 | **0** | 8 | **0** | **0** | **0** |
+| expanded, >32/255 | **0** | 34 | **0** | **0** | **0** | **0** | **0** |
+| bands, either state | **0** | **0** | **0** | **0** | **0** | **0** | **0** |
+| height | exact | exact | exact | exact | exact | exact | exact |
+| controls live | 3/4* | 7/7 | 11/11 | 6/6 | 5/5 | 5/5 | 0/0 |
+
+\* §01's card-head badge opens nothing in the prototype either — a listed deviation, not a gap.
+
+§02's 30/34 are the mini charts' end-marker circles; §04's 8 are the lane chart's dot antialiasing,
+which moves between runs (0 on the previous pass). No bands anywhere, in any state, at either DPR.
+
+**`tools/drive.js`: 71 driven assertions, 0 failures.**
+
+**Fifteen chart builders**, all hand-authored SVG on a fixed `viewBox`, every series recovered
+numerically from the capture and round-trip-checked: `ipDumbbell` · `ipAreaChart` · `ipStackedArea` ·
+`ipSparkline` · `ipDivergingBars` · `ipRankedShare` · `ipLorenz` · `ipPeerMatrix` · `ipTreemap` ·
+`ipUpset` · `ipLaneChart` · `ipCohortGrid` · `ipTimeline` · `ipBubbles` · `ipHistogram`.
+📌 All fifteen expire when the prototype's d3 charts land — see D-protocharts.
+
+### P1g — the full-page diff
+
+The last measurement, and the only one that can see the spacing **between** sections: per-section
+diffs are blind to it by construction. `shot2.js` gained `SEL2`, which extends the clip to that
+element's bottom, so the capture runs from §01's top to §07's bottom in one image — deliberately
+excluding the banner, the rails and the topbar, all of which differ by decision.
+
+| run | size | pixels ≠ | >8/255 | >32/255 | bands |
+|---|---|---:|---:|---:|---:|
+| all seven, collapsed | 694 × **7,231** both | 828 | 24 | **0** | **0** |
+| all seven, expanded | 694 × **11,856** both | 1,569 | 62 | **4** | **0** |
+
+Run at **1×**: a 2× capture of 11,856 CSS px is 23,712 device rows, past Chrome's 16,384 canvas
+limit — the diff cannot be computed at all. Every section was already measured at 2× individually.
+
+Both totals match to the pixel, and `align.js` reports a **perfect zero at (0,0) on all six section
+boundaries** — which is the direct evidence the inter-section spacing is right. A spacing error
+would shift everything below it and band the rest of the image.
+
+**Phase 1's build and its measurement are complete.** What remains is the operator's 🚦 fidelity
+gate, plus the four listed deviations and step 7b in `4b-manual-verification.md`.
 
 ### Where the port stands after §05
 

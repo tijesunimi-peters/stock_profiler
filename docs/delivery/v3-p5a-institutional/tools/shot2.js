@@ -12,7 +12,7 @@
 const puppeteer = require("puppeteer");
 const {
   URL: U, SEL, NAV, OPEN, PIN, PINSEL = "#view", COL = "694",
-  FRACX, FRACY, OUTFILE, DPR = "2", HIDESTICKY, VH = "1200", SNAP, CLICK, CLICKN = "0",
+  FRACX, FRACY, OUTFILE, DPR = "2", HIDESTICKY, VH = "1200", SNAP, CLICK, CLICKN = "0", SEL2,
 } = process.env;
 
 const click = async (p, t) =>
@@ -162,10 +162,14 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
    * difference. (§03 measured identical to 4 decimals on both sides while diffing at 2.4%.)
    * A floored, explicit clip is identical on both sides by construction. */
   if (OUTFILE) {
-    const clip = await page.evaluate((s) => {
+    // SEL2 extends the clip to that element's BOTTOM — the P1g full-run capture, which is the only
+    // way to see the spacing BETWEEN sections. Per-section diffs are blind to it by construction.
+    const clip = await page.evaluate((s, s2) => {
       const b = document.querySelector(s).getBoundingClientRect();
-      return { x: b.left + window.scrollX, y: b.top + window.scrollY, width: Math.floor(b.width), height: Math.floor(b.height) };
-    }, SEL);
+      const end = s2 ? document.querySelector(s2).getBoundingClientRect() : b;
+      return { x: b.left + window.scrollX, y: b.top + window.scrollY,
+        width: Math.floor(b.width), height: Math.floor(end.bottom - b.top) };
+    }, SEL, SEL2 || null);
     await page.screenshot({ path: OUTFILE, clip, captureBeyondViewport: true });
   }
   const f = (n) => +(n - Math.floor(n)).toFixed(4);

@@ -2391,3 +2391,68 @@ button.ip-minibtn { cursor: pointer; }
    And §05's carry NO line-height: at `normal` a 19px value box is ~25px, which is 5px more than
    §03's `line-height: 1`. That 5px moved every element below it. */
 .ip-stat-val--19 { font-size: 19px; line-height: normal; }
+
+/* ============================================================================================
+   §06 · Register limits & supply.
+   ============================================================================================ */
+
+/* The supply card and the expander bar span the whole grid; the two lower cards share the row.
+   `grid-column` on the expander is inert wherever it is not a grid item (§01-§03), so this is
+   safe to state once. Without it the bar lands in a 340px column and its note wraps to two lines,
+   which is how §06 first came out 689px too tall. */
+.ip-card--full { grid-column: 1 / -1; }
+.ip-expander,
+.ip-expander-body { grid-column: 1 / -1; }
+/* A grid nested inside an expander body carries no top margin of its own -- the outer grid's gap
+   already spaces it from the bar. */
+.ip-grid2--nested { margin-top: 0; }
+.ip-subbar--windows { margin: 14px 0 8px; }
+.ip-caption--10 { margin-top: 10px; }
+
+/* Statements of fact, in the body face — an honest "nothing on file" reads as a finding, not an
+   empty state. §06 uses 6px between them in the supply card and 7px in mechanics. */
+.ip-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-body);
+  line-height: 1.5;
+}
+.ip-facts--7 { gap: 7px; }
+
+/* --- Form 144 notices --- */
+.ip-notice-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 86px 78px;
+  gap: 9px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-tint-rule);
+}
+.ip-notice-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ip-notice-who { font-size: 12.5px; color: var(--ink-body); }
+.ip-notice-plan { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
+.ip-notice-sh { font-family: var(--ip-mono); font-size: 11px; color: var(--ink); text-align: right; }
+.ip-notice-date { font-family: var(--ip-mono); font-size: 10.5px; color: var(--mono-muted); text-align: right; }
+.ip-planlist {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 11px;
+  font-family: var(--ip-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+/* --- §06's SVG text --- */
+.ip-tl-today { font-family: var(--ip-mono-fb); font-size: 9.5px; fill: var(--ink); }
+.ip-tl-mark { font-family: var(--ip-mono-fb); font-size: 9.5px; fill: var(--ink); }
+
+/* ============================================================================================
+   §07 · Reference — a two-column glossary, each entry over a hairline.
+   ============================================================================================ */
+.ip-ref { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px 20px; }
+.ip-ref-item { display: flex; flex-direction: column; gap: 2px; padding: 7px 0; border-top: 1px solid var(--border-tint-rule); }
+.ip-ref-form { font-family: var(--ip-mono); font-size: 11.5px; font-weight: 600; color: var(--ink); }
+.ip-ref-desc { font-size: 12px; color: var(--ink-body); line-height: 1.45; }

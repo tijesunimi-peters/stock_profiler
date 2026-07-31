@@ -4,9 +4,9 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `ae0244f` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: frontend    ← phase 1 design port, IN PROGRESS. §01–§05 DONE (both states, zero
-  bands, controls live). §06 is next; §06–§07 not started. The `manual` gate is the operator's
-  🚦 FIDELITY gate below, and it does not fire until all seven sections are ported.
+next_stage: manual      ← ⏸ PHASE 1 IS COMPLETE and waiting on the operator's 🚦 FIDELITY GATE.
+  All seven sections built and measured, P1g done. Nothing proceeds to phase 2 (data plumbing)
+  until the operator has looked at the port and accepted the design.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-07-31
@@ -95,7 +95,7 @@ the behaviour end to end.
    `ClearyFi.*` builders and their chrome are part of what read as "old design".
 
    📌 **HEADS-UP (operator, 2026-07-31): the prototype is moving its charts to d3**, which will make
-   them interactive. **The decision for now is to CONTINUE AS WE ARE** — the twelve hand-authored
+   them interactive. **The decision for now is to CONTINUE AS WE ARE** — the fifteen hand-authored
    SVG builders stay, nothing is pre-built for d3, and no section waits on it. Do not speculate
    about what the d3 version will look like; port what is on the server today.
 
@@ -109,7 +109,7 @@ the behaviour end to end.
    *Invalidated the day it lands.* **`prototype-ground-truth/` is a snapshot of TODAY's prototype**
    — every PNG, `literals.json` and `literals-open.json`. Re-capture the lot before diffing anything
    against it; a green diff against a stale capture is worse than no diff. And **every series in
-   `IP01`–`IP05` was recovered numerically from a static SVG** (bar heights, path coordinates, the
+   `IP01`–`IP07` was recovered numerically from a static SVG** (bar heights, path coordinates, the
    fill-opacities in the peer matrix, the treemap's squarified rects, the lane chart's x positions).
    If d3 lays those out even slightly differently, the recovered numbers and the layout constants
    derived from them are both wrong — **re-recover, do not adapt**.
@@ -357,9 +357,37 @@ docker stop p5a-preview
       extracted (the funds card ends with TWO sentences in two spans) and `var(--gaap)` for the
       fourth time.
       `drive.js` **64 assertions, 0 failures**; §01–§04 re-diffed, no regression.
-- [ ] **P1e-§06…§07** ⬅ Not started (§06 1304px · §07 540 — ≈1,844px). **Each is done only when its
-      MARKUP, its CSS, its charts AND its controls are ported** — see D-behaviour. Start with
-      `tools/controls.js` on the section; the inventory is step 1, not an afterthought.
+- [x] **§06 + §07 DONE — ALL SEVEN SECTIONS ARE BUILT** (2026-07-31). §06: height exact
+      (1303.97), `compare.py` **99/99**, **0 above 32/255 / 0 bands**, **5 controls, 0 inert**.
+      §07: height exact (540.08), **25/25 texts with ZERO property mismatches**, and **collapsed it
+      is byte-identical — not one pixel differs**. §07 is the only section with **no controls**,
+      confirmed against the prototype before building.
+      Three more builders (`ipTimeline`, `ipBubbles`, `ipHistogram`) → **fifteen**. `ipAreaChart`
+      gained an **`axisMin`**: §06's amendments chart has a bottom gridline of 2.9, not 0, and
+      storing the series pre-offset would have handed phase 2 numbers that are not the quantity
+      they claim to be. The histogram's recovered counts come out as clean integers, which is the
+      evidence its axis was recovered rather than guessed.
+      ⚠️ **One structural defect worth 689px**: §06's expander bar and the two cards it reveals are
+      GRID ITEMS with `grid-column: 1 / -1`; ours nested them in a single item, so the bar landed
+      in a 340px column (its note wrapped) and the cards stacked instead of sharing a row — 1992px
+      against 1304. **`compare.py` had already matched 99/99 texts at that point**: the words were
+      right and the layout was not, which is exactly the split those two tools exist to separate.
+      `var(--gaap)` for the fifth time.
+      `drive.js` **71 assertions, 0 failures**. e2e 44 shots, institutional `errors=0`.
+- [x] **P1g DONE — the full-page diff** (2026-07-31). §01's top to §07's bottom in one capture
+      (`shot2.js` gained `SEL2`), deliberately excluding the banner, rails and topbar — all of
+      which differ by decision. **Collapsed: 694 × 7,231 in both, 0 above 32/255, 0 bands.
+      Expanded: 694 × 11,856 in both, 4 above 32/255, 0 bands.** `align.js` reports a perfect zero
+      at (0,0) on **all six section boundaries**, which is the direct evidence the spacing BETWEEN
+      sections is right — the one thing per-section diffs cannot see.
+      Run at 1×: a 2× capture of 11,856 CSS px is 23,712 device rows, past Chrome's 16,384 canvas
+      limit, so the diff cannot be computed at all. Every section was already measured at 2×.
+- [ ] **🚦 OPERATOR GATE — verify the design port.** Phase 1's build and measurement are COMPLETE.
+      **Ours:** `http://localhost:8010/company/AAPL/institutional`
+      **Prototype:** `http://localhost:9000/prototype.dc.html` → sidebar "Companies" → view rail
+      "Institutional". Both are up now; to restart them see "THE UNLOCK" above (the prototype needs
+      `-p 9000:9000` to be reachable from a browser, not only from the capture container).
+      Phase 2 does not start until this passes.
 - [x] **Retro-fit sweep DONE** (2026-07-31) — D-behaviour applied across §01–§03. `Set intersections`
       (a whole UpSet plot + its 8-row combination table), `Trend` and the clickable "Effective
       holders" stat (an inline trend panel + "the measures behind it"), and all five `↗` links (real
@@ -435,7 +463,7 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
 - [ ] **P1e-rest** §02 → §07, screenshot-diffing each against its capture before starting the next
 - [ ] **P1f** the remaining prototype chart builders (D-protocharts) — §01's dumbbell is done
 - [ ] **P1g** full-page diff vs the prototype
-- [ ] **🚦 OPERATOR GATE — verify the design port.** Phase 2 does not start until this passes.
+- [ ] *(duplicate of the gate above — phase 1 is complete; see "OPERATOR GATE" earlier in this file)*
 - [ ] **P2** plumb real data in, literal by literal, until none remain
 - [ ] 4 QA · 4b operator verification
 
