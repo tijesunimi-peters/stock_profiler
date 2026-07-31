@@ -3,11 +3,14 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional @ `6c42d19` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
-  is faithful". Phase 1 is ACCEPTED. **PHASE 2 — data plumbing — is now unblocked**: replace every
-  prototype literal with real filings data, keeping the ported design intact, then QA + 4b.
-  Start from the archived attempt-3 backend (see the archive table below) rather than rebuilding it.
+branch: v3-p5a-institutional @ `2504cdf` (clean off `master` 9d0d10f — **attempt 4**)
+next_stage: backend     ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+  is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
+  now**: replace every prototype literal with real filings data, keeping the ported design intact.
+  It is FULL-STACK, so it routes backend-first per the pipeline: endpoints + pytest + the JSON
+  contract, THEN frontend consumes them on the same branch, then QA + 4b.
+  ⚡ Start by MINING the archived attempt-3 backend (`register.py`, four endpoints, `period_meta`,
+  37 green tests — see the archive table below) rather than rebuilding it.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-07-31
@@ -410,12 +413,11 @@ docker stop p5a-preview
       port is a static capture of ONE scroll position — sticky behaviour only exists in the
       difference between two, and nothing in the tooling compared them.** `tools/rail.js` now does.
       Second time the hands-on gate caught what the automation could not.
-- [ ] ~~**🚦 OPERATOR GATE — verify the design port.**~~ Phase 1's build and measurement are COMPLETE.
-      **Ours:** `http://localhost:8010/company/AAPL/institutional`
-      **Prototype:** `http://localhost:9000/prototype.dc.html` → sidebar "Companies" → view rail
-      "Institutional". Both are up now; to restart them see "THE UNLOCK" above (the prototype needs
-      `-p 9000:9000` to be reachable from a browser, not only from the capture container).
-      Phase 2 does not start until this passes.
+      *(Compare surfaces, for phase 2's own verification: ours at
+      `http://localhost:8010/company/AAPL/institutional`, the prototype at
+      `http://localhost:9000/prototype.dc.html` → "Companies" → "Institutional". To restart them see
+      "THE UNLOCK" above — the prototype needs `-p 9000:9000` to be reachable from a browser, not
+      only from the capture container.)*
 - [x] **Retro-fit sweep DONE** (2026-07-31) — D-behaviour applied across §01–§03. `Set intersections`
       (a whole UpSet plot + its 8-row combination table), `Trend` and the clickable "Effective
       holders" stat (an inline trend panel + "the measures behind it"), and all five `↗` links (real
@@ -436,9 +438,10 @@ docker stop p5a-preview
       prototype stripes alternate), bars at 0.55 not 0.5 opacity, and row labels in the 9px axis
       style instead of 10px/600 `--ink`. **I had asserted the UpSet's structure but never pixel-
       diffed it** — 437 → 64 pixels above threshold once fixed.
-- [ ] **Open with the operator** (in `4b-manual-verification.md`): step 7b re-check after the fix,
-      steps 13–15, and a ruling on the four listed deviations (panel placement · §01's label-only
-      badge · the scaled-not-re-squarified treemap in the lightbox · keyboard access on the stat).
+- [x] **Closed with the operator 2026-07-31**: step 7b re-checked after the fix ✅, steps 13–15 ✅,
+      and **all four deviations accepted as built** (panel placement · §01's label-only badge · the
+      scaled-not-re-squarified treemap · keyboard access on the stat). Recorded in
+      `4b-manual-verification.md`.
 
 ### §02's defects — the same classes keep recurring, check for them first
 
@@ -488,12 +491,15 @@ build → `compare.py` → `diff.js` → `crop.js`/`align.js` on whatever surviv
 
 `compare.py` reports three **known artifacts** on every section — button/cell nesting, inline-vs-
 block caption boxes, and split text nodes. Don't chase them; they're listed in the log.
-- [ ] **P1e-rest** §02 → §07, screenshot-diffing each against its capture before starting the next
-- [ ] **P1f** the remaining prototype chart builders (D-protocharts) — §01's dumbbell is done
-- [ ] **P1g** full-page diff vs the prototype
-- [ ] *(duplicate of the gate above — phase 1 is complete; see "OPERATOR GATE" earlier in this file)*
-- [ ] **P2** plumb real data in, literal by literal, until none remain
-- [ ] 4 QA · 4b operator verification
+- [x] **P1e** §02 → §07, each screenshot-diffed against its capture before the next began
+- [x] **P1f** all fifteen prototype chart builders ported (D-protocharts)
+- [x] **P1g** full-page diff vs the prototype
+- [x] **🚦 OPERATOR GATE** — passed 2026-07-31, see above
+- [ ] **P2 — THE WORK NOW** plumb real data in, literal by literal, until none remain.
+      Backend first (mine the attempt-3 archive), then frontend, on this branch.
+- [ ] **P2 QA + 4b** — a NEW `4-qa.md` / `4b-manual-verification.md` for phase 2. ⚠️ The ones on
+      disk cover the phase-1 affordances change and the fidelity gate, NOT phase 2 — do not read a
+      green report there as phase 2 being verified.
 
 ✅ **Phase 1 is fully committed.** `6c42d19` (§06 + §07 + P1g) on `ae0244f` (§02–§05 + the
 affordances) on `735a14f` (§01 + both rails) on `54d1522` (the scaffold). Nothing pushed.

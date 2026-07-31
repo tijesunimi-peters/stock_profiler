@@ -1,4 +1,9 @@
-# 4 — QA · V3-P5a phase 1, the ported affordances
+# 4 — QA · V3-P5a **phase 1**, the ported affordances
+
+> ⚠️ **SCOPE — read before treating this as the task's QA.** This report covers the phase-1
+> *affordances* change and, in `4b`, the phase-1 fidelity gate. It is **not** phase 2's QA. Phase 2
+> (replacing every prototype literal with real filings data) needs its **own** `4-qa.md` and
+> `4b-manual-verification.md`; a green report here says nothing about it.
 
 **Scope of this report:** the **behaviour** of the design port's controls in §01–§03, after the
 operator's **D-behaviour** rule ("porting the design includes porting the functionality") was
