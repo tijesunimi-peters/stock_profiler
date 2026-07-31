@@ -4,13 +4,12 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `2504cdf` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: backend     ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
-  It is FULL-STACK, so it routes backend-first per the pipeline: endpoints + pytest + the JSON
-  contract, THEN frontend consumes them on the same branch, then QA + 4b.
-  ⚡ Start by MINING the archived attempt-3 backend (`register.py`, four endpoints, `period_meta`,
-  37 green tests — see the archive table below) rather than rebuilding it.
+  ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
+  endpoints driven live. Contract + the CANNOT-SOURCE table: **`3-implementation.md`**.
+  ⬅ **NEXT: the frontend consumes them on this branch**, then QA + 4b.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-07-31
@@ -495,8 +494,20 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
 - [x] **P1f** all fifteen prototype chart builders ported (D-protocharts)
 - [x] **P1g** full-page diff vs the prototype
 - [x] **🚦 OPERATOR GATE** — passed 2026-07-31, see above
-- [ ] **P2 — THE WORK NOW** plumb real data in, literal by literal, until none remain.
-      Backend first (mine the attempt-3 archive), then frontend, on this branch.
+- [x] **P2 backend DONE** (2026-07-31). Mined `register.py` (488 lines, pure — no DB/network/clock),
+      3 routes, 2 storage reads and 37 tests from `v3-p5a-attempt3-archive`; **no `static/` file
+      came across**. Our branch had touched no backend file since master, so it grafted with no
+      conflict. **609 pytest passed / 9 skipped**; `register.py` ruff-clean (the rest is
+      pre-existing house style — master reports 134 of the same classes, mostly FastAPI's `B008`).
+      Driven live: HHI/Gini/effective-holders, turnover, tenure, stable capital, filed-since — and
+      **the honesty paths**: an empty quarter returns `status: "na"` with a reason and every derived
+      number **null, not 0**; an unresolved issuer 404s with an explanation. Contract:
+      `3-implementation.md`.
+- [ ] **P2 frontend — THE WORK NOW.** Consume the three endpoints on this branch, literal by
+      literal, until none remain. ⚠️ **`3-implementation.md` has a CANNOT-SOURCE table** — §04
+      (voting/N-PX) and §06 (Form 144, 10b5-1, acceptance lag) are largely **not ingested at all**,
+      and §01's "confirmed in last 30 days" and the adjusted register have no source by design.
+      Each needs a decision — plumb, honest empty state, or remove — **never a surviving literal**.
 - [ ] **P2 QA + 4b** — a NEW `4-qa.md` / `4b-manual-verification.md` for phase 2. ⚠️ The ones on
       disk cover the phase-1 affordances change and the fidelity gate, NOT phase 2 — do not read a
       green report there as phase 2 being verified.

@@ -666,6 +666,18 @@ class IssuerHolder(BaseModel):
     # notional and a PRN amount is debt, neither of which is share ownership.
     put_call: str | None = None
     shares_or_principal: str | None = None
+    # The date the holding manager's 13F-HR for this quarter was filed (from the snapshot --
+    # see HoldingsSnapshot.filed), carried onto the issuer-centric row the same way `location`
+    # above is. An issuer's register is assembled from MANY managers who file on DIFFERENT
+    # days, so consumers aggregate this into a RANGE (earliest..latest) -- there is no single
+    # "the register was filed on" date, and presenting one would imply a single filing produced
+    # the register. None for rows whose snapshot has no filed date (an honest "unknown", never
+    # backfilled with today).
+    filed: str | None = None
+    # Whether the 13F-HR this row came from was an amendment (13F-HR/A). Carried for the same
+    # reason as `filed`: the register's freshness strip reports how many of a quarter's ingested
+    # filings were amendments, and an amendment restates a quarter that was already filed.
+    is_amendment: bool = False
 
 
 # --- Fundamental metrics (normalize/metrics.py) ------------------------------------

@@ -1,0 +1,489 @@
+"""Derive the SHAPE of an issuer's 13F register: concentration, turnover, tenure.
+
+`flows.py` answers "who moved, and which way" by diffing two snapshots. This module answers
+the questions the prototype's Institutional view asks *about the register itself* -- how
+concentrated it is, how many managers hold half of it, how long they stay, and how much of it
+is long-tenured capital.
+
+Three properties hold for everything here, and they are the point:
+
+* **Pure.** No database, no network, no clock. Every function takes already-read
+  `IssuerHolder` rows and returns a model. That makes the moat unit-testable without a
+  fixture DB, the same way `flows.py` is.
+* **Derived, and labelled as such.** None of these numbers is reported by anyone. A 13F is a
+  quarter-end holdings snapshot; concentration and tenure are computations we perform over
+  the subset of filers we have ingested. Every model therefore carries `status`, `reason`,
+  `formula` and `cannot` -- the last being what the figure does NOT tell you, which for a
+  register statistic is the half that stops it being read as a fact about the company.
+* **Based on the INGESTED register, never on shares outstanding.** Every share figure here is
+  a share of "13F shares reported by the managers we have", which is not the same as a share
+  of the company. Saying so is not a disclaimer, it is the definition of the number.
+
+Status vocabulary follows `metrics.py` (R1-R8): "ok" | "na", with a `reason` whenever it is
+anything but a clean number. A missing input is never a zero.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+from secfin.normalize.schema import IssuerHolder
+
+# Tenure weights for stable_capital_share, as the prototype defines them (:2276). Exposed on
+# the result so a reader can see the weighting rather than just its output -- a weighted number
+# whose weights are hidden in code is not auditable.
+STABLE_CAPITAL_WEIGHTS: list[tuple[int, float]] = [(8, 1.0), (4, 0.5), (2, 0.25)]
+
+# A register needs at least this many share-reporting holders before a concentration statistic
+# means anything. Below it we return status="na" WITH a reason rather than a number: an HHI
+# computed over one holder is 10,000 (perfect concentration) which is arithmetically true and
+# analytically worthless.
+_MIN_HOLDERS_FOR_CONCENTRATION = 2
+
+
+def _reported_shares(holders: list[IssuerHolder]) -> list[tuple[int, str | None, float]]:
+    """(manager_cik, manager_name, shares) for holders whose share count is usable.
+
+    Excludes rows with no reported share count and non-share rows -- an option position's
+    "shares" are notional and a PRN row is a principal amount, so neither is share
+    ownership (the same rule the ownership treemap applies). Excluded rows are NOT counted
+    as zero; they simply are not part of the population, and callers report the population
+    size so the exclusion is visible.
+    """
+    out: list[tuple[int, str | None, float]] = []
+    for h in holders:
+        if h.shares is None or h.shares <= 0:
+            continue
+        if h.put_call:  # an option row, not share ownership
+            continue
+        if h.shares_or_principal == "PRN":  # a debt principal amount, not shares
+            continue
+        out.append((h.manager_cik, h.manager_name, float(h.shares)))
+    return out
+
+
+@dataclass
+class ShareVectorRow:
+    manager_cik: int
+    manager_name: str | None
+    shares: float
+    weight: float  # this manager's share of the ingested register (0-1)
+    cumulative: float  # running total of `weight`, ranked desc (0-1)
+
+
+@dataclass
+class ShareVector:
+    """Managers ranked by reported shares, with each one's weight and the running total.
+
+    The single input to `concentration()` AND to the cumulative-share chart, deliberately:
+    the tiles and the chart must never disagree about the register they describe
+    (STYLE_GUIDE rule 12, "one fact, one source"). Compute once, render twice.
+    """
+
+    rows: list[ShareVectorRow] = field(default_factory=list)
+    total_shares: float = 0.0
+    holder_count: int = 0  # holders with a usable share count (the population)
+    excluded_count: int = 0  # holders present but with no usable share count
+
+
+def share_vector(holders: list[IssuerHolder]) -> ShareVector:
+    """Rank the register's holders and compute each one's weight in it.
+
+    Multiple CUSIPs for one manager (a multi-class issuer) are summed into that manager's
+    single position here -- unlike `flows.diff_holders`, which deliberately keeps share
+    classes apart. The difference is intentional and follows the question: a *delta* per
+    instrument is meaningful, whereas "how concentrated is the register" is about who holds
+    the company, so a manager holding Class A and Class C is one holder.
+    """
+    usable = _reported_shares(holders)
+    by_manager: dict[int, tuple[str | None, float]] = {}
+    for cik, name, shares in usable:
+        prev_name, prev_shares = by_manager.get(cik, (name, 0.0))
+        by_manager[cik] = (prev_name or name, prev_shares + shares)
+
+    distinct_present = {h.manager_cik for h in holders}
+    total = sum(s for _, s in by_manager.values())
+    if not by_manager or total <= 0:
+        return ShareVector(
+            rows=[],
+            total_shares=0.0,
+            holder_count=0,
+            excluded_count=len(distinct_present),
+        )
+
+    ranked = sorted(by_manager.items(), key=lambda kv: kv[1][1], reverse=True)
+    rows: list[ShareVectorRow] = []
+    running = 0.0
+    for cik, (name, shares) in ranked:
+        weight = shares / total
+        running += weight
+        rows.append(
+            ShareVectorRow(
+                manager_cik=cik,
+                manager_name=name,
+                shares=shares,
+                weight=weight,
+                # Guard the float drift so the last row reads exactly 1.0 rather than
+                # 0.9999999 -- a cumulative-share axis that stops just short of 100% looks
+                # like missing data.
+                cumulative=min(running, 1.0),
+            )
+        )
+    return ShareVector(
+        rows=rows,
+        total_shares=total,
+        holder_count=len(rows),
+        excluded_count=len(distinct_present) - len(rows),
+    )
+
+
+@dataclass
+class RegisterConcentration:
+    status: str  # "ok" | "na"
+    reason: str | None
+    formula: str
+    cannot: str
+    population: str  # what the figures are computed OVER, in words
+    holder_count: int | None = None
+    hhi: float | None = None  # 0-10,000 over the ingested register
+    effective_holders: float | None = None  # 10,000 / HHI
+    gini: float | None = None  # 0-1
+    top1_share: float | None = None
+    top5_share: float | None = None
+    top10_share: float | None = None
+    managers_for_half: int | None = None  # "N managers hold 50%"
+
+
+_CONCENTRATION_CANNOT = (
+    "This describes only the filers we have ingested for this quarter -- not every holder, "
+    "and not the company's shareholder register. 13F is long-only and quarter-end, so shorts, "
+    "sub-threshold managers ($100M) and non-13F holders are absent. Affiliated managers that "
+    "file separately count separately."
+)
+_CONCENTRATION_POPULATION = "13F shares reported by the ingested filers for this quarter"
+
+
+def concentration(vector: ShareVector) -> RegisterConcentration:
+    """Herfindahl, effective holder count, Gini and top-N shares over the ingested register.
+
+    Returns status="na" WITH a reason -- never a zero, never a fabricated number -- when
+    fewer than two holders report a usable share count. `managers_for_half` is the smallest
+    number of managers whose combined weight reaches 50%.
+    """
+    formula = (
+        "HHI = sum of squared percentage weights; effective holders = 10,000 / HHI; "
+        "Gini over the same weights; weights = manager shares / total ingested shares"
+    )
+    if vector.holder_count < _MIN_HOLDERS_FOR_CONCENTRATION:
+        return RegisterConcentration(
+            status="na",
+            reason=(
+                f"only {vector.holder_count} ingested filer(s) report a share count for this "
+                "quarter, so a concentration measure would describe our coverage rather than "
+                "the register -- read as coverage, not as a concentrated register"
+            ),
+            formula=formula,
+            cannot=_CONCENTRATION_CANNOT,
+            population=_CONCENTRATION_POPULATION,
+            holder_count=vector.holder_count,
+        )
+
+    weights = [r.weight for r in vector.rows]
+    hhi = sum((w * 100.0) ** 2 for w in weights)
+
+    # Gini over the weight distribution, computed on the ascending order (the standard
+    # formulation): G = (2*sum(i*w_i) - (n+1)*sum(w_i)) / (n*sum(w_i)), i 1-based.
+    asc = sorted(weights)
+    n = len(asc)
+    total_w = sum(asc)
+    gini = (2.0 * sum((i + 1) * w for i, w in enumerate(asc)) - (n + 1) * total_w) / (n * total_w)
+
+    def top(k: int) -> float:
+        return sum(weights[:k])
+
+    managers_for_half = next(
+        (i + 1 for i, r in enumerate(vector.rows) if r.cumulative >= 0.5),
+        vector.holder_count,
+    )
+
+    return RegisterConcentration(
+        status="ok",
+        reason=None,
+        formula=formula,
+        cannot=_CONCENTRATION_CANNOT,
+        population=_CONCENTRATION_POPULATION,
+        holder_count=vector.holder_count,
+        hhi=hhi,
+        effective_holders=(10_000.0 / hhi) if hhi > 0 else None,
+        gini=max(0.0, gini),
+        top1_share=top(1),
+        top5_share=top(5),
+        top10_share=top(10),
+        managers_for_half=managers_for_half,
+    )
+
+
+@dataclass
+class RegisterTurnover:
+    status: str
+    reason: str | None
+    formula: str
+    cannot: str
+    to_period: str
+    from_period: str | None = None
+    entrants: int | None = None
+    exits: int | None = None
+    retained: int | None = None
+    prior_holder_count: int | None = None
+    turnover_pct: float | None = None  # (entrants + exits) / prior register, as a percentage
+
+
+_TURNOVER_CANNOT = (
+    "An 'exit' here means the manager no longer appears in the ingested register -- which also "
+    "happens when a manager falls under the $100M 13F threshold, stops filing, or simply has "
+    "not been ingested for this quarter. It is not evidence that the position was sold."
+)
+
+
+def turnover(
+    current: list[IssuerHolder],
+    prior: list[IssuerHolder] | None,
+    *,
+    to_period: str,
+    from_period: str | None,
+) -> RegisterTurnover:
+    """Managers entering and exiting, as a share of the PRIOR quarter's ingested register."""
+    formula = "turnover = (entrants + exits) / prior-quarter ingested holder count"
+    if not prior:
+        return RegisterTurnover(
+            status="na",
+            reason=(
+                "no prior ingested quarter to compare against -- the earliest ingested quarter "
+                "has nothing before it, so entrants and exits cannot be derived"
+            ),
+            formula=formula,
+            cannot=_TURNOVER_CANNOT,
+            to_period=to_period,
+            from_period=from_period,
+        )
+
+    cur_ciks = {c for c, _, _ in _reported_shares(current)}
+    prev_ciks = {c for c, _, _ in _reported_shares(prior)}
+    entrants = len(cur_ciks - prev_ciks)
+    exits = len(prev_ciks - cur_ciks)
+    retained = len(cur_ciks & prev_ciks)
+    if not prev_ciks:
+        return RegisterTurnover(
+            status="na",
+            reason=(
+                "the prior ingested quarter has no filer reporting a share count, so there is "
+                "no base register to measure turnover against"
+            ),
+            formula=formula,
+            cannot=_TURNOVER_CANNOT,
+            to_period=to_period,
+            from_period=from_period,
+            entrants=entrants,
+            exits=exits,
+            retained=retained,
+            prior_holder_count=0,
+        )
+
+    return RegisterTurnover(
+        status="ok",
+        reason=None,
+        formula=formula,
+        cannot=_TURNOVER_CANNOT,
+        to_period=to_period,
+        from_period=from_period,
+        entrants=entrants,
+        exits=exits,
+        retained=retained,
+        prior_holder_count=len(prev_ciks),
+        turnover_pct=(entrants + exits) / len(prev_ciks) * 100.0,
+    )
+
+
+@dataclass
+class TenureCohort:
+    label: str  # e.g. "8+ quarters"
+    min_quarters: int
+    holder_count: int
+    share_of_register: float | None  # by reported shares in the newest quarter, 0-1
+
+
+@dataclass
+class TenureProfile:
+    status: str
+    reason: str | None
+    formula: str
+    cannot: str
+    quarters_observed: int
+    newest_period: str | None = None
+    median_quarters_held: float | None = None
+    cohorts: list[TenureCohort] = field(default_factory=list)
+    # manager_cik -> consecutive quarters held, counting back from the newest quarter
+    quarters_by_manager: dict[int, int] = field(default_factory=dict)
+
+
+_TENURE_CANNOT = (
+    "Tenure is measured over the quarters we have INGESTED, so it is a floor, not a history: a "
+    "manager who has held for 20 quarters reads as the number of quarters we hold. A gap in the "
+    "middle ends the streak, and a gap can be a coverage gap rather than a sale."
+)
+
+
+def tenure(by_period: dict[str, list[IssuerHolder]]) -> TenureProfile:
+    """Consecutive quarters each manager has held, counting back from the newest quarter.
+
+    `by_period` maps quarter-end -> that quarter's holders. Order is derived here (descending
+    by date) rather than trusted from the caller. A manager present in the newest quarter and
+    the two before it, but absent in the third, has a streak of 3.
+    """
+    formula = (
+        "consecutive quarters a manager appears in the ingested register, counting back from "
+        "the newest ingested quarter; cohort share is by reported shares in that quarter"
+    )
+    periods = sorted(by_period.keys(), reverse=True)
+    if not periods:
+        return TenureProfile(
+            status="na",
+            reason="no ingested quarter for this issuer, so tenure cannot be measured",
+            formula=formula,
+            cannot=_TENURE_CANNOT,
+            quarters_observed=0,
+        )
+
+    newest = periods[0]
+    present: list[set[int]] = [
+        {c for c, _, _ in _reported_shares(by_period.get(p, []))} for p in periods
+    ]
+    streaks: dict[int, int] = {}
+    for cik in present[0]:
+        run = 0
+        for quarter_set in present:
+            if cik in quarter_set:
+                run += 1
+            else:
+                break
+        streaks[cik] = run
+
+    if not streaks:
+        return TenureProfile(
+            status="na",
+            reason=(
+                "no filer reports a share count in the newest ingested quarter, so there is no "
+                "register to measure tenure over"
+            ),
+            formula=formula,
+            cannot=_TENURE_CANNOT,
+            quarters_observed=len(periods),
+            newest_period=newest,
+        )
+
+    newest_vector = share_vector(by_period.get(newest, []))
+    weight_by_manager = {r.manager_cik: r.weight for r in newest_vector.rows}
+
+    cohorts: list[TenureCohort] = []
+    bands = ((8, "8+ quarters"), (4, "4-7 quarters"), (2, "2-3 quarters"), (1, "1 quarter"))
+    for min_q, label in bands:
+        upper = {8: None, 4: 7, 2: 3, 1: 1}[min_q]
+        members = [
+            cik
+            for cik, run in streaks.items()
+            if run >= min_q and (upper is None or run <= upper)
+        ]
+        cohorts.append(
+            TenureCohort(
+                label=label,
+                min_quarters=min_q,
+                holder_count=len(members),
+                share_of_register=(
+                    sum(weight_by_manager.get(c, 0.0) for c in members) if members else 0.0
+                ),
+            )
+        )
+
+    runs = sorted(streaks.values())
+    mid = len(runs) // 2
+    median = float(runs[mid]) if len(runs) % 2 else (runs[mid - 1] + runs[mid]) / 2.0
+
+    return TenureProfile(
+        status="ok",
+        reason=(
+            # Not a failure -- but a ceiling the reader must see, because every tenure figure
+            # here is capped by how many quarters we hold.
+            f"tenure is capped by the {len(periods)} ingested quarter(s) available"
+            if len(periods) < 8
+            else None
+        ),
+        formula=formula,
+        cannot=_TENURE_CANNOT,
+        quarters_observed=len(periods),
+        newest_period=newest,
+        median_quarters_held=median,
+        cohorts=cohorts,
+        quarters_by_manager=streaks,
+    )
+
+
+@dataclass
+class StableCapital:
+    status: str
+    reason: str | None
+    formula: str
+    cannot: str
+    weights: list[tuple[int, float]]
+    stable_share: float | None = None  # 0-1
+    quarters_observed: int = 0
+
+
+def stable_capital_share(by_period: dict[str, list[IssuerHolder]]) -> StableCapital:
+    """Register weighted by how long each manager has held it.
+
+    8+ quarters count fully, 4-7 at half, 2-3 at a quarter, a single quarter not at all --
+    the prototype's weighting (:2276), carried on the result so it is visible to the reader
+    rather than buried here.
+    """
+    formula = (
+        "sum(manager weight x tenure weight) over the newest ingested quarter; tenure weights: "
+        "8+ quarters 1.0, 4-7 0.5, 2-3 0.25, 1 quarter 0.0"
+    )
+    cannot = (
+        "Weighted by INGESTED tenure, so it understates managers who held for longer than we "
+        "have data. With few ingested quarters, no manager can reach the top weight at all."
+    )
+    profile = tenure(by_period)
+    if profile.status != "ok" or profile.newest_period is None:
+        return StableCapital(
+            status="na",
+            reason=profile.reason,
+            formula=formula,
+            cannot=cannot,
+            weights=STABLE_CAPITAL_WEIGHTS,
+            quarters_observed=profile.quarters_observed,
+        )
+
+    vector = share_vector(by_period.get(profile.newest_period, []))
+    stable = 0.0
+    for row in vector.rows:
+        held = profile.quarters_by_manager.get(row.manager_cik, 0)
+        weight = next((w for min_q, w in STABLE_CAPITAL_WEIGHTS if held >= min_q), 0.0)
+        stable += row.weight * weight
+
+    return StableCapital(
+        status="ok",
+        # Below 8 ingested quarters the top weight is unreachable, which caps this figure. That
+        # is a real constraint on the number, so it travels WITH the number.
+        reason=(
+            f"only {profile.quarters_observed} ingested quarter(s) available, so the 8-quarter "
+            "full weight is unreachable and this share is a floor"
+            if profile.quarters_observed < 8
+            else None
+        ),
+        formula=formula,
+        cannot=cannot,
+        weights=STABLE_CAPITAL_WEIGHTS,
+        stable_share=stable,
+        quarters_observed=profile.quarters_observed,
+    )

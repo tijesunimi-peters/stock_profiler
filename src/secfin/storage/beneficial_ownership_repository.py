@@ -51,5 +51,18 @@ class BeneficialOwnershipRepository(ABC):
         within a filing preserve original document order)."""
 
     @abstractmethod
+    def filings_since(self, issuer_cik: int, since: str) -> list[BeneficialOwnership]:
+        """Cached 13D/G rows for this issuer FILED strictly after `since` (an ISO date).
+
+        Filtered on `filed` for the same reason as the insider equivalent: the question is
+        what has reached EDGAR since the 13F register was assembled, not when the underlying
+        stake changed. Newest first.
+
+        An empty list is ambiguous in the usual 13D/G way and callers must say so: it can mean
+        nothing was filed in the window, OR that the window predates our structured-XML
+        coverage floor (~mid-2025). It never means nobody crossed 5%.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

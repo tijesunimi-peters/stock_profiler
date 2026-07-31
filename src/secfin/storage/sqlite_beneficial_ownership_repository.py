@@ -121,6 +121,18 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_owner(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def filings_since(self, issuer_cik: int, since: str) -> list[BeneficialOwnership]:
+        cur = self._conn.execute(
+            """
+            SELECT * FROM beneficial_ownership
+            WHERE issuer_cik = ? AND filed > ?
+            ORDER BY filed DESC, accession DESC, id ASC
+            """,
+            (issuer_cik, since),
+        )
+        cols = [d[0] for d in cur.description]
+        return [self._row_to_owner(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
+
     def close(self) -> None:
         self._conn.close()
 

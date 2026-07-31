@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -43,6 +44,14 @@ from secfin.normalize.metrics import (
     metric_periods,
 )
 from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
+from secfin.normalize.register import (
+    ShareVector,
+    concentration,
+    share_vector,
+    stable_capital_share,
+    tenure,
+    turnover,
+)
 from secfin.normalize.schema import (
     BalanceSheetViz,
     BeneficialOwnership,
@@ -61,6 +70,7 @@ from secfin.normalize.schema import (
     IncomeStatementViz,
     InsiderFlowWindow,
     InsiderTransaction,
+    IssuerHolder,
     MetricFrequency,
     MetricHistory,
     MetricSpread,
@@ -2159,6 +2169,55 @@ async def get_cusip_resolution_stats(
     return cusip_resolution_stats(cusip_repo)
 
 
+_13F_DEADLINE_DAYS = 45  # a 13F-HR is due within 45 days of quarter-end (17 CFR 240.13f-1)
+
+
+def _register_period_meta(holders: list[IssuerHolder], report_period: str) -> dict:
+    """Freshness metadata for one quarter's ingested register.
+
+    An issuer's register is assembled from MANY managers filing on DIFFERENT days, so there is
+    no single "filed on" date -- reporting one would imply a single filing produced the
+    register. Hence a RANGE (`filed_earliest`..`filed_latest`), with the deadline arithmetic
+    anchored on the latest, which is the one that determines how stale the register is.
+
+    `age_days` is computed here rather than client-side so the entity bar and the freshness
+    strip cannot state different ages for the same register (STYLE_GUIDE rule 12).
+
+    Honest zeros vs unknowns: `amendment_count` of 0 is a MEASURED zero (we ingested filings
+    and none was an amendment) and stays 0. `filed_*`/`deadline`/`age_days` are None when no
+    ingested filing carries a filed date -- never backfilled with today.
+    """
+    filed_dates = sorted(h.filed for h in holders if h.filed)
+    # is_amendment is a snapshot-level flag repeated on every holding row, so count DISTINCT
+    # managers, not rows -- otherwise a deep book inflates the amendment count.
+    amendment_ciks = {h.manager_cik for h in holders if h.is_amendment}
+    deadline = (
+        dt.date.fromisoformat(report_period) + dt.timedelta(days=_13F_DEADLINE_DAYS)
+    ).isoformat()
+    filed_latest = filed_dates[-1] if filed_dates else None
+    days_after = (
+        (dt.date.fromisoformat(filed_latest) - dt.date.fromisoformat(report_period)).days
+        if filed_latest
+        else None
+    )
+    return {
+        "as_of": report_period,
+        "filed_earliest": filed_dates[0] if filed_dates else None,
+        "filed_latest": filed_latest,
+        "deadline": deadline,
+        "deadline_days": _13F_DEADLINE_DAYS,
+        "days_after_period_end": days_after,
+        "within_deadline": (days_after <= _13F_DEADLINE_DAYS) if days_after is not None else None,
+        "ingested_filer_count": len({h.manager_cik for h in holders}),
+        "amendment_count": len(amendment_ciks),
+        "age_days": (
+            (dt.datetime.now(dt.UTC).date() - dt.date.fromisoformat(filed_latest)).days
+            if filed_latest
+            else None
+        ),
+    }
+
+
 async def _cusips_for_issuer(cusip_repo: CusipMapRepository, cik: int) -> list[str]:
     """CUSIP(s) resolved to this issuer so far, or a 404 if none -- covers both "nobody
     has reported holding this issuer yet" and "its CUSIP hasn't been resolved yet"
@@ -2441,15 +2500,252 @@ async def get_institutional_periods(
     An empty `periods` list is a valid result, not an error: it carries the same
     ambiguity as an empty holder list (`_ISSUER_CENTRIC_CAVEATS`) -- "no manager reported
     this issuer" vs. "no quarter ingested yet for any manager holding it".
+
+    `period_meta` describes the NEWEST quarter's register: when it is as of, the range of
+    dates its filings arrived, its statutory 45-day deadline and where the filings sit in
+    that window, how many filers we ingested, and how many of those were amendments. It is
+    the one source the freshness strip reads, so the age shown beside the register can never
+    drift from the register itself (STYLE_GUIDE rule 12). `null` when no quarter is ingested
+    -- never a zero-filled object.
     """
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
     cusips = await _cusips_for_issuer(cusip_repo, cik)
+    periods = holdings_repo.issuer_periods(cusips)
     return {
         "cik": cik,
         "cusips": cusips,
-        "periods": holdings_repo.issuer_periods(cusips),
+        "periods": periods,
+        "period_meta": (
+            _register_period_meta(holdings_repo.holders_of(cusips, periods[0]), periods[0])
+            if periods
+            else None
+        ),
         "caveats": _ISSUER_CENTRIC_CAVEATS,
+    }
+
+
+def _vector_payload(vector: ShareVector, limit: int) -> list[dict]:
+    """The ranked share vector, trimmed for transport.
+
+    The concentration figures are computed over the WHOLE vector server-side; only the rows
+    shipped for charting are trimmed. So a chart drawn from `top` never changes what the tiles
+    beside it mean -- the same reason the holders table paginates without moving its totals.
+    """
+    return [
+        {
+            "manager_cik": r.manager_cik,
+            "manager_name": r.manager_name,
+            "shares": r.shares,
+            "weight": r.weight,
+            "cumulative": r.cumulative,
+        }
+        for r in vector.rows[:limit]
+    ]
+
+
+@router.get(
+    "/companies/{symbol}/institutional-register",
+    tags=["Institutional Ownership"],
+    summary="Concentration of one quarter's ingested 13F register (DERIVED)",
+)
+async def get_institutional_register(
+    symbol: str,
+    period: str = Query(..., description="13F quarter-end, e.g. 2026-03-31"),
+    top: int = Query(25, ge=1, le=100, description="How many ranked holders to return"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """How concentrated one quarter's ingested 13F register is -- **derived, not reported**.
+
+    Nobody files a Herfindahl index. This computes one, plus the effective holder count, a
+    Gini coefficient, top-1/5/10 shares and "how many managers hold half the register", over
+    the filers we have ingested for `period`. Every figure carries `status`, `reason`,
+    `formula`, `population` and `cannot` (what it does NOT tell you) -- see
+    `normalize/register.py`.
+
+    **The base is reported 13F shares across INGESTED filers.** It is NOT a percentage of
+    shares outstanding, NOT the company's shareholder register, and NOT all institutional
+    ownership: 13F is long-only, quarter-end, and only covers managers over $100M who have
+    been ingested here. `status="na"` with a reason (never a 0, never a fabricated figure)
+    when fewer than two filers report a share count.
+
+    `share_vector` is the same ranked vector the concentration figures are computed from, so a
+    cumulative-share chart and the tiles beside it can never disagree (STYLE_GUIDE rule 12).
+
+    A live indexed point read (`holders_of`) -- no DuckDB, no batch job (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+    holders = holdings_repo.holders_of(cusips, period)
+    vector = share_vector(holders)
+    conc = concentration(vector)
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "period_meta": _register_period_meta(holders, period),
+        "concentration": asdict(conc),
+        "share_vector": _vector_payload(vector, top),
+        "share_vector_total_rows": vector.holder_count,
+        "excluded_holder_count": vector.excluded_count,
+        "total_reported_shares": vector.total_shares,
+        "caveats": _CONVICTION_CAVEATS,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-register-shape",
+    tags=["Institutional Ownership"],
+    summary="Register turnover, holder tenure and stable-capital share (DERIVED)",
+)
+async def get_institutional_register_shape(
+    symbol: str,
+    quarters: int = Query(9, ge=2, le=20, description="How many recent ingested quarters"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """How the register CHANGES: who comes and goes, how long they stay, how much is long-held.
+
+    Three **derived** views over the recent ingested quarters, returned together because they
+    all consume the identical multi-quarter read -- splitting them would triple the work for
+    one dataset:
+
+    * `turnover` -- managers entering and exiting vs the prior quarter. An "exit" means the
+      manager left the *ingested* register, which also happens when it drops under the $100M
+      threshold or simply has not been ingested. **It is not evidence of a sale.**
+    * `tenure` -- consecutive quarters each manager has held, counting back from the newest
+      quarter, plus cohort rows and the median. Bounded by how many quarters we hold, so it is
+      a **floor, not a history**; a mid-series gap ends a streak and a gap can be a coverage gap.
+    * `stable_capital` -- the register weighted by tenure (8+ quarters 1.0, 4-7 0.5, 2-3 0.25).
+      The weights ship in the payload so the reader can see the weighting, not just its output.
+
+    Same live indexed loop as `/institutional-holdings-series` (`issuer_periods` +
+    `holders_of` per quarter) -- no DuckDB, no batch job (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+    periods = holdings_repo.issuer_periods(cusips)[:quarters]
+    by_period = {p: holdings_repo.holders_of(cusips, p) for p in periods}
+
+    newest = periods[0] if periods else None
+    prior = periods[1] if len(periods) > 1 else None
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "periods": periods,
+        "turnover": asdict(
+            turnover(
+                by_period.get(newest, []) if newest else [],
+                by_period.get(prior) if prior else None,
+                to_period=newest or "",
+                from_period=prior,
+            )
+        ),
+        "tenure": asdict(tenure(by_period)),
+        "stable_capital": asdict(stable_capital_share(by_period)),
+        "caveats": _ISSUER_CENTRIC_CAVEATS,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-filed-since",
+    tags=["Institutional Ownership"],
+    summary="Ownership filings accepted since a quarter's 13F register was assembled",
+)
+async def get_institutional_filed_since(
+    symbol: str,
+    period: str = Query(..., description="13F quarter-end the register is as of"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+    insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
+    beneficial_repo: BeneficialOwnershipRepository = Depends(get_beneficial_ownership_repo),
+) -> dict:
+    """Ownership filings that arrived AFTER a quarter's 13F register was assembled.
+
+    A 13F register is ~45 days stale the day it lands. Faster forms -- Schedule 13D/G and
+    Forms 3/4/5 -- keep arriving after it. This lists them so a reader can see what has
+    happened since, **without pretending to know the register's new share count.**
+
+    ## It deliberately does NOT restate the register
+
+    `does_not_restate` is always `true`, and `does_not_restate_reason` says why: a Schedule
+    13D/G reports a **total** beneficial position, a Form 4 reports a **transaction**, and a
+    13F reports a **quarter-end holding** by a different population of filers. Adding them
+    onto a 13F base would produce a share count **nobody filed** -- so no adjusted total is
+    returned here, or anywhere. The count of filings is real; an "adjusted register" is not.
+
+    Rows are ordered newest-filed first and each carries its form, filer, what it reported and
+    its **filed date**. That date is a filing DATE, not an EDGAR acceptance timestamp -- we do
+    not store acceptance timestamps (V3-P3), so nothing here may be labelled "accepted".
+
+    An empty list is a real answer for the insider side, but on the 13D/G side it is ambiguous
+    (nothing filed vs. a window predating the ~mid-2025 structured-XML floor) -- `caveats`
+    carries that, and it never means nobody crossed 5%.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+    meta = _register_period_meta(holdings_repo.holders_of(cusips, period), period)
+    since = meta["filed_latest"]
+
+    rows: list[dict] = []
+    if since:
+        for o in beneficial_repo.filings_since(cik, since):
+            rows.append(
+                {
+                    "form": o.form_type,
+                    "filer": o.owner_name,
+                    "reported": "beneficial stake",
+                    "percent_of_class": o.percent_of_class,
+                    "shares": o.shares_beneficially_owned,
+                    "shares_are": "total position held",
+                    "filed": o.filed,
+                }
+            )
+        for t in insider_repo.transactions_since(cik, since):
+            rows.append(
+                {
+                    "form": f"Form {t.form_type}" if t.form_type else None,
+                    "filer": t.owner_name,
+                    "reported": (
+                        "holding"
+                        if t.is_holding
+                        else {"A": "acquired", "D": "disposed"}.get(t.acquired_disposed or "")
+                        or "reported"
+                    ),
+                    "percent_of_class": None,
+                    "shares": t.shares,
+                    "shares_are": "single transaction, not a position",
+                    "filed": t.filed,
+                }
+            )
+        rows.sort(key=lambda r: (r["filed"] or ""), reverse=True)
+
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "register_filed_latest": since,
+        "filings": rows,
+        "filing_count": len(rows),
+        "does_not_restate": True,
+        "does_not_restate_reason": (
+            "A Schedule 13D/G reports a total beneficial position, a Form 4 reports a single "
+            "transaction, and a 13F reports a quarter-end holding by a different population of "
+            "filers. Summing them onto the 13F base would invent a share count nobody filed, so "
+            "no adjusted register total is derived here."
+        ),
+        "dates_are": (
+            "filing dates, not EDGAR acceptance timestamps -- acceptance timestamps are not "
+            "stored yet (V3-P3)"
+        ),
+        "caveats": _ISSUER_CENTRIC_CAVEATS + _BENEFICIAL_OWNERSHIP_CAVEATS,
     }
 
 

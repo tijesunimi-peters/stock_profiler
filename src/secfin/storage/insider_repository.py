@@ -58,5 +58,19 @@ class InsiderTransactionRepository(ABC):
         """
 
     @abstractmethod
+    def transactions_since(self, issuer_cik: int, since: str) -> list[InsiderTransaction]:
+        """Cached rows for this issuer FILED strictly after `since` (an ISO date), newest first.
+
+        Filtered on `filed`, not `transaction_date`: the question this answers is "what has
+        reached EDGAR since the register was assembled", which is about when the filing
+        arrived, not when the trade happened. A Form 4 reporting an old trade still counts as
+        news arriving after the 13F.
+
+        Bounded by the date, so it stays a live indexed point read like
+        `get_insider_transactions` -- no aggregate scan. An empty list means nothing was filed
+        in the window, which is a real answer, not a coverage gap.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

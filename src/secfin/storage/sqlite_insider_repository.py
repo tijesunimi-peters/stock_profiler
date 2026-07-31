@@ -141,6 +141,18 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def transactions_since(self, issuer_cik: int, since: str) -> list[InsiderTransaction]:
+        cur = self._conn.execute(
+            """
+            SELECT * FROM insider_transactions
+            WHERE issuer_cik = ? AND filed > ?
+            ORDER BY filed DESC, accession DESC, id ASC
+            """,
+            (issuer_cik, since),
+        )
+        cols = [d[0] for d in cur.description]
+        return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
+
     def close(self) -> None:
         self._conn.close()
 

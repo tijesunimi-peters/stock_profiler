@@ -275,7 +275,7 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
         cur = self._conn.execute(
             f"SELECT h.manager_cik, hs.manager_name, h.cusip, h.issuer_name, h.shares, "
             f"h.value, h.other_managers, hs.filing_manager_location, h.put_call, "
-            f"h.shares_or_principal "
+            f"h.shares_or_principal, hs.filed, hs.is_amendment "
             f"FROM holdings h "
             f"JOIN holdings_snapshots hs "
             f"  ON h.manager_cik = hs.manager_cik AND h.report_period = hs.report_period "
@@ -295,6 +295,8 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
                 location=row[7],
                 put_call=row[8],
                 shares_or_principal=row[9],
+                filed=row[10],
+                is_amendment=bool(row[11]),
             )
             for row in cur.fetchall()
         ]
