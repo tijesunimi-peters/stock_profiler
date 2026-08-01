@@ -4,12 +4,15 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: qa          ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
   ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
   endpoints driven live. Contract + the CANNOT-SOURCE table: **`3-implementation.md`**.
-  ⬅ **NEXT: the frontend consumes them on this branch**, then QA + 4b.
+  §01, §02 and **§03** are plumbed. §03's three CANNOT-SOURCE rows were ruled by the operator on
+  2026-08-01 (**D-overlap · D-attribution · D-domicile**, below); its backend and frontend both
+  landed the same day. ⬅ **NEXT: phase-2 QA + the operator's 4b for §02 and §03** (§01 already has
+  a signed 4b). Then §04–§06.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-08-01
@@ -70,11 +73,10 @@ d3 port; run 11 already has the numbers. Unzip it, swap its CDN `d3@7` for our
 scripts has caught a real defect.** The clip sweep in particular must be run **with the webfont
 blocked**, which is the condition headless captures do not reproduce.
 
-## The two live decisions
+## The live decisions
 
-1. **§03's peer overlap needs a cross-issuer endpoint that does not exist** — see the
-   CANNOT-SOURCE table in `3-implementation.md` before starting §03.
-2. Nothing else is blocked. §03–§06 follow §01/§02's pattern.
+✅ **§03's three forks are RULED (operator, 2026-08-01).** See "🔒 §03 — the operator's three
+rulings" below for the terms. Nothing else is blocked; §04–§06 follow §01/§02's pattern.
 
 ---
 
@@ -236,6 +238,34 @@ the behaviour end to end.
    behaviour*, with no data behind it; only the DATA waits for phase 2. A section with inert
    controls is not finished. Deviations and anything deliberately left inert are listed, not
    quietly dropped. See "DESIGN MEANS BEHAVIOUR TOO" above for the method.
+
+### 🔒 §03 — the operator's three rulings (2026-08-01). Do NOT re-litigate.
+
+§03 is the only section whose CANNOT-SOURCE rows were big enough to be their own decisions. All
+three are now ruled; each closes a row of `3-implementation.md`'s gap table.
+
+1. **D-overlap — BUILD the cross-issuer endpoint.** The peer matrix, the UpSet "Set intersections"
+   plot and the "largest holders, and how many peers they also hold" list all get real data from a
+   new `institutional-peer-overlap`. Peers from the SIC group (`company_profiles`), then
+   `holders_of` per peer — a bounded handful of **live indexed point reads**, pure Python
+   aggregation. **No DuckDB, guardrail 6 intact.** The block is defensible because the fact is
+   stated by both filings: a manager reporting two issuers in the same quarter is not derived.
+2. **D-attribution — THREE REPORTED ROWS, and the residual is DROPPED.** *(The operator amended
+   the proposed options: not "13F only", and not all four.)* "Where every share sits" renders the
+   13F-reported, insider & affiliate, and 13D-stake shares, each as a share of
+   `EntityCommonStockSharesOutstanding`. **The "unreported residual" row is GONE** — it is the one
+   row that is a *subtraction* rather than a measurement, and a remainder of three quantities
+   measured on three different dates is fabricated precision. Same reasoning that killed §01's
+   adjusted register.
+   ⚠️ **Two consequences the build MUST carry, since the rows no longer sum to anything:**
+   the card gets **no total and no 100% framing**, and the rows are **not disjoint** — a 5%+
+   institutional holder files a 13F *and* a 13D/G, so it appears in two rows. Each row also
+   carries its own as-of date; they do not line up and the copy says so.
+3. **D-domicile — EXTEND the backend to break out countries.** The choropleth's
+   `institutional-holder-geography` lumps every non-US filer into one `outside_states` bucket by
+   design, which would flatten the domicile card to "United States · <state> …" plus one foreign
+   lump. The raw `stateOrCountry` is on every holder row, so the breakout is a read, not an
+   inference. Rank by **shares** alongside value. **The choropleth endpoint is left alone.**
 
 ### 🔒 Still in force from 2026-07-28 (settled before attempt 3; unchanged)
 
@@ -661,7 +691,69 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         excluded, and `coverage` says what share of the register the mix describes. Two clipping
         defects in the restored `ipStackedArea`, **both caught by the sweep before the operator**.
         620 pytest, ruff clean, controls 5/5. Run 16 in the log.
-  - [ ] **§03–§06** — same pattern, section by section. §07 is reference copy and stays.
+  - [ ] **§03 Flows & concentration — IN FLIGHT.** The biggest section (3,017px open, 8
+        sub-components) and the only one needing NEW backend.
+    - [x] ✅ **§03 BACKEND DONE** (2026-08-01). All four built, **675 pytest (+55), ruff clean,
+          e2e only the two pre-existing sectorapp 502s**, and all three endpoints driven live on
+          `:8010` including their honesty paths. Contract + what the frontend must carry:
+          **`3-implementation.md`, the "Phase 2 · §03" section.**
+          ⚠️ **TWO gaps nobody had flagged, both found while building:**
+          1. **The Lorenz curve had no source at all.** `share_vector`'s `top` caps at 100 rows, so
+             on a real register the curve could only have been drawn from a truncated head.
+             `concentration` now returns a fixed **101-point `lorenz`** from *the same ascending
+             weights `gini` uses*, so curve and coefficient can never disagree. `na` carries
+             `lorenz: null` — a flat line at zero would draw as a real, maximally-unequal register.
+          2. **We were mixing stock OPTIONS into insider ownership.** `sec/insider.py` parsed the
+             derivative and non-derivative tables and discarded which was which, so an option's
+             `shares_owned_after` (the *underlying* count) was indistinguishable from owned stock.
+             New **`is_derivative`** on `InsiderTransaction`, set from the table it came from +
+             a guarded `ALTER TABLE`. It is **`bool | None`** and legacy rows read `None` =
+             UNKNOWN: defaulting them to `False` would have quietly readmitted the very rows the
+             field exists to exclude. 💡 **The existing insider views do not use this flag yet** —
+             out of scope here, worth a look.
+    - [x] ✅ **§03 FRONTEND DONE** (2026-08-01). **`IP03` deleted entirely** — unlike §01, not one
+          value was a filing RULE, so all eight blocks moved to real endpoints and the banner now
+          names only §04–§06. **675 pytest, e2e clean, `svgOverflow=0` webfont-blocked, 10/10
+          controls driven, `violations: []`, `zeros: []`.** Full record: `3-implementation.md`
+          "Phase 2 · §03 — the frontend".
+          **Two literals became COMPUTATIONS rather than new literals:** the treemap is now a real
+          **squarify** (which ✅ **CLOSES listed deviation D3** — the lightbox re-squarifies at the
+          dialog's aspect instead of scaling the card, which is what the prototype did all along),
+          and the Lorenz abscissae are computed rather than fitted to the capture.
+          ⚠️ **The peer-label problem I flagged in the backend handoff bit exactly as predicted,
+          and the fix was two-part:** `TickerCache.tickers_for()` so a peer reached by CIK is
+          labelled with its SYMBOL where SEC's map has one, plus a post-paint fitter. **Then the
+          fitter silently no-opped** — the matrix lives inside the EXPANDER, and SVG text in a
+          `hidden` container has no layout, so `getComputedTextLength()` returns 0 and a
+          measure-and-fit pass does nothing at all. It now also runs on expander-open and on
+          lightbox-mount. **Third rule added to `tools/README-p2.md`.**
+          **Two honesty defects in OPPOSITE directions, both fixed:** "Exited 0 managers · **N/A**
+          of shares" (a measured zero rendered as unknown) and the "8+ quarters" tenure cohort
+          reading **0%** when four ingested quarters make it structurally *unreachable* (a limit of
+          our coverage rendered as a finding — now N/A with a chip and a reason).
+          ⚠️ **A CRASH the operator caught, and it was the whole of "the page load is taking
+          forever":** `ipRankedShare` called `path(spec.prior)` unconditionally, but phase 2's
+          prior series is **null whenever the prior quarter's register is missing** (a failed
+          older-quarter fetch — and, once painting went progressive, the first paint). §03 threw
+          and never rendered. **On the real 7.7 GB volume: `>90s` → 4.4s, 1 page error → 0.**
+          💡 **Diagnosis trap worth keeping:** the host's `data/secfin.db` is EMPTY, so it looked
+          like the api container had no data. It does not use that file — the volume does, and
+          that one holds **1.15M raw facts and 50.2M holdings rows**. *Check the volume, not the
+          host directory.*
+          Two changes on top: **progressive paint** (each response repaints only the sections that
+          read it, never one the reader is inside), and **`IP_PENDING`** — because progressive
+          paint created a new way to lie, rendering a block's honest EMPTY state for a request
+          still in flight. *A value we have not asked for yet is not N/A.*
+          🔶 **Open, not for this task:** ~3–5s on a whole-market volume is the floor while 13
+          concurrent requests serialise on one event loop (async handlers, synchronous store
+          reads — the deliberate single-process constraint). Below it needs a composite endpoint
+          or reads off the loop.
+          🔶 **ONE NEW DEVIATION for the operator:** the **"Residual over time · TREND" foot is
+          gone**, with its trend panel. It belonged to the residual row D-attribution removed, and
+          a trend of a number we no longer stand behind would be worse than the row was. The foot
+          now carries the **denominator** every bar is drawn against. A consequence of the ruling,
+          but a visible change to an accepted rendering — needs a look at 4b.
+  - [ ] **§04–§06** — same pattern, section by section. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.

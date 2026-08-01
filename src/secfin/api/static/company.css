@@ -1729,6 +1729,9 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
 }
 .ip-rr-empty { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0 2px; border-top: 1px solid var(--border-tint-rule); }
 .ip-rr-empty p { margin: 0; font-size: 12px; line-height: 1.55; color: var(--ink-body); text-wrap: pretty; }
+/* In flight, not empty. Muted so it never reads as a finding, and it carries no status chip --
+   a value we have not asked for yet is not N/A. */
+.ip-rr-empty--loading p { color: var(--mono-muted); }
 .ip-rr-link { display: inline-block; margin-top: 10px; font-family: var(--ip-mono); font-size: 10px; color: var(--accent); text-decoration: none; }
 .ip-rr-note {
   margin-top: 10px;
@@ -2108,6 +2111,26 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
   border-top: 1px solid var(--border-tint-rule);
 }
 .ip-attr-foot-label { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
+/* The denominator every bar is drawn against, and its own as-of date. It replaces the prototype's
+   "Residual over time · TREND" foot, which went with the residual row (D-attribution). Allowed to
+   shrink and wrap: a real cover date runs far longer than the label it sits beside. */
+.ip-attr-foot-val {
+  font-family: var(--ip-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  text-align: right;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* Why a row has no number. Sits under the source line, in the same muted register as a caption --
+   it is an explanation, never a value. */
+.ip-attr-why {
+  font-family: var(--ip-sans);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--mono-muted);
+  margin-top: 3px;
+}
 .ip-minibtn {
   font-family: var(--ip-mono);
   font-size: 9px;
