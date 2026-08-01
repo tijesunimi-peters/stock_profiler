@@ -7,9 +7,11 @@
 `*-phase1.md` is the **fidelity gate** (design only, no data); `*-p2-s01.md` is **§01's** phase-2
 plumbing, signed 2026-08-01. A green report in either says nothing about §02 or §03.
 
-**Verdict: PASS — pending manual UI verification.**
+**Verdict: ✅ PASS — operator CONFIRMED 2026-08-01** (`4b-manual-verification.md`, signed).
 Two defects were found **and fixed during QA** (both period validation — see below); everything
-else is green on first pass. → **`4b-manual-verification.md`**
+else was green on first pass, and **all 14 operator rows passed on the first pass with no defect
+found at the gate**. Both judgement calls came back clean, including QA's top residual risk (does
+the attribution card read as non-additive — *"Reads as non-additive"*).
 
 ---
 
@@ -213,7 +215,7 @@ Start the app:
     **Expect:** a **400** naming the bad value — not a page of "no filings".
 12. Narrow the window to phone width. **Expect:** no horizontal scrollbar.
 
-**Operator outcome:** ⏳ pending — see `4b-manual-verification.md`.
+**Operator outcome:** ✅ **Confirmed 2026-08-01** — walked interactively in four batches, all 14 rows as expected. See `4b-manual-verification.md`.
 
 ---
 

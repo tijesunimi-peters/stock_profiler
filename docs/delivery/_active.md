@@ -4,7 +4,7 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: manual      ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
   ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
@@ -775,10 +775,21 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
       detail (pre-existing, low severity) — fold into `_require_period` when next touched.
       New regression guard: **`tools/p2-noprior.js`**, which drives the operator's crash condition
       (§03 with no prior-quarter register) and asserts no ghost line is drawn from nulls.
-- [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`.** 14 rows, ~6 minutes. The two
-      rows that need judgement rather than pass/fail: **step 8**, whether three non-additive
-      attribution bars actually READ as non-additive, and **steps 6–7**, whether the peer group
-      reads as a sensible comparison set with its labels still identifiable.
+- [x] ✅ **🚦 OPERATOR GATE PASSED — §02 + §03 ACCEPTED** (2026-08-01). Walked interactively in
+      four batches; **all 14 rows returned "As expected" on the FIRST pass and no defect was found
+      at the gate** — the first time in this task that has happened. Trail:
+      **`4b-manual-verification.md`** (signed, answers transcribed verbatim).
+      **Both judgement calls came back clean**, including QA's top residual risk: *"Reads as
+      non-additive"* — the three attribution bars read as independent measurements against shares
+      outstanding rather than parts of a whole, which was the one thing most likely to mislead
+      about a real company. Peer group: *"Sensible, labels identifiable."*
+      **The one deviation raised for a ruling is ACCEPTED AS BUILT** — the removed "Residual over
+      time · TREND" control, which went with the residual row the operator dropped under
+      D-attribution; the foot carries the denominator instead.
+      💡 Worth noting for §04–§06: this is the first gate the automation fully predicted. The
+      difference from every prior round was running the clip sweep **webfont-blocked**, asserting
+      toggle **resulting state**, and driving the **empty and no-prior** paths before handing off
+      — not more assertions, different ones.
 
 ✅ **Phase 1 is fully committed.** `6c42d19` (§06 + §07 + P1g) on `ae0244f` (§02–§05 + the
 affordances) on `735a14f` (§01 + both rails) on `54d1522` (the scaffold). Nothing pushed.
