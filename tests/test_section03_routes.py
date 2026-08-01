@@ -399,3 +399,48 @@ def test_peer_overlap_with_no_ingested_peer_is_na_not_a_lone_issuer(tmp_path, mo
     assert block["status"] == "na"
     assert block["matrix"] == []
     assert "missing coverage" in block["reason"]
+
+
+# --- malformed period (QA, 2026-08-01) -----------------------------------------------
+
+
+def test_a_malformed_period_is_a_400_not_a_finding_about_the_data(tmp_path, monkeypatch):
+    """Found in QA. Two wrong answers were live, and both mislead in their own way:
+
+    `institutional-register` raised out of `date.fromisoformat` and returned a **bare 500** --
+    a malformed client input is not a server fault. The three §03 endpoints answered **200 with
+    `status: "na"`** and a reason describing the filings ("none of the 0 ingested filing(s) for
+    this quarter carries a business location"), which reports a typo as a fact about the
+    register -- the one thing the N/A vocabulary must never do.
+    """
+    db = _configure(tmp_path, monkeypatch)
+    _resolve(db, [(_CUSIP, _CIK)])
+    _seed_holdings(db, [(_PERIOD, 1, _CUSIP, 200.0, "PA")])
+    routes = [
+        "institutional-register",
+        "institutional-filed-since",
+        "institutional-holder-domicile",
+        "institutional-share-attribution",
+        "institutional-peer-overlap",
+    ]
+    with _client() as c:
+        for route in routes:
+            r = c.get(f"/v1/companies/{_CIK}/{route}?period=not-a-date", headers=_BROWSER)
+            assert r.status_code == 400, f"{route} answered {r.status_code}"
+            detail = r.json()["detail"]
+            assert "ISO quarter-end date" in detail
+            # It must point somewhere useful, not just refuse.
+            assert "institutional-periods" in detail
+
+
+def test_a_valid_period_is_unaffected(tmp_path, monkeypatch):
+    db = _configure(tmp_path, monkeypatch)
+    _resolve(db, [(_CUSIP, _CIK)])
+    _seed_holdings(db, [(_PERIOD, 1, _CUSIP, 200.0, "PA"), (_PERIOD, 2, _CUSIP, 100.0, "NY")])
+    with _client() as c:
+        r = c.get(
+            f"/v1/companies/{_CIK}/institutional-holder-domicile?period={_PERIOD}",
+            headers=_BROWSER,
+        )
+        assert r.status_code == 200
+        assert r.json()["domicile"]["status"] == "ok"

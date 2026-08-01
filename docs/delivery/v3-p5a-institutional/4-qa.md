@@ -1,292 +1,246 @@
-# 4 — QA · V3-P5a **phase 2**, §01 plumbed onto real filings data
+# 4 — QA · V3-P5a **phase 2** (§02 and §03 on real filings data)
 
-**Branch:** `v3-p5a-institutional` (working tree on `4bcbd28`)
-**Verdict:** ✅ **PASS — operator CONFIRMED 2026-08-01** (`4b-manual-verification.md`, signed)
-**Phase 1's QA is preserved** as `4-qa-phase1.md` / `4b-manual-verification-phase1.md`. A green
-report there says nothing about this change.
+**Branch:** `v3-p5a-institutional` @ `d82aee3` + the QA fix below
+**Scope:** phase 2's data plumbing for **§02** and **§03**.
 
-**Trigger:** the operator reported a layout defect in §01's base/filed-since/adjusted equation
-panel, and during the interactive walk-through reported a second — the dumbbell chart clipped on
-the left. Both are **defect loops back to the frontend engineer**, fixed and re-verified below,
-along with a third of the same class found by sweeping. The whole of §01's phase-2 plumbing was
-then put through a QA pass, since it had never had one.
+⚠️ **Three earlier QA pairs are on disk and none of them covers this change.** Read the filenames:
+`*-phase1.md` is the **fidelity gate** (design only, no data); `*-p2-s01.md` is **§01's** phase-2
+plumbing, signed 2026-08-01. A green report in either says nothing about §02 or §03.
 
-**All three have one cause:** the prototype's layout constants were sized for the prototype's own
-short sample strings, and real filings data is longer and — for text in SVG — *font-dependent*.
-
----
-
-## Defects found and fixed this cycle
-
-### D-1 · The equation panel stopped being an equation — **operator-reported, FIXED**
-
-**Severity:** major (the panel's meaning depended on the layout it lost).
-
-**Repro:** open `/company/AAPL/institutional`, read the *Since the last 13F* card.
-
-**Measured, before:** the panel was **248px tall across three rows**. Each `.ip-eq-cell` sized to
-max-content (**607px inside a 660px panel**), so all three terms wrapped onto their own line and the
-`+` / `=` glyphs stopped sitting *between* terms. An arithmetic statement had become a stacked list —
-`Base register 2.9B` / `+` / `Filed since N/A …` / `=` / `Adjusted register N/A …`, which is what the
-operator pasted.
-
-**Root cause:** the prototype's cell notes are **three words** ("3 of 6 filings applied"); phase 2
-put the API's `reason` in that slot, which is a **sentence**. `.ip-eq` is `display:flex;flex-wrap`
-with no width share on its children, so a long note grows the cell to max-content and wraps the row.
-This is the **same root cause** as the freshness-strip wrap fixed earlier in the session — the fix
-had been applied there and not swept for elsewhere.
-
-**Fix, two parts:**
-1. **Layout** — `.ip-eq > * { flex: 1 1 0; min-width: 0 }` (a flex item will not shrink below its
-   content without `min-width: 0`), plus `flex: 0 0 auto` on the operator glyphs so `+` and `=` keep
-   their intrinsic width. The equation now holds one row at any note length.
-2. **Content** — the long "why" moved **out of the cells** into one `.ip-eq-why` line under the
-   panel, where a sentence has the full 660px column instead of a third of it. The cells went back
-   to the prototype's short register ("0 of 4 state a position", "not a total we can take"). The
-   reason is not lost — it is more readable, and stated once instead of split across two cells.
-
-**Measured, after:** **81px, one row, three equal 200px terms, no overflow.** The prototype's own
-panel is ~78px.
-
-### D-2 · Same defect class, one cell over — **found by sweeping, FIXED**
-
-Not reported, but the same cause: §01's freshness strip put the "Confirmed in last 30 days" reason
-(a 17-word sentence) into a **118px cell**, wrapping it to six lines and inflating the card from
-~90px to **157px**. Fixed the same way — the cell carries "not tracked", and the reason became the
-third paragraph of the `.ip-prose` block beneath the strip, which is already the place this card
-says what it is not. **157px → 105px.**
-
-### D-3 · The dumbbell's label gutter clips real manager names — **operator-reported, FIXED**
-
-**Severity:** major, and **font-dependent**, which is the part that makes it nasty — it can look
-fine on one machine and cut on another.
-
-**Repro:** open `/company/AAPL/institutional`, look at the *Where the register moved* chart.
-
-**Root cause:** `IP_DB.gutter` is `210` viewBox units, sized for the prototype's labels
-("Hedge fund H"). Labels are **right-anchored at `gutter - 10`, so they run LEFT**, and
-`svg.ip-db` computes `overflow: hidden` — a label wider than the gutter is **silently cut**, with
-no scrollbar and no visual cue. Real manager names are unbounded.
-
-**Measured** — the same name, same page, only the font differing:
-
-| condition | `getComputedTextLength()` | left edge | clipped |
-|---|---|---|---|
-| `NORTHLESS CAPITAL PARTNERS`, webfont loaded | 165.8 | 34.2 | no |
-| `NORTHLESS CAPITAL PARTNERS`, **webfont blocked** | **184.7** (+11%) | 15.3 | no, barely |
-| a 63-character name | **412.6** | **−212.6** | **YES** |
-
-So it fits in headless with Hanken Grotesk resolved, and does not once the fallback stack is
-substituted — which is exactly the operator's condition and why the automated captures missed it.
-This was listed as residual risk in questionnaire answer 8 of the first draft of this report; it
-was real, and reported before I had exercised it.
-
-**Fix — measure, don't estimate.** `RECONCILIATION.md` §6 rule 1 says this outright: *"In
-production, use `getComputedTextLength()` — real DOM measurement is available and strictly better
-than the constants."* `ipFitDumbbell()` runs after paint and again on `document.fonts.ready`
-(which settles immediately when fonts are already resolved, so the second pass costs nothing):
-
-1. Measure every label with `getComputedTextLength()` — what the browser *actually* rendered, with
-   the font that *actually* loaded.
-2. Grow the gutter to fit the longest, capped at **330** units (past that the track is too short to
-   read a movement on); the track gives up the space.
-3. If even the cap is not enough, **trim the label with an ellipsis** so it is never cut mid-glyph,
-   and keep the full name on a `<title>` — visible on hover and to assistive tech.
-
-`domainMax` and `gutter` are now both parameters; the literal fallback passes the prototype's own
-constants, so the phase-1 rendering is unchanged.
-
-**Verified end-to-end** with the API response rewritten to carry a 63-character manager name **and
-the webfont blocked** — the worst case, both at once:
-
-```
-gutter: 210 -> 329          trackStart: 329
-label:  "NORTHLESS CAPITAL PARTNERS INTERNATIONAL HOL…"  trimmed: true, full name kept on <title>
-        len 317, leftEdge 2, CLIPPED: false
-        "EVERPEAK ADVISORS LLC"  untouched (leftEdge 170.7)
-dotsInside: true
-```
-
-### Not a defect — checked and cleared
-
-- **The tiles grid renders 3 + 1 with an empty quadrant.** That is the prototype's own
-  `repeat(auto-fit, minmax(180px, 1fr))` at a 694px column, and it is what passed the phase-1 pixel
-  gate at 0 bands. Faithful, not a regression.
-- **Identical rendering in light and dark.** The app is **deliberately single-theme** —
-  `shell.css:141` documents it and there is no `prefers-color-scheme` in any stylesheet.
+**Verdict: PASS — pending manual UI verification.**
+Two defects were found **and fixed during QA** (both period validation — see below); everything
+else is green on first pass. → **`4b-manual-verification.md`**
 
 ---
 
 ## Acceptance criteria
 
-Phase 2's criteria come from **D-literals** (`_active.md`) and the honesty contract, since this
-attempt has no PM/architect stage.
+The governing rules are **D-literals** (phase 2 is not done until no literal remains; a plumbed
+section never falls back to one), **D-chips**, **D-behaviour**, and §03's three rulings
+(**D-overlap · D-attribution · D-domicile**).
 
 | # | Criterion | Result | Evidence |
 |---|---|---|---|
-| AC-1 | §01 renders this company's filings data, not the prototype's literals | ✅ | AAPL: `1Q26 · filed 2026-03-31 · 123 days`, base register `2.9B`, 7 managers, dumbbell rows **VANGUARD / STATE STREET / BERKSHIRE**. JPM independently: 2 managers, `3.8M`, different manager names |
-| AC-2 | **No missing value rendered as `0`** | ✅ | `zeros: []` on every capture — a scan of every `.ip-strip-val`/`.ip-tile-val`/`.ip-eq-val` for `0`, `0.0`, `0%`, `—`. AAPL and JPM both empty |
-| AC-3 | Unsourceable figures render N/A **with a reason**, never a plausible number | ✅ | 5 × `N/A` in §01, each with its own reason; the two that need a sentence carry it in `.ip-eq-why` / `.ip-prose` |
-| AC-4 | 13F deltas read as **derived**, not reported trades | ✅ | Dumbbell caption opens *"DERIVED by diffing two quarter-end 13F snapshots — these are not reported trades"*, names the prior quarter (4Q25), and states that only managers reporting in both quarters appear |
-| AC-5 | A plumbed section never falls back to a literal | ✅ | `ipSection01` guards on `IP_DATA.status`; the `\|\| IP01.x` fallbacks were deleted. `IP01` is down to `scope` + `speed`, which are **filing rules**, not figures |
-| AC-6 | The banner tells the truth about what is real | ✅ | Reads *"5 of these sections are still design placeholders"* and names §02–§06 explicitly; §01 is called out as carrying real data |
-| AC-7 | Error and empty paths degrade honestly | ✅ | ZZZZ → the app's 404 state ("We don't carry \"ZZZZ\""). A failed endpoint renders `states.error` with its status; the four calls are settled not raced, so one failure cannot blank the page |
-| AC-8 | The ported design survives the plumbing | ✅ | Strip, equation panel, dumbbell, tiles and expander all sit where the port put them. Section 1131px |
-| AC-11 | No chart clips or silently drops real content | ✅ | D-3: gutter measured post-mount and grown to fit; worst case (63-char name + blocked webfont) trims with the full name on `<title>`, `CLIPPED: false`, all dots inside |
-| AC-12 | Status chips appear **iff** a value needs a caveat (D-chips) | ✅ | All 11 value slots driven: 5 chips on the 5 `N/A` slots, 0 on the 6 clean values, **`violations: []`**. Uses the shared `ClearyFi.statusChip` |
-| AC-9 | Every control still works | ✅ | Both `[data-ip-go]` links: 4/4 driven assertions, landing on the real Form 4 ledger (`Cook Timothy D · 2026-06-15`). Expander opens |
-| AC-10 | No regression elsewhere | ✅ | **609 passed, 9 skipped**; e2e `institutional` / `institutional-legacy` / `institutional-nolocation` all `errors=0` |
+| AC-1 | §02 and §03 carry **no prototype literals** | ✅ | `IP02` and `IP03` are both gone from `company.js` (`grep -c 'IP03\.'` → `0`). The banner names only §04–§06. |
+| AC-2 | A plumbed section never falls back to a literal — it renders loading / empty / error | ✅ | `p2-read-section.js` on §03: AAPL populated; JPM renders two honest empty states **with reasons**. Loading state forced by aborting requests at the network layer. |
+| AC-3 | **No missing value rendered as `0`** | ✅ | `zeros: []` on AAPL and JPM. Two defects in *opposite* directions were caught pre-handoff and are re-verified here (see §5 of the questionnaire). |
+| AC-4 | Derived values carry `status`/`reason`; chips **iff** N/A or approximate (D-chips) | ✅ | `p2-chips.js` → `violations: []`. |
+| AC-5 | Every control does something (D-behaviour) | ✅ | `p2-drive-03.js` **10/10**, `p2-drive-controls.js` **5/5**, `p2-inert.js` → `derivesWithNoPanel: []`. |
+| AC-6 | D-attribution: three reported rows, **no residual, no total** | ✅ | `rows_are_additive: false`; no total field exists in the payload; the card renders three bars and a *denominator* foot. `test_attribution.py::TestTheOperatorsRuling` fails if either is re-added. |
+| AC-7 | D-overlap: the matrix is **asymmetric**, diagonal `null` | ✅ | Driven: AAPL→peer `0.43`, peer→AAPL `1.00`. `matrix[i][i] is None` on every row. |
+| AC-8 | D-domicile: US by state, others by country; `prior_weight: null` draws **no tick** | ✅ | 7 US-state rows on AAPL with ticks; places absent from the prior quarter carry none. |
+| AC-9 | 13F deltas read as **derived**, never reported trades | ✅ | §03's flow caption: *"Both sides are DERIVED by diffing consecutive quarter-end snapshots — nobody files a trade here."* |
+| AC-10 | No SVG/DOM text clips, **webfont blocked as well as loaded** | ✅ | `p2-clip-sweep.js`: `svgOverflow=0 domBleed=0` × 2 companies × 2 font states. |
+| AC-11 | Layout holds at narrow widths | ✅ | 1280 / 900 / 420 px, expanders open: `docScroll: false`, `bleed: 0` at every width. |
+| AC-12 | Error paths are honest — no bare 500s, no client error dressed as data | ⚠️ → ✅ | **Two defects found here.** Fixed and regression-tested. |
+| AC-13 | `pytest` green | ✅ | **677 passed, 9 skipped** (675 + 2 new period tests). |
+| AC-14 | e2e headless render check | ✅ | 44 shots; all three institutional shots `errors=0`; only the two pre-existing `sectorapp-company` 502s. |
+
+---
+
+## Defects found in QA
+
+### D-QA-1 · `institutional-register` returned a **bare HTTP 500** on a malformed period — FIXED
+
+**Severity: medium.** Pre-existing on this branch (from the phase-2 backend, not from §03).
+
+```
+GET /v1/companies/AAPL/institutional-register?period=not-a-date   →  HTTP 500
+ValueError: Invalid isoformat string: 'not-a-date'
+  routes.py:2212 in _register_period_meta
+```
+
+`_register_period_meta` called `date.fromisoformat` unguarded. A malformed client input is not a
+server fault, and a bare 500 is what this project's upstream-error posture exists to avoid.
+`institutional-activity` already had the right answer — a **400 with a message**.
+
+### D-QA-2 · the three §03 endpoints reported a client error **as a finding about the data** — FIXED
+
+**Severity: medium — an honesty defect, not merely a status-code one.**
+
+```
+GET /v1/companies/AAPL/institutional-holder-domicile?period=not-a-date   →  HTTP 200
+{"domicile": {"status": "na",
+  "reason": "none of the 0 ingested filing(s) for this quarter carries a business location …"}}
+```
+
+A typo in a query string came back as **a statement about the register**. That is precisely what
+the `N/A` vocabulary must never do: it converts an input error into a coverage claim, and the
+reader has no way to tell the two apart.
+
+**Fix (both):** one shared `_require_period()` at the edge of the five register-family routes,
+returning **400** with a message that names the bad value *and points at
+`/institutional-periods`*. Regression test:
+`tests/test_section03_routes.py::test_a_malformed_period_is_a_400_not_a_finding_about_the_data`.
+
+| endpoint | before | after |
+|---|---|---|
+| `institutional-register` | **500** | **400** |
+| `institutional-filed-since` | 200 / na | **400** |
+| `institutional-holder-domicile` | 200 / na | **400** |
+| `institutional-share-attribution` | 200 / na | **400** |
+| `institutional-peer-overlap` | 200 / na | **400** |
+
+*(`institutional-register-shape` takes `quarters`, not `period`, so ignoring the param is correct.)*
+
+### D-QA-3 · `institutional-activity` leaks a raw Python error to the client — **NOT FIXED**
+
+**Severity: low. Pre-existing, outside this change — recorded, not fixed.**
+`?period=not-a-date` → `400 {"detail":"invalid literal for int() with base 10: 'a'"}`. The status
+is right; the message is an internal exception string rather than guidance. Fold it into
+`_require_period` when that endpoint is next touched.
 
 ---
 
 ## Review questionnaire
 
-**1. What shipped.** Opening a company's Institutional tab, §01 *Register snapshot* now describes
-**that company**: when its 13F register was filed and how stale it is, how many managers report a
-position, how many shares they report, which managers moved most since the prior quarter, and every
-filing accepted since. Where we cannot honestly compute something, the slot says `N/A` and tells you
-why instead of showing a number. A banner above still names the five sections that remain design
-placeholders.
+**1. What shipped.** Opening a company's Institutional view now shows *its own* filings in §02 and
+§03 instead of the prototype's sample numbers: how many managers report it and how that has moved,
+who the largest holders are and how concentrated the register is, gross adds and reductions by
+quarter, where those managers file from, which industry peers share holders with it, and how many
+shares each family of ownership filing accounts for. Where we cannot answer, the block says so in
+a sentence instead of showing a number.
 
-**2. Surfaces touched.** `company.js` (the `IP_DATA`/`ipLoad` layer and every §01 builder),
-`company.css` (`.ip-eq*`, `.ip-strip-cell`, `.ip-plan-line`, `.ip-xref*`). Endpoints **consumed**,
-not changed: `institutional-periods`, `-register`, `-register-shape`, `-filed-since`, `-activity`.
-No Python changed.
+**2. Surfaces touched.** Endpoints: `institutional-holder-domicile`, `-share-attribution`,
+`-peer-overlap` (new); `-register` (gained `lorenz`); `-activity-series`, `-activity`,
+`-register-shape`, `-holdings-series` (newly consumed). UI: `company.js` §02/§03 and the data
+layer, `company.css`. Storage: profile / cusip / holdings gained one bounded read each; the
+insider store gained `is_derivative` behind a guarded migration.
 
-**3. AC → evidence.** The table above; every row is a driven observation on the running page or a
-command's output, not a source reading.
+**3. AC → evidence.** The table above — every row names the driven artifact, not an intention.
 
-**4. States exercised.** **Populated** — AAPL (7 managers) and JPM (2), driven after the fetch
-settles. **Empty** — the dumbbell's no-overlap branch renders an empty state naming both quarters
-and calling it a coverage gap, not an absence of movement. **Error** — ZZZZ 404s into the app's
-own not-found state; `ipErr`/`states.error` covers a per-endpoint failure. **Loading** — the
-`IP_DATA.status` guard renders `states.loading` rather than flashing literals.
+**4. States exercised.**
+- **Populated** — AAPL, on both the seeded fixture and the real 7.7 GB volume (1.15 M raw facts,
+  50.2 M holdings rows).
+- **Empty** — JPM: no cover-page locations and no ingested SIC peer, so the domicile and overlap
+  cards render *reasons*, not blanks. WMT (unresolvable CUSIP) → 404 with an explanation.
+- **Loading** — forced by aborting the older-quarter register requests at the network layer
+  (`p2-noprior.js`). Pending blocks read "Reading the filings…" and carry **no** status chip.
+- **Error** — malformed period (D-QA-1/2); unknown ticker → 404; missing required param → 422.
+  Upstream-SEC failures are handled by app-level `@app.exception_handler`s (502 for
+  `HTTPStatusError`, 503 for `TransportError`), which cover the new routes automatically.
 
-**5. Edge cases probed.** *N/A vs 0*: the `zeros` scan is the load-bearing one and it is clean on
-both companies. *Thin register*: JPM's 2-manager register renders the same shapes as AAPL's 7.
-*Unresolvable issuer*: 404, not an empty register. *Long-value layout*: the two defects above —
-real `reason` strings are the edge case the literals never produced. *Restatements / PRN / option
-rows*: **not probed here** — the fixture does not carry them and the register endpoint's own tests
-cover them; noted as residual risk.
+**5. Edge cases probed.**
+- **N/A vs 0, in both directions.** "Exited **0** managers · **0** of shares" is a *measured* zero
+  and prints as `0`. The "8+ quarters" tenure cohort prints **N/A with a chip**, because four
+  ingested quarters make it structurally unreachable — a limit of our coverage, not a finding
+  about the register. Both confirmed on the rendered page, not in the payload.
+- **No prior quarter** — the operator's crash condition. Re-driven with the prior registers
+  starved at the network layer: §03 renders, **no dashed path is drawn**, and the legend and
+  caption both say *"no prior ingested quarter to compare"*. Promoted to `tools/p2-noprior.js`.
+- **Options vs shares** — the insider attribution row excludes derivative rows; rows predating the
+  flag are excluded as *unknown*, with the gap stated in that row's `reason`.
+- **Multi-class** — `share_vector` and `domicile` both aggregate per *manager*, so a filer holding
+  two share classes is one holder (asserted in `test_register.py`).
+- **429 / upstream** — the anonymous limiter and the 502/503 handlers are app-level and untouched
+  by this work; not re-verified per route.
 
-**6. Honesty contract.** Caveats present (the register's own `caveats[]` phrasing is carried in the
-prose and captions). Derived numbers labelled — the `ƒ derived` badge is on the card and the tile,
-and the dumbbell caption leads with DERIVED. Provenance intact — every figure names the form and
-filing date it came from. **No missing value shown as `0`** — verified by scan, not by eye. 13F
-deltas read as derived. No fabricated precision: the three figures that would require inventing a
-number (`confirmed %`, `filed-since` total, `adjusted register`) all render `N/A`.
+**6. Honesty contract.** Caveats present on every new payload; derived blocks carry
+`status`/`reason`/`formula`/`cannot`/`population`; **no missing value rendered as 0** (`zeros: []`);
+13F deltas labelled derived in the caption; no fabricated precision — the residual row is *absent*
+rather than estimated, and the attribution card carries no total. The one place the contract was
+actually being broken was D-QA-2, now fixed.
 
-**7. Deltas from the brief.** (a) The **status vocabulary** — RECONCILIATION §3 wants a
-`statusChip()` on every derived value; the prototype has none and carries the distinction in prose.
-Phase 2 keeps the prototype's shape and puts `reason` in the note slot, because chips would break
-the pixel match the operator accepted at the fidelity gate. **This is a reading, not a ruling —
-it needs the operator's.** (b) The dumbbell uses **one accent**, not the prototype's three-way
-manager-type colour: we do not classify managers by type and inferring a class from the name would
-be fabrication. (c) §01's pixel gate is **retired by design** — it renders this company's numbers
-now, so it cannot and should not match the capture.
+**7. Deltas from the brief.**
+- **The "Residual over time · TREND" foot is gone**, with its panel — the direct consequence of
+  D-attribution removing the row it belonged to. The foot now carries the denominator. **This is a
+  visible change to a rendering the operator already accepted at the fidelity gate, and it is the
+  single most important thing to look at by hand.**
+- **Deviation D3 is closed** (the treemap re-squarifies at the dialog's aspect rather than
+  scaling the card's layout), because the layout became a computation instead of a recovered
+  literal.
+- **Not verifiable by automation:** whether the peer *set* reads as a sensible peer group, and
+  whether the trimmed peer labels remain identifiable. Both are judgement calls → 4b.
 
-**8. Residual risk.** All three defects this cycle came from **real strings being longer than the
-prototype's** — and the third was *font-dependent*, so it rendered clean in every automated capture
-and only the operator saw it. §02–§06 are not plumbed yet and **will hit this class again**: every
-remaining chart with a hard-coded label gutter (§02's manager table, §03's ranked-share and
-treemap, §04's lanes, §05's cohort grid) has the same exposure. Sweep each one with
-`getComputedTextLength()` rather than fixing sites as they are reported, and **test with the
-webfont blocked**, because that is the condition the captures do not reproduce. Multi-class / PRN /
-option rows are untested at this surface. What would worry me most if wrong: a `null` reaching a
-slot that formats it as `0` — hence the scan, which is now part of the driving script and should
-stay there for every remaining section.
+**8. Residual risk**, in the order that worries me:
+1. **A reader treating the three attribution bars as a whole.** They overlap and do not sum; the
+   card says so twice, but the visual grammar of three aligned bars invites the opposite reading.
+   This is the one that could mislead about a real company.
+2. **Peer selection is coverage-dependent by construction** — the SIC group ranked by ingested
+   register size. On a thin volume the "peers" may be odd companies. `peer_basis` states the rule
+   on the payload and in the caption, but a reader may not read it.
+3. **Page load ~3–5 s on a whole-market volume** — 13 concurrent requests serialising on one event
+   loop (async handlers, synchronous store reads). Not a defect of this change and not fixable
+   without an architectural decision, but it is what the operator feels first.
 
 ---
 
 ## UI/UX review
 
-- **States** — loading, populated, empty and error each render intentionally; the empty dumbbell
-  explains itself rather than drawing a broken chart.
-- **Legibility & layout** — no bleed at 1440 / 1100 / 760 (`bleed: []`, `docScroll: false` at all
-  three). Both wrap defects fixed and measured.
-- **Copy** — the notes read as statements about filings, not system internals. One over-claim was
-  removed: the card head said *"by EDGAR acceptance time"*, but `filed-since` returns **filing
-  dates** (acceptance timestamps are V3-P3), so it now says "by filing date". The dumbbell caption's
-  *"Colour is manager type"* was removed for the same reason.
-- **Affordances & a11y** — 5 focusables in §01; the cross-view link is a real `<a href>`, focusable,
-  and **Enter activates it** (driven: landed on `/company/AAPL/insider`). A modified click still
-  opens a new tab because the handler only intercepts a plain left click.
-- **Theme** — single-theme app by design; no hard-coded hex in §01 (`hardCoded: 0`).
-- **Consistency** — reuses `P.states.loading/error` rather than a one-off.
+- **States** — loading, populated, empty and error each render intentionally, and the loading
+  block is visually distinct from the empty one (muted, and it carries **no** status chip, because
+  a value we have not asked for yet is not N/A).
+- **Legibility** — no clipping at either font state; peer-matrix and treemap labels are trimmed to
+  their own box with the full name on `<title>`.
+- **Theme** — the app is **single-light-theme by design**; `shell.css:141` documents it ("no
+  `prefers-color-scheme` anywhere in the CSS"). Verified byte-identical under emulated light and
+  dark, which is correct here rather than a defect. Contrast inside §03: title 225, caption 119
+  against the card.
+- **Copy** — active voice, sentence case, no over-claiming. Captions state limits rather than mood
+  ("it is a floor, not a history"; "not evidence of a sale").
+- **Affordances** — 10 controls in §03, **0 inert**; the Effective-holders stat is a control only
+  when a trend exists behind it.
+- **Consistency** — chips are the shared `ClearyFi.statusChip`, not a local lookalike.
 
 ---
 
-## Manual UI verification
+## Manual UI verification (script)
 
-Run against **`http://localhost:8010`** (`p5a-preview` is up; otherwise
-`docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app`).
+Start the app:
+`docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app`
+→ **http://localhost:8010/company/AAPL/institutional**
 
-1. Open `/company/AAPL/institutional`. → §01 shows **1Q26**, a filed date and a days-since count.
-2. Read the *Since the last 13F* card's tint panel. → **One row: `Base register 2.9B` `+`
-   `Filed since N/A` `=` `Adjusted register N/A`.** This is the reported defect — it must read
-   across, not stack.
-3. Read the line directly under that panel. → One sentence explaining why the last two are N/A.
-4. Read the freshness strip's fourth cell. → `N/A` · "not tracked", **not** a six-line paragraph;
-   the full reason is the third paragraph below.
-5. Scan §01 for any `0`, `0.0%` or `—` in a value slot. → **None.** Every unknown reads `N/A`.
-6. Read the caption under the dumbbell. → Opens with **DERIVED by diffing two quarter-end 13F
-   snapshots — these are not reported trades.**
-7. Click **+ ALSO IN THIS SECTION**. → Four real Form 4 filings (Cook, Maestri, Adams, O'Brien).
-8. Click **Insider activity — ledger, codes, Form 144 →** at the bottom of §01. → Lands on the
-   Insider view with a real Form 4 ledger. Browser **Back** returns to Institutional.
-9. Open `/company/JPM/institutional`. → Different register (2 managers, 3.8M) — the page is not
-   showing one company's numbers for another.
-10. Open `/company/ZZZZ/institutional`. → An honest 404, not an empty register.
-11. Narrow the window to ~760px. → No horizontal scroll; the equation may stack, but nothing bleeds.
+1. Load the page. **Expect:** the banner names only §04–§06; §02 and §03 show real figures.
+2. §03 "Position changes over time". **Expect:** bars per quarter, a table matching them, four
+   count tiles. "Exited" may read `0 · 0 of shares` — a real zero.
+3. "Who holds what" → click **Treemap**, then **Cumulative share**. **Expect:** chart *and* caption
+   both change, and it returns exactly where it started.
+4. Click **⤡ Expand** in each of those views. **Expect:** the dialog opens the view you are
+   looking at, under its own title.
+5. Click the **Effective holders** number. **Expect:** a trend panel with three measures.
+6. Open **+ Also in this section**. **Expect:** four cards; matrix labels readable, not clipped;
+   hovering a label shows the full name.
+7. "Overlap with sector peers" → **Set intersections**, then **⤡ Expand**. **Expect:** the UpSet
+   plot, under "Manager set intersections".
+8. **"Where every share sits" — the important one.** **Expect:** three bars, each with its own
+   as-of date, a *denominator* line, and **no total and no residual row**. Judge whether the
+   removed "Residual over time · TREND" control is missed.
+9. "Stable-capital share". **Expect:** "8+ quarters" reads **N/A** with a chip (not 0%), and the
+   caption explains why.
+10. Open **http://localhost:8010/company/JPM/institutional**. **Expect:** domicile and overlap
+    render honest empty states with reasons; nothing shows 0.
+11. Put `…/v1/companies/AAPL/institutional-holder-domicile?period=not-a-date` in the address bar.
+    **Expect:** a **400** naming the bad value — not a page of "no filings".
+12. Narrow the window to phone width. **Expect:** no horizontal scrollbar.
 
-**Operator outcome:** ✅ **Confirmed, 2026-08-01.** Walked interactively in two batches. Round 1
-returned a defect — *"Real filings but the 'Since the last 13F' chart is clipped on the left"* —
-logged as **D-3**, fixed, and the questionnaire **re-run** rather than signed over. Round 2:
-*"All names read in full"*, *"All hold"*. Full transcript in `4b-manual-verification.md`.
+**Operator outcome:** ⏳ pending — see `4b-manual-verification.md`.
 
 ---
 
 ## Test evidence
 
 ```
-docker compose --profile test run --rm test
-  609 passed, 9 skipped, 1 warning in 9.23s
-
-docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
-  [institutional]              errors=0
-  [institutional-legacy]       errors=0
-  [institutional-nolocation]   errors=0
-  [sectorapp-company]          errors=8   <- PRE-EXISTING
-  [sectorapp-company-refocus]  errors=13  <- PRE-EXISTING
+docker compose --profile test run --rm test          → 677 passed, 9 skipped
+docker compose --profile e2e up …                    → 44 shots, institutional errors=0
+                                                       (2 pre-existing sectorapp 502s)
+tools/p2-clip-sweep.js   → svgOverflow=0 domBleed=0  (AAPL+JPM × webfont loaded/blocked)
+tools/p2-chips.js        → violations: []
+tools/p2-inert.js        → derivesWithNoPanel: []
+tools/p2-drive-03.js     → 10 controls, failures: 0
+tools/p2-drive-controls.js → 5 controls, failures: 0
+tools/p2-noprior.js      → renders, dashedPaths: 0, page errors: 0
+tools/p2-read-section.js → zeros: [] (AAPL and JPM)
 ```
-
-The two `sectorapp-company*` failures were confirmed pre-existing by **stashing this change,
-rebuilding and re-running**: they reproduce identically (8 and 14) on synthetic fixture CIK 900001.
-Not caused by this work, and not fixed by it.
 
 ---
 
 ## Handoff
 
-**Verdict: PASS — operator confirmed 2026-08-01.** All three defects fixed and measured; all twelve
-acceptance criteria have driven evidence; no regression (609 pytest, `institutional` e2e
-`errors=0`).
+**PASS — pending manual UI verification.** Two defects found and fixed in QA (D-QA-1, D-QA-2);
+one low-severity pre-existing item recorded and deliberately not fixed (D-QA-3). 677 pytest, e2e
+clean, every driven check green.
 
-**The status-vocabulary question is answered** — the operator chose **(c) chips only on N/A and
-approximate**, recorded as **D-chips** in `_active.md` and **implemented on §01 in this cycle**
-rather than left as debt. §02–§06 follow the same rule, and the `violations: []` assertion is the
-check to repeat per section.
-
-**What this cycle should change about how the remaining sections are built.** Two of the three
-defects were reported by the operator, not found by the tooling, and D-3 is the sharper lesson: it
-was **font-dependent**, so every headless capture rendered it clean. Before plumbing §02–§06:
-
-- Sweep every chart with a hard-coded label gutter (§02's manager table, §03's ranked-share and
-  treemap, §04's lanes, §05's cohort grid) with `getComputedTextLength()` — the constants are all
-  sized for the prototype's short sample strings.
-- **Run the layout checks with the webfont blocked**, which is the condition the captures do not
-  reproduce and the operator's browser does.
-- Keep the `zeros: []` and `violations: []` assertions in the driving script for every section.
-
-**Not committed.** Ready for a deploy *request* whenever the operator wants one — that stays
-operator-gated.
+**Blocked on:** the operator hand-running **`4b-manual-verification.md`**. Per **D-manual-gate**
+this is mandatory and cannot be stood in for by QA's own evidence; the verdict is not "ready to
+deploy" until it is signed. **Step 8 (the attribution card) and the removed residual-trend control
+are the ones to look at hardest.**

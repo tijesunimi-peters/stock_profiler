@@ -1,136 +1,86 @@
-# 4b — Operator manual verification · V3-P5a **phase 2**, §01 on real data
+# 4b — Operator manual verification · V3-P5a phase 2, **§02 and §03 on real filings data**
 
-**Purpose:** your hands-on acceptance of §01 *Register snapshot* now carrying this company's real
-filings data — and of the fix to the equation-panel layout you reported.
+**Purpose:** your hands-on acceptance that §02 and §03 now tell the truth about a real company's
+filings. QA's own evidence never counts as acceptance — this does.
 
 | | |
 |---|---|
-| **Branch** | `v3-p5a-institutional` (working tree, not committed) |
-| **QA verdict** | PASS — pending this step (`4-qa.md`) |
+| **Branch** | `v3-p5a-institutional` @ `d82aee3` + the QA period fix |
+| **QA verdict** | **PASS — pending this step.** Two defects found and fixed during QA (see `4-qa.md`, D-QA-1/2) |
+| **Start the app** | `docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app` |
 | **URL** | **http://localhost:8010/company/AAPL/institutional** |
-| **If it isn't up** | `docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app` |
+| **Time** | ~6 minutes |
 
-> **Phase 1's questionnaire is preserved** as `4b-manual-verification-phase1.md` — that one accepted
-> the *design*. This one accepts the *data*.
+> ⚠️ Three earlier QA pairs are on disk and **none of them covers this**. `*-phase1.md` is the
+> fidelity gate (design only, no data); `*-p2-s01.md` is §01's plumbing, which you signed on
+> 2026-08-01. This is §02 and §03.
 
-### The load-bearing rule for this change
+## The load-bearing rule for this change
 
-**No missing value may render as `0`, and no unsourceable figure may render as a plausible number.**
-Where we cannot honestly compute something it must say `N/A` **and say why**. Everything else on
-this page is layout; this is the part that would be a lie if it were wrong.
+**A number on this page is either something a filer actually filed, or it is `N/A` with a reason.
+Nothing in between.** Two corollaries that are easy to get backwards, and both appear below:
 
-### What I fixed, from your two reports
-
-**Round 1 — the equation panel.** It was **248px across three rows**; each term sized to its own
-content, so `+` and `=` stopped sitting between terms and the arithmetic became a stacked list. Now
-**81px, one row, three equal terms**, with the long explanation on one line beneath the panel. I
-swept and found the **same defect one cell over** (the strip's "Confirmed in last 30 days" note,
-157px → 105px).
-
-**Round 2 — the clipped chart, which you caught and my captures did not.** The dumbbell's label
-gutter is a hard-coded 210 units sized for the prototype's "Hedge fund H"; labels are right-anchored
-so they run *left*, and the SVG is `overflow: hidden`, so a long manager name is **silently cut**.
-The catch: whether it cuts depends on **which font actually loaded** — `NORTHLESS CAPITAL PARTNERS`
-measures **165.8 units with the webfont and 184.7 without (+11%)**, which is why it looked fine in
-every headless capture and not on your screen. It now **measures the real text after render**
-(`getComputedTextLength()`) and grows the gutter to fit, trimming with an ellipsis only past a
-330-unit cap and keeping the full name on hover. Verified at the worst case — a 63-character name
-*with the webfont blocked*: gutter 210→329, nothing clipped.
-
-**All three had one cause:** the prototype's constants were sized for the prototype's short sample
-strings. Real filings text is longer, and in SVG it is font-dependent.
-
----
+- A **measured zero is a zero** — "0 managers exited" is a real finding and prints as `0`.
+- An **unknowable value is N/A**, even when the arithmetic would produce a number. The "8+
+  quarters" cohort *cannot* be non-zero when we hold four quarters, so it must not print `0%`.
 
 ## Checklist
 
-| # | Step | Expected result | AC | Result (✅/❌) | Notes |
+| # | Step | Expected result | AC | Result ✅/❌ | Notes |
 |---|---|---|---|---|---|
-| 1 | Open the URL; read §01's top card | "Register as of **1Q26**", a filed date, a days-since count | AC-1 | ✅ | |
-| 2 | **Read the tint panel in *Since the last 13F*** | **One row, reading across: `Base register 2.9B` `+` `Filed since N/A` `=` `Adjusted register N/A`** — not stacked | D-1 | ✅ | |
-| 3 | Read the line just under that panel | One sentence explaining why the last two terms are N/A | AC-3 | ✅ | |
-| 4 | Read the strip's 4th cell ("Confirmed in last 30 days") | `N/A` · "not tracked" — short, not a 6-line paragraph; full reason sits in the prose below | D-2 | ✅ | |
-| 5 | **Scan every number in §01** | **No `0`, `0.0%`, `—` or blank in any value slot.** Every unknown reads `N/A` with a reason | AC-2 | ✅ | |
-| 6 | Read the caption under the dumbbell chart | Opens **"DERIVED by diffing two quarter-end 13F snapshots — these are not reported trades"** | AC-4 | ✅ | |
-| 7 | Check the dumbbell rows | Real manager names (Vanguard, State Street, Berkshire) with signed deltas — not "Index manager A" | AC-1 | ✅ | |
-| 7a | **Look at the left edge of that chart** — the one you reported | **No manager name is cut off.** Each reads in full, right-aligned, clear of the chart's left edge | D-3 | ✅ | |
-| 7b | Hover a manager name | A tooltip shows the full name (matters only if a name was long enough to be trimmed with "…") | D-3 | ✅ | |
-| 8 | Click **+ ALSO IN THIS SECTION** | Opens; four real Form 4 filings (Cook, Maestri, Adams, O'Brien) with dates | AC-9 | ✅ | |
-| 9 | Read the banner at the top of the page | Names **§02–§06** as still-placeholder and says §01 carries real data | AC-6 | ✅ | |
-| 10 | Click **Insider activity — ledger, codes, Form 144 →** (bottom of §01) | Lands on the Insider view, real Form 4 ledger. **Back** returns here | AC-9 | ✅ | |
-| 11 | Tab to that same link and press **Enter** | Same result — it is keyboard-reachable, not a click-only div | a11y | ✅ | |
-| 12 | Open `/company/JPM/institutional` | A **different** register (2 managers, 3.8M) — not AAPL's numbers | AC-1 | ✅ | |
-| 13 | Open `/company/ZZZZ/institutional` | An honest 404 ("We don't carry \"ZZZZ\"") — not an empty register | AC-7 | ✅ | |
-| 14 | Narrow the window to ~760px | No horizontal scrolling; nothing overflows its card | UI | ✅ | |
-| 15 | Step back and read §01 as a whole | Still reads as the ported design — same strip, panel, chart, tiles, expander | AC-8 | ✅ | |
+| 1 | Load the URL | Banner names only **§04–§06**. §02 and §03 show real figures, no prototype names like "Index manager A" | AC-1 | | |
+| 2 | §03 → "Position changes over time" | Bars per quarter, a table that matches them, four count tiles. "Exited" may read `0 · 0 of shares` — that is a **real** zero | AC-3 | | |
+| 3 | "Who holds what" → click **Treemap**, then **Cumulative share** | Chart **and** caption both change; returns exactly where it started | AC-5 | | |
+| 4 | Click **⤡ Expand** in each of those two views | The dialog opens **the view you were looking at**, under its own title | AC-5 | | |
+| 5 | Click the **Effective holders** number | A trend panel opens with three measures (HHI, Gini, half the register) | AC-5 | | |
+| 6 | Open **+ Also in this section** | Four cards appear. **Peer-matrix labels are readable, not clipped or overlapping.** Hover one — the full name appears | AC-10 | | |
+| 7 | "Overlap with sector peers" → **Set intersections** → **⤡ Expand** | The UpSet plot, under "Manager set intersections" | AC-5, AC-7 | | |
+| 8 | **"Where every share sits" — read this one carefully** | Three bars, each with **its own as-of date**, a *denominator* line, and **no total and no residual row**. Do you miss the removed "Residual over time · TREND" control? | AC-6 | | |
+| 9 | "Stable-capital share" | **"8+ quarters" reads `N/A` with a chip — not `0%`** — and the caption says why | AC-3 | | |
+| 10 | Open **http://localhost:8010/company/JPM/institutional** | Domicile and overlap render honest **empty states with reasons**. Nothing shows `0` | AC-2 | | |
+| 11 | Paste `http://localhost:8010/v1/companies/AAPL/institutional-holder-domicile?period=not-a-date` | A **400** naming the bad value — *not* a page saying "no filings for this quarter" | AC-12 | | |
+| 12 | Narrow the window to phone width | No horizontal scrollbar; nothing runs off the right edge | AC-11 | | |
+| 13 | Keyboard: Tab to the **Effective holders** stat and press Enter | It opens, with a visible focus ring | AC-5 | | |
+| 14 | Honesty scan — read §03's captions | Every derived figure says what it does **not** tell you. Nothing over-claims (no alpha/timing/price language) | AC-9 | | |
 
----
+## The two judgement calls QA cannot make for you
 
-## Operator's answers, verbatim (interactive walk-through, 2026-08-01)
+These are not pass/fail rows — they need your eye:
 
-Collected in two batches via `AskUserQuestion`.
+- **Step 8, the attribution card.** The three bars *overlap* and deliberately do not sum: a 5%+
+  institutional holder files both a 13F and a 13D/G, and a 10% owner is also an insider. The card
+  says so twice. **Does it read that way, or does the visual grammar of three aligned bars invite
+  the opposite reading?** This is the change most likely to mislead about a real company.
+- **Step 6/7, the peer group.** Peers are the SIC group ranked by the size of their own *ingested*
+  register — coverage-dependent by construction, and stated in the caption. **Do the peers read as
+  a sensible comparison set, and are the trimmed labels still identifiable?**
 
-**Round 1** — *"Reads across correctly"* (the equation panel) · *"No zeros, every unknown says
-N/A"* · *"Real filings but the **Since the last 13F** chart is clipped on the left"* ← **defect,
-logged as D-3** · *"Both read correctly"* (dumbbell caption + banner).
+## Known and deliberate — not defects
 
-**Round 2, after the D-3 fix** — *"All names read in full"* · *"All hold"* (steps 8–15) ·
-status vocabulary: **"Chips only on N/A and approximate"**.
-
----
-
-## One question that is yours, not mine
-
-**The status vocabulary.** `RECONCILIATION.md` §3 says every derived value in production should
-carry a `statusChip()` (OK `●` / APPROX `≈` / N/A `∅` / N/M `~`). **The prototype has no chips** — it
-says the same things in prose, and phase 2 has followed the prototype so far, because adding chips
-would change the rendering you accepted at the fidelity gate.
-
-Which do §02–§06 follow?
-
-- **(a) Keep the prototype's prose** — as built now. Pixel-faithful; diverges from the production
-  style guide.
-- **(b) Add status chips** — matches `STYLE_GUIDE` §6 and the rest of the product; changes the
-  design you accepted.
-- **(c) Chips only where a value is N/A or approximate** — a middle path; leaves `ok` values
-  untouched.
-
-Cheaper to settle now than after five more sections are built the other way.
-
-### ✅ ANSWERED — **(c) chips only on N/A and approximate** (operator, 2026-08-01)
-
-Recorded as **D-chips** in `_active.md`. Implemented on §01 in the same cycle rather than left as
-debt, using the shared `ClearyFi.statusChip` (not a local lookalike), so §01 speaks the same
-vocabulary as the company hub and the sector views.
-
-**The invariant, asserted not eyeballed:** a slot carries a chip **if and only if** its value is
-`N/A`. Driven across all eleven value slots in §01 — 5 chips on the 5 `N/A` slots, 0 on the 6 clean
-values, **`violations: []`**. §02–§06 follow this rule as they are plumbed.
-
----
+- **The "Residual over time · TREND" control is gone**, with its panel. It belonged to the
+  unreported-residual row *you* ruled out on 2026-08-01; a trend of a number we no longer stand
+  behind would be worse than the row was. The foot now carries the denominator instead. **Flagged
+  because it changes a rendering you already accepted at the fidelity gate.**
+- **Deviation D3 is now closed** — the treemap re-squarifies at the dialog's aspect instead of
+  scaling the card's layout, which is what the prototype did. It became possible once the layout
+  was a computation rather than a recovered literal.
+- **The app has one light theme**, by design (`shell.css:141`). Dark-mode emulation changing
+  nothing is correct.
+- **Page load is ~3–5 s on the whole-market volume** (13 concurrent requests serialising on one
+  event loop). Not introduced by this change and not fixable without an architectural decision —
+  raised in `4-qa.md` §8.
 
 ## Sign-off
 
-**Verdict** (tick one — there is no QA-tester-level acceptance for a rendered change):
-
-- [x] **Confirmed** — I drove it and I accept it
+- [ ] **Confirmed** — I drove it and I accept it
 - [ ] **Defect found** — details below
 
-**Operator:** tijesunimi-peters
-**Date:** 2026-08-01
+**Operator:** ______________  **Date:** ______________
 
 **Discrepancies / notes:**
 
-Two defects were found by the operator during this walk-through and **both were fixed inside it**,
-with the questionnaire re-run afterwards rather than signed over them:
+```
+```
 
-1. **D-1, the equation panel** — reported before the walk-through, fixed, confirmed in round 1
-   ("Reads across correctly").
-2. **D-3, the dumbbell chart clipped on the left** — reported in round 1, fixed, confirmed in
-   round 2 ("All names read in full"). **This one is the argument for the gate**: it is
-   font-dependent, so it rendered clean in every headless capture and only appeared on the
-   operator's screen. No automated check in this repo would have caught it.
-
-A third (**D-2**) was found by sweeping for D-1's cause and fixed before the walk-through.
-
-The status-vocabulary question was answered as part of the same session — **(c)**, above.
+*A ❌ on any row is a defect → back to the owning engineer, then re-QA. There is no
+"accepted at the QA-tester level" option (D-manual-gate, 2026-07-31).*

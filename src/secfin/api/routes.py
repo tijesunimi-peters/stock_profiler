@@ -2189,6 +2189,36 @@ async def get_cusip_resolution_stats(
 _13F_DEADLINE_DAYS = 45  # a 13F-HR is due within 45 days of quarter-end (17 CFR 240.13f-1)
 
 
+def _require_period(period: str) -> str:
+    """Reject a malformed `period` at the edge, as a 400 -- never as a finding about the data.
+
+    Every endpoint here takes a 13F quarter-end as an ISO date. Two wrong answers were possible
+    without this, and both were live (found in QA, 2026-08-01):
+
+      * `institutional-register` raised straight out of `date.fromisoformat` and returned a
+        **bare 500**. A malformed client input is not a server fault, and a bare 500 is exactly
+        what the upstream-error handlers exist to avoid.
+      * The three §03 endpoints answered **200 with `status: "na"`** and a reason describing the
+        filings -- "none of the 0 ingested filing(s) for this quarter carries a business
+        location". That reports a typo as a fact about the register, which is the one thing the
+        N/A vocabulary must never do.
+
+    `institutional-activity` already had the right answer (400 with a message); this is that
+    answer, shared.
+    """
+    try:
+        dt.date.fromisoformat(period)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"period must be an ISO quarter-end date (YYYY-MM-DD); got {period!r}. "
+                "Use /institutional-periods to list the quarters ingested for this issuer."
+            ),
+        ) from e
+    return period
+
+
 def _register_period_meta(holders: list[IssuerHolder], report_period: str) -> dict:
     """Freshness metadata for one quarter's ingested register.
 
@@ -2643,7 +2673,7 @@ async def get_institutional_register(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
     cusips = await _cusips_for_issuer(cusip_repo, cik)
-    holders = holdings_repo.holders_of(cusips, period)
+    holders = holdings_repo.holders_of(cusips, _require_period(period))
     vector = share_vector(holders)
     conc = concentration(vector)
     types = _reporting_person_types(bo_repo.get_beneficial_ownership(cik, _BO_TYPE_LOOKBACK))
@@ -2765,7 +2795,7 @@ async def get_institutional_filed_since(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
     cusips = await _cusips_for_issuer(cusip_repo, cik)
-    meta = _register_period_meta(holdings_repo.holders_of(cusips, period), period)
+    meta = _register_period_meta(holdings_repo.holders_of(cusips, _require_period(period)), period)
     since = meta["filed_latest"]
 
     rows: list[dict] = []
@@ -3098,6 +3128,7 @@ async def get_institutional_holder_domicile(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
     cusips = await _cusips_for_issuer(cusip_repo, cik)
 
+    _require_period(period)
     try:
         prior_period: str | None = prior_quarter_end(period)
     except ValueError:
@@ -3161,7 +3192,7 @@ async def get_institutional_share_attribution(
         facts = await _facts_for_cik(fact_repo, client, cik)
     cusips = await _cusips_for_issuer(cusip_repo, cik)
 
-    vector = share_vector(holdings_repo.holders_of(cusips, period))
+    vector = share_vector(holdings_repo.holders_of(cusips, _require_period(period)))
     outstanding, outstanding_as_of, outstanding_tag = _shares_outstanding(facts)
     result = share_attribution(
         institutional_shares=vector.total_shares or None,
@@ -3270,7 +3301,7 @@ async def get_institutional_peer_overlap(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         cusips = await _cusips_for_issuer(cusip_repo, cik)
-        focus_holders = holdings_repo.holders_of(cusips, period)
+        focus_holders = holdings_repo.holders_of(cusips, _require_period(period))
         peer_tickers = await _peer_labels(
             client, ticker_cache, cusip_repo, holdings_repo, profile_repo, cik, period, peers
         )

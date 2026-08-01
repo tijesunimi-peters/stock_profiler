@@ -4,7 +4,7 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: qa          ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: manual      ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
   ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
@@ -759,9 +759,26 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         would have passed.
   - [x] ✅ **SETTLED — the status vocabulary.** Operator chose **chips only on N/A and
         approximate**; recorded as **D-chips** above and implemented on §01. §02–§06 follow it.
-- [ ] **P2 QA + 4b** — a NEW `4-qa.md` / `4b-manual-verification.md` for phase 2. ⚠️ The ones on
-      disk cover the phase-1 affordances change and the fidelity gate, NOT phase 2 — do not read a
-      green report there as phase 2 being verified.
+- [x] ✅ **P2 QA for §02+§03 DONE** (2026-08-01) — `4-qa.md`, **PASS pending the manual gate**.
+      **⚠️ FOUR QA pairs now sit in this folder and the filenames are the only thing distinguishing
+      them:** `*-phase1.md` = the FIDELITY gate (design only, no data); `*-p2-s01.md` = §01's
+      phase-2 plumbing, signed 2026-08-01; `4-qa.md` / `4b-manual-verification.md` = **§02+§03,
+      awaiting sign-off**. A green report in one says nothing about the others.
+      **Two defects found IN QA, both fixed, both about the same thing — a malformed `period`:**
+      `institutional-register` returned a **bare HTTP 500** (`_register_period_meta` called
+      `date.fromisoformat` unguarded — pre-existing, from the phase-2 backend), and **the three
+      §03 endpoints answered `200` with `status: "na"` and a reason describing the FILINGS** —
+      turning a typo in a query string into a coverage claim about the register, which is the one
+      thing the N/A vocabulary must never do. One shared `_require_period()` now returns **400**
+      naming the bad value and pointing at `/institutional-periods`; 677 pytest.
+      🔶 Recorded and NOT fixed: `institutional-activity` leaks a raw Python error as its 400
+      detail (pre-existing, low severity) — fold into `_require_period` when next touched.
+      New regression guard: **`tools/p2-noprior.js`**, which drives the operator's crash condition
+      (§03 with no prior-quarter register) and asserts no ghost line is drawn from nulls.
+- [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`.** 14 rows, ~6 minutes. The two
+      rows that need judgement rather than pass/fail: **step 8**, whether three non-additive
+      attribution bars actually READ as non-additive, and **steps 6–7**, whether the peer group
+      reads as a sensible comparison set with its labels still identifiable.
 
 ✅ **Phase 1 is fully committed.** `6c42d19` (§06 + §07 + P1g) on `ae0244f` (§02–§05 + the
 affordances) on `735a14f` (§01 + both rails) on `54d1522` (the scaffold). Nothing pushed.
