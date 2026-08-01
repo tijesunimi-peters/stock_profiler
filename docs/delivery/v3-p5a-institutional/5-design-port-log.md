@@ -1119,3 +1119,82 @@ caught D-3. Before plumbing the next section:
 
 e2e `institutional` `errors=0`; 609 pytest. Section 1173px. Artifacts: `4-qa.md` and a **signed**
 `4b-manual-verification.md`; phase 1's are preserved as `*-phase1.md`.
+
+---
+
+## Run 14 — §02 plumbed · 2026-08-01
+
+`IP02` deleted entirely (6,260 chars) — unlike §01, **nothing survived**: every value in it was a
+figure, not a filing rule. `ipStackedArea` went with it (1,876 chars), the only consumer being the
+manager-mix chart described below.
+
+**Sources.** Holder count and reported shares per quarter come from `/institutional-register` asked
+**once per ingested quarter** rather than re-derived from the per-manager series — the API owns
+those numbers and applies the same exclusions everywhere, and the axis is five quarters, so it is a
+bounded handful of cache-aside reads. Panels and the as-of dates come from
+`/institutional-holdings-series`; the table from the register's ranked `share_vector`; Δ from
+`/institutional-activity`.
+
+### The one block that cannot be sourced — Manager mix
+
+The prototype's own card note says **"classification assigned by ClearyFi"**, and that is exactly
+the problem: **we assign no such classification.** Index / active / hedge fund / pension is not on
+a 13F cover page and is not derivable from one. Inferring it from a manager's *name* is the same
+fabrication that cost §01's dumbbell its three-colour encoding.
+
+Rendered as an honest empty state with that reason, carrying an `∅ N/A` chip per D-chips. The
+card's other half — **Top ten managers** — is the register's own `top10_share` and is real.
+
+⚠️ **Operator decision still open:** empty-state (as built) vs remove the block vs replace it with
+something we *can* source over the same axis. Logged in `3-implementation.md`.
+
+### Two labels the prototype had that we cannot honestly keep
+
+- **"% out"** → **"% of register"**. The prototype's column is a share of *shares outstanding*,
+  which the register does not carry — the same gap that makes §01's institutional-share tile N/A.
+  `weight` is a share of the ingested filers' reported shares. Renamed, not dropped: the number is
+  real, the prototype's label for it was not.
+- **"Manager · classification"** → **"Manager"**, and each panel's classification sub-line became
+  **"N quarters reported"** — which is what a reader actually needs to weigh the shape.
+
+### Three defects, and one of them was mine from run 12
+
+1. **Integer axis.** `ipNiceAxis` treated a holder count as continuous, so 7 filers produced ticks
+   `0 / 1.8 / 3.6 / 5.4 / 7.2` printing as **"0 2 4 5 7"** — visually uneven — and 2 filers printed
+   **"0 1 1 2 2"** with duplicate labels. Counts now step by whole numbers: `0 2 4 6 8` and
+   `0 1 2 3 4`.
+2. **A pre-existing inert badge, from phase 1.** `ipBadge("02-topten")` rendered with **no
+   `IP_DERIVATIONS` entry**, so it opened nothing — a D-behaviour violation that phase 1's 71
+   driven assertions missed because nothing drove *that* badge. It now has a real derivation, which
+   §02's real data made possible to write.
+3. **A double-bound listener — mine, introduced in run 12.** `ipBindAffordances()` had no
+   bind-once guard, and splitting `renderInstitutionalPort` into paint → fetch → repaint made it
+   run **twice per load**. Every *toggle* therefore ran its handler twice and landed back where it
+   started: the derivation badge relabelled to "ƒ hide" and instantly back to "ƒ derived", opening
+   nothing. `ipBindExpanders` already had the guard; `ipBindAffordances` now does too.
+
+**Defect 3 is the lesson.** It only appears on a control whose handler is a *toggle* — the lightbox
+and the cross-view links kept working perfectly, because running their handler twice is idempotent.
+A driving pass that only checks "did something happen" would have passed it. Assert the *resulting
+state*, not that a click was accepted.
+
+### One-point series
+
+A manager reporting a single quarter gets **no sparkline** — one point drawn as a line asserts a
+trend we have not observed. The panel says "one quarter reported — no trend to draw", and a
+genuinely flat series says "unchanged across the quarters we hold". Four of AAPL's seven filers are
+in that state, so this is the common case on a thin register, not an edge case.
+
+### Verification
+
+- **Controls: 4/4** driven (expander, both `⤡ Expand` lightboxes, the derivation badge), 0 page
+  errors. §01's cross-view links re-driven after the bind fix: still 4/4.
+- **The mandated clipping sweep, all four combinations** (AAPL/JPM × webfont loaded/blocked):
+  `svgOverflow=0  domBleed=0  docScroll=false`. This is the check run 13 said to add, and §02
+  passed it before shipping rather than after a report.
+- **`zeros: []`** on both companies across §01+§02.
+- AAPL: 7 filers, 2.9B shares, 4 ingested quarters, top-ten 100.0% (correctly, and the note says
+  "which is all of them, so this reads 100% by construction"). JPM: 2 filers, 3.8M, 2 quarters.
+- **609 pytest**; e2e `institutional` `errors=0`.
+
+Banner now reads **"4 of these sections are still design placeholders"** — §03–§06.

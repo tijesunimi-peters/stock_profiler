@@ -762,7 +762,9 @@
    * when the last literal goes. Nothing here re-derives a number the API owns.
    * ======================================================================================== */
 
-  var IP_DONE = ["01"]; // sections wired to real filings data
+  var IP_DONE = ["01", "02"]; // sections wired to real filings data
+
+  var IP_SERIES_QUARTERS = 5; // the prototype's own axis length for §02's over-time charts
 
   var IP_DATA = {
     symbol: null,
@@ -772,6 +774,8 @@
     shape: null,        // /institutional-register-shape -- across quarters
     filed: null,        // /institutional-filed-since    -- what landed after the register closed
     activity: null,     // /institutional-activity       -- DERIVED per-manager quarter-over-quarter
+    series: null,       // /institutional-holdings-series -- per-manager points across quarters
+    registers: {},      // period -> that quarter's register (§02's over-time charts)
     status: "idle",     // idle | loading | ready | error
     error: null,
   };
@@ -794,11 +798,25 @@
         // The caller's period wins; otherwise the newest quarter we have actually ingested.
         IP_DATA.period = period || IP_DATA.periods[0] || null;
         var pq = IP_DATA.period ? "?period=" + encodeURIComponent(IP_DATA.period) : q;
+        /* §02 charts the register quarter by quarter. Rather than re-derive a holder count and a
+         * share total from the per-manager series — the API owns those numbers and computes them
+         * with the same exclusions everywhere — ask the register endpoint for each quarter. It is
+         * cache-aside over the operational store, and the axis is five quarters long, so this is
+         * a bounded handful of reads, not a scan. */
+        var older = IP_DATA.periods.slice(0, IP_SERIES_QUARTERS).filter(function (p) {
+          return p !== IP_DATA.period;
+        });
         return Promise.all([
           soft(P.api(base + "-register" + pq)),
           soft(P.api(base + "-register-shape" + pq)),
           soft(P.api(base + "-filed-since" + pq)),
           soft(P.api(base + "-activity" + pq)),
+          soft(P.api(base + "-holdings-series")),
+          Promise.all(older.map(function (p) {
+            return soft(P.api(base + "-register?period=" + encodeURIComponent(p))).then(function (v) {
+              return { period: p, reg: v };
+            });
+          })),
         ]);
       })
       .then(function (r) {
@@ -806,6 +824,10 @@
         IP_DATA.shape = r[1];
         IP_DATA.filed = r[2];
         IP_DATA.activity = r[3];
+        IP_DATA.series = r[4];
+        IP_DATA.registers = {};
+        if (!ipErr(r[0])) IP_DATA.registers[IP_DATA.period] = r[0];
+        r[5].forEach(function (x) { if (!ipErr(x.reg)) IP_DATA.registers[x.period] = x.reg; });
         IP_DATA.status = "ready";
       })
       .catch(function (e) {
@@ -1657,123 +1679,167 @@
    * Ground truth: proto-i2.png / proto-i2-open.png + literals-open.json.
    * ⚠️ EVERY VALUE IS A PROTOTYPE LITERAL. Chart series were RECOVERED from the captured SVG path
    * data (the same technique as §01's dumbbell), not transcribed by eye. */
-  var IP02 = {
-    quarters5: ["1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
-    quarters9: ["1Q24", "3Q24", "1Q25", "3Q25", "1Q26"],   // only every other one is labelled
-    /* Tick labels are carried as LITERALS rather than computed. The prototype's own axis maxima
-     * are fractional (~1814.2 and ~837.8), so computing the quarters from a rounded max lands one
-     * off on two of them -- 210M/629M where the prototype prints 209M/628M. */
-    managers: { values: [1509, 1560, 1612, 1633, 1681], axisMax: 1814, color: "var(--accent)",
-      ticks: ["0", "454", "907", "1361", "1814"] },
-    shares: { values: [722.8, 733.2, 742.6, 764.7, 776.3], axisMax: 838, color: "var(--gaap-color)",
-      ticks: ["0M", "209M", "419M", "628M", "838M"] },
-    netChange: "Net change this quarter: −33 holders",
-    // Stacked manager mix, nine quarters. `share` is the band's own share per quarter.
-    mix: [
-      { label: "Index / passive", pct: "40%", prior: "40%", color: "#c0703a", share: [0.424, 0.4286, 0.4195, 0.4182, 0.4071, 0.4117, 0.4097, 0.4013, 0.3981] },
-      { label: "Active fundamental", pct: "33%", prior: "33%", color: "#3d6a8a", share: [0.2961, 0.3006, 0.3104, 0.3078, 0.3162, 0.3208, 0.3188, 0.3279, 0.3338] },
-      { label: "Hedge fund", pct: "14%", prior: "14%", color: "#8b8579", share: [0.1422, 0.1396, 0.137, 0.139, 0.1429, 0.1396, 0.1403, 0.1396, 0.139] },
-      { label: "Pension & sovereign", pct: "9%", prior: "9%", color: "#a88c5f", share: [0.0994, 0.0942, 0.0948, 0.0968, 0.0968, 0.0922, 0.0935, 0.0942, 0.0942] },
-      { label: "Other", pct: "4%", prior: "4%", color: "#4e4a42", share: [0.0383, 0.037, 0.0383, 0.0383, 0.037, 0.0357, 0.0377, 0.037, 0.0351] },
-    ],
-    mixCaption: "Share of the 13F-reported register by manager type, nine quarters. Colour is categorical identity only.",
-    topTen: { value: "69.9%", note: "Share of 13F-reported holdings held by the ten largest reporting managers." },
-    /* Expander. The prototype puts TWO things behind the bar, not one: a 3x4 grid of per-manager
-     * sparkline panels, then a table of the ten largest. `spark` is each series normalised 0..1,
-     * recovered from the captured SVG path data. */
-    panels: [
-      { name: "Index manager A", cls: "index / passive", shares: "112.4M", delta: "\u2193 \u221216%", color: "#c0703a", spark: [1, 0.689, 0.653, 0.617, 0.639, 0.325, 0.289, 0.256, 0] },
-      { name: "Index manager B", cls: "index / passive", shares: "81.5M", delta: "\u2193 \u22124%", color: "#c0703a", spark: [0.761, 0.497, 1, 0.736, 0.561, 0.294, 0.8, 0.533, 0] },
-      { name: "Index manager C", cls: "index / passive", shares: "37.3M", delta: "\u2191 +9%", color: "#c0703a", spark: [0.203, 0, 0.278, 0.508, 0.694, 0.925, 0.769, 1, 0.933] },
-      { name: "Active manager D", cls: "insurance", shares: "42.9M", delta: "\u2191 +36%", color: "#a88c5f", spark: [0, 0.25, 0.317, 0.381, 0.592, 0.658, 0.722, 0.789, 1] },
-      { name: "Active manager E", cls: "hedge fund", shares: "48.7M", delta: "\u2193 \u221213%", color: "#8b8579", spark: [1, 0.917, 0.833, 0.747, 0.664, 0.253, 0.167, 0.083, 0] },
-      { name: "Pension system F", cls: "sovereign", shares: "51.7M", delta: "\u2193 \u22127%", color: "#a88c5f", spark: [1, 0.706, 0.339, 0.725, 0.358, 0.064, 0.375, 0.081, 0] },
-      { name: "Sovereign fund G", cls: "index / passive", shares: "33.6M", delta: "\u2191 +4%", color: "#c0703a", spark: [0.336, 0, 0.292, 0.522, 0.814, 0.478, 0.769, 1, 0.722] },
-      { name: "Hedge fund H", cls: "quantitative", shares: "37.2M", delta: "\u2191 +21%", color: "#8b8579", spark: [0, 0.064, 0.128, 0.469, 0.531, 0.594, 0.658, 1, 0.947] },
-      { name: "Insurance manager I", cls: "pension", shares: "42.1M", delta: "\u2191 +30%", color: "#a88c5f", spark: [0, 0.181, 0.139, 0.319, 0.547, 0.725, 0.686, 0.867, 1] },
-      { name: "Endowment J", cls: "index / passive", shares: "45.5M", delta: "\u2193 \u221211%", color: "#c0703a", spark: [1, 0.814, 0.594, 0.742, 0.589, 0.406, 0.186, 0, 0.181] },
-      { name: "Quant manager K", cls: "pension", shares: "13.0M", delta: "\u2191 +21%", color: "#a88c5f", spark: [0, 0.089, 0.178, 0.267, 0.583, 0.672, 0.761, 0.85, 1] },
-      { name: "Bank trust L", cls: "hedge fund", shares: "10.9M", delta: "\u2191 +16%", color: "#8b8579", spark: [0, 0.169, 0.375, 0.542, 0.675, 0.494, 0.7, 0.867, 1] },
-    ],
-    panelsNote: "Each panel is rebuilt from that manager\u2019s own 13F-HR filings as they were filed. Panels are scaled independently, so read the trajectory and the printed figures, not the relative heights.",
-    table: [
-      { name: "Index manager A", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-11", shares: "114.8M", pct: "9.11%", delta: "\u2193 \u22128.4%" },
-      { name: "Index manager B", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-14", shares: "82.7M", pct: "6.57%", delta: "\u2193 \u22121.7%" },
-      { name: "Index manager C", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-03", shares: "38.2M", pct: "3.03%", delta: "\u2191 +5.0%" },
-      { name: "Active manager D", meta: "insurance \u00b7 13F-HR \u00b7 13G \u00b7 filed 2026-05-06", shares: "42.2M", pct: "3.35%", delta: "\u2191 +11.7%" },
-      { name: "Active manager E", meta: "hedge fund \u00b7 13F-HR \u00b7 filed 2026-05-09", shares: "48.0M", pct: "3.81%", delta: "\u2193 \u22125.3%" },
-      { name: "Pension system F", meta: "sovereign \u00b7 13F-HR \u00b7 filed 2026-05-13", shares: "50.8M", pct: "4.03%", delta: "\u2191 +1.4%" },
-      { name: "Sovereign fund G", meta: "index / passive \u00b7 13F-HR \u00b7 13G \u00b7 filed 2026-05-02", shares: "34.4M", pct: "2.73%", delta: "\u2191 +8.1%" },
-      { name: "Hedge fund H", meta: "quantitative \u00b7 13F-HR \u00b7 filed 2026-05-05", shares: "37.7M", pct: "2.99%", delta: "\u2191 +14.8%" },
-      { name: "Insurance manager I", meta: "pension \u00b7 13F-HR \u00b7 filed 2026-05-14", shares: "42.4M", pct: "3.37%", delta: "\u2193 \u22122.2%" },
-      { name: "Endowment J", meta: "index / passive \u00b7 13F-HR \u00b7 filed 2026-05-03", shares: "44.5M", pct: "3.53%", delta: "\u2191 +4.6%" },
-    ],
-    holdersNote: "Managers are named as they appear on the cover of the 13F-HR; affiliated entities file separately and are not consolidated here.",
-  };
+  /* ---------- §02, on real filings data (phase 2) ----------
+   *
+   * The quarters the charts run over: oldest → newest, capped at the prototype's axis length.
+   * These are INGESTED quarters, not calendar quarters — a gap in coverage is a missing column,
+   * not a zero, and the captions say so. */
+  function ip02Quarters() {
+    return IP_DATA.periods.slice(0, IP_SERIES_QUARTERS).slice().reverse();
+  }
+
+  function ip02QuarterLabels() {
+    return ip02Quarters().map(ipQuarter);
+  }
+
+  /* A five-tick axis over real values. The prototype's ticks are literals because its own maxima
+   * are fractional; ours are computed, so the max is rounded UP to a step that divides into four
+   * and the five ticks land on it exactly. Never rounds a value down — the top of the axis must
+   * contain the data.
+   *
+   * `integer` matters more than it looks. A holder count of 7 on a continuous axis yields
+   * 0/1.8/3.6/5.4/7.2, which PRINTS as "0 2 4 5 7" — unevenly spaced to the eye and, at 2 holders,
+   * as "0 1 1 2 2" with duplicate labels. A count axis must step by whole numbers. */
+  function ipNiceAxis(max, fmt, integer) {
+    if (!(max > 0)) return { axisMax: 1, ticks: ["0", "", "", "", ""] };
+    var top;
+    if (integer) {
+      top = Math.max(4, Math.ceil(max / 4) * 4); // ≥4 so four integer steps always exist
+    } else {
+      var pow = Math.pow(10, Math.floor(Math.log10(max)) - 1);
+      top = Math.ceil(max / (4 * pow)) * 4 * pow;
+    }
+    var ticks = [];
+    for (var i = 0; i <= 4; i++) ticks.push(fmt(top * (i / 4)));
+    return { axisMax: top, ticks: ticks };
+  }
 
   function ipSection02() {
+    if (IP_DATA.status === "idle" || IP_DATA.status === "loading") {
+      return P.states.loading({ title: "Loading the register history" });
+    }
+    if (IP_DATA.status === "error" || ipErr(IP_DATA.register)) {
+      var e = IP_DATA.error || (IP_DATA.register || {})._err || {};
+      return P.states.error({
+        copy: "Couldn't load the register history (" + (e.status || "network") + ")." +
+          (e.detail ? " " + e.detail : ""),
+      });
+    }
     return (
       '<div class="ip-grid2">' + ip02OverTime() + ip02Mix() + "</div>" +
       ipExpander(
         "Also in this section",
-        "each manager over nine quarters · the largest reporting managers",
+        "each manager quarter by quarter · the largest reporting managers",
         ip02Holders()
       )
     );
   }
 
+  // Holder count and reported shares, one point per INGESTED quarter, from each quarter's register.
+  function ip02SeriesSpecs() {
+    var qs = ip02Quarters();
+    var mgr = [], sh = [];
+    qs.forEach(function (p) {
+      var r = IP_DATA.registers[p];
+      var c = r && r.concentration;
+      mgr.push(c && c.holder_count !== null && c.holder_count !== undefined
+        ? c.holder_count
+        : (r && r.period_meta ? r.period_meta.ingested_filer_count : null));
+      sh.push(r ? r.total_reported_shares : null);
+    });
+    var known = function (a) { return a.filter(function (v) { return v !== null && v !== undefined; }); };
+    if (!known(mgr).length || !known(sh).length) return null;
+    var mAx = ipNiceAxis(Math.max.apply(null, known(mgr)), function (v) { return ipCount(v); }, true);
+    var sAx = ipNiceAxis(Math.max.apply(null, known(sh)), ipShares);
+    return {
+      quarters: qs,
+      labels: ip02QuarterLabels(),
+      missing: qs.length - Math.min(known(mgr).length, known(sh).length),
+      managers: { values: mgr, axisMax: mAx.axisMax, color: "var(--accent)", ticks: mAx.ticks },
+      shares: { values: sh, axisMax: sAx.axisMax, color: "var(--gaap-color)", ticks: sAx.ticks },
+    };
+  }
+
   function ip02OverTime() {
-    return (
+    var s = ip02SeriesSpecs();
+    var head =
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Register over time</h3>' +
-      '<span class="ip-card-note">holder count and reported shares, five quarters</span>' +
-      ipChip("02-register") +
-      ipLink("13F filings ↗") +
-      "</div>" +
+      '<span class="ip-card-note">holder count and reported shares, ' +
+      (s ? s.quarters.length : 0) + " ingested quarters</span>" +
+      (s ? ipChip("02-register") : "") +
+      ipLink("13F filings ↗", ipEdgarFts("13F-HR")) +
+      "</div>";
+    if (!s) {
+      return head +
+        '<div class="ip-rr-empty"><span class="ex21-dash">—</span><p>Only one 13F quarter has ' +
+        "been ingested for this issuer, so there is no history to chart yet. A single point is " +
+        "not a trend, and an empty axis would imply quarters we have not read.</p></div></div>";
+    }
+    return (
+      head +
       '<div class="ip-micro ip-micro--tight">Reporting managers</div>' +
-      ipAreaChart(IP02.managers, IP02.quarters5) +
-      '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported (M)</div>' +
-      ipAreaChart(IP02.shares, IP02.quarters5) +
-      '<div class="ip-caption">' + P.esc(IP02.netChange) + "</div>" +
+      ipAreaChart(s.managers, s.labels) +
+      '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported</div>' +
+      ipAreaChart(s.shares, s.labels) +
+      '<div class="ip-caption"><span>' + P.esc(ip02NetChange(s)) + "</span></div>" +
       "</div>"
     );
   }
 
+  /* The caption states the change AND what an "exit" from this register actually means — the
+   * turnover block's `cannot` makes the same point, and it is the difference between a manager
+   * selling and a manager we simply have not ingested this quarter. */
+  function ip02NetChange(s) {
+    var v = s.managers.values;
+    var last = v[v.length - 1], prev = v[v.length - 2];
+    var head;
+    if (last === null || last === undefined || prev === null || prev === undefined) {
+      head = "Net change this quarter: N/A — a quarter on either side of the comparison has no " +
+        "ingested filers.";
+    } else {
+      var d = last - prev;
+      head = "Net change this quarter: " + (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d) +
+        " reporting managers.";
+    }
+    return (
+      head + " Each point counts the filers we have INGESTED for that quarter, so a fall can be a " +
+      "coverage gap rather than managers leaving the register." +
+      (s.missing ? " " + s.missing + " quarter(s) on this axis have no ingested filers at all." : "")
+    );
+  }
+
+  /* This card carries two different claims, and phase 2 splits them:
+   *
+   * "Manager mix" — the prototype's own card note says **"classification assigned by ClearyFi"**,
+   *   and that is the problem: we assign no such classification. Index / active / hedge fund /
+   *   pension is not on a 13F cover page and is not derivable from one. Inferring it from a
+   *   manager's NAME is exactly the fabrication phase 2 exists to remove (it is why §01's dumbbell
+   *   lost its three-colour encoding). ⚠️ CANNOT SOURCE — honest empty state, decision flagged in
+   *   3-implementation.md.
+   * "Top ten managers" — the register's own `top10_share`. Real, and it stays. */
   function ip02Mix() {
-    var legend = IP02.mix
-      .map(function (m) {
-        return (
-          '<div class="ip-legend-row">' +
-          '<div class="ip-legend-head">' +
-          '<span class="ip-legend-id"><span class="ip-swatch" style="background:' + m.color + '"></span>' +
-          '<span class="ip-legend-label">' + P.esc(m.label) + "</span></span>" +
-          '<span class="ip-legend-pct">' + P.esc(m.pct) + "</span>" +
-          "</div>" +
-          '<div class="ip-bar"><div class="ip-bar-fill" style="width:' + P.esc(m.pct) +
-          ";background:" + m.color + '"></div>' +
-          '<div class="ip-bar-tick" style="left:' + P.esc(m.prior) + '"></div></div>' +
-          '<div class="ip-bar-note">tick: prior quarter <span>' + P.esc(m.prior) + "</span></div>" +
-          "</div>"
-        );
-      })
-      .join("");
+    var conc = (IP_DATA.register || {}).concentration;
+    var pct = ipOk(conc, "top10_share") ? ipPct(conc.top10_share, 1) : IP_NA;
     return (
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Manager mix</h3>' +
-      '<span class="ip-card-note">classification assigned by ClearyFi</span>' +
-      ipBadge("02-mix") +
+      '<span class="ip-card-note">by manager classification</span>' +
+      ipStatusChip("na") +
       "</div>" +
-      ipDerivationPanel("02-mix") +
-      ipStackedArea(IP02.mix, IP02.quarters9) +
-      '<div class="ip-caption">' + P.esc(IP02.mixCaption) + "</div>" +
-      '<div class="ip-legend">' + legend + "</div>" +
+      '<div class="ip-rr-empty"><span class="ex21-dash">—</span>' +
+      "<p>We do not classify managers. Whether a filer is an index manager, an active fund, a " +
+      "hedge fund or a pension is not stated on the 13F cover page and cannot be derived from it, " +
+      "and guessing it from the manager's name would be our label presented as theirs. The " +
+      "register's composition by manager type is not something these filings report.</p></div>" +
       '<div class="ip-topten">' +
       '<div class="ip-topten-head"><span class="ip-topten-label">Top ten managers</span>' +
-      '<span class="ip-topten-val"><span>' + P.esc(IP02.topTen.value) + "</span></span></div>" +
-      '<div class="ip-topten-foot"><span class="ip-topten-note"><span>' + P.esc(IP02.topTen.note) +
-      "</span></span>" +
+      '<span class="ip-topten-val"><span>' + P.esc(pct) + "</span></span>" +
+      ipStatusChip(pct === IP_NA ? "na" : null) + "</div>" +
+      '<div class="ip-topten-foot"><span class="ip-topten-note"><span>' +
+      P.esc(ip02TopTenNote(conc, pct)) + "</span></span>" +
       ipBadge("02-topten") + "</div>" +
       ipDerivationPanel("02-topten") +
       "</div>" +
@@ -1781,14 +1847,74 @@
     );
   }
 
+  function ip02TopTenNote(conc, pct) {
+    if (pct === IP_NA) return ipWhy(conc);
+    var n = conc.holder_count;
+    return (
+      "Share of the 13F shares reported by the " + ipCount(n) + " filers we have ingested this " +
+      "quarter that is held by the ten largest of them" +
+      (n <= 10 ? " — which is all of them, so this reads 100% by construction." : ".") +
+      " Not a share of the company, and not all institutional ownership."
+    );
+  }
+
+  /* One panel per manager, each rebuilt from that manager's own reported points.
+   *
+   * `points` come back newest-first; a sparkline reads left-to-right in time, so they are
+   * reversed. Each panel is normalised to ITS OWN range — the prototype's caption says so and it
+   * is the honest reading, because these managers differ by three orders of magnitude.
+   *
+   * A manager reporting only one quarter gets NO sparkline: a single point drawn as a flat line
+   * would assert a trend we have not observed. The prototype's classification sub-line is gone —
+   * we do not classify managers (see ip02Mix) — and carries the quarter count instead, which is
+   * the thing a reader actually needs to weigh the shape. */
+  function ip02PanelData() {
+    var ser = IP_DATA.series;
+    if (ipErr(ser) || !ser.series || !ser.series.length) return null;
+    return ser.series
+      .map(function (m) {
+        var pts = (m.points || [])
+          .filter(function (p) { return p.shares !== null && p.shares !== undefined; })
+          .slice()
+          .reverse();
+        var vals = pts.map(function (p) { return p.shares; });
+        var last = vals.length ? vals[vals.length - 1] : null;
+        var prev = vals.length > 1 ? vals[vals.length - 2] : null;
+        var lo = vals.length ? Math.min.apply(null, vals) : 0;
+        var hi = vals.length ? Math.max.apply(null, vals) : 0;
+        return {
+          name: m.manager_name || "CIK " + m.manager_cik,
+          quarters: vals.length,
+          shares: last === null ? IP_NA : ipShares(last),
+          latest: last,
+          delta: prev === null || !prev
+            ? (vals.length ? "one quarter" : IP_NA)
+            : (last >= prev ? "\u2191 +" : "\u2193 \u2212") +
+              Math.abs(((last - prev) / prev) * 100).toFixed(0) + "%",
+          // normalise to the panel's own range; a flat series sits on the baseline
+          spark: hi > lo ? vals.map(function (v) { return (v - lo) / (hi - lo); }) : null,
+        };
+      })
+      .sort(function (a, b) { return (b.latest || 0) - (a.latest || 0); });
+  }
+
   function ip02Panels() {
-    return IP02.panels
+    var data = ip02PanelData();
+    if (!data) return "";
+    return data
       .map(function (m) {
         return (
-          '<div class="ip-panel" style="border-left-color:' + m.color + '">' +
-          '<div class="ip-panel-name">' + P.esc(m.name) + "</div>" +
-          '<div class="ip-panel-cls">' + P.esc(m.cls) + "</div>" +
-          ipSparkline(m.spark, m.color) +
+          '<div class="ip-panel" style="border-left-color:var(--accent)">' +
+          '<div class="ip-panel-name" title="' + P.esc(m.name) + '">' + P.esc(m.name) + "</div>" +
+          '<div class="ip-panel-cls">' + m.quarters + " quarter" + (m.quarters === 1 ? "" : "s") +
+          " reported</div>" +
+          (m.spark
+            ? ipSparkline(m.spark, "var(--accent)")
+            : '<div class="ip-panel-flat">' +
+              (m.quarters < 2
+                ? "one quarter reported \u2014 no trend to draw"
+                : "unchanged across the quarters we hold") +
+              "</div>") +
           '<div class="ip-panel-foot"><span>' + P.esc(m.shares) + "</span>" +
           "<span>" + P.esc(m.delta) + "</span></div>" +
           "</div>"
@@ -1797,9 +1923,64 @@
       .join("");
   }
 
+  /* The ten largest reporting managers, from the register's own ranked share vector. The Δ column
+   * is the DERIVED quarter-over-quarter change from /institutional-activity — the same source
+   * §01's dumbbell uses, and it carries the same caveat.
+   *
+   * The prototype's "% out" column is a share of SHARES OUTSTANDING, which the register does not
+   * carry (the same gap that makes §01's institutional-share tile N/A). It becomes "% of register"
+   * — a share of the ingested filers' reported shares, which is what `weight` actually is.
+   * Renamed rather than dropped: the number is real, the prototype's label for it was not. */
+  function ip02TableRows() {
+    var reg = IP_DATA.register;
+    if (ipErr(reg) || !reg.share_vector || !reg.share_vector.length) return null;
+    var deltas = {};
+    if (!ipErr(IP_DATA.activity) && IP_DATA.activity.activity) {
+      IP_DATA.activity.activity.forEach(function (a) {
+        if (a.shares_before && a.shares_after !== null && a.shares_after !== undefined) {
+          deltas[a.manager_cik] = ((a.shares_after - a.shares_before) / a.shares_before) * 100;
+        }
+      });
+    }
+    var asOf = {};
+    if (!ipErr(IP_DATA.series) && IP_DATA.series.series) {
+      IP_DATA.series.series.forEach(function (m) {
+        var pt = (m.points || [])[0];
+        if (pt) asOf[m.manager_cik] = pt.period;
+      });
+    }
+    return reg.share_vector.slice(0, 10).map(function (h) {
+      var d = deltas[h.manager_cik];
+      return {
+        name: h.manager_name || "CIK " + h.manager_cik,
+        meta: "13F-HR" + (asOf[h.manager_cik] ? " \u00b7 as of " + asOf[h.manager_cik] : ""),
+        shares: ipShares(h.shares),
+        pct: h.weight === null || h.weight === undefined ? IP_NA : ipPct(h.weight, 2),
+        delta: d === undefined
+          ? IP_NA
+          : (d >= 0 ? "\u2191 +" : "\u2193 \u2212") + Math.abs(d).toFixed(1) + "%",
+      };
+    });
+  }
+
   function ip02Holders() {
     var panels = ip02Panels();
-    var rows = IP02.table
+    var data = ip02TableRows();
+    var head =
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Largest reporting managers</h3>' +
+      '<span class="ip-card-note">13F-HR, position as of ' + P.esc(ipQuarter(IP_DATA.period)) +
+      " \u00b7 \u0394 is derived quarter over quarter</span>" +
+      ipLink("Read the 13F table \u2197", ipEdgarFts("13F-HR")) +
+      "</div>";
+    if (!data) {
+      return head +
+        '<div class="ip-rr-empty"><span class="ex21-dash">\u2014</span><p>No filer reports a ' +
+        "position in this issuer for " + P.esc(ipQuarter(IP_DATA.period)) + ". That is a gap in " +
+        "what we have ingested, not a confirmed absence of institutional holders.</p></div></div>";
+    }
+    var rows = data
       .map(function (r) {
         return (
           '<div class="ip-mtab-row">' +
@@ -1813,23 +1994,40 @@
       })
       .join("");
     return (
-      '<div class="ip-card">' +
-      '<div class="ip-card-head ip-card-head--tight">' +
-      '<h3 class="ip-card-title">Largest reporting managers</h3>' +
-      '<span class="ip-card-note">13F-HR, position as of 1Q26 · Δ is quarter over quarter in shares</span>' +
-      ipLink("Read the 13F table ↗") +
-      "</div>" +
-      '<div class="ip-subbar">' +
-      '<span class="ip-micro">Reported shares, nine quarters · one panel per manager</span>' +
-      ipChip("02-panels") +
-      "</div>" +
-      '<div class="ip-panels">' + panels + "</div>" +
-      '<div class="ip-caption"><span>' + P.esc(IP02.panelsNote) + "</span></div>" +
-      '<div class="ip-mtab-head"><span>Manager · classification</span>' +
-      '<span class="ip-r">Shares</span><span class="ip-r">% out</span><span class="ip-r">Δ qoq</span></div>' +
+      head +
+      (panels
+        ? '<div class="ip-subbar">' +
+          '<span class="ip-micro">Reported shares by quarter \u00b7 one panel per manager</span>' +
+          ipChip("02-panels") +
+          "</div>" +
+          '<div class="ip-panels">' + panels + "</div>" +
+          '<div class="ip-caption"><span>' + P.esc(ip02PanelsNote()) + "</span></div>"
+        : "") +
+      '<div class="ip-mtab-head"><span>Manager</span>' +
+      '<span class="ip-r">Shares</span><span class="ip-r">% of register</span>' +
+      '<span class="ip-r">\u0394 qoq</span></div>' +
       rows +
-      '<div class="ip-caption"><span>' + P.esc(IP02.holdersNote) + "</span></div>" +
+      '<div class="ip-caption"><span>' + P.esc(ip02HoldersNote(data.length)) + "</span></div>" +
       "</div>"
+    );
+  }
+
+  function ip02PanelsNote() {
+    return (
+      "Each panel is rebuilt from that manager\u2019s own 13F-HR filings as they were filed, over " +
+      "the quarters we have ingested. Panels are scaled independently, so read the trajectory and " +
+      "the printed figures, not the relative heights. A manager reporting a single quarter has no " +
+      "line \u2014 one point is not a trend."
+    );
+  }
+
+  function ip02HoldersNote(n) {
+    return (
+      "The " + n + " largest of the filers we have ingested this quarter, named as they appear on " +
+      "the cover of the 13F-HR; affiliated entities file separately and are not consolidated. " +
+      "\u201c% of register\u201d is a share of those filers\u2019 reported shares \u2014 NOT a share of the " +
+      "company, which would need shares outstanding the register does not carry. \u0394 is DERIVED by " +
+      "diffing two quarter-end snapshots, not a reported trade."
     );
   }
 
@@ -1878,43 +2076,6 @@
 
   // Nine-quarter 100% stacked area. Bands are separated by a hairline in the CARD's colour rather
   // than a stroke of their own, which is what keeps the boundaries readable at 0.52 opacity.
-  function ipStackedArea(bands, labels) {
-    var X0 = 42, X1 = 296, YB = 164, YT = 10, W = 306, H = 190;
-    var n = bands[0].share.length;
-    var step = (X1 - X0) / (n - 1);
-    var span = YB - YT;
-    var ticks = [0, 25, 50, 75, 100].map(function (p) {
-      var ty = YB - (p / 100) * span;
-      return '<line x1="' + X0 + '" y1="' + ty + '" x2="' + X1 + '" y2="' + ty + '" stroke="var(--rule)" stroke-width="1"></line>' +
-        '<text x="35" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' + p + "%</text>";
-    });
-    var floor = [];
-    for (var i = 0; i < n; i++) floor.push(YB);
-    var paths = bands.map(function (b) {
-      var top = b.share.map(function (s, i) { return floor[i] - s * span; });
-      var d = top.map(function (yv, i) {
-        return (i ? "L" : "M") + (X0 + i * step).toFixed(1) + " " + yv.toFixed(1);
-      }).join(" ");
-      for (var j = n - 1; j >= 0; j--) d += " L" + (X0 + j * step).toFixed(1) + " " + floor[j].toFixed(1);
-      d += " Z";
-      floor = top;
-      return '<path d="' + d + '" fill="' + b.color +
-        '" opacity="0.52" stroke="var(--bg-card)" stroke-width="0.8"></path>';
-    });
-    // Nine quarters, five labels -- the prototype labels every other one.
-    var xl = labels.map(function (l, i) {
-      return '<text x="' + (X0 + i * 2 * step).toFixed(1) + '" y="182" text-anchor="middle" class="ip-ax2">' +
-        P.esc(l) + "</text>";
-    });
-    return (
-      '<div class="ip-chart"><svg width="100%" viewBox="0 0 ' + W + " " + H + '" ' +
-      'preserveAspectRatio="xMidYMid meet" style="display:block;max-width:100%" role="img" ' +
-      'aria-label="Share of the register by manager type, nine quarters">' +
-      ticks.join("") + paths.join("") + xl.join("") + "</svg></div>"
-    );
-  }
-
-  // Sparkline: the series is normalised to its own range, so it shows shape, never level.
   function ipSparkline(series, color) {
     var X0 = 4, X1 = 209, YB = 46, YT = 10, W = 213, H = 52;
     var step = (X1 - X0) / (series.length - 1);
@@ -3234,12 +3395,20 @@
         "Numerator and denominator come from different filings with different as-of dates. " +
         "The 13F register lags the cover page by up to 45 days.",
     },
-    "02-mix": {
-      formula: "Assigned by ClearyFi, not a filed field",
+    /* 02-mix is gone with the manager-classification card — we assign no classification, so there
+     * is no derivation to show. `02-topten` had a badge from phase 1 but NO entry here, so it
+     * rendered and opened nothing; caught by driving §02 (see 5-design-port-log.md run 14). */
+    "02-topten": {
+      formula: "Shares held by the ten largest ingested filers ÷ shares reported by all of them",
       inputs: [
-        ["Basis", "the manager's own registration and fund filings — ADV brochure language, N-PORT fund objectives, 13F cover"],
+        ["Numerator", "the ten largest positions in this quarter's ranked share vector"],
+        ["Denominator", "total 13F common shares reported by every filer we have ingested"],
       ],
-      note: "Form 13F contains no strategy field. This label is our judgment and should be treated as such.",
+      note:
+        "Both sides count only the filers we have INGESTED, so this describes our coverage of the " +
+        "register, not the register itself. With ten or fewer filers ingested it reads 100% by " +
+        "construction. It is not a share of the company — that would need shares outstanding, " +
+        "which the 13F register does not carry.",
     },
     "05-turnover": {
       formula: "Managers entering or exiting ÷ managers in the prior quarter",
@@ -3345,19 +3514,25 @@
   var IP_LIGHTBOX = {
     "02-register": {
       title: "Register over time",
-      note: "reporting managers, then shares reported · five quarters",
+      note: function () {
+        var s = ip02SeriesSpecs();
+        return "reporting managers, then shares reported · " +
+          (s ? s.quarters.length + " ingested quarters" : "no history ingested");
+      },
       render: function (w) {
+        var s = ip02SeriesSpecs();
+        if (!s) return "";
         return (
           '<div class="ip-micro ip-micro--tight">Reporting managers</div>' +
-          ipAreaChart(IP02.managers, IP02.quarters5, w, 260) +
-          '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported (M)</div>' +
-          ipAreaChart(IP02.shares, IP02.quarters5, w, 260)
+          ipAreaChart(s.managers, s.labels, w, 260) +
+          '<div class="ip-micro ip-micro--tight ip-micro--gap">Shares reported</div>' +
+          ipAreaChart(s.shares, s.labels, w, 260)
         );
       },
     },
     "02-panels": {
       title: "Largest managers over time",
-      note: "reported shares, nine quarters, one panel per manager",
+      note: "reported shares by quarter, one panel per manager",
       render: function () { return '<div class="ip-panels">' + ip02Panels() + "</div>"; },
     },
     "03-flows": {
@@ -3507,9 +3682,17 @@
   }
 
   // One delegated listener for all three affordances, bound once per render.
+  /* Bind-once, like ipBindExpanders above — the listener is delegated on #view, which outlives
+   * every re-render, so re-binding it just stacks duplicate handlers. Phase 2 made that visible:
+   * ipPaint() runs twice per load (once before the fetch, once after), so a TOGGLE ran its handler
+   * twice and landed back where it started — the derivation badge relabelled itself to "ƒ hide"
+   * and immediately back to "ƒ derived", opening nothing. */
+  var ipAffordancesBound = false;
+
   function ipBindAffordances() {
     var view = $("view");
-    if (!view) return;
+    if (!view || ipAffordancesBound) return;
+    ipAffordancesBound = true;
     view.addEventListener("click", function (e) {
       var open = e.target.closest("[data-ip-open]");
       if (open) { ipOpenLightbox(open.getAttribute("data-ip-open")); return; }

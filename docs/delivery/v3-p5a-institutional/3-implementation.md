@@ -91,6 +91,7 @@ done until each is either plumbed or honestly removed. **None of them may keep a
 |---|---|
 | §01 "Confirmed in last 30 days · 32%" | **We do not track filing confirmations.** No source. |
 | §01 the adjusted register `767M + 9.7M = 776M` | Summing a 13D/G *total* + a Form 4 *transaction* + a 13F *holding* invents a share count nobody filed. Attempt 3 omitted it deliberately and the operator's Batch B passed on that reasoning. |
+| **§02 manager mix (index / active / hedge fund / pension)** | ⚠️ **CANNOT SOURCE — DECISION OPEN.** The prototype's own note says "classification assigned by ClearyFi"; we assign none. Not on a 13F cover page, not derivable from one, and inferring it from a manager's name is fabrication. **Built as an honest empty state** (2026-08-01) — the alternatives are removing the block or replacing it with something sourceable over the same axis. Operator's call. |
 | §03 domicile (10 rows) | Needs `filing_manager_location`, which `ingest/location_backfill.py` populates — a **data job**, not an endpoint. Unrun volumes have it empty. |
 | §03 peer matrix / set intersections | Needs a cross-issuer manager overlap. **No endpoint exists.** |
 | §03 "Where every share sits" (insider / 13D / residual) | Needs shares-outstanding attribution across three filing families. Partly sourceable; the residual is a remainder, not a measurement. |

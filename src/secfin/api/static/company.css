@@ -1895,6 +1895,18 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
   text-overflow: ellipsis;
 }
 .ip-panel-cls { margin-bottom: 4px; font-family: var(--ip-mono-fb); font-size: 9.5px; color: var(--mono-muted); }
+/* Stands in for the sparkline when a manager's reported shares never move across the quarters we
+   hold. Occupies the line's height so the panel grid stays even. */
+.ip-panel-flat {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  font-family: var(--ip-mono-fb);
+  font-size: 9px;
+  line-height: 1.4;
+  color: var(--mono-muted);
+  text-wrap: pretty;
+}
 /* Both figures in --ink-soft regardless of direction: each panel is scaled to its OWN range, so a
    colour here would score a shape the caption explicitly says not to read as one. */
 .ip-panel-foot {

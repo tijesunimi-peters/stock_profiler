@@ -564,7 +564,22 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         three defects literals hid — the dumbbell's baked-in `domainMax`, the freshness strip
         wrapping under real `reason` sentences, and two captions that had become false. Details:
         `5-design-port-log.md` run 12.
-  - [ ] **§02–§06** — same pattern, section by section. §07 is reference copy and stays.
+  - [x] **§02 Register over time & holders** (2026-08-01). `IP02` deleted **entirely** (6,260
+        chars — unlike §01 nothing survived, every value was a figure not a filing rule), plus the
+        now-unused `ipStackedArea`. Register-per-quarter from `/institutional-register` asked once
+        per ingested quarter (the API owns those numbers); panels from `-holdings-series`; table
+        from the ranked `share_vector`; Δ from `-activity`. **⚠️ Manager mix cannot be sourced** —
+        the prototype's own note says "classification assigned by ClearyFi" and we assign none;
+        built as an honest empty state, **decision open**. Two labels renamed to what we can
+        actually compute ("% out" → "% of register"; the classification sub-line → quarter count).
+        Three defects: a continuous axis printing counts as "0 2 4 5 7"; a **pre-existing inert
+        badge from phase 1** (`02-topten` had no derivation entry); and **a double-bound listener I
+        introduced in run 12** — `ipBindAffordances` had no bind-once guard and ipPaint runs twice,
+        so every TOGGLE ran twice and landed where it started. Run 14 in the log.
+  - [ ] **§03–§06** — same pattern, section by section. §07 is reference copy and stays.
+        ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
+        shipping each one** — both caught real defects in §02 that a "did something happen" check
+        would have passed.
   - [x] ✅ **SETTLED — the status vocabulary.** Operator chose **chips only on N/A and
         approximate**; recorded as **D-chips** above and implemented on §01. §02–§06 follow it.
 - [ ] **P2 QA + 4b** — a NEW `4-qa.md` / `4b-manual-verification.md` for phase 2. ⚠️ The ones on
