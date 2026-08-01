@@ -1278,3 +1278,91 @@ not classify managers", which would have contradicted the new column:
 `sharedDispositivePower` — we are already inside that XML and do not extract them. Voting vs
 dispositive power separates **influence from custody**, which is arguably the more interesting split
 than entity type. Same 5% coverage limit. Not in scope here; worth its own task.
+
+---
+
+## Run 16 — the manager mix gets real data: SIC on the manager's own registration · 2026-08-01
+
+Operator asked whether there is a *semantic* way to bucket managers. Three readings, and they
+land in very different places:
+
+1. **NLP over ADV/N-PORT/prospectus text** → **Track 2. Flagged and not built.**
+2. **The filer's own SIC code** → a real taxonomy, filed, **whole-register coverage**. Built.
+3. **Behavioural measures** (portfolio breadth, turnover, options usage, 13D-vs-13G) → real, but
+   they are *measurements*, not identity. Logged, not built.
+
+### Why SIC is the answer the mix card needed
+
+Every EDGAR filer carries `sic` / `sicDescription` in the top level of its own
+`/submissions/CIK##########.json` — the same two fields `ingest/sic_backfill.py` already reads for
+issuers, and `company_profiles` is keyed on a **bare CIK**, so a manager sits in the same table.
+
+Crucially it reaches **the whole register**, where Schedule 13D/G's cover-page type (run 15) reaches
+only the filers above 5%. That coverage difference is exactly why one is a *column* and this one
+can be a *composition chart*.
+
+**The gap that had to close:** `run_sic_backfill` sourced CIKs from `RawFactRepository.all_ciks()`
+— companies with XBRL facts. **Managers file no XBRL**, so they were unreachable. Added
+`all_manager_ciks()` to the holdings repository and a `--only issuers|managers` flag; the default
+runs both and de-duplicates, because a CIK can be both (Berkshire is the obvious one).
+
+### `normalize/manager_category.py` — the new classifier, and its one load-bearing rule
+
+SIC → institution type (adviser / bank / insurance / fund / broker-dealer / trust / other),
+following `geography.py`'s pattern: pure, documented, interpreted at the serve edge so `sec/` stays
+free of business logic.
+
+**`None` is not `"other"`.** No SIC on file returns `None` and the holder is counted as
+*unclassified*; `"other"` means we HAVE a code and it is not a named institution type. Folding the
+first into the second would turn a coverage gap into a finding about the register. `composition()`
+therefore reports `coverage` — *a mix over 97% of the register and a mix over 30% are different
+claims* — and there is a test for each half of that distinction.
+
+### What it does NOT say, written into the code and the caption
+
+SIC is a **registration** category, not a strategy: **an index fund, a stock-picker and a quant shop
+all register as 6282**. It is self-assigned, rarely revisited, coarse, and describes the filing
+entity rather than the fund complex behind it. That sentence is in `manager_category.py`'s
+docstring, in `_COMPOSITION_CANNOT`, in the `02-mix` derivation panel, and in the chart caption. It
+is the difference between this card being honest and being the fabrication the empty state existed
+to prevent.
+
+The fixture makes the point by itself: **Berkshire is 6331, insurance** — it holds those shares as
+an insurer, not as a fund manager, which is precisely the thing registration type reveals and a
+strategy label would have hidden.
+
+### Two defects, both in the restored builder
+
+`ipStackedArea` came back from `a9fe149^` and brought a latent bug with it:
+
+1. **Labels placed at `i * 2 * step`.** The prototype passed a *pre-thinned* list (5 labels for 9
+   quarters) and the builder doubled the step to compensate. With 4 real quarters and 4 labels,
+   labels 2 and 3 landed at **x=381 and x=550 in a 306-unit viewBox** and were silently clipped.
+   The thinning rule cannot live at the call site when the quarter count is whatever the data has —
+   the builder now takes one label per point and decides.
+2. **The last label still overran by 1.4 units** once placed correctly. Fixed by **edge anchoring**
+   — `RECONCILIATION.md` §6 rule 1, the rule this port had not yet applied: first label anchors
+   `start`, last anchors `end`, middle stay centred. Not width arithmetic.
+
+**The sweep found both**, before the operator did. That is the check run 13 added and run 14 said to
+run per section — the first time it has caught something rather than confirming a clean bill.
+
+### Verification
+
+- **620 pytest** (+10: the classifier and composition, including `None` vs `"other"`, the coverage
+  arithmetic, the na-with-a-reason path, and an empty register).
+- **ruff clean** on every new and changed file (`All checks passed`).
+- Live: composition `status: ok`, **coverage 96.85%** — advisers 61.73% (3), bank 23.10%,
+  insurance 10.11%, fund 5.05% — with **1 holder unclassified and excluded, not bucketed**.
+- Clipping sweep all four combinations `svgOverflow=0 domBleed=0`; **controls 5/5** (the `02-mix`
+  derivation badge is live again now the card has a real derivation to show).
+- e2e `institutional` `errors=0`; `zeros: []`.
+
+### Logged, not built
+
+- **Behavioural buckets**: `investment_discretion` (stored, just not selected by `holders_of()` —
+  one line), options usage via `putCall`, portfolio breadth, and 13D-vs-13G declared intent. All
+  filed facts. They describe *observed behaviour*, so they must be labelled as measurements, never
+  as identity.
+- **13G voting vs dispositive power** — still unextracted, still the sharper split (influence vs
+  custody), still bounded by the same 5% coverage limit.

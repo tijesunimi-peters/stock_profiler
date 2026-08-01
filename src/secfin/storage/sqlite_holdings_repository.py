@@ -301,6 +301,12 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             for row in cur.fetchall()
         ]
 
+    def all_manager_ciks(self) -> list[int]:
+        cur = self._conn.execute(
+            "SELECT DISTINCT manager_cik FROM holdings_snapshots ORDER BY manager_cik"
+        )
+        return [row[0] for row in cur.fetchall()]
+
     def manager_cusip_sets(
         self, manager_ciks: list[int], report_period: str
     ) -> dict[int, set[str]]:

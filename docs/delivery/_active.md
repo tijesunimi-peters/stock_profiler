@@ -587,6 +587,18 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         **Coverage is the limit and it decides the design:** only 5%+ holders file 13D/G, so this
         is fine for a column and NOT enough for the manager-mix composition chart, which keeps its
         empty state. Run 15 in the log.
+  - [x] **§02's manager mix now has REAL DATA** (2026-08-01, operator-requested). The one
+        classification that reaches the **whole register**: each filer's own **SIC code** from its
+        own EDGAR registration (13D/G's cover type reaches only filers above 5%). New
+        `normalize/manager_category.py` (SIC → institution type, `geography.py` pattern) +
+        `composition()` in `register.py` + `all_manager_ciks()` + `sic_backfill --only
+        issuers|managers` (managers file no XBRL so they were unreachable from `all_ciks()`).
+        ⚠️ **It is a REGISTRATION category, NOT a strategy** — index fund, stock-picker and quant
+        shop all register as 6282 — and that sentence is in the docstring, the `cannot`, the
+        derivation panel and the caption. **`None` is not `"other"`**: no SIC = unclassified and
+        excluded, and `coverage` says what share of the register the mix describes. Two clipping
+        defects in the restored `ipStackedArea`, **both caught by the sweep before the operator**.
+        620 pytest, ruff clean, controls 5/5. Run 16 in the log.
   - [ ] **§03–§06** — same pattern, section by section. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check

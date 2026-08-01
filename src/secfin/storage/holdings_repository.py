@@ -107,6 +107,17 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def all_manager_ciks(self) -> list[int]:
+        """Every manager CIK with a cached 13F snapshot, ascending.
+
+        For `ingest/sic_backfill.py`: managers file no XBRL, so they never appear in
+        `RawFactRepository.all_ciks()`, which is where that backfill sources issuers. Without
+        this, a manager's own SEC registration (and the SIC code on it) is unreachable.
+
+        A batch/ingest read, not a request-path one.
+        """
+
+    @abstractmethod
     def manager_cusip_sets(
         self, manager_ciks: list[int], report_period: str
     ) -> dict[int, set[str]]:

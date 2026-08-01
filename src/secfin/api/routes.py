@@ -50,8 +50,10 @@ from secfin.normalize.metrics import (
     metric_periods,
 )
 from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
+from secfin.normalize.manager_category import CATEGORY_LABELS, classify_manager_sic
 from secfin.normalize.register import (
     ShareVector,
+    composition,
     concentration,
     share_vector,
     stable_capital_share,
@@ -2561,7 +2563,10 @@ def _reporting_person_types(owners: Iterable[BeneficialOwnership]) -> dict[str, 
 
 
 def _vector_payload(
-    vector: ShareVector, limit: int, types: dict[str, str] | None = None
+    vector: ShareVector,
+    limit: int,
+    types: dict[str, str] | None = None,
+    sic_by_cik: dict[int, str | None] | None = None,
 ) -> list[dict]:
     """The ranked share vector, trimmed for transport.
 
@@ -2575,9 +2580,12 @@ def _vector_payload(
     only happens above 5%.
     """
     types = types or {}
+    sic_by_cik = sic_by_cik or {}
     rows = []
     for r in vector.rows[:limit]:
         code = types.get(normalize_issuer_name(r.manager_name or ""))
+        sic = sic_by_cik.get(r.manager_cik)
+        category = classify_manager_sic(sic)
         rows.append(
             {
                 "manager_cik": r.manager_cik,
@@ -2587,6 +2595,9 @@ def _vector_payload(
                 "cumulative": r.cumulative,
                 "reporting_person_type": code,
                 "reporting_person_type_label": TYPE_OF_REPORTING_PERSON.get(code) if code else None,
+                "sic": sic,
+                "registrant_category": category,
+                "registrant_category_label": CATEGORY_LABELS.get(category) if category else None,
             }
         )
     return rows
@@ -2605,6 +2616,7 @@ async def get_institutional_register(
     cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
     holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
     bo_repo: BeneficialOwnershipRepository = Depends(get_beneficial_ownership_repo),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
 ) -> dict:
     """How concentrated one quarter's ingested 13F register is -- **derived, not reported**.
 
@@ -2632,13 +2644,22 @@ async def get_institutional_register(
     vector = share_vector(holders)
     conc = concentration(vector)
     types = _reporting_person_types(bo_repo.get_beneficial_ownership(cik, _BO_TYPE_LOOKBACK))
+    # Joined on the manager's OWN CIK -- exact, so none of the name-matching caveats that apply
+    # to the 13D/G reporting-person type apply here. A manager with no profile row simply has no
+    # SIC, and `composition` counts it as unclassified rather than folding it into "other".
+    sic_by_cik = {
+        r.manager_cik: (p.sic if (p := profile_repo.get(r.manager_cik)) else None)
+        for r in vector.rows
+    }
+    comp = composition(vector, sic_by_cik)
     return {
         "cik": cik,
         "cusips": cusips,
         "period": period,
         "period_meta": _register_period_meta(holders, period),
         "concentration": asdict(conc),
-        "share_vector": _vector_payload(vector, top, types),
+        "composition": asdict(comp),
+        "share_vector": _vector_payload(vector, top, types, sic_by_cik),
         "share_vector_total_rows": vector.holder_count,
         "excluded_holder_count": vector.excluded_count,
         "total_reported_shares": vector.total_shares,

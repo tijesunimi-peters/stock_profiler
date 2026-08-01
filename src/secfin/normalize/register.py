@@ -27,6 +27,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from secfin.normalize.manager_category import (
+    CATEGORY_LABELS,
+    CATEGORY_ORDER,
+    classify_manager_sic,
+)
 from secfin.normalize.schema import IssuerHolder
 
 # Tenure weights for stable_capital_share, as the prototype defines them (:2276). Exposed on
@@ -161,6 +166,124 @@ _CONCENTRATION_CANNOT = (
     "file separately count separately."
 )
 _CONCENTRATION_POPULATION = "13F shares reported by the ingested filers for this quarter"
+
+
+@dataclass
+class CategoryShare:
+    """One registration-category slice of the register."""
+
+    key: str
+    label: str
+    holder_count: int
+    shares: float
+    weight: float  # of total ingested shares that carry a category
+
+
+@dataclass
+class RegisterComposition:
+    status: str  # "ok" | "na"
+    reason: str | None
+    formula: str
+    cannot: str
+    population: str
+    categories: list[CategoryShare]
+    classified_holder_count: int = 0
+    unclassified_holder_count: int = 0
+    unclassified_shares: float = 0.0
+    # Share of the register's shares whose holder we could classify at all. The honest headline
+    # for this block: a mix over 30% of the register is a statement about 30% of the register.
+    coverage: float | None = None
+
+
+_COMPOSITION_CANNOT = (
+    "SIC is a REGISTRATION category, not a strategy: an index fund, a stock-picker and a quant "
+    "shop all register as investment advice (6282). It is self-assigned, rarely revisited, and "
+    "describes the filing entity rather than the fund complex behind it. This is what KIND OF "
+    "INSTITUTION holds the shares, not how it invests."
+)
+_COMPOSITION_POPULATION = (
+    "ingested filers for this quarter whose own SEC registration carries an SIC code"
+)
+
+
+def composition(vector: ShareVector, sic_by_cik: dict[int, str | None]) -> RegisterComposition:
+    """Group the register by each filer's own registered SIC category.
+
+    Computed over the WHOLE vector (like `concentration`), so a chart drawn from it can never
+    disagree with the tiles beside it.
+
+    Holders with no SIC on file are counted separately and are NEVER folded into "other" --
+    "we have no code" and "the code is not a named institution type" are different statements,
+    and merging them would turn a coverage gap into a finding. `coverage` says what share of
+    the register the mix actually describes.
+
+    Pure: no DB, no network, no clock.
+    """
+    formula = (
+        "each filer's SIC code from its own SEC registration, grouped into institution types; "
+        "weight = category shares / shares held by filers that carry a code"
+    )
+    totals: dict[str, list[float]] = {}
+    classified_shares = 0.0
+    classified_holders = 0
+    unclassified_shares = 0.0
+    unclassified_holders = 0
+
+    for row in vector.rows:
+        category = classify_manager_sic(sic_by_cik.get(row.manager_cik))
+        if category is None:
+            unclassified_holders += 1
+            unclassified_shares += row.shares
+            continue
+        classified_holders += 1
+        classified_shares += row.shares
+        bucket = totals.setdefault(category, [0.0, 0.0])
+        bucket[0] += row.shares
+        bucket[1] += 1
+
+    total_shares = classified_shares + unclassified_shares
+    coverage = (classified_shares / total_shares) if total_shares > 0 else None
+
+    if not classified_holders:
+        return RegisterComposition(
+            status="na",
+            reason=(
+                f"none of the {vector.holder_count} ingested filer(s) for this quarter has an "
+                "SIC code on file, so there is no registration category to group by -- read as "
+                "missing coverage, not as a register without institutions in it"
+            ),
+            formula=formula,
+            cannot=_COMPOSITION_CANNOT,
+            population=_COMPOSITION_POPULATION,
+            categories=[],
+            unclassified_holder_count=unclassified_holders,
+            unclassified_shares=unclassified_shares,
+            coverage=coverage,
+        )
+
+    categories = [
+        CategoryShare(
+            key=key,
+            label=CATEGORY_LABELS[key],
+            holder_count=int(totals[key][1]),
+            shares=totals[key][0],
+            weight=totals[key][0] / classified_shares if classified_shares else 0.0,
+        )
+        for key in CATEGORY_ORDER
+        if key in totals
+    ]
+    return RegisterComposition(
+        status="ok",
+        reason=None,
+        formula=formula,
+        cannot=_COMPOSITION_CANNOT,
+        population=_COMPOSITION_POPULATION,
+        categories=categories,
+        classified_holder_count=classified_holders,
+        unclassified_holder_count=unclassified_holders,
+        unclassified_shares=unclassified_shares,
+        coverage=coverage,
+    )
 
 
 def concentration(vector: ShareVector) -> RegisterConcentration:

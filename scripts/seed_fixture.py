@@ -427,13 +427,37 @@ _SIC = [
     (104169, "5331", "Retail-Variety Stores", "Walmart Inc."),
 ]
 
+# 13F MANAGERS' own registrations. `company_profiles` is keyed on a bare CIK, so a manager sits
+# in the same table as an issuer -- and a manager's SIC is the ONLY classification that reaches
+# the whole register (13D/G's cover-page type reaches only filers above 5%). Real codes for the
+# real firms; the synthetic co-holding managers get a spread so the composition has more than
+# one bucket, and CIK 203 is deliberately LEFT OUT so the unclassified path is exercised.
+#
+# Berkshire is 6331 (fire/marine/casualty insurance), not an adviser -- which is exactly the
+# point of showing registration type: it holds shares as an insurer, not as a fund manager.
+_MANAGER_SIC = [
+    (1067983, "6331", "Fire, Marine & Casualty Insurance", "BERKSHIRE HATHAWAY INC"),
+    (102909, "6282", "Investment Advice", "VANGUARD GROUP INC"),
+    (93751, "6022", "State Commercial Banks", "STATE STREET CORP"),
+    (200, "6282", "Investment Advice", "FAIRWIND CAPITAL MGMT"),
+    (201, "6282", "Investment Advice", "GREYSTONE PARTNERS LP"),
+    (202, "6726", "Investment Offices NEC", "MERIDIAN ASSET MGMT"),
+    (71, "6282", "Investment Advice", "NORTHLESS CAPITAL PARTNERS"),
+    (72, "6211", "Security Brokers & Dealers", "EVERPEAK ADVISORS LLC"),
+]
+
 
 def _seed_sic(db_path: str) -> None:
     repo = SQLiteCompanyProfileRepository(db_path)
     try:
         for cik, sic, desc, name in _SIC:
             repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
-        print(f"seeded SIC profiles: {len(_SIC)} companies")
+        for cik, sic, desc, name in _MANAGER_SIC:
+            repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
+        print(
+            f"seeded SIC profiles: {len(_SIC)} companies, {len(_MANAGER_SIC)} 13F managers "
+            "(1 manager left unclassified on purpose)"
+        )
     finally:
         repo.close()
 

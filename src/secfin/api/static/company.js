@@ -1810,33 +1810,87 @@
     );
   }
 
-  /* This card carries two different claims, and phase 2 splits them:
+  /* Registration-category colours. Categorical identity only — never a favourability scale
+   * (HANDOFF §3 rule 1), and the same five hues the prototype used for its own bands. */
+  var IP_CAT_COLORS = {
+    adviser: "#c0703a",
+    bank: "#3d6a8a",
+    insurance: "#8b8579",
+    fund: "#a88c5f",
+    broker_dealer: "#6b6459",
+    trust: "#8a5a2f",
+    other: "#4e4a42",
+  };
+
+  /* Per-quarter composition, oldest → newest, for the stacked area. A quarter whose register we
+   * hold but cannot classify at all contributes NOTHING rather than a zero band — and if any
+   * quarter is like that the chart is not drawn, because a gap in a 100%-stacked area reads as
+   * a category collapsing to zero, which would be a finding rather than a coverage hole. */
+  function ip02MixBands() {
+    var qs = ip02Quarters();
+    var comps = qs.map(function (p) {
+      var r = IP_DATA.registers[p];
+      return r && r.composition && r.composition.status === "ok" ? r.composition : null;
+    });
+    if (qs.length < 2 || comps.some(function (c) { return !c; })) return null;
+
+    var keys = [];
+    comps.forEach(function (c) {
+      c.categories.forEach(function (x) { if (keys.indexOf(x.key) === -1) keys.push(x.key); });
+    });
+    // Stable order: the current quarter's largest first, so the legend reads top-down.
+    var latest = comps[comps.length - 1];
+    keys.sort(function (a, b) {
+      var wa = (latest.categories.filter(function (x) { return x.key === a; })[0] || {}).weight || 0;
+      var wb = (latest.categories.filter(function (x) { return x.key === b; })[0] || {}).weight || 0;
+      return wb - wa;
+    });
+    return keys.map(function (k) {
+      var of = function (c) {
+        var hit = c.categories.filter(function (x) { return x.key === k; })[0];
+        return hit ? hit.weight : 0;
+      };
+      var cur = of(latest);
+      var prior = comps.length > 1 ? of(comps[comps.length - 2]) : cur;
+      return {
+        key: k,
+        label: (latest.categories.filter(function (x) { return x.key === k; })[0] || {}).label ||
+          CATEGORY_FALLBACK_LABEL,
+        color: IP_CAT_COLORS[k] || IP_CAT_COLORS.other,
+        pct: ipPct(cur, 0),
+        prior: ipPct(prior, 0),
+        share: comps.map(of),
+      };
+    });
+  }
+
+  var CATEGORY_FALLBACK_LABEL = "Other registrant type";
+
+  /* "Manager mix" — the prototype's card, now on the one classification that reaches the WHOLE
+   * register: each filer's own SIC code from its own SEC registration.
    *
-   * "Manager mix" — the prototype's own card note says **"classification assigned by ClearyFi"**,
-   *   and that is the problem: we assign no such classification. Index / active / hedge fund /
-   *   pension is not on a 13F cover page and is not derivable from one. Inferring it from a
-   *   manager's NAME is exactly the fabrication phase 2 exists to remove (it is why §01's dumbbell
-   *   lost its three-colour encoding). ⚠️ CANNOT SOURCE — honest empty state, decision flagged in
-   *   3-implementation.md.
-   * "Top ten managers" — the register's own `top10_share`. Real, and it stays. */
+   * ⚠️ What this is NOT, and the copy says so: a REGISTRATION category, not a strategy. An index
+   * fund, a stock-picker and a quant shop all register as 6282. Nothing in any ownership form
+   * distinguishes them, and inferring it from a manager's name would be our label presented as
+   * theirs. `coverage` is shown because a mix over 96% of the register and a mix over 30% are
+   * different claims.
+   *
+   * "Top ten managers" below it is the register's own `top10_share`. */
   function ip02Mix() {
-    var conc = (IP_DATA.register || {}).concentration;
+    var reg = IP_DATA.register || {};
+    var comp = reg.composition;
+    var conc = reg.concentration;
     var pct = ipOk(conc, "top10_share") ? ipPct(conc.top10_share, 1) : IP_NA;
+    var ok = comp && comp.status === "ok";
     return (
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Manager mix</h3>' +
-      '<span class="ip-card-note">by manager classification</span>' +
-      ipStatusChip("na") +
+      '<span class="ip-card-note">by registered institution type</span>' +
+      (ok ? ipBadge("02-mix") : ipStatusChip("na")) +
       "</div>" +
-      '<div class="ip-rr-empty"><span class="ex21-dash">—</span>' +
-      "<p>We do not classify managers by strategy. Whether a filer is an index manager, an " +
-      "active fund, a hedge fund or a pension is not stated anywhere in Form 13F, and guessing " +
-      "it from the manager's name would be our label presented as theirs. A composition chart " +
-      "needs every filer, so there is nothing honest to draw here.</p>" +
-      "<p>The filers above 5% do declare an entity type on their Schedule 13D/G cover page \u2014 " +
-      "adviser, bank, corporation \u2014 and that is shown per manager in the table below. It is a " +
-      "different statement from strategy, and it exists for only the largest few.</p></div>" +
+      (ok ? ipDerivationPanel("02-mix") : "") +
+      (ok ? ip02MixBody(comp) : ip02MixEmpty(comp)) +
       '<div class="ip-topten">' +
       '<div class="ip-topten-head"><span class="ip-topten-label">Top ten managers</span>' +
       '<span class="ip-topten-val"><span>' + P.esc(pct) + "</span></span>" +
@@ -1847,6 +1901,70 @@
       ipDerivationPanel("02-topten") +
       "</div>" +
       "</div>"
+    );
+  }
+
+  function ip02MixBody(comp) {
+    var bands = ip02MixBands();
+    var legend = (bands || comp.categories.map(function (x) {
+      return {
+        key: x.key, label: x.label, color: IP_CAT_COLORS[x.key] || IP_CAT_COLORS.other,
+        pct: ipPct(x.weight, 0), prior: null,
+      };
+    }))
+      .map(function (m) {
+        return (
+          '<div class="ip-legend-row">' +
+          '<div class="ip-legend-head">' +
+          '<span class="ip-legend-id"><span class="ip-swatch" style="background:' + m.color + '"></span>' +
+          '<span class="ip-legend-label">' + P.esc(m.label) + "</span></span>" +
+          '<span class="ip-legend-pct">' + P.esc(m.pct) + "</span>" +
+          "</div>" +
+          '<div class="ip-bar"><div class="ip-bar-fill" style="width:' + P.esc(m.pct) +
+          ";background:" + m.color + '"></div>' +
+          (m.prior ? '<div class="ip-bar-tick" style="left:' + P.esc(m.prior) + '"></div>' : "") +
+          "</div>" +
+          (m.prior
+            ? '<div class="ip-bar-note">tick: prior quarter <span>' + P.esc(m.prior) + "</span></div>"
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      (bands ? ipStackedArea(bands, ip02QuarterLabels()) : "") +
+      '<div class="ip-caption"><span>' + P.esc(ip02MixCaption(comp, !!bands)) + "</span></div>" +
+      '<div class="ip-legend">' + legend + "</div>"
+    );
+  }
+
+  function ip02MixCaption(comp, charted) {
+    var cov = comp.coverage === null || comp.coverage === undefined ? null : ipPct(comp.coverage, 0);
+    return (
+      (charted
+        ? "Share of the ingested register by the filer\u2019s own registered institution type, " +
+          "over the quarters we hold. "
+        : "Share of the ingested register by the filer\u2019s own registered institution type. ") +
+      "Colour is categorical identity only. " +
+      "This is a REGISTRATION category, not a strategy \u2014 an index fund, a stock-picker and a " +
+      "quant fund all register as investment advice, and nothing in any ownership form separates " +
+      "them. " +
+      (cov
+        ? "It describes " + cov + " of the register\u2019s reported shares; the rest is held by " +
+          comp.unclassified_holder_count + " filer(s) with no SIC on file, excluded rather than " +
+          "grouped as \u201cother\u201d."
+        : "")
+    );
+  }
+
+  function ip02MixEmpty(comp) {
+    return (
+      '<div class="ip-rr-empty"><span class="ex21-dash">\u2014</span><p>' +
+      P.esc(comp ? ipWhy(comp) : "the register did not load") +
+      "</p><p>Every EDGAR filer carries an SIC code on its own registration, so this fills in as " +
+      "those registrations are ingested. It would say what KIND of institution holds the shares " +
+      "\u2014 adviser, bank, insurer \u2014 never how it invests, which no ownership form " +
+      "reports.</p></div>"
     );
   }
 
@@ -2089,6 +2207,58 @@
 
   // Nine-quarter 100% stacked area. Bands are separated by a hairline in the CARD's colour rather
   // than a stroke of their own, which is what keeps the boundaries readable at 0.52 opacity.
+  function ipStackedArea(bands, labels) {
+    var X0 = 42, X1 = 296, YB = 164, YT = 10, W = 306, H = 190;
+    var n = bands[0].share.length;
+    var step = (X1 - X0) / (n - 1);
+    var span = YB - YT;
+    var ticks = [0, 25, 50, 75, 100].map(function (p) {
+      var ty = YB - (p / 100) * span;
+      return '<line x1="' + X0 + '" y1="' + ty + '" x2="' + X1 + '" y2="' + ty + '" stroke="var(--rule)" stroke-width="1"></line>' +
+        '<text x="35" y="' + ty + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' + p + "%</text>";
+    });
+    var floor = [];
+    for (var i = 0; i < n; i++) floor.push(YB);
+    var paths = bands.map(function (b) {
+      var top = b.share.map(function (s, i) { return floor[i] - s * span; });
+      var d = top.map(function (yv, i) {
+        return (i ? "L" : "M") + (X0 + i * step).toFixed(1) + " " + yv.toFixed(1);
+      }).join(" ");
+      for (var j = n - 1; j >= 0; j--) d += " L" + (X0 + j * step).toFixed(1) + " " + floor[j].toFixed(1);
+      d += " Z";
+      floor = top;
+      return '<path d="' + d + '" fill="' + b.color +
+        '" opacity="0.52" stroke="var(--bg-card)" stroke-width="0.8"></path>';
+    });
+    /* One label per point, and the BUILDER decides which to draw.
+     *
+     * The prototype passed a pre-thinned list (5 labels for 9 quarters) and this placed them at
+     * `i * 2 * step` to compensate. That only works when the caller thinned by exactly half:
+     * with 4 real quarters and 4 labels, labels 2 and 3 landed at x=381 and x=550 in a 306-unit
+     * viewBox and were silently clipped. Real data has whatever quarter count it has, so the
+     * spacing rule cannot live at the call site. */
+    var everyOther = n > 6;
+    var xl = labels
+      .map(function (l, i) {
+        if (everyOther && i % 2 !== 0) return "";
+        /* Edge anchoring, not width arithmetic (RECONCILIATION §6 rule 1): a centred label at
+         * either end crosses the canvas edge and is clipped by the viewBox. The first pins
+         * `start`, the last pins `end`, everything between stays centred. */
+        var anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
+        return '<text x="' + (X0 + i * step).toFixed(1) + '" y="182" text-anchor="' + anchor +
+          '" class="ip-ax2">' + P.esc(l) + "</text>";
+      })
+      .join("");
+    return (
+      '<div class="ip-chart"><svg width="100%" viewBox="0 0 ' + W + " " + H + '" ' +
+      'preserveAspectRatio="xMidYMid meet" style="display:block;max-width:100%" role="img" ' +
+      'aria-label="Share of the register by registered institution type, ' + n + ' quarters">' +
+      ticks.join("") + paths.join("") + xl + "</svg></div>"
+    );
+  }
+
+  // Sparkline: the series is normalised to its own range, so it shows shape, never level.
+
   function ipSparkline(series, color) {
     var X0 = 4, X1 = 209, YB = 46, YT = 10, W = 213, H = 52;
     var step = (X1 - X0) / (series.length - 1);
@@ -3408,9 +3578,21 @@
         "Numerator and denominator come from different filings with different as-of dates. " +
         "The 13F register lags the cover page by up to 45 days.",
     },
-    /* 02-mix is gone with the manager-classification card — we assign no classification, so there
-     * is no derivation to show. `02-topten` had a badge from phase 1 but NO entry here, so it
-     * rendered and opened nothing; caught by driving §02 (see 5-design-port-log.md run 14). */
+    /* `02-topten` had a badge from phase 1 but NO entry here, so it rendered and opened
+     * nothing; caught by driving §02 (see 5-design-port-log.md run 14). */
+    "02-mix": {
+      formula: "each filer's own SIC code, grouped into institution types",
+      inputs: [
+        ["Filer SIC", "the `sic` field on the MANAGER's own EDGAR submissions record"],
+        ["Grouping", "SIC -> institution type, normalize/manager_category.py"],
+        ["Weight", "category shares / shares held by filers that carry a code"],
+      ],
+      note:
+        "SIC is a REGISTRATION category, not a strategy: an index fund, a stock-picker and a " +
+        "quant shop all register as investment advice (6282). It is self-assigned, rarely " +
+        "revisited, and describes the filing entity rather than the fund complex behind it. " +
+        "Filers with no SIC on file are excluded from the mix, never folded into \u201cother\u201d.",
+    },
     "02-topten": {
       formula: "Shares held by the ten largest ingested filers ÷ shares reported by all of them",
       inputs: [
