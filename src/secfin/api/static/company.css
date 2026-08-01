@@ -1923,7 +1923,10 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
 .ip-mtab-head,
 .ip-mtab-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.6fr) 64px 54px 58px;
+  /* Type joins the prototype's four columns as a fifth. It is a short label from a fixed code
+     set ("Investment adviser" is the longest), so it takes a fixed track and the manager name
+     keeps the flexible one. */
+  grid-template-columns: minmax(110px, 1.5fr) 84px 64px 54px 58px;
   gap: 8px;
   border-bottom: 1px solid var(--border-tint-rule);
 }
@@ -1948,6 +1951,18 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
 .ip-mtab-meta { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
 .ip-mtab-num { font-family: var(--ip-mono); font-size: 11.5px; color: var(--ink); text-align: right; }
 .ip-mtab-num--delta { font-size: 11px; color: var(--ink-soft); }
+/* The filer's own 13D/G declaration. Body ink like the name, not the mono of a measured value:
+   it is a disclosure, not a number. An em dash in --mono-muted where nobody filed one — the
+   same "absent, not zero" vocabulary as everywhere else on the page. */
+.ip-mtab-type {
+  font-family: var(--ip-mono);
+  font-size: 10.5px;
+  color: var(--ink-body);
+  line-height: 1.35;
+  min-width: 0;
+  text-wrap: pretty;
+}
+.ip-mtab-none { color: var(--mono-muted); }
 
 
 

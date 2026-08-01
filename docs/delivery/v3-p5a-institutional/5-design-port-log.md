@@ -1198,3 +1198,83 @@ in that state, so this is the common case on a thin register, not an edge case.
 - **609 pytest**; e2e `institutional` `errors=0`.
 
 Banner now reads **"4 of these sections are still design placeholders"** — §03–§06.
+
+---
+
+## Run 15 — `typeOfReportingPerson`: the one manager classification that IS filed · 2026-08-01
+
+Operator asked whether Schedule 13D/G Item 3's self-identification could stand in for the manager
+classification §02 cannot source. **Nearly** — the right field is next to it.
+
+### What the forms actually carry
+
+Read out of our own fixtures, not assumed:
+
+| | field | value in the fixture |
+|---|---|---|
+| 13G cover page | `typeOfReportingPerson` | `IA` |
+| 13G **Item 3** | `typeOfPersonFiling` | `IA` |
+| 13D cover page | `typeOfReportingPerson` | `OO ×5`, `CO` |
+| 13D **Item 3** | `fundsSource` | **free prose** — "Source and Amount of Funds" |
+
+So **Item 3 is not one field across the two forms.** On 13G it is the classification; on 13D it is
+an entirely different item, and it is narrative text — Track 2, deliberately not parsed. Worse,
+13G's Item 3 only applies under **Rule 13d-1(b)** (the qualified-institution route); a 13d-1(c)
+passive filer marks it not-applicable.
+
+**The cover-page `typeOfReportingPerson` box is on every structured 13D and 13G, once per reporting
+person**, from a fixed SEC code set. That is what we now parse — recorded in `schema.py`'s
+`TYPE_OF_REPORTING_PERSON`, with the Item-3 distinction written down beside it so nobody re-derives
+this.
+
+### The join, and why it is by name
+
+A 13D/G names its reporting persons **in text and carries no CIK for them** — the accession's filer
+CIK is the *submitter*, which on a jointly-filed 13D is one of several persons and can be an agent.
+So the join to the 13F register is by name, and deliberately **exact after normalization**, the same
+conservative posture as `normalize/cusip.py`: a near-match is not a match, and an unmatched manager
+gets no type rather than a guessed one. It lives in `routes.py`, not the client — the API owns the
+matching rule.
+
+Measured against real name pairs, 4 of 5 matched immediately. The miss was
+`"The Vanguard Group, Inc."` vs `"VANGUARD GROUP INC"` — a **leading article**. `normalize_issuer_name`
+now drops a leading `THE`, which is not a step toward fuzzy matching: two different entities cannot
+be distinguished by an article. (It also fixes "The Coca-Cola Company" vs "Coca-Cola Co" for the
+CUSIP resolver, which shares the function. 610 tests green either way.)
+
+### Coverage is the honest limit, and it decides the design
+
+**Only holders above 5% file 13D/G at all.** On the fixture: 3 of 7 managers carry a type; in the
+real market AAPL has ~1,600 13F filers and roughly three 13G filers.
+
+That is fine for a **table column** — type beside the largest managers, `—` where nobody filed. It
+is *not* enough for the **composition chart** §02's manager-mix card draws, which needs every filer
+or it describes three managers while looking like it describes the register. The mix card therefore
+**keeps its empty state**, and its copy now names the distinction rather than flatly saying "we do
+not classify managers", which would have contradicted the new column:
+
+> We do not classify managers **by strategy** … The filers above 5% do declare an **entity type** on
+> their Schedule 13D/G cover page — adviser, bank, corporation — and that is shown per manager in
+> the table below. It is a different statement from strategy, and it exists for only the largest few.
+
+### Verification
+
+- **Migration proved on a live volume, not just a fresh one.** The pre-existing `e2e.db` came back
+  with `type_of_reporting_person` **appended at the end** of `PRAGMA table_info` — `ALTER TABLE ADD
+  COLUMN` ran against a populated table — and its existing 53 rows read `NULL`, which is the honest
+  answer for a filing parsed before we looked at the field.
+- **Driven live:** `VANGUARD GROUP INC → IA Investment adviser`, `STATE STREET CORP → BK Bank`,
+  `BERKSHIRE HATHAWAY INC → CO Corporation`, and `—` for the four with no 13D/G. All three matched
+  across a different name style on each side.
+- **610 pytest** (+1: the new code-maps-to-a-label test, plus assertions on both existing parser
+  tests — 13G's `IA`, and 13D's `["OO","OO","OO","OO","OO","CO"]` per reporting person).
+- **ruff**: identical findings before and after on all four changed backend files — zero added.
+- Clipping sweep all four combinations: `svgOverflow=0 domBleed=0`. Controls 4/4. `zeros: []`.
+  e2e `institutional` `errors=0`.
+
+### Still on the table, not taken
+
+13G also carries `soleVotingPower` / `sharedVotingPower` / `soleDispositivePower` /
+`sharedDispositivePower` — we are already inside that XML and do not extract them. Voting vs
+dispositive power separates **influence from custody**, which is arguably the more interesting split
+than entity type. Same 5% coverage limit. Not in scope here; worth its own task.

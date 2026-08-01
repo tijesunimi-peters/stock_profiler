@@ -576,6 +576,17 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         badge from phase 1** (`02-topten` had no derivation entry); and **a double-bound listener I
         introduced in run 12** — `ipBindAffordances` had no bind-once guard and ipPaint runs twice,
         so every TOGGLE ran twice and landed where it started. Run 14 in the log.
+  - [x] **`typeOfReportingPerson` plumbed** (2026-08-01, operator-requested). The 13D/G cover-page
+        box is the **only entity self-classification in any ownership form we ingest** — 13F has
+        none at all. ⚠️ **Item 3 is NOT one field across the two forms**: on 13G it is the
+        classification, on 13D it is "Source and Amount of Funds" (free prose, Track 2). The cover
+        box is on both, per reporting person. Parser + schema + column + migration + a server-side
+        name join (exact-after-normalization, `cusip.py` posture — the forms carry no CIK for
+        reporting persons). `normalize_issuer_name` now drops a leading "THE" (an article carries
+        no identity; also fixes the CUSIP resolver). Shows as a **Type column** on §02's table.
+        **Coverage is the limit and it decides the design:** only 5%+ holders file 13D/G, so this
+        is fine for a column and NOT enough for the manager-mix composition chart, which keeps its
+        empty state. Run 15 in the log.
   - [ ] **§03–§06** — same pattern, section by section. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check

@@ -604,9 +604,45 @@ class BeneficialOwnership(BaseModel):
     ) = None
     percent_of_class: float | None = None
     shares_beneficially_owned: float | None = None
+    # The cover page's "TYPE OF REPORTING PERSON" box -- the filer's OWN declaration of what
+    # kind of entity it is, from the SEC's fixed code set (see TYPE_OF_REPORTING_PERSON below).
+    # Present on both 13D and 13G, one per reporting person.
+    #
+    # NOTE this is NOT Schedule 13G's Item 3, which carries the same code but only when the 13G
+    # was filed under Rule 13d-1(b) (the qualified-institution route) -- a 13d-1(c) passive filer
+    # marks Item 3 not-applicable. And Schedule 13D's Item 3 is an entirely different item
+    # ("Source and Amount of Funds"), free prose, which is Track 2 and deliberately not parsed.
+    # The cover-page box is the field that exists on every structured 13D/G, so it is the one
+    # we carry.
+    type_of_reporting_person: str | None = None
     event_date: str | None = None  # date of the triggering event
     filed: str | None = None
     accession: str | None = None
+
+
+"""The SEC's fixed code set for the cover-page "TYPE OF REPORTING PERSON" box on Schedules
+13D and 13G. This is the ONLY entity self-classification available anywhere in the ownership
+forms we ingest -- Form 13F has no strategy, style or type field of any kind, and inferring one
+from a manager's name would be our label presented as theirs.
+
+Filers pick their own code, so it is a disclosure rather than a judgment, and it is exactly as
+reliable as the filer chose to be. `OO` ("other") is a real answer and a common one.
+"""
+TYPE_OF_REPORTING_PERSON: dict[str, str] = {
+    "BD": "Broker-dealer",
+    "BK": "Bank",
+    "IC": "Insurance company",
+    "IV": "Investment company",
+    "IA": "Investment adviser",
+    "EP": "Employee benefit plan",
+    "HC": "Parent holding company",
+    "SA": "Savings association",
+    "CP": "Church plan",
+    "CO": "Corporation",
+    "PN": "Partnership",
+    "IN": "Individual",
+    "OO": "Other",
+}
 
 
 class BeneficialOwnershipFilingMeta(NamedTuple):

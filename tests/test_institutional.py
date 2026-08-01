@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from secfin.normalize.schema import TYPE_OF_REPORTING_PERSON
 from secfin.sec.client import DATA_HOST, SECClient
 from secfin.sec.institutional import (
     FORM_13DG,
@@ -387,6 +388,21 @@ def test_parse_schedule_13g_single_reporting_person():
     assert owner.event_date == "2026-03-31"
     assert owner.filed == "2026-04-29"
     assert owner.accession == "0002100119-26-000139"
+    # The cover page's "TYPE OF REPORTING PERSON" box -- the filer's OWN declaration, and the
+    # only entity self-classification in any ownership form we ingest (13F has none at all).
+    assert owner.type_of_reporting_person == "IA"
+
+
+def test_parse_schedule_13g_type_code_maps_to_a_label():
+    """The code is only useful if it resolves; an unknown code must not invent a label."""
+    owners = parse_schedule_13dg_xml(
+        _read_bytes("aapl_schedule13g_vanguard.xml"),
+        form_type="SCHEDULE 13G",
+        filed="2026-04-29",
+        accession="0002100119-26-000139",
+    )
+    assert TYPE_OF_REPORTING_PERSON[owners[0].type_of_reporting_person] == "Investment adviser"
+    assert TYPE_OF_REPORTING_PERSON.get("ZZ") is None
 
 
 def test_parse_schedule_13d_multiple_joint_reporting_persons():
@@ -398,6 +414,10 @@ def test_parse_schedule_13d_multiple_joint_reporting_persons():
     )
     # 6 joint reporting persons in this real amendment (RSLGH up through Green Thumb).
     assert len(owners) == 6
+    # 13D carries the same cover-page box, PER reporting person -- five "other" and one
+    # corporation here. (13D's *Item 3* is a different item entirely, "Source and Amount of
+    # Funds", free prose; the cover-page box is what we parse. See schema.py.)
+    assert [o.type_of_reporting_person for o in owners] == ["OO", "OO", "OO", "OO", "OO", "CO"]
     names = [o.owner_name for o in owners]
     assert names == [
         "RSLGH, LLC",

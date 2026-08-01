@@ -1830,10 +1830,13 @@
       ipStatusChip("na") +
       "</div>" +
       '<div class="ip-rr-empty"><span class="ex21-dash">—</span>' +
-      "<p>We do not classify managers. Whether a filer is an index manager, an active fund, a " +
-      "hedge fund or a pension is not stated on the 13F cover page and cannot be derived from it, " +
-      "and guessing it from the manager's name would be our label presented as theirs. The " +
-      "register's composition by manager type is not something these filings report.</p></div>" +
+      "<p>We do not classify managers by strategy. Whether a filer is an index manager, an " +
+      "active fund, a hedge fund or a pension is not stated anywhere in Form 13F, and guessing " +
+      "it from the manager's name would be our label presented as theirs. A composition chart " +
+      "needs every filer, so there is nothing honest to draw here.</p>" +
+      "<p>The filers above 5% do declare an entity type on their Schedule 13D/G cover page \u2014 " +
+      "adviser, bank, corporation \u2014 and that is shown per manager in the table below. It is a " +
+      "different statement from strategy, and it exists for only the largest few.</p></div>" +
       '<div class="ip-topten">' +
       '<div class="ip-topten-head"><span class="ip-topten-label">Top ten managers</span>' +
       '<span class="ip-topten-val"><span>' + P.esc(pct) + "</span></span>" +
@@ -1953,6 +1956,11 @@
       var d = deltas[h.manager_cik];
       return {
         name: h.manager_name || "CIK " + h.manager_cik,
+        // The filer's OWN declaration on its Schedule 13D/G cover page — the only entity
+        // self-classification in any ownership form we ingest. Blank for a manager that has
+        // not filed one, which is most of them: that only happens above 5%.
+        type: h.reporting_person_type_label || null,
+        typeCode: h.reporting_person_type || null,
         meta: "13F-HR" + (asOf[h.manager_cik] ? " \u00b7 as of " + asOf[h.manager_cik] : ""),
         shares: ipShares(h.shares),
         pct: h.weight === null || h.weight === undefined ? IP_NA : ipPct(h.weight, 2),
@@ -1986,6 +1994,9 @@
           '<div class="ip-mtab-row">' +
           '<span class="ip-mtab-id"><span class="ip-mtab-name">' + P.esc(r.name) + "</span>" +
           '<span class="ip-mtab-meta">' + P.esc(r.meta) + "</span></span>" +
+          '<span class="ip-mtab-type"' +
+          (r.type ? ' title="Schedule 13D/G cover page, code ' + P.esc(r.typeCode) + '"' : "") +
+          ">" + (r.type ? P.esc(r.type) : '<span class="ip-mtab-none">—</span>') + "</span>" +
           '<span class="ip-mtab-num">' + P.esc(r.shares) + "</span>" +
           '<span class="ip-mtab-num">' + P.esc(r.pct) + "</span>" +
           '<span class="ip-mtab-num ip-mtab-num--delta">' + P.esc(r.delta) + "</span>" +
@@ -2003,7 +2014,7 @@
           '<div class="ip-panels">' + panels + "</div>" +
           '<div class="ip-caption"><span>' + P.esc(ip02PanelsNote()) + "</span></div>"
         : "") +
-      '<div class="ip-mtab-head"><span>Manager</span>' +
+      '<div class="ip-mtab-head"><span>Manager</span><span>Type</span>' +
       '<span class="ip-r">Shares</span><span class="ip-r">% of register</span>' +
       '<span class="ip-r">\u0394 qoq</span></div>' +
       rows +
@@ -2027,7 +2038,9 @@
       "the cover of the 13F-HR; affiliated entities file separately and are not consolidated. " +
       "\u201c% of register\u201d is a share of those filers\u2019 reported shares \u2014 NOT a share of the " +
       "company, which would need shares outstanding the register does not carry. \u0394 is DERIVED by " +
-      "diffing two quarter-end snapshots, not a reported trade."
+      "diffing two quarter-end snapshots, not a reported trade. Type is the filer\u2019s own " +
+      "declaration on its Schedule 13D/G cover page, matched by name; it is blank for a manager " +
+      "that has not filed one, which only happens above 5% \u2014 blank means no filing, not no type."
     );
   }
 

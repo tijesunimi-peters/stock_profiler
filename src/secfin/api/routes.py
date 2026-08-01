@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -24,7 +25,12 @@ from secfin.auth.models import ApiKeyRecord, UsageSummary
 from secfin.auth.usage import usage_summary
 from secfin.config import settings
 from secfin.normalize.coholding import co_holding_edges
-from secfin.normalize.cusip import CusipResolver, cusip_resolution_stats, resolve_snapshot_cusips
+from secfin.normalize.cusip import (
+    CusipResolver,
+    cusip_resolution_stats,
+    normalize_issuer_name,
+    resolve_snapshot_cusips,
+)
 from secfin.normalize.flows import (
     diff_holders,
     diff_snapshots,
@@ -54,6 +60,7 @@ from secfin.normalize.register import (
 )
 from secfin.normalize.schema import (
     BalanceSheetViz,
+    TYPE_OF_REPORTING_PERSON,
     BeneficialOwnership,
     CapitalStructureSeries,
     CashFlowSeries,
@@ -212,6 +219,11 @@ _HOLDINGS_SERIES_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
 # share of the pool of ALL ingested filers' common shares -- who holds the most among the reporting
 # institutions. NOT shares outstanding, NOT % of the company, NOT all institutional ownership; it is
 # coverage-dependent; 13F shares are discretion, not beneficial ownership; options/PRN excluded.
+# How many recent 13D/G filings to read when looking up reporting-person types. These filings
+# are per-issuer and rare (only 5%+ holders file at all), so a small window covers every current
+# filer without turning a point read into a scan.
+_BO_TYPE_LOOKBACK = 40
+
 _CONVICTION_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
     "Percentage is this filer's reported 13F common shares as a share of the TOTAL 13F common "
     "shares across all INGESTED filers of this company -- NOT the company's shares outstanding, "
@@ -2525,23 +2537,59 @@ async def get_institutional_periods(
     }
 
 
-def _vector_payload(vector: ShareVector, limit: int) -> list[dict]:
+def _reporting_person_types(owners: Iterable[BeneficialOwnership]) -> dict[str, str]:
+    """{normalized reporting-person name: cover-page TYPE OF REPORTING PERSON code}.
+
+    Schedules 13D/G carry the only entity self-classification anywhere in the ownership forms
+    we ingest -- Form 13F has no strategy, style or type field at all. The code is the FILER's
+    own declaration, from a fixed SEC set (`TYPE_OF_REPORTING_PERSON`).
+
+    Matched by name, and only by an EXACT match after normalization, because a 13D/G names its
+    reporting persons in text and carries no CIK for them (the accession's filer CIK is the
+    submitter, which on a jointly-filed 13D is one of several persons and can be an agent).
+    Same conservative posture as `normalize/cusip.py`'s issuer resolution: a near-match is not
+    a match, and an unmatched manager gets no type rather than a guessed one.
+
+    Newest filing wins when the same person appears on several -- consistent with the
+    latest-filed rule everywhere else.
+    """
+    out: dict[str, str] = {}
+    for o in sorted(owners, key=lambda o: (o.filed or "", o.accession or "")):
+        if o.owner_name and o.type_of_reporting_person:
+            out[normalize_issuer_name(o.owner_name)] = o.type_of_reporting_person
+    return out
+
+
+def _vector_payload(
+    vector: ShareVector, limit: int, types: dict[str, str] | None = None
+) -> list[dict]:
     """The ranked share vector, trimmed for transport.
 
     The concentration figures are computed over the WHOLE vector server-side; only the rows
     shipped for charting are trimmed. So a chart drawn from `top` never changes what the tiles
     beside it mean -- the same reason the holders table paginates without moving its totals.
+
+    `reporting_person_type` is joined here rather than in the client so the name-matching rule
+    lives in one place and the API owns it (no raw SQL or matching logic in the UI). It is
+    `None` for any manager that has not filed a 13D/G -- which is most of them, because that
+    only happens above 5%.
     """
-    return [
-        {
-            "manager_cik": r.manager_cik,
-            "manager_name": r.manager_name,
-            "shares": r.shares,
-            "weight": r.weight,
-            "cumulative": r.cumulative,
-        }
-        for r in vector.rows[:limit]
-    ]
+    types = types or {}
+    rows = []
+    for r in vector.rows[:limit]:
+        code = types.get(normalize_issuer_name(r.manager_name or ""))
+        rows.append(
+            {
+                "manager_cik": r.manager_cik,
+                "manager_name": r.manager_name,
+                "shares": r.shares,
+                "weight": r.weight,
+                "cumulative": r.cumulative,
+                "reporting_person_type": code,
+                "reporting_person_type_label": TYPE_OF_REPORTING_PERSON.get(code) if code else None,
+            }
+        )
+    return rows
 
 
 @router.get(
@@ -2556,6 +2604,7 @@ async def get_institutional_register(
     ticker_cache: TickerCache = Depends(get_ticker_cache),
     cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
     holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+    bo_repo: BeneficialOwnershipRepository = Depends(get_beneficial_ownership_repo),
 ) -> dict:
     """How concentrated one quarter's ingested 13F register is -- **derived, not reported**.
 
@@ -2582,13 +2631,14 @@ async def get_institutional_register(
     holders = holdings_repo.holders_of(cusips, period)
     vector = share_vector(holders)
     conc = concentration(vector)
+    types = _reporting_person_types(bo_repo.get_beneficial_ownership(cik, _BO_TYPE_LOOKBACK))
     return {
         "cik": cik,
         "cusips": cusips,
         "period": period,
         "period_meta": _register_period_meta(holders, period),
         "concentration": asdict(conc),
-        "share_vector": _vector_payload(vector, top),
+        "share_vector": _vector_payload(vector, top, types),
         "share_vector_total_rows": vector.holder_count,
         "excluded_holder_count": vector.excluded_count,
         "total_reported_shares": vector.total_shares,

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS beneficial_ownership (
     filed TEXT,
     percent_of_class REAL,
     shares_beneficially_owned REAL,
+    type_of_reporting_person TEXT,
     event_date TEXT
 );
 
@@ -44,9 +45,14 @@ CREATE INDEX IF NOT EXISTS idx_beneficial_ownership_issuer_accession
 _INSERT_ROW_SQL = """
 INSERT INTO beneficial_ownership (
     issuer_cik, accession, issuer_name, owner_name, form_type, filed,
-    percent_of_class, shares_beneficially_owned, event_date
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    percent_of_class, shares_beneficially_owned, type_of_reporting_person, event_date
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
+
+# Volumes seeded before the cover-page "TYPE OF REPORTING PERSON" box was captured have the
+# table without this column. ADD COLUMN is cheap and non-rewriting in SQLite; existing rows read
+# back NULL, which is the honest answer for a filing we parsed before we looked at the field.
+_MIGRATIONS = (("beneficial_ownership", "type_of_reporting_person", "TEXT"),)
 
 _INSERT_FILING_SQL = """
 INSERT OR IGNORE INTO beneficial_ownership_filings (issuer_cik, accession, filed, form_type)
@@ -62,6 +68,14 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        """Add columns that post-date a volume's first write. Idempotent."""
+        for table, column, decl in _MIGRATIONS:
+            cur = self._conn.execute(f"PRAGMA table_info({table})")
+            if column not in {row[1] for row in cur.fetchall()}:
+                self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     def upsert_beneficial_ownership(
         self,
@@ -147,6 +161,7 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
             o.filed,
             o.percent_of_class,
             o.shares_beneficially_owned,
+            o.type_of_reporting_person,
             o.event_date,
         )
 
@@ -161,5 +176,6 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
             accession=row["accession"] or None,
             percent_of_class=row["percent_of_class"],
             shares_beneficially_owned=row["shares_beneficially_owned"],
+            type_of_reporting_person=row.get("type_of_reporting_person"),
             event_date=row["event_date"],
         )

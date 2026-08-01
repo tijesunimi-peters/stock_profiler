@@ -105,12 +105,16 @@ def _seed_insider(db_path: str) -> None:
 # Synthetic 5%+ holders for the demo 13D/G tab (no fixture; modern structured-XML era only).
 # A handful of institutions, each with several annual amendments -- realistic, and enough
 # filings to satisfy the tab's limit so it serves from cache offline (no live SEC fetch).
+# (name, 13D/13G, opening %, cover-page TYPE OF REPORTING PERSON code). The names are
+# deliberately in 13D/G house style ("The Vanguard Group, Inc.") while the 13F register carries
+# cover style ("VANGUARD GROUP INC") -- the fixture exercises the real name-matching problem
+# rather than a pre-matched one. Berkshire files 13D as a corporation; the rest are advisers.
 _BENEFICIAL_OWNERS = [
-    ("The Vanguard Group, Inc.", "13G", 8.3),
-    ("BlackRock, Inc.", "13G", 6.7),
-    ("State Street Corporation", "13G", 5.4),
-    ("Berkshire Hathaway Inc.", "13D", 5.9),
-    ("FMR LLC", "13G", 5.1),
+    ("The Vanguard Group, Inc.", "13G", 8.3, "IA"),
+    ("BlackRock, Inc.", "13G", 6.7, "IA"),
+    ("State Street Corporation", "13G", 5.4, "BK"),
+    ("Berkshire Hathaway Inc.", "13D", 5.9, "CO"),
+    ("FMR LLC", "13G", 5.1, "IA"),
 ]
 _BENEFICIAL_FILINGS_PER_OWNER = 5  # 5 owners x 5 annual filings = 25 (>= the tab's limit)
 
@@ -122,7 +126,7 @@ def _seed_beneficial(db_path: str) -> None:
     filings, owners = [], []
     base = date(2026, 2, 12)
     seq = 0
-    for name, kind, pct0 in _BENEFICIAL_OWNERS:
+    for name, kind, pct0, rp_type in _BENEFICIAL_OWNERS:
         for j in range(_BENEFICIAL_FILINGS_PER_OWNER):
             # newest is the original "SCHEDULE 13x", older ones are amendments "/A"
             form = f"SCHEDULE {kind}" if j == 0 else f"SCHEDULE {kind}/A"
@@ -140,6 +144,7 @@ def _seed_beneficial(db_path: str) -> None:
                     form_type=form,
                     percent_of_class=pct,
                     shares_beneficially_owned=float(int(pct * 151_000_000)),
+                    type_of_reporting_person=rp_type,
                     event_date=filed,
                     filed=filed,
                     accession=accession,

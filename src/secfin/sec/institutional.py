@@ -361,6 +361,7 @@ def _parse_13g(
                 shares_beneficially_owned=_to_float(
                     details.findtext("reportingPersonBeneficiallyOwnedAggregateNumberOfShares")
                 ),
+                type_of_reporting_person=_clean(details.findtext("typeOfReportingPerson")),
                 event_date=event_date,
                 filed=filed,
                 accession=accession,
@@ -389,6 +390,7 @@ def _parse_13d(
                 form_type=form_type,  # type: ignore[arg-type]
                 percent_of_class=_to_float(person.findtext("percentOfClass")),
                 shares_beneficially_owned=_to_float(person.findtext("aggregateAmountOwned")),
+                type_of_reporting_person=_clean(person.findtext("typeOfReportingPerson")),
                 event_date=event_date,
                 filed=filed,
                 accession=accession,

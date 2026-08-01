@@ -54,15 +54,22 @@ _PUNCTUATION_RE = re.compile(r"[^\w\s]")
 
 
 def normalize_issuer_name(name: str) -> str:
-    """Uppercase, strip punctuation, and drop common legal suffixes for name matching.
+    """Uppercase, strip punctuation, drop a leading article, and drop common legal suffixes.
 
     Pure and deliberately simple: this is an exact-match key, not a fuzzy one. It does
     NOT expand abbreviations (e.g. "FINL" -> "FINANCIAL") -- see the module docstring's
     ALLY FINANCIAL example for why that's a feature, not a gap to close casually.
+
+    The leading "THE" is dropped because it is an article, not a name: "The Vanguard Group,
+    Inc." on a Schedule 13G and "VANGUARD GROUP INC" on a 13F cover are the same filer, and
+    two DIFFERENT entities cannot be distinguished by a leading article alone. This is not a
+    step toward fuzzy matching -- it removes a word that carries no identity.
     """
     cleaned = _PUNCTUATION_RE.sub("", name.upper())
-    words = [w for w in cleaned.split() if w not in _LEGAL_SUFFIXES]
-    return " ".join(words)
+    words = cleaned.split()
+    if words and words[0] == "THE":
+        words = words[1:]
+    return " ".join(w for w in words if w not in _LEGAL_SUFFIXES)
 
 
 def parse_company_name_index(payload: dict) -> dict[str, int]:
