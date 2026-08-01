@@ -96,7 +96,8 @@ done until each is either plumbed or honestly removed. **None of them may keep a
 | §03 "Where every share sits" (insider / 13D / residual) | Needs shares-outstanding attribution across three filing families. Partly sourceable; the residual is a remainder, not a measurement. |
 | §04 voting (Item 5.07, N-PX) | **Not ingested at all.** Out of Track-1 scope today. |
 | §04 the 5%-filing lane chart | 13D/G *is* ingested; the per-filing amendment chain needs checking against what the repository actually stores. |
-| §06 supply events, Form 144, 10b5-1, acceptance-lag histogram | **None ingested.** Form 144 and acceptance timestamps are V3-P3 (`items` + `acceptanceDateTime`). |
+| ~~§06 Form 144 · 10b5-1 · notices~~ | ✅ **RETIRED 2026-07-31 — the design deleted the card.** Prototype v4 gutted "Insider filings beyond Form 4": no dot calendar, no notices list, no `⤡ Expand`. We ported that, so there is nothing left to source. `ipBubbles` and its fourteen fabricated dots are gone from the codebase. |
+| §06 supply events, acceptance-lag histogram | **Not ingested.** Acceptance timestamps are V3-P3 (`acceptanceDateTime`); the supply-event facts (S-1/S-3, SC TO, Form 25/15) have no ingest path today. |
 | §07 Reference glossary | Static copy — legitimately stays as written. |
 
 **The rule from D-literals:** phase 2 is not done until no literal remains. Where there is no source,
@@ -139,3 +140,7 @@ to hold onto:
 2. **The gap table is the real work.** Wiring the three endpoints covers §01–§03 and §05. §04 and
    §06 are largely unsourced, and each needs a decision — plumb, empty-state, or remove — not a
    surviving literal.
+3. **One row is already answered.** Prototype v4 deleted §06's Form 144 / 10b5-1 card outright, and
+   we took that change (2026-07-31). *The design removing a block is a valid third answer* — check
+   the current prototype before building an honest empty state for something that may no longer
+   exist. `5-design-port-log.md` run 11 has the full v3→v4 diff.

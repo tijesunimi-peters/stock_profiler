@@ -3,7 +3,7 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional @ `2504cdf` (clean off `master` 9d0d10f — **attempt 4**)
+branch: v3-p5a-institutional @ `4bcbd28` (clean off `master` 9d0d10f — **attempt 4**)
 next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
@@ -12,7 +12,7 @@ next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31)
   ⬅ **NEXT: the frontend consumes them on this branch**, then QA + 4b.
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
-updated: 2026-07-31
+updated: 2026-08-01
 
 ---
 
@@ -97,10 +97,26 @@ the behaviour end to end.
 3. **D-protocharts** — **port the prototype's own chart builders**, don't reuse ours. Our
    `ClearyFi.*` builders and their chrome are part of what read as "old design".
 
-   📌 **HEADS-UP (operator, 2026-07-31): the prototype is moving its charts to d3**, which will make
-   them interactive. **The decision for now is to CONTINUE AS WE ARE** — the fifteen hand-authored
-   SVG builders stay, nothing is pre-built for d3, and no section waits on it. Do not speculate
-   about what the d3 version will look like; port what is on the server today.
+   ✅ **IT LANDED, AND IT IS MEASURED (2026-07-31).** `SEC Sector Analytics Prototype(3).zip` is the
+   d3 rewrite. It was served next to v3 and diffed through the same gate as the port —
+   **`5-design-port-log.md` run 11 has the numbers.** Nothing below is speculation any more.
+
+   **The decision stands: CONTINUE AS WE ARE. Plumb first, take d3 later.** The reason is now a
+   measurement, not a preference: **`instData` — the 554-line function producing every number this
+   view renders — is byte-identical between v3 and v4, and so are all 185 lines of the chart call
+   sites.** d3 changed how charts *draw*; plumbing changes what they draw *from*; they meet at a
+   signature that did not move. Neither ordering makes the other cheaper, so it goes on risk — and
+   real data (real N, real ranges, `null`) is what breaks charts, so it goes first.
+
+   **What the d3 rewrite will cost when it is taken:** 4 of 15 builders plus a treemap re-layout.
+   `ipDivergingBars` (bars repositioned + resized), `ipRankedShare` (rounded bar tops), `ipTreemap`
+   (**`d3.treemapSquarify` — a genuinely different picture, 313,686px in one band**) and
+   `ipHistogram` carry essentially all of it. §01, §05 and §07 are pixel-identical to v4 already;
+   §02/§04/§06 are 1–2px axis-label shifts. RECONCILIATION §5 calls it "a copy list, not a
+   translation plan" — the prototype's d3 is liftable. Not a re-port.
+
+   **Two markup changes were taken now** (operator, 2026-07-31) — §01's DEF 14A cross-reference and
+   §06's gutted Form 144 card. See run 11 and the CANNOT-SOURCE table below.
 
    **What it will and will not disturb, so the next session doesn't guess:**
 
@@ -109,7 +125,8 @@ the behaviour end to end.
    §12's label-placement rules apply to them. D-protocharts itself is unchanged: still the
    prototype's builders, still never `ClearyFi.*`. The measurement method is unchanged.
 
-   *Invalidated the day it lands.* **`prototype-ground-truth/` is a snapshot of TODAY's prototype**
+   *Invalidated the day it is TAKEN* (not the day it landed — we are still porting v3 deliberately).
+   **`prototype-ground-truth/` is a snapshot of the v3 prototype**
    — every PNG, `literals.json` and `literals-open.json`. Re-capture the lot before diffing anything
    against it; a green diff against a stale capture is worse than no diff. And **every series in
    `IP01`–`IP07` was recovered numerically from a static SVG** (bar heights, path coordinates, the
@@ -125,9 +142,21 @@ the behaviour end to end.
      charts respond to a pointer, "the controls work" covers them too, and `drive.js` has to drive
      chart internals rather than just buttons. Budget for that; it is a bigger job than the button
      pass was.
-4. **D-clean-master** — attempt 4 starts from a **clean master**. Nothing is carried over in the
+4. **D-chips** *(operator, 2026-08-01)* — **the status vocabulary rides on values that need a
+   caveat, and ONLY those.** `RECONCILIATION.md` §3 wants a `statusChip()` on every derived value;
+   the prototype has none and says the same things in prose. The operator chose the middle path:
+   a value that is fine carries **no chip** (so the rendering accepted at the fidelity gate is
+   preserved), and a value that is `N/A` or `approximate` carries the shared
+   **`ClearyFi.statusChip`** — the real component, never a local lookalike, so the port speaks the
+   same vocabulary as the company hub and the sector views.
+
+   **The invariant to assert in every section:** a slot carries a chip **iff** its value is `N/A`
+   (or flagged approximate). §01 is driven for this — 5 chips on 5 `N/A` slots, 0 on 6 clean
+   values, `violations: []`. Do the same for §02–§06 rather than eyeballing it.
+
+5. **D-clean-master** — attempt 4 starts from a **clean master**. Nothing is carried over in the
    working tree, including attempt 3's backend and its fixes.
-5. **D-manual-gate** *(added 2026-07-31)* — **the operator's hands-on verification step is
+6. **D-manual-gate** *(added 2026-07-31)* — **the operator's hands-on verification step is
    MANDATORY and is never stood in for.** Every change with a rendered surface requires the operator
    to hand-run `4b-manual-verification.md` and sign off; the QA tester's own scripted driving pass
    and eyeballed screenshots are evidence for the report, **never acceptance**. This supersedes the
@@ -139,7 +168,7 @@ the behaviour end to end.
    *Why:* the gate keeps catching what the scripts pass over — the `company-fidelity` dead-end
    recovery bug, and then V3-P5a's overlap-`⤡ Expand` defect, which **71 green driven assertions
    missed** because I had written the gap off as by-design.
-6. **D-behaviour** *(added 2026-07-31)* — **porting the design includes porting the FUNCTIONALITY.**
+7. **D-behaviour** *(added 2026-07-31)* — **porting the design includes porting the FUNCTIONALITY.**
    Every control the prototype has is live in phase 1: expanders, lightboxes, derivation panels,
    chart-view toggles, and anything else that responds to a click. Phase 1 is design *and its
    behaviour*, with no data behind it; only the DATA waits for phase 2. A section with inert
@@ -503,11 +532,41 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
       **the honesty paths**: an empty quarter returns `status: "na"` with a reason and every derived
       number **null, not 0**; an unresolved issuer 404s with an explanation. Contract:
       `3-implementation.md`.
-- [ ] **P2 frontend — THE WORK NOW.** Consume the three endpoints on this branch, literal by
-      literal, until none remain. ⚠️ **`3-implementation.md` has a CANNOT-SOURCE table** — §04
-      (voting/N-PX) and §06 (Form 144, 10b5-1, acceptance lag) are largely **not ingested at all**,
-      and §01's "confirmed in last 30 days" and the adjusted register have no source by design.
+- [x] **P2 prototype-v4 markup sync** (2026-07-31). v4 (the d3 rewrite) diffed against v3 and
+      against our shipped pages; **two markup changes taken**, the rest deliberately deferred —
+      `instData` is byte-identical between the two, so d3 and plumbing don't interact. §01 gained
+      the DEF 14A cross-reference; §06's Form 144 card was gutted **by the design**, which retired
+      `ipBubbles`, its lightbox entry, both EDGAR constants, four literal blocks and the
+      `.ip-notice-*`/`.ip-planlist` CSS. §01 now diffs **0 pixels / 0 bands at matched height**
+      against v4; §06 expanded matches at 1301px. Full numbers: `5-design-port-log.md` run 11.
+- [ ] **P2 frontend — THE WORK NOW.** Consume the endpoints on this branch, literal by literal,
+      until none remain. ⚠️ **`3-implementation.md` has a CANNOT-SOURCE table** — §04 (voting/N-PX)
+      and §06 (supply events, acceptance lag) are largely **not ingested at all**.
       Each needs a decision — plumb, honest empty state, or remove — **never a surviving literal**.
+      💡 **"The design deleted it" is a valid third answer** — §06's Form 144 row was retired that
+      way. Check the current prototype before building an empty state for a block that may be gone.
+  - [x] **§01 QA + operator acceptance** (2026-08-01). ✅ **Confirmed** — `4-qa.md` +
+        signed `4b-manual-verification.md` (phase 1's are preserved as `*-phase1.md`). **Three
+        layout defects, one cause: every constant in the port was sized for the prototype's short
+        sample strings.** D-1 the equation panel (248px/3 rows → 81px/1 row, operator-reported);
+        D-2 the freshness strip (157→105px, swept); **D-3 the dumbbell gutter clipping real manager
+        names — font-dependent (165.8 units with the webfont, 184.7 without), so it rendered clean
+        in every headless capture and was cut on the operator's screen.** Fixed by measuring with
+        `getComputedTextLength()` post-paint per RECONCILIATION §6. ⚠️ **§02–§06 have the same
+        exposure** — sweep every hard-coded label gutter, and run layout checks **with the webfont
+        blocked**. Run 13 in the log.
+  - [x] **§01 Register snapshot** (2026-07-31). `IP01` down from 4,384 chars to two **filing-rule**
+        blocks (`scope`, `speed`). Data layer `IP_DATA`/`ipLoad` — four endpoints settled not raced,
+        so one failure doesn't blank the page; `IP_DONE` drives the banner, which now names only the
+        sections still on literals and disappears on its own. A plumbed section **never falls back
+        to a literal** (loading/error states instead). Four CANNOT-SOURCE figures render `N/A` with
+        their reason, **never a number**; `zeros: []` verified on every capture. Real data caught
+        three defects literals hid — the dumbbell's baked-in `domainMax`, the freshness strip
+        wrapping under real `reason` sentences, and two captions that had become false. Details:
+        `5-design-port-log.md` run 12.
+  - [ ] **§02–§06** — same pattern, section by section. §07 is reference copy and stays.
+  - [x] ✅ **SETTLED — the status vocabulary.** Operator chose **chips only on N/A and
+        approximate**; recorded as **D-chips** above and implemented on §01. §02–§06 follow it.
 - [ ] **P2 QA + 4b** — a NEW `4-qa.md` / `4b-manual-verification.md` for phase 2. ⚠️ The ones on
       disk cover the phase-1 affordances change and the fidelity gate, NOT phase 2 — do not read a
       green report there as phase 2 being verified.

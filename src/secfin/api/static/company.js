@@ -753,13 +753,182 @@
   // guard above means it can never touch a rail that no longer has a jump list.
   function ipUnwatchSections() { ipSpyOn = false; }
 
+  /* ==========================================================================================
+   * PHASE 2 — the data layer behind the ported design.
+   *
+   * Every section below moves off `IP01`-`IP07` (the prototype's own literals) and onto the real
+   * endpoints, one section at a time. `IP_DATA.done` names the sections that have made the trip;
+   * the banner reads it, so the warning shrinks as the plumbing lands and disappears by itself
+   * when the last literal goes. Nothing here re-derives a number the API owns.
+   * ======================================================================================== */
+
+  var IP_DONE = ["01"]; // sections wired to real filings data
+
+  var IP_DATA = {
+    symbol: null,
+    period: null,       // the 13F quarter-end being described
+    periods: [],        // every ingested quarter, newest first
+    register: null,     // /institutional-register       -- one quarter's shape
+    shape: null,        // /institutional-register-shape -- across quarters
+    filed: null,        // /institutional-filed-since    -- what landed after the register closed
+    activity: null,     // /institutional-activity       -- DERIVED per-manager quarter-over-quarter
+    status: "idle",     // idle | loading | ready | error
+    error: null,
+  };
+
+  /* One load per (symbol, period). The four calls are independent, and a failure in any ONE of
+   * them must not blank the others -- a section whose endpoint failed renders its own error, the
+   * rest of the page still renders. So: settle every promise, never reject the whole load. */
+  function ipLoad(symbol, period) {
+    IP_DATA.symbol = symbol;
+    IP_DATA.status = "loading";
+    IP_DATA.error = null;
+    var base = "/companies/" + encodeURIComponent(symbol) + "/institutional";
+    var q = period ? "?period=" + encodeURIComponent(period) : "";
+
+    var soft = function (p) { return p.then(function (v) { return v; }, function (e) { return { _err: e }; }); };
+
+    return P.api(base + "-periods")
+      .then(function (per) {
+        IP_DATA.periods = per.periods || [];
+        // The caller's period wins; otherwise the newest quarter we have actually ingested.
+        IP_DATA.period = period || IP_DATA.periods[0] || null;
+        var pq = IP_DATA.period ? "?period=" + encodeURIComponent(IP_DATA.period) : q;
+        return Promise.all([
+          soft(P.api(base + "-register" + pq)),
+          soft(P.api(base + "-register-shape" + pq)),
+          soft(P.api(base + "-filed-since" + pq)),
+          soft(P.api(base + "-activity" + pq)),
+        ]);
+      })
+      .then(function (r) {
+        IP_DATA.register = r[0];
+        IP_DATA.shape = r[1];
+        IP_DATA.filed = r[2];
+        IP_DATA.activity = r[3];
+        IP_DATA.status = "ready";
+      })
+      .catch(function (e) {
+        // Only /institutional-periods reaching here — the issuer itself did not resolve.
+        IP_DATA.status = "error";
+        IP_DATA.error = e;
+      });
+  }
+
+  function ipErr(o) { return !o || o._err; }
+
+  /* ---------- the honesty vocabulary, in the port's own visual language ----------
+   *
+   * RECONCILIATION §3 is right that production wants a statusChip on every derived value, and the
+   * prototype has none -- it carries the same distinctions in prose. Adding chips would break the
+   * pixel match the operator just accepted, so phase 2 keeps the prototype's SHAPE and puts the
+   * honesty where the prototype already puts its prose: the value slot reads N/A, and the API's
+   * own `reason` goes in the note beneath it. ⚠️ OPERATOR DECISION OPEN -- see 3-implementation.md.
+   *
+   * The one rule with no give in it: a missing, inapplicable or not-yet-ingested value is NEVER
+   * rendered as 0, and never as a blank styled like a value. */
+  var IP_NA = "N/A";
+
+  // A derived block ({status, reason, ...}) is usable only when it says so AND the field is there.
+  function ipOk(block, field) {
+    return !!block && !block._err && block.status === "ok" &&
+      block[field] !== null && block[field] !== undefined;
+  }
+
+  // The reason an absent value is absent — the API writes these to be shown, so show them.
+  function ipWhy(block, fallback) {
+    if (!block) return fallback || "not ingested for this quarter";
+    if (block._err) return "this measure could not be loaded (" + (block._err.status || "network") + ")";
+    return block.reason || fallback || "not reported in the filings we have ingested";
+  }
+
+  /* D-chips (operator, 2026-08-01): the production status vocabulary rides on values that need a
+   * caveat, and ONLY those. A value that is fine carries no chip — that keeps the prototype's
+   * rendering where it was accepted at the fidelity gate, and still flags everything a reader
+   * should not take at face value. `ClearyFi.statusChip` is the shared component, not a local
+   * lookalike, so §01 speaks the same vocabulary as the company hub and the sector views. */
+  function ipStatusChip(status) {
+    if (!status || status === "ok") return "";
+    return P.statusChip(status);
+  }
+
+  // The chip a slot earns: N/A when we cannot compute it, APPROX when the API flags it imprecise.
+  function ipChipFor(block) {
+    if (!block) return "na";
+    if (block._err) return "na";
+    if (block.status === "approximate") return "approximate";
+    if (block.status && block.status !== "ok") return "na";
+    return null;
+  }
+
+  // ---------- formatting ----------
+
+  function ipShares(n) {
+    if (n === null || n === undefined) return IP_NA;
+    var a = Math.abs(n);
+    if (a >= 1e9) return (n / 1e9).toFixed(a >= 1e10 ? 0 : 1) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 0 : 1) + "M";
+    if (a >= 1e3) return (n / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "K";
+    return String(Math.round(n));
+  }
+  function ipSignedShares(n) {
+    if (n === null || n === undefined) return IP_NA;
+    return (n > 0 ? "+" : n < 0 ? "−" : "") + ipShares(Math.abs(n));
+  }
+  function ipPct(v, dp) {
+    if (v === null || v === undefined) return IP_NA;
+    return (v * 100).toFixed(dp === undefined ? 1 : dp) + "%";
+  }
+  function ipCount(n) {
+    return n === null || n === undefined ? IP_NA : String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // "2026-03-31" -> "1Q26", the prototype's own quarter label.
+  function ipQuarter(iso) {
+    if (!iso) return IP_NA;
+    var m = +iso.slice(5, 7);
+    return Math.ceil(m / 3) + "Q" + iso.slice(2, 4);
+  }
+  function ipDaysBetween(aIso, bIso) {
+    if (!aIso || !bIso) return null;
+    return Math.round((Date.parse(bIso) - Date.parse(aIso)) / 86400000);
+  }
+  function ipTodayIso() { return new Date().toISOString().slice(0, 10); }
+
+  /* The NEXT statutory 13F deadline, from the calendar rule the API hands us (`deadline_days`,
+   * 45 by statute) applied to the next quarter end that has not yet been filed for. This is
+   * arithmetic on a filing rule, not a claim about data — the alternative is leaving the
+   * prototype's hard-coded 2026-08-14 in place, which would be a literal. */
+  function ipNextDeadline(deadlineDays) {
+    var d = new Date(ipTodayIso() + "T00:00:00Z");
+    var qEnd = new Date(Date.UTC(d.getUTCFullYear(), (Math.floor(d.getUTCMonth() / 3) + 1) * 3, 0));
+    var due = new Date(qEnd.getTime() + (deadlineDays || 45) * 86400000);
+    if (due < d) { // this quarter's window already closed; the next one is a quarter out
+      qEnd = new Date(Date.UTC(qEnd.getUTCFullYear(), qEnd.getUTCMonth() + 4, 0));
+      due = new Date(qEnd.getTime() + (deadlineDays || 45) * 86400000);
+    }
+    return due.toISOString().slice(0, 10);
+  }
+
   function renderInstitutionalPort() {
     $("legend").innerHTML = "";
     // No disclosure() in phase 1: that copy describes REAL data, and there is none on this page.
     $("disclosure").innerHTML = "";
-    $("controls").hidden = true;      // no period selector -- nothing here is period-scoped yet
+    $("controls").hidden = true;
     $("period-control").hidden = true;
 
+    var sym = window.ClearyFiShell.route().id;
+    // Fetch once per (symbol, period); paint the ported design immediately either way, so the
+    // sections that are still literal-backed never wait on a request they don't use.
+    if (IP_DATA.status === "idle" || IP_DATA.symbol !== sym) {
+      ipPaint();
+      ipLoad(sym, null).then(ipPaint);
+      return;
+    }
+    ipPaint();
+  }
+
+  function ipPaint() {
     // Sections build one at a time, in order, each diffed against its capture before the next
     // starts (P1e). A section with no builder yet renders as an empty shell.
     var IP_BODIES = { "01": ipSection01, "02": ipSection02, "03": ipSection03, "04": ipSection04, "05": ipSection05, "06": ipSection06, "07": ipSection07 };
@@ -780,6 +949,14 @@
     ipBindExpanders();
     ipBindAffordances();
     ipWatchSections();
+
+    /* Charts whose labels come from filings can only be sized once the text is real and the font
+     * has resolved. Fit now, then again when webfonts land — `document.fonts.ready` settles
+     * immediately if they already have, so the second pass is free when it is not needed. */
+    ipFitDumbbell();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { ipFitDumbbell(); });
+    }
   }
 
   /* The prototype's expander bars really do expand (operator, 2026-07-30). One delegated handler
@@ -824,15 +1001,25 @@
    * mistakable for filings data -- not for a moment, and not by us either. Uses the ext/caveat
    * colour family (STYLE_GUIDE §1), the product's reserve for "flag / doesn't reconcile", never the
    * accent, which means interaction. */
+  /* The banner shrinks as phase 2 lands and removes itself when the last literal goes. It names
+   * the sections that are still prototype literals, so nobody has to guess which numbers on the
+   * page describe this company and which describe nothing. */
   function ipBanner() {
+    var left = IP_SECTIONS.map(function (s) { return s[0]; })
+      .filter(function (n) { return IP_DONE.indexOf(n) === -1 && n !== "07"; });
+    if (!left.length) return "";
+    var names = IP_SECTIONS.filter(function (s) { return left.indexOf(s[0]) !== -1; })
+      .map(function (s) { return "§" + s[0] + " " + s[1]; });
     return (
       '<div class="ip-banner" role="alert">' +
-      '<div class="ip-banner-title">⚠ Static design port — not real data</div>' +
-      '<div class="ip-banner-body">Every value on this page is a literal copied from the v3 ' +
-      "prototype. Nothing is fetched, nothing is derived, and no figure here describes this or any " +
-      "other company. The page exists so the DESIGN can be verified on its own, before any data is " +
-      "plumbed in (V3-P5a phase 1). The Institutional view that does carry real filings data is in " +
-      'the rail as <strong>Institutional (legacy)</strong>.</div>' +
+      '<div class="ip-banner-title">⚠ ' + names.length +
+      " of these sections are still design placeholders — not real data</div>" +
+      '<div class="ip-banner-body">Every value in <strong>' + P.esc(names.join(", ")) +
+      "</strong> is a literal copied from the design prototype: nothing is fetched, nothing is " +
+      "derived, and no figure in them describes this or any other company. " +
+      "<strong>§01 Register snapshot</strong> now carries real filings data, and the rest follow " +
+      "section by section (V3-P5a phase 2). §07 is reference copy. The other Institutional view " +
+      'in the rail, <strong>Institutional (legacy)</strong>, is real throughout.</div>' +
       "</div>"
     );
   }
@@ -878,40 +1065,11 @@
    *
    * ⚠️ EVERY NUMBER AND DATE HERE IS A PROTOTYPE LITERAL. See the banner at the top of the page.
    * Phase 2 replaces all of them; §01 is done when this object is empty. */
+  /* §01 is plumbed (phase 2). What survives here is not data — it is two statements of filing
+   * RULES, which are the same for every registrant and are not fetched from anywhere:
+   * `scope` (what Section 13(f) covers) and `speed` (each form's statutory deadline). */
   var IP01 = {
-    freshness: [
-      { label: "Register as of", value: "1Q26", note: 'filed <span>2026-05-12</span> · <span>73 days since filed</span>' },
-      { label: "Next 13F window closes", value: "2026-08-14", note: "in <span>21 days</span>" },
-      { label: "Filings since the snapshot", value: "6", accent: true, note: "faster forms applied below" },
-      {
-        label: "Confirmed in last 30 days",
-        value: "32%",
-        note: "<span>share of reported holdings confirmed by some filing in the last 30 days</span>",
-      },
-    ],
-    lag: "13F-HR is filed within 45 days of quarter end — this register is as of 1Q26, filed May 2026, and is not a real-time holder list.",
     scope: "Section 13(f) covers managers with over $100M in 13(f) securities. Holdings below reporting thresholds and non-13F holders are not represented.",
-    equation: [
-      { label: "Base register", value: "767M", note: "<span>13F-HR · 1Q26, filed 2026-05-12</span>" },
-      { op: "+", label: "Filed since", value: "+9.7M", accent: true, note: "<span>3</span> of <span>6</span> filings applied" },
-      { op: "=", label: "Adjusted register", value: "776M", note: "<span>61.6%</span> of shares outstanding" },
-    ],
-    tiles: [
-      { label: "Reporting managers", value: "1,669", note: "13F-HR filers reporting a position" },
-      { label: "Shares reported", value: "767M", note: "of <span>1260M</span> shares outstanding" },
-      { label: "Institutional share", value: "60.8%", derived: true, note: "13F shares over cover-page shares out" },
-      { label: "Insider ownership", value: "6.4%", note: "DEF 14A beneficial ownership table" },
-    ],
-    // Inside §01's expander: every filing accepted since the snapshot.
-    filings: [
-      { form: "SC 13G/A", filer: "Index manager B", what: "position crossed a 5% increment", deadline: "5 business days", applied: "applied", shares: "+6.5M", accepted: "2026-07-16 16:12 ET" },
-      { form: "SC 13D/A", filer: "Founder trust", what: "Item 4 amended", deadline: "2 business days", applied: "applied", shares: "−2.4M", accepted: "2026-07-05 09:41 ET" },
-      { form: "N-PORT", filer: "Active manager D", what: "monthly fund holdings, June", deadline: "monthly", applied: "applied", shares: "+5.6M", accepted: "2026-07-16 07:55 ET" },
-      { form: "Form 4", filer: "CFO", what: "insider disposition, code S", deadline: "2 business days", applied: "not applied · insider, not 13F", shares: "−3,000 sh", accepted: "2026-07-18 18:03 ET" },
-      { form: "Form 144", filer: "SVP, Engineering", what: "notice of proposed sale", deadline: "at time of order", applied: "not applied · may not settle", shares: "−10,000 sh", accepted: "2026-07-15 11:27 ET" },
-      { form: "8-K 5.07", filer: "Registrant", what: "annual meeting vote results certified", deadline: "4 business days", applied: "not applied · no holdings effect", shares: "—", accepted: "2026-06-08 17:30 ET" },
-    ],
-    filingsNote: "Only filings that change the 13F-reported register are applied. Insider forms and the Form 144 notice are shown for context but excluded — 144 is a proposed sale that may never settle, and Section 16 holdings are not 13F holdings. Holders with no filing obligation are unchanged by construction; this is not a live holder list.",
     speed: [
       ["Form 4 / 144", "2 business days · at order", "insider side, fastest"],
       ["SC 13D/A", "2 business days", "material change by a 5% holder"],
@@ -919,38 +1077,98 @@
       ["N-PORT", "monthly", "named fund positions"],
       ["13F-HR", "45 days after quarter end", "the full register, slowest"],
     ],
-    /* Dumbbell rows. `prior`/`current` are millions of shares, recovered from the captured SVG's x
-     * positions (x = 210 + v/123.43 × 372). They reproduce the prototype's geometry to under a
-     * tenth of a pixel AND round to its printed deltas — which is the cross-check that the scale
-     * was recovered correctly rather than guessed.
-     *
-     * `color` is carried per row because the prototype's own type→colour rule is not recoverable
-     * from §01 alone: it paints "Active manager D" #a88c5f but "Active manager E" #8b8579, so the
-     * encoding keys off something in its sample data that the label does not expose. §02/§03 use
-     * the same three-colour scale and should settle it. */
-    dumbbell: [
-      { label: "Hedge fund H", prior: 15.978, current: 20.837, delta: "+4.9M", color: "#8b8579" },
-      { label: "Active manager D", prior: 20.917, current: 25.338, delta: "+4.4M", color: "#a88c5f" },
-      { label: "Sovereign fund G", prior: 14.96, current: 17.538, delta: "+2.6M", color: "#c0703a" },
-      { label: "Index manager C", prior: 19.519, current: 21.338, delta: "+1.8M", color: "#c0703a" },
-      { label: "Pension system F", prior: 33.236, current: 33.937, delta: "+0.7M", color: "#a88c5f" },
-      { label: "Index manager B", prior: 67.267, current: 65.837, delta: "−1.4M", color: "#c0703a" },
-      { label: "Active manager E", prior: 33.823, current: 31.137, delta: "−2.7M", color: "#8b8579" },
-      { label: "Index manager A", prior: 108.463, current: 97.936, delta: "−10.5M", color: "#c0703a" },
-    ],
   };
 
   function ipSection01() {
-    return ip01Freshness() + ip01SinceLast13F() + ip01Tiles();
+    /* A plumbed section never falls back to the prototype's literals: the banner tells the reader
+     * §01 is real, so showing sample values while the fetch is in flight would make the banner
+     * lie for a second. It loads, or it says why it couldn't. */
+    if (IP_DATA.status === "idle" || IP_DATA.status === "loading") {
+      return P.states.loading({ title: "Loading the 13F register" });
+    }
+    if (IP_DATA.status === "error" || ipErr(IP_DATA.register)) {
+      var e = IP_DATA.error || (IP_DATA.register || {})._err || {};
+      return P.states.error({
+        copy: "Couldn't load the institutional register (" + (e.status || "network") + ")." +
+          (e.detail ? " " + e.detail : ""),
+      });
+    }
+    return ip01Freshness() + ip01SinceLast13F() + ip01Tiles() + ip01InsiderXref();
+  }
+
+  /* Prototype v4 closes §01 by naming what the insider-ownership figure above is NOT: it is the
+   * DEF 14A beneficial-ownership table, which is a different measurement from the Form 4 ledger.
+   * The prototype points at its new Insider activity view; our equivalent destination is the
+   * Insider tab this hub already has. See 5-design-port-log.md, run 11. */
+  function ip01InsiderXref() {
+    return (
+      '<div class="ip-xref">' +
+      '<span class="ip-xref-note">Insider ownership above is the DEF 14A beneficial ownership ' +
+      "table. Section 16 transactions are reported in full on their own view.</span>" +
+      ipGoLink("Insider activity — ledger, codes, Form 144 →") +
+      "</div>"
+    );
+  }
+
+  /* ---------- §01, on real filings data (phase 2) ----------
+   *
+   * The four freshness cells, the two caveat lines and the four tiles are now the register
+   * endpoint's own numbers. Three figures the prototype prints have NO source and are rendered
+   * N/A with the API's reason rather than invented — see 3-implementation.md's CANNOT-SOURCE
+   * table, and the notes at each site below. */
+
+  function ip01FreshnessCells() {
+    var reg = IP_DATA.register;
+    var m = reg.period_meta || {};
+    var filed = m.filed_latest;
+    var since = ipDaysBetween(filed, ipTodayIso());
+    var nextDue = ipNextDeadline(m.deadline_days);
+    var toGo = ipDaysBetween(ipTodayIso(), nextDue);
+    var filedCount = ipErr(IP_DATA.filed) ? null : (IP_DATA.filed.filing_count || 0);
+
+    return [
+      {
+        label: "Register as of",
+        value: ipQuarter(reg.period),
+        note: filed
+          ? "filed <span>" + P.esc(filed) + "</span> · <span>" + since + " days since filed</span>"
+          : "<span>no filing date on the ingested snapshot</span>",
+      },
+      {
+        label: "Next 13F window closes",
+        value: nextDue,
+        note: "in <span>" + toGo + " days</span>",
+      },
+      {
+        label: "Filings since the snapshot",
+        value: filedCount === null ? IP_NA : String(filedCount),
+        status: filedCount === null ? "na" : null,
+        accent: filedCount !== null && filedCount > 0,
+        note: filedCount === null
+          ? "<span>" + P.esc(ipWhy(IP_DATA.filed)) + "</span>"
+          : "faster forms applied below",
+      },
+      /* CANNOT SOURCE. We do not track per-holding filing confirmations, so there is no honest
+       * number here — N/A, never a plausible percentage. The cell keeps the prototype's short
+       * note so the strip holds its row; the reason is the third line of the prose beneath it,
+       * which is already where this card says what it is not. */
+      {
+        label: "Confirmed in last 30 days",
+        value: IP_NA,
+        status: "na",
+        note: "<span>not tracked</span>",
+      },
+    ];
   }
 
   // The accent-edged card: how fresh the register is, then the two things it is not.
   function ip01Freshness() {
-    var cells = IP01.freshness
+    var cells = ip01FreshnessCells()
       .map(function (c) {
         return (
           '<div class="ip-strip-cell">' +
-          '<span class="ip-micro">' + P.esc(c.label) + "</span>" +
+          '<span class="ip-slot-head"><span class="ip-micro">' + P.esc(c.label) + "</span>" +
+          ipStatusChip(c.status) + "</span>" +
           '<span class="ip-strip-val' + (c.accent ? " ip-strip-val--accent" : "") + '">' +
           "<span>" + P.esc(c.value) + "</span></span>" +
           '<span class="ip-strip-note">' + c.note + "</span>" +
@@ -961,19 +1179,93 @@
     return (
       '<div class="ip-card ip-card--edge">' +
       '<div class="ip-strip">' + cells + "</div>" +
-      '<div class="ip-prose"><span><span>' + P.esc(IP01.lag) + "</span></span>" +
-      "<span><span>" + P.esc(IP01.scope) + "</span></span></div>" +
+      '<div class="ip-prose"><span><span>' + P.esc(ip01Lag()) + "</span></span>" +
+      "<span><span>" + P.esc(IP01.scope) + "</span></span>" +
+      "<span><span>We do not track per-holding filing confirmations, so no share of this " +
+      "register can be called confirmed — that cell is N/A rather than a percentage.</span></span>" +
+      "</div>" +
       "</div>"
+    );
+  }
+
+  /* The staleness sentence names the register it is describing. IP01.scope below it is a statement
+   * of what Section 13(f) covers — a rule, not a figure, so it stays as written. */
+  function ip01Lag() {
+    var reg = IP_DATA.register;
+    var m = reg.period_meta || {};
+    return (
+      "13F-HR is filed within " + (m.deadline_days || 45) + " days of quarter end — this register " +
+      "is as of " + ipQuarter(reg.period) +
+      (m.filed_latest ? ", filed " + m.filed_latest : "") +
+      ", and is not a real-time holder list."
+    );
+  }
+
+  /* The base / filed-since / adjusted equation.
+   *
+   * ⚠️ The "= Adjusted register" cell has NO honest source and never will: summing a 13D/G *total*
+   * position, a Form 4 *transaction* and a 13F *holding* produces a share count nobody filed.
+   * Attempt 3 omitted it on exactly that reasoning and the operator's Batch B passed on it. So the
+   * two real cells carry real numbers and the third states why it is not a number — the shape of
+   * the prototype's equation survives, the fabricated total does not. */
+  function ip01EquationCells() {
+    var reg = IP_DATA.register;
+    if (IP_DATA.status !== "ready" || ipErr(reg)) return null;
+    var m = reg.period_meta || {};
+    var filed = ipErr(IP_DATA.filed) ? null : IP_DATA.filed;
+    var applied = filed
+      ? filed.filings.filter(function (f) { return /13[DG]/.test(f.form); }).length
+      : null;
+
+    return [
+      {
+        label: "Base register",
+        value: ipShares(reg.total_reported_shares),
+        note: "<span>13F-HR · " + P.esc(ipQuarter(reg.period)) +
+          (m.filed_latest ? ", filed " + P.esc(m.filed_latest) : "") + "</span>",
+      },
+      {
+        op: "+",
+        label: "Filed since",
+        value: IP_NA,
+        status: "na",
+        note: filed
+          ? "<span>" + applied + "</span> of <span>" + filed.filings.length +
+            "</span> state a position"
+          : "<span>not loaded</span>",
+      },
+      {
+        op: "=",
+        label: "Adjusted register",
+        value: IP_NA,
+        status: "na",
+        note: "<span>not a total we can take</span>",
+      },
+    ];
+  }
+
+  /* The cells stay at the prototype's three-word register so the equation holds its row; the whole
+   * reason lives here, once, with the full column to wrap in. */
+  function ip01EquationWhy() {
+    var filed = IP_DATA.filed;
+    if (ipErr(filed)) {
+      return "Filed since and Adjusted register are N/A: " + ipWhy(filed) + ".";
+    }
+    return (
+      "Filed since and Adjusted register are N/A because the filings accepted since this register " +
+      "closed report single transactions rather than positions — a 13D/G total, a Form 4 " +
+      "transaction and a 13F holding do not add, and the sum would be a share count nobody filed."
     );
   }
 
   // The card that states the 13F's own staleness and then shows where the register moved.
   function ip01SinceLast13F() {
-    var eq = IP01.equation
+    var eq = ip01EquationCells()
       .map(function (c) {
         var cell =
           '<div class="ip-eq-cell">' +
-          '<span class="ip-eq-label ip-card-note">' + P.esc(c.label) + "</span>" +
+          '<span class="ip-slot-head"><span class="ip-eq-label ip-card-note">' +
+          P.esc(c.label) + "</span>" + ipStatusChip(c.status) + "</span>" +
           '<span class="ip-eq-val' + (c.accent ? " ip-eq-val--accent" : "") + '">' +
           "<span>" + P.esc(c.value) + "</span></span>" +
           '<span class="ip-eq-note">' + c.note + "</span>" +
@@ -986,16 +1278,15 @@
       '<div class="ip-card">' +
       '<div class="ip-card-head">' +
       '<h3 class="ip-card-title">Since the last 13F</h3>' +
-      '<span class="ip-card-note">faster forms, by EDGAR acceptance time · base and adjusted shown separately</span>' +
-      ipLink("Base 13F ↗") +
+      '<span class="ip-card-note">faster forms, by filing date · base and adjusted shown separately</span>' +
+      ipLink("Base 13F ↗", ipEdgarFts("13F-HR")) +
       ipBadge("") +
       "</div>" +
       '<div class="ip-tint ip-eq">' + eq + "</div>" +
+      '<div class="ip-eq-why">' + P.esc(ip01EquationWhy()) + "</div>" +
       '<div class="ip-micro ip-micro--block">Where the register moved · prior quarter to current</div>' +
-      '<div class="ip-chart">' + ipDumbbell(IP01.dumbbell) + "</div>" +
-      '<div class="ip-caption">Hollow is the position as reported in the prior quarter’s 13F, filled ' +
-      "the current register. Colour is manager type, the same encoding used everywhere on this page. " +
-      "Direction is described, not scored.</div>" +
+      '<div class="ip-chart">' + ip01DumbbellChart() + "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(ip01DumbbellNote()) + "</span></div>" +
       ipExpander(
         "Also in this section",
         "filing-by-filing detail since the snapshot · how fast each form arrives",
@@ -1005,10 +1296,100 @@
     );
   }
 
-  /* §01's expander: every filing accepted since the snapshot, whether it was applied to the
-   * register, and how fast each form type arrives. All literals. */
+  /* The eight largest quarter-over-quarter moves, from /institutional-activity — which is
+   * `flows.py` diffing two quarter-end snapshots. **DERIVED, not reported trades**; the caption
+   * under the chart and the endpoint's own caveats both say so.
+   *
+   * Only managers present in BOTH quarters get a row: a manager with one side missing has no
+   * "prior → current" to draw, and an entry or exit is a coverage event as often as a trade
+   * (the turnover block's `cannot` makes the same point). Colour is one accent, not the
+   * prototype's three-way manager-type encoding — we do not classify managers by type, and
+   * inventing a class from the name would be exactly the fabrication phase 2 exists to remove. */
+  function ip01DumbbellRows() {
+    var act = IP_DATA.activity;
+    if (IP_DATA.status !== "ready" || ipErr(act) || !act.activity) return null;
+    var rows = act.activity
+      .filter(function (a) {
+        return a.shares_before !== null && a.shares_before !== undefined &&
+          a.shares_after !== null && a.shares_after !== undefined &&
+          a.shares_after !== a.shares_before;
+      })
+      .map(function (a) {
+        return {
+          label: a.manager_name || ("CIK " + a.manager_cik),
+          prior: a.shares_before / 1e6,
+          current: a.shares_after / 1e6,
+          delta: ipSignedShares(a.shares_after - a.shares_before),
+          color: "#c0703a",
+        };
+      });
+    if (!rows.length) return null;
+    rows.sort(function (x, y) {
+      return Math.abs(y.current - y.prior) - Math.abs(x.current - x.prior);
+    });
+    return rows.slice(0, 8);
+  }
+
+  function ip01DumbbellChart() {
+    var rows = ip01DumbbellRows();
+    if (!rows) {
+      return (
+        '<div class="ip-rr-empty"><span class="ex21-dash">—</span><p>No manager reports a ' +
+        "position in both " + P.esc(ipQuarter((IP_DATA.activity || {}).from_period)) + " and " +
+        P.esc(ipQuarter(IP_DATA.period)) + ", so there is no prior-to-current move to draw. " +
+        "That is a gap in what we have ingested, not a confirmed absence of movement.</p></div>"
+      );
+    }
+    var max = rows.reduce(function (m, r) { return Math.max(m, r.prior, r.current); }, 0);
+    return ipDumbbell(rows, max * 1.06); // headroom so the largest dot clears the track's end
+  }
+
+  function ip01DumbbellNote() {
+    if (!ip01DumbbellRows()) {
+      return "Hollow is the position as reported in the prior quarter’s 13F, filled the current " +
+        "register. Direction is described, not scored.";
+    }
+    return (
+      "DERIVED by diffing two quarter-end 13F snapshots — these are not reported trades. Hollow " +
+      "is the position as reported in " + ipQuarter((IP_DATA.activity || {}).from_period) +
+      ", filled the current register. Only managers that report in both quarters appear: an " +
+      "entrant or an exit has no prior-to-current line, and can be a coverage gap rather than a " +
+      "trade. Direction is described, not scored."
+    );
+  }
+
+  /* §01's expander: every filing accepted since the snapshot and whether it moves the register,
+   * plus how fast each form type arrives (a statutory table — a rule, not a figure). */
+  function ip01FilingRows() {
+    var filed = IP_DATA.filed;
+    if (IP_DATA.status !== "ready" || ipErr(filed)) return null;
+    var DEADLINE = {
+      "13F-HR": "45 days after quarter end", "SC 13D": "5 business days",
+      "SC 13D/A": "2 business days", "SC 13G": "45 days after year end",
+      "SC 13G/A": "5 business days", "Form 4": "2 business days",
+      "Form 3": "10 days of becoming an insider", "Form 5": "45 days after fiscal year end",
+    };
+    return filed.filings.map(function (f) {
+      var isPosition = /13[DG]/.test(f.form);
+      return {
+        form: f.form,
+        filer: f.filer,
+        what: f.reported + (f.percent_of_class !== null && f.percent_of_class !== undefined
+          ? " · " + ipPct(f.percent_of_class / 100, 1) + " of class" : ""),
+        deadline: DEADLINE[f.form] || "—",
+        applied: isPosition
+          ? "states a position"
+          : "not applied · " + (f.shares_are || "not a 13F holding"),
+        shares: f.shares === null || f.shares === undefined ? "—" : ipSignedShares(
+          /dispos|sold|sale/i.test(f.reported || "") ? -Math.abs(f.shares) : f.shares
+        ) + " sh",
+        accepted: f.filed || IP_NA,
+      };
+    });
+  }
+
   function ip01ExpanderBody() {
-    var rows = IP01.filings
+    var rows = ip01FilingRows()
       .map(function (f) {
         return (
           '<div class="ip-ftab-row">' +
@@ -1039,10 +1420,21 @@
       '<div class="ip-ftab-head"><span>Form</span><span>Filer · what changed</span>' +
       '<span class="ip-r">Shares</span><span class="ip-r">Accepted</span></div>' +
       rows +
-      '<div class="ip-caption"><span>' + P.esc(IP01.filingsNote) + "</span></div>" +
+      '<div class="ip-caption"><span>' + P.esc(ip01FilingsNote()) + "</span></div>" +
       '<div class="ip-micro ip-micro--block">How fast each form arrives</div>' +
       speed
     );
+  }
+
+  function ip01FilingsNote() {
+    var filed = IP_DATA.filed;
+    return (
+      (filed.does_not_restate_reason ||
+        "None of these restate the 13F register.") + " " +
+      (filed.dates_are || "") + " " +
+      "Holders with no filing obligation are unchanged by construction; this is not a live " +
+      "holder list."
+    ).replace(/\s+/g, " ").trim();
   }
 
   /* The right rail on the ported view (operator, 2026-07-30): the prototype's Filing-timeline
@@ -1072,15 +1464,58 @@
     );
   }
 
+  /* The four headline tiles.
+   *
+   * Two are the register's own numbers. Two need SHARES OUTSTANDING, which the register endpoint
+   * does not carry — so "Institutional share" and the "of N shares outstanding" sub-line read N/A
+   * with the reason rather than a ratio computed against a denominator we do not have. The fourth,
+   * insider ownership, is the DEF 14A beneficial-ownership table: not ingested, not in Track 1's
+   * structured sources today. All three CANNOT-SOURCE, all three honest. */
+  function ip01TileList() {
+    var reg = IP_DATA.register;
+    if (IP_DATA.status !== "ready" || ipErr(reg)) return null;
+    var conc = reg.concentration || {};
+    var holders = ipOk(conc, "holder_count")
+      ? conc.holder_count
+      : (reg.period_meta || {}).ingested_filer_count;
+
+    return [
+      {
+        label: "Reporting managers",
+        value: holders === null || holders === undefined ? IP_NA : ipCount(holders),
+        status: holders === null || holders === undefined ? "na" : ipChipFor(conc),
+        note: "13F-HR filers we have ingested reporting a position",
+      },
+      {
+        label: "Shares reported",
+        value: ipShares(reg.total_reported_shares),
+        status: reg.total_reported_shares === null || reg.total_reported_shares === undefined ? "na" : null,
+        note: "shares outstanding is <span>" + IP_NA + "</span> — not carried on the 13F register",
+      },
+      {
+        label: "Institutional share",
+        value: IP_NA,
+        status: "na",
+        derived: true,
+        note: "needs shares outstanding, which this register does not carry",
+      },
+      {
+        label: "Insider ownership",
+        value: IP_NA,
+        status: "na",
+        note: "the DEF 14A beneficial ownership table is not ingested",
+      },
+    ];
+  }
+
   function ip01Tiles() {
     return (
       '<div class="ip-tiles">' +
-      IP01.tiles
+      ip01TileList()
         .map(function (t) {
-          var head = t.derived
-            ? '<span class="ip-tile-head"><span class="ip-micro">' + P.esc(t.label) + "</span>" +
-              ipBadge("01-share") + "</span>"
-            : '<span class="ip-micro">' + P.esc(t.label) + "</span>";
+          var head =
+            '<span class="ip-tile-head"><span class="ip-micro">' + P.esc(t.label) + "</span>" +
+            (t.derived ? ipBadge("01-share") : "") + ipStatusChip(t.status) + "</span>";
           return (
             '<div class="ip-tile">' + head +
             '<span class="ip-tile-val"><span>' + P.esc(t.value) + "</span></span>" +
@@ -1118,20 +1553,34 @@
     domainMax: 123.43,   // millions of shares spanning gutter → trackEnd
   };
 
-  function ipDumbbell(rows) {
+  /* Two of the prototype's constants had to become parameters once real filings data arrived:
+   *
+   * `domainMax` — the prototype's 123.43 describes ITS sample. A real register runs to billions,
+   *   which clamped every dot onto the track's right edge.
+   * `gutter` — the label gutter is sized for "Hedge fund H". Real manager names are unbounded
+   *   ("BERKSHIRE HATHAWAY INC", "NORTHLESS CAPITAL PARTNERS"), the labels are right-anchored so
+   *   they run LEFT out of the viewBox, and `.ip-db` is `overflow: hidden` — so an over-long name
+   *   is **silently clipped**. Worse, whether it clips depends on which font actually loaded, so
+   *   it can look fine in one browser and cut in another. `ipFitDumbbell()` measures the real
+   *   thing after mount and re-renders at a gutter that fits (RECONCILIATION §6 rule 1).
+   *
+   * The literal fallback passes the prototype's own constants, so it still renders as captured. */
+  function ipDumbbell(rows, domainMax, gutter) {
     var g = IP_DB;
+    var dmax = domainMax || g.domainMax;
+    var gut = gutter || g.gutter;
     var height = g.firstRow + (rows.length - 1) * g.rowStep + g.tailPad;
-    var span = g.trackEnd - g.gutter;
-    var x = function (v) { return (g.gutter + (v / g.domainMax) * span).toFixed(2); };
+    var span = g.trackEnd - gut;
+    var x = function (v) { return (gut + (v / dmax) * span).toFixed(2); };
     var parts = [
-      '<text x="' + g.gutter + '" y="' + g.legendY + '" class="ip-db-legend">○ prior quarter    ● current</text>',
+      '<text x="' + gut + '" y="' + g.legendY + '" class="ip-db-legend">○ prior quarter    ● current</text>',
     ];
     rows.forEach(function (r, i) {
       var y = g.firstRow + i * g.rowStep;
       parts.push(
-        '<line x1="' + g.gutter + '" y1="' + y + '" x2="' + g.trackEnd + '" y2="' + y + '" class="ip-db-track"></line>',
-        '<text x="' + (g.gutter - 10) + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-db-label">' +
-          P.esc(r.label) + "</text>",
+        '<line x1="' + gut + '" y1="' + y + '" x2="' + g.trackEnd + '" y2="' + y + '" class="ip-db-track"></line>',
+        '<text x="' + (gut - 10) + '" y="' + y + '" text-anchor="end" dominant-baseline="middle" class="ip-db-label">' +
+          "<title>" + P.esc(r.label) + "</title>" + P.esc(r.label) + "</text>",
         '<line x1="' + x(r.prior) + '" y1="' + y + '" x2="' + x(r.current) + '" y2="' + y +
           '" stroke="' + r.color + '" stroke-width="2.4" opacity="0.5"></line>',
         '<circle cx="' + x(r.prior) + '" cy="' + y + '" r="4" fill="var(--bg-card)" stroke="' + r.color +
@@ -1143,11 +1592,65 @@
     });
     return (
       '<svg class="ip-db" width="100%" viewBox="0 0 ' + g.width + " " + height + '" ' +
-      'preserveAspectRatio="xMidYMid meet" role="img" aria-label="' +
+      'preserveAspectRatio="xMidYMid meet" role="img" data-ip-gutter="' + gut + '" aria-label="' +
       'Change in reported position for the ' + rows.length + ' managers that moved most, prior quarter to current">' +
       parts.join("") +
       "</svg>"
     );
+  }
+
+  /* Post-mount: the only place the label width is actually knowable.
+   *
+   * `getComputedTextLength()` reports what the browser really rendered, with the font that really
+   * loaded — which is the point, because the same name measures differently under Hanken Grotesk
+   * and under the fallback, and the difference decides whether it clips. Widen the gutter to fit
+   * the longest label (the track gives up the space), and if even the cap is not enough, trim the
+   * label to fit and leave the full name on the `<title>` so nothing is lost silently.
+   *
+   * Runs once per paint and re-renders only when the gutter actually needs to change. */
+  var IP_DB_GUTTER_MAX = 330; // past this the track is too short to read a movement on
+
+  function ipFitDumbbell() {
+    var svg = document.querySelector("#ip-01 svg.ip-db");
+    if (!svg || !svg.getBBox) return;
+    var used = +svg.getAttribute("data-ip-gutter") || IP_DB.gutter;
+    var labels = [].slice.call(svg.querySelectorAll("text.ip-db-label"));
+    if (!labels.length) return;
+
+    var longest = labels.reduce(function (m, t) {
+      var w = 0;
+      try { w = t.getComputedTextLength(); } catch (e) { w = 0; }
+      return Math.max(m, w);
+    }, 0);
+    if (!longest) return; // fonts not resolved yet; the caller retries after they load
+
+    var need = Math.min(IP_DB_GUTTER_MAX, Math.max(IP_DB.gutter, Math.ceil(longest) + 12));
+    if (Math.abs(need - used) < 1) { ipTrimDumbbell(svg, need); return; }
+
+    var rows = ip01DumbbellRows();
+    if (!rows) return;
+    var max = rows.reduce(function (m, r) { return Math.max(m, r.prior, r.current); }, 0);
+    var host = svg.parentNode;
+    host.innerHTML = ipDumbbell(rows, max * 1.06, need);
+    ipTrimDumbbell(host.querySelector("svg.ip-db"), need);
+  }
+
+  // Last resort: a name too long even for the widest gutter is trimmed, never cut mid-glyph by
+  // the viewBox. The <title> keeps the full name for hover and for assistive tech.
+  function ipTrimDumbbell(svg, gutter) {
+    if (!svg) return;
+    [].forEach.call(svg.querySelectorAll("text.ip-db-label"), function (t) {
+      var full = (t.querySelector("title") || {}).textContent || t.textContent;
+      var avail = gutter - 12;
+      var node = t.lastChild;
+      if (!node || node.nodeType !== 3) return;
+      node.nodeValue = full;
+      var guard = 0;
+      while (t.getComputedTextLength() > avail && node.nodeValue.length > 4 && guard++ < 60) {
+        node.nodeValue = node.nodeValue.slice(0, -2).replace(/[\s·]+$/, "") + "…";
+        node.nodeValue = node.nodeValue.replace(/…+$/, "…");
+      }
+    });
   }
 
   /* ============================ §02 · Register over time & holders ============================
@@ -2295,38 +2798,11 @@
     supplyNote:
       "Registration statements establish which shares may be resold; they do not indicate that a " +
       "sale occurred.",
-    // One dot per Form 144 notice: [cx, cy, r, under a 10b5-1 plan]. Positions and radii are the
-    // capture's own -- the prototype places by filing date and sizes by shares proposed.
-    notices: {
-      yTicks: [[166, "0k sh"], [128.5, "13k sh"], [91, "26k sh"], [53.5, "39k sh"], [16, "52k sh"]],
-      xTicks: [[133.9277, "2026-03"], [243.7349, "2026-04"], [350, "2026-05"], [459.8072, "2026-06"], [566.0723, "2026-07"]],
-      dots: [
-        [644, 76.145, 7.8699, true], [622.747, 102.232, 7.2601, false], [495.229, 145.71, 5.8389, true],
-        [477.518, 47.159, 8.4505, true], [410.217, 35.565, 8.6625, false], [392.506, 61.652, 8.1703, true],
-        [314.578, 79.043, 7.8069, true], [293.325, 108.029, 7.1083, true], [272.072, 148.609, 5.7025, false],
-        [165.807, 64.551, 8.112, true], [144.554, 50.058, 8.3959, true], [123.301, 35.565, 8.6625, false],
-        [73.711, 93.536, 7.4752, true], [56, 134.116, 6.3052, true],
-      ],
-      legend: "● under a 10b5-1 plan    ○ no plan referenced",
-    },
-    noticesNote:
-      "One dot per Form 144 notice on file, placed by filing date and sized by shares proposed — the " +
-      "four most recent are listed below. Filled dots reference a Rule 10b5-1 plan. A notice is " +
-      "permission to sell, not a sale — Form 4 records what settled.",
-    recent: [
-      ["General Counsel", "under a Rule 10b5-1 plan adopted 2026-02-20", "31,000 sh", "2026-07-23"],
-      ["SVP, Engineering", "no plan referenced", "22,000 sh", "2026-07-17"],
-      ["EVP, Operations", "under a Rule 10b5-1 plan adopted 2026-01-09", "7,000 sh", "2026-06-11"],
-      ["CEO", "under a Rule 10b5-1 plan adopted 2026-01-09", "41,000 sh", "2026-06-06"],
-    ],
-    planNotes: [
-      "6 officers and directors with 10b5-1 plans referenced in the trailing year",
-      "Adoption-to-first-trade intervals meet the 90-day cooling-off requirement in every plan on file",
-      "No Item 405 delinquencies disclosed",
-    ],
-    form144Note:
-      "Form 144 is a notice of proposed sale — forward-looking, and not every notice results in a " +
-      "trade. Form 4 records what actually settled.",
+    plans: "6 officers and directors with 10b5-1 plans referenced in the trailing year",
+    delinquent: "No Item 405 delinquencies disclosed",
+    insiderXrefNote:
+      "Section 16 filings are reported in full on their own view. Insider ownership above comes " +
+      "from the DEF 14A table, which is dated as of the proxy record date.",
     mechanics: [
       "No confidential treatment requests on file this quarter",
       "14 amended 13F-HR filings restating a prior position",
@@ -2392,39 +2868,24 @@
     );
   }
 
+  /* Prototype v4 gutted this card. The Form 144 dot calendar, its ⤡ Expand, the notices list and
+   * the cooling-off line are all gone from the design — Section 16 moved to a view of its own.
+   * Ported as-is, which also retires the largest CANNOT-SOURCE row in 3-implementation.md: we
+   * were about to build an honest empty state for a card the design no longer has. */
   function ip06Form144() {
-    var rows = IP06.recent
-      .map(function (r) {
-        return (
-          '<div class="ip-notice-row">' +
-          '<span class="ip-notice-id"><span class="ip-notice-who"><span>' + P.esc(r[0]) + "</span></span>" +
-          '<span class="ip-notice-plan"><span>' + P.esc(r[1]) + "</span></span></span>" +
-          '<span class="ip-notice-sh"><span>' + P.esc(r[2]) + "</span></span>" +
-          '<span class="ip-notice-date"><span>' + P.esc(r[3]) + "</span></span>" +
-          "</div>"
-        );
-      })
-      .join("");
     return (
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
-      '<h3 class="ip-card-title">Insider filings beyond Form 4</h3>' +
-      '<span class="ip-card-note">Form 144 · Rule 10b5-1 · Item 405</span>' +
-      ipLink("Form 144 ↗", IP_EDGAR_144) +
-      ipLink("Form 4 ↗", IP_EDGAR_F4) +
+      '<h3 class="ip-card-title">Insider filings</h3>' +
+      '<span class="ip-card-note">Forms 3/4/5 · Form 144 · Item 405</span>' +
       "</div>" +
-      '<div class="ip-subbar ip-subbar--tight">' +
-      '<span class="ip-micro">Proposed sales by date and size</span>' +
-      ipChip("06-notices") +
-      "</div>" +
-      ipBubbles(IP06.notices, 660, 200) +
-      '<div class="ip-caption"><span>' + P.esc(IP06.noticesNote) + "</span></div>" +
-      '<div class="ip-micro ip-micro--block">Most recent notices</div>' +
-      rows +
-      '<div class="ip-planlist">' +
-      IP06.planNotes.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
-      "</div>" +
-      '<div class="ip-caption"><span>' + P.esc(IP06.form144Note) + "</span></div>" +
+      '<div class="ip-plan-line">' + P.esc(IP06.plans) + "</div>" +
+      '<div class="ip-plan-line ip-plan-line--soft">' + P.esc(IP06.delinquent) + "</div>" +
+      ipGoLink(
+        "Insider activity view — ledger, transaction codes, Form 144 notices →",
+        "ip-xref-link--block"
+      ) +
+      '<div class="ip-caption">' + P.esc(IP06.insiderXrefNote) + "</div>" +
       "</div>"
     );
   }
@@ -2488,43 +2949,6 @@
       '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
       'style="display:block;max-width:100%" role="img" aria-label="Dated windows and expiries ahead">' +
       grid + rows + "</svg></div>"
-    );
-  }
-
-  /* One dot per Form 144 notice, placed by filing date and sized by shares proposed. Filled dots
-   * reference a 10b5-1 plan; hollow ones do not. Positions and radii are the capture's. */
-  function ipBubbles(spec, W, H) {
-    var k = W / 660;
-    var grid = spec.yTicks
-      .map(function (t) {
-        return '<line x1="' + 56 * k + '" y1="' + t[0] + '" x2="' + (W - 16) + '" y2="' + t[0] +
-          '" stroke="var(--rule)" stroke-width="1"></line>' +
-          '<text x="' + 49 * k + '" y="' + t[0] + '" text-anchor="end" dominant-baseline="middle" class="ip-ax2">' +
-          P.esc(t[1]) + "</text>";
-      })
-      .join("") +
-      spec.xTicks.map(function (t) {
-        var x = t[0] * k;
-        return '<line x1="' + x + '" y1="16" x2="' + x + '" y2="' + (H - 34) +
-          '" stroke="var(--rule)" stroke-width="1"></line>' +
-          '<text x="' + x + '" y="' + (H - 10) + '" text-anchor="middle" class="ip-ax2">' + P.esc(t[1]) + "</text>";
-      }).join("");
-    var dots = spec.dots
-      .map(function (d) {
-        return d[3]
-          ? '<circle cx="' + d[0] * k + '" cy="' + d[1] + '" r="' + d[2] * k +
-            '" fill="var(--accent)" fill-opacity="0.5" stroke="var(--accent)" stroke-width="1.5"></circle>'
-          : '<circle cx="' + d[0] * k + '" cy="' + d[1] + '" r="' + d[2] * k +
-            '" fill="var(--bg-card)" fill-opacity="1" stroke="var(--accent)" stroke-width="1.5"></circle>';
-      })
-      .join("");
-    return (
-      '<div><svg width="100%" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMid meet" ' +
-      'style="display:block;max-width:100%" role="img" ' +
-      'aria-label="Form 144 notices by filing date and shares proposed">' +
-      grid + dots +
-      '<text x="' + (W - 16) + '" y="18" text-anchor="end" class="ip-ax2">' + P.esc(spec.legend) + "</text>" +
-      "</svg></div>"
     );
   }
 
@@ -2967,11 +3391,6 @@
       note: "every dated window currently on file",
       render: function (w) { return ipTimeline(IP06.timeline, w, 154); },
     },
-    "06-notices": {
-      title: "Form 144 notices",
-      note: "proposed sales by filing date and size",
-      render: function (w) { return ipBubbles(IP06.notices, w, 200); },
-    },
     "05-cohorts": {
       title: "Holder persistence by entry cohort",
       note: "share of each entry cohort still reporting N quarters later",
@@ -3005,6 +3424,15 @@
   /* The prototype's five "↗" links are real anchors to EDGAR full-text search, all to the same
    * target. Ported as real anchors. ⚠ PHASE 2: the query is the prototype's own issuer (AVGO),
    * like every other literal on this page — it becomes the viewed symbol when the data lands. */
+  /* Phase 2: the full-text targets follow the VIEWED issuer. The prototype hard-codes its own
+   * sample (AVGO / CIK 0527298); a link that sends you to another company's filings is a literal
+   * like any other. The CIK-keyed targets below still carry the prototype's CIK — they belong to
+   * §04, which has not been plumbed yet. */
+  function ipEdgarFts(forms) {
+    var sym = window.ClearyFiShell.route().id || "";
+    return "https://www.sec.gov/edgar/search/#/q=%22" + encodeURIComponent(sym) +
+      "%22&forms=" + encodeURIComponent(forms);
+  }
   var IP_EDGAR_13F = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=13F-HR";
   // §04 links at the registrant's own filings, by CIK -- a different EDGAR endpoint from §01-§03's
   // full-text search. Both are the prototype's own targets.
@@ -3014,14 +3442,21 @@
     "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=8-K&dateb=&owner=include&count=40";
   var IP_EDGAR_NPX = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PX";
   var IP_EDGAR_NPORT = "https://www.sec.gov/edgar/search/#/q=%22AVGO%22&forms=N-PORT";
-  var IP_EDGAR_144 =
-    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=144&dateb=&owner=include&count=40";
-  var IP_EDGAR_F4 =
-    "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=0527298&type=4&dateb=&owner=include&count=40";
-
   function ipLink(label, href) {
     return '<a class="ip-card-link" href="' + (href || IP_EDGAR_13F) + '" target="_blank" rel="noopener">' +
       P.esc(label) + "</a>";
+  }
+
+  /* An in-app hop to another view of this hub. A real href, so it is keyboard-reachable and a
+   * middle-click still opens a tab; the delegated handler turns a plain click into selectTab()
+   * rather than a page load. The prototype uses href="#" plus a handler — we can do better
+   * without changing what the control does. */
+  function ipGoLink(label, cls) {
+    var sym = window.ClearyFiShell.route().id || "";
+    return (
+      '<a class="ip-xref-link' + (cls ? " " + cls : "") + '" href="/company/' +
+      encodeURIComponent(sym) + '/insider" data-ip-go="insider">' + P.esc(label) + "</a>"
+    );
   }
 
   function ipChip(key) {
@@ -3078,6 +3513,15 @@
     view.addEventListener("click", function (e) {
       var open = e.target.closest("[data-ip-open]");
       if (open) { ipOpenLightbox(open.getAttribute("data-ip-open")); return; }
+
+      /* An in-app hop, but only for a plain left click — a modified click keeps the anchor's own
+       * behaviour so "open in a new tab" still works. */
+      var go = e.target.closest("[data-ip-go]");
+      if (go && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+        e.preventDefault();
+        selectTab(go.getAttribute("data-ip-go"));
+        return;
+      }
 
       var badge = e.target.closest("[data-ip-derive]");
       if (badge) {

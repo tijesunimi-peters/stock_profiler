@@ -893,3 +893,229 @@ e2e: 44 shots, `institutional` / `institutional-legacy` / `institutional-nolocat
   prototype's `<div>` reports the container (660px). Same wrap points, same height, same pixels.
 - **split text nodes**: the prototype splits `index / passive · 13F-HR · filed 2026-05-11` into
   three spans plus separators; ours is one string. Identical rendering.
+
+---
+
+## Run 11 — prototype v4 lands (d3), and what it actually changes · 2026-07-31
+
+`SEC Sector Analytics Prototype(3).zip` is the d3 rewrite D-protocharts anticipated. Before
+deciding whether to chase it, it was **measured** against v3 (what we ported) and against our
+shipped pages. Both prototypes were served side by side — v3 on `proto-srv:9000`, v4 on
+`proto-v4:9001` with its CDN `d3@7` swapped for our vendored `vendor/d3.min.js` (v7.9.0) — and run
+through the same `shot2.js` → `diff.js` gate as the port itself.
+
+### The finding that decides the sequencing
+
+**`instData` — the 554-line function that produces every number the Institutional view renders —
+is byte-identical between v3 and v4. Zero diff.** So are all 185 lines of the chart call sites
+(`d.lorenz=this.lorenzChart(d.concentration2.lorenzPts, HALF, 220)` is the same line in both).
+
+The d3 rewrite changed **how the charts draw**. Plumbing changes **what they draw from**. They meet
+at a builder signature that did not move, so neither ordering makes the other cheaper — which frees
+the decision to be made on risk instead. Real data is what breaks charts (real N, real ranges,
+`null`), so plumbing goes first and the d3 rewrite happens later against known-good data shapes.
+
+### Markup: two changes in 1,044 lines
+
+| § | change |
+|---|---|
+| §01 | **+4 lines** — a caption + link to the new *Insider activity* view |
+| §06 | **−28 / +4** — the "Insider filings beyond Form 4" card **gutted**: Form 144 dot calendar, notices list, `⤡ Expand`, cooling-off line all deleted, replaced by two prose lines + a link |
+
+§02, §03, §04, §05, §07 are byte-identical.
+
+### Pixels — our shipped pages vs v4, collapsed default
+
+| § | `>32/255` | bands | what moved |
+|---|---|---|---|
+| §01 | **0** | 0 | identical for all 1127px; v4 then appends 59px |
+| §02 | 8,747 (0.39%) | 14 | axis tick labels ~1px (d3 `tickPadding` vs hand-placed) |
+| §03 | 112,816 (2.22%) | 26 | **diverging bars repositioned + resized**; **pareto bars gained rounded tops**; rest are 1–2px label shifts |
+| §04 | 7,631 (0.19%) | 1 | one 16-row band |
+| §05 | **0** | 0 | identical |
+| §06 | 1,658 (0.11%) | 1 | the acceptance-lag histogram, `scaleBand` shift |
+| §07 | **0** | 0 | identical |
+
+Heights match exactly everywhere except §01. In the **treemap view: 313,686px in one 680-row
+band** — `d3.treemapSquarify` produces a genuinely different picture than v3's hand-rolled
+recursive split. That one is a re-layout, not a nudge.
+
+Ours-vs-v4 tracks v3-vs-v4 to within 30 pixels on every section, which is the independent
+confirmation that our port is still exactly v3 and the whole delta is the prototype's own change.
+
+### What was taken now
+
+Only the two markup changes — operator decision, "take the two markup changes and record it".
+
+- **§01** gained `ip01InsiderXref()`: the caption that names the insider-ownership figure as the
+  **DEF 14A** table (a different measurement from the Form 4 ledger) plus the way out.
+- **§06**'s `ip06Form144()` is now two prose lines + the same link. This **retired live code**:
+  `ipBubbles` (the dot calendar), the `06-notices` lightbox entry, `IP_EDGAR_144` / `IP_EDGAR_F4`,
+  the `notices` / `recent` / `noticesNote` / `form144Note` literal blocks and the
+  `.ip-notice-*` / `.ip-planlist` CSS. Fourteen fabricated Form 144 dots and four named notices
+  left the codebase — D-literals progress that came free.
+- The prototype uses `href="#"` plus a handler. Ours is a **real anchor** to
+  `/company/{symbol}/insider`, so it is keyboard-reachable and a modified click still opens a tab;
+  the delegated `[data-ip-go]` handler turns a plain left click into `selectTab()`. **Deviation,
+  listed** — the mechanism is the prototype's, the affordance is better.
+
+Our destination is the Insider tab this hub already has, **not** the prototype's new *Insider
+activity* view (a whole new Company Hub sibling that v4 also adds — out of V3-P5a's scope).
+
+### Verification
+
+- **§01 vs v4: height 1186 = 1186, `>32` = 0, bands = 0.** Exact.
+- **§06 expanded vs v4: height 1301 = 1301**, and the rewritten card region diffs blank; the 12
+  remaining bands are the acceptance-lag histogram's d3 shift, unchanged from before this edit.
+- §02–§05, §07 re-diffed against their own pre-edit captures: **0 bands, 0 differing pixels**
+  (§04's 8 is the same pre-existing rasterisation noise). No regression.
+- Both links **driven**: 4/4 assertions pass, 0 page errors, and they land on the real Form 4
+  ledger (`Cook Timothy D · 2026-06-15`), not an empty view.
+- e2e: `institutional` `errors=0`; only the two pre-existing `sectorapp-company*` 502s on the
+  synthetic fixture CIK 900001. No `pytest` — no Python changed.
+
+### What this costs later
+
+The d3 rewrite, when it is taken, is **4 of 15 builders** plus a treemap re-layout — not a re-port.
+`ipDivergingBars`, `ipRankedShare`, `ipTreemap` and `ipHistogram` carry essentially all of it;
+everything else is a 1–2px axis-label shift. RECONCILIATION §5 calls it "a copy list, not a
+translation plan", and the prototype's d3 is liftable. It also brings hover readouts, transitions,
+and a `ResizeObserver` for fluid width — real interactivity, but interactivity over fabricated
+literals is polish on a placeholder, which is the second reason it waits.
+
+---
+
+## Run 12 — §01 plumbed · 2026-07-31
+
+First section off the literals. `IP01` shrank from 4,384 characters to two blocks — `scope` and
+`speed` — which are **statements of filing rules, not figures**: what Section 13(f) covers, and each
+form's statutory deadline. They are the same for every registrant and are not fetched from anywhere.
+
+**The data layer** (`IP_DATA` / `ipLoad`): one load per (symbol, period) over
+`/institutional-periods` → `-register`, `-register-shape`, `-filed-since`, `-activity` in parallel.
+The four are **settled, not raced** — a failure in one renders that block's own error and leaves
+the rest of the page standing. `IP_DONE` names the sections that have made the trip, and **the
+banner reads it**, so the warning shrinks section by section and removes itself when the last
+literal goes.
+
+**A plumbed section never falls back to a literal.** `ipSection01` guards on
+`IP_DATA.status`: loading renders `states.loading`, a failure renders `states.error` with the
+status and the API's detail. The `|| IP01.x` fallbacks that survived the first draft were deleted —
+the banner now tells the reader §01 is real, so a fallback would make the banner lie for the
+duration of a fetch, and a dead path to fabricated numbers is what D-literals exists to prevent.
+
+### Three things real data broke that literals never would have
+
+This is the argument for plumbing before the d3 port, and it showed up within one section:
+
+1. **`ipDumbbell` had the prototype's scale baked in** — `domainMax: 123.43` (millions). A real
+   register runs to billions, so every dot clamped onto the track's right edge and the chart drew
+   three flat lines. `domainMax` is now a parameter, derived from the rows with 6% headroom.
+2. **The freshness strip wrapped.** Four cells, no width share — the API's `reason` is a sentence
+   where the prototype had three words, so the fourth cell dropped to a second row.
+   `.ip-strip-cell` now takes `flex: 1 1 118px; min-width: 0` and the reason wraps in its own cell.
+3. **Two captions had become false.** The dumbbell's said *"Colour is manager type"* — we do not
+   classify managers by type and inventing a class from the name is the fabrication phase 2
+   removes, so it is one accent now and the caption says what it is: **DERIVED by diffing two
+   quarter-end snapshots, not reported trades**, naming the prior quarter, and saying that only
+   managers reporting in both quarters appear. The card head said *"by EDGAR acceptance time"*;
+   `filed-since` returns **filing dates** (acceptance timestamps are V3-P3), so it says "by filing
+   date".
+
+Also fixed: `Base 13F ↗` pointed at the prototype's own AVGO full-text search. `ipEdgarFts()` now
+follows the viewed issuer. The CIK-keyed §04 targets still carry the prototype's CIK — §04 is not
+plumbed yet.
+
+### CANNOT-SOURCE, as rendered
+
+Four figures the prototype prints have no honest source. **None of them renders a number**, and
+each carries its reason where the prototype puts its prose:
+
+| figure | what it says now |
+|---|---|
+| Confirmed in last 30 days | `N/A` · "we do not track per-holding filing confirmations, so no share of the register can be called confirmed" |
+| Filed since (`+9.7M`) | `N/A` · "0 of 4 filings state a position; the rest report single transactions, which do not sum into a register" |
+| Adjusted register (`776M`) | `N/A` · "a 13D/G total, a Form 4 transaction and a 13F holding do not add — the sum would be a share count nobody filed" |
+| Institutional share · Insider ownership | `N/A` · needs shares outstanding, which the register does not carry; the DEF 14A table is not ingested |
+
+⚠️ **Open for the operator:** RECONCILIATION §3 wants a `statusChip()` on every derived value.
+Adding chips would break the pixel match just accepted, so phase 2 keeps the prototype's shape and
+puts the honesty in the note slot the prototype already uses for prose. That is a reading, not a
+ruling — it needs one.
+
+### Verification
+
+Driven on the live page after the fetch settles, not inspected in source:
+
+- **AAPL** — 1Q26 filed 2026-03-31 · 122 days; next window 2026-11-14 in 106 days (from the
+  statutory rule, not a literal); 4 filings since; base register 2.9B; 7 reporting managers;
+  dumbbell rows **VANGUARD / STATE STREET / BERKSHIRE** at +60M / +50M / −20M; the filing table is
+  four real Form 4s (Cook, Maestri, Adams, O'Brien).
+- **JPM** — a thinner register renders the same way: 2 managers, 3.8M shares, real manager names.
+- **ZZZZ** — 404 into the app's own not-found state.
+- **`zeros: []`** on every capture — the check that scans every value slot for `0` / `0.0` / `0%`.
+  **No missing value is rendered as zero.**
+- 0 page errors. e2e: `institutional` `errors=0`, only the two pre-existing `sectorapp-company*`
+  502s on synthetic CIK 900001.
+
+**§01's pixel gate is retired by design** — it now renders this company's numbers, not the
+prototype's, so height and text no longer match the capture and should not. What is preserved is
+the layout, and it is: the strip, the equation panel, the dumbbell, the tiles and the expander all
+sit exactly where the port put them.
+
+---
+
+## Run 13 — §01's QA cycle: three defects, one cause · 2026-08-01
+
+The operator reported the equation panel. Fixing it turned up two more of the same kind, and the
+pattern is worth stating plainly because §02–§06 will meet it again:
+
+> **Every layout constant in the port was sized for the prototype's own short sample strings.**
+> Real filings text is longer — and for text inside SVG it is also **font-dependent**.
+
+| | what broke | measured |
+|---|---|---|
+| **D-1** *operator* | The base/filed-since/adjusted panel is an **arithmetic statement**; `+` and `=` only read as operators while the terms share a row. `.ip-eq` had no width share on its children, so a cell sized to max-content (**607px in a 660px panel**) wrapped each term onto its own line | **248px / 3 rows → 81px / 1 row** |
+| **D-2** *swept* | Same cause one cell over: the freshness strip's "Confirmed in last 30 days" reason, a 17-word sentence in a 118px cell | **157px → 105px** |
+| **D-3** *operator* | The dumbbell's label gutter is a hard-coded 210 units. Labels are right-anchored so they run **left**, and `svg.ip-db` is `overflow: hidden` — a long manager name is **silently cut** | see below |
+
+**D-3 is the one to remember.** The same name measures **165.8 units with Hanken Grotesk loaded and
+184.7 without (+11%)**, so whether it clips depends on which font actually resolved. It rendered
+clean in every headless capture and was cut on the operator's screen. A 63-character name lands at
+**leftEdge −212.6**.
+
+The fix is the rule `RECONCILIATION.md` §6 already states and this port had not applied:
+**measure, don't estimate.** `ipFitDumbbell()` runs after paint and again on `document.fonts.ready`,
+calls `getComputedTextLength()` on the real rendered text, grows the gutter to fit (capped at 330,
+past which the track is too short to read), and trims with an ellipsis beyond that — keeping the
+full name on a `<title>`. Verified at the worst case, a 63-character name **with the webfont
+blocked**: gutter 210 → 329, `CLIPPED: false`, all dots inside, short labels untouched.
+
+`domainMax` and `gutter` are now both parameters on `ipDumbbell`; the literal fallback still passes
+the prototype's constants, so phase 1's rendering is unchanged.
+
+### D-chips — the status vocabulary, settled
+
+The open question from run 12 was answered: **(c) chips only on N/A and approximate**. A value that
+is fine carries no chip, which preserves the rendering accepted at the fidelity gate; a value that
+is `N/A` or `approximate` carries the **shared `ClearyFi.statusChip`**, not a local lookalike, so
+the port speaks the same vocabulary as the rest of the product. Implemented on §01 in the same
+cycle rather than left as debt.
+
+**Asserted, not eyeballed:** a slot carries a chip **iff** its value is `N/A`. Across all eleven of
+§01's value slots — 5 chips on 5 `N/A`, 0 on 6 clean, **`violations: []`**.
+
+### What the tooling should carry into §02–§06
+
+Two of the three defects came from the operator, and no automated check in this repo would have
+caught D-3. Before plumbing the next section:
+
+1. **Sweep every hard-coded label gutter** with `getComputedTextLength()` — §02's manager table,
+   §03's ranked-share and treemap, §04's lanes, §05's cohort grid all have the same exposure.
+2. **Run the layout checks with the webfont blocked.** That is the condition the captures do not
+   reproduce and a real browser does.
+3. **Keep `zeros: []` and `violations: []` in the driving script** for every section — they are
+   cheap, and they are the two invariants that would be a lie rather than a blemish if they broke.
+
+e2e `institutional` `errors=0`; 609 pytest. Section 1173px. Artifacts: `4-qa.md` and a **signed**
+`4b-manual-verification.md`; phase 1's are preserved as `*-phase1.md`.

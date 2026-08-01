@@ -1485,6 +1485,21 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
 /* Same fallback story as .ip-badge above — here it is the ↗ that IBM Plex Mono lacks. */
 .ip-card-link { font-family: var(--ip-mono); font-size: 10px; color: var(--accent); text-decoration: none; }
 
+/* --- cross-view pointer ---
+   Prototype v4 added these where one filing family is easy to mistake for another: §01's DEF 14A
+   ownership table vs the Form 4 ledger, and §06's retired Form 144 card. The note names the
+   distinction; the link is the way out. */
+.ip-xref {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+}
+.ip-xref-note { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); text-wrap: pretty; }
+.ip-xref-link { font-family: var(--ip-mono); font-size: 11px; color: var(--accent); text-decoration: none; }
+.ip-xref-link--block { display: inline-block; margin-top: 11px; }
+
 /* --- micro-label ---
    mono 9.5px / 0.1em / uppercase. The prototype's smallest text; it labels a value, never a
    section. `--block` is the standalone variant that introduces a chart. */
@@ -1525,7 +1540,11 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
    Cells separated by 1px vertical rules, wrapping as a unit. The rules are baseline-aligned with
    everything else, which is why they hang ABOVE the labels rather than centring on the cell. */
 .ip-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 18px; }
-.ip-strip-cell { display: flex; flex-direction: column; gap: 3px; }
+/* Phase 2: the notes carry the API's `reason`, which is a sentence where the prototype had three
+   words. Without a share of the row a long reason widens its cell and pushes the fourth onto a
+   second line. Dividing the row keeps the design's four-across strip and lets the reason wrap
+   inside its own cell. */
+.ip-strip-cell { display: flex; flex-direction: column; gap: 3px; flex: 1 1 118px; min-width: 0; }
 .ip-strip-val { font-family: var(--ip-mono); font-size: 15px; font-weight: 600; color: var(--ink); }
 .ip-strip-val--accent { color: var(--accent-ink); }
 .ip-strip-note { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
@@ -1558,9 +1577,27 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
   border-radius: 9px;
   padding: 11px 13px;
 }
+/* The panel is an ARITHMETIC STATEMENT: `+` and `=` only read as operators while the three terms
+   sit on one row. Phase 2 made that fragile — the prototype's notes are three words, ours can be a
+   sentence, and a cell sized to max-content wrapped each term onto its own row. Giving every term
+   an equal share of the row (and `min-width: 0`, without which a flex item refuses to shrink below
+   its content) keeps the equation horizontal at any note length. The long "why" moved out of the
+   cells entirely — see `.ip-eq-why`. */
 .ip-eq { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; margin-bottom: 13px; }
+.ip-eq > * { flex: 1 1 0; min-width: 0; }
 .ip-eq-part { display: flex; align-items: baseline; gap: 16px; }
-.ip-eq-cell { display: flex; flex-direction: column; gap: 2px; }
+.ip-eq-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ip-eq-part > .ip-eq-cell { flex: 1 1 auto; }
+.ip-eq-op { flex: 0 0 auto; }
+/* Why a term is N/A, once, under the panel — a sentence needs the full column, not a third of it. */
+.ip-eq-why {
+  margin: -4px 0 13px;
+  font-family: var(--ip-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+  text-wrap: pretty;
+}
 .ip-eq-op { font-family: var(--ip-mono); font-size: 15px; color: var(--mono-muted); }
 .ip-eq-val { font-family: var(--ip-mono); font-size: 17px; font-weight: 600; color: var(--ink); }
 .ip-eq-val--accent { color: var(--accent-ink); }
@@ -1568,6 +1605,20 @@ body.tray-open.tray-collapsed-mode .page { padding-bottom: 90px; }
 
 /* --- chart caption --- */
 .ip-caption { margin-top: 9px; font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
+
+/* --- status chip in a value slot (D-chips) ---
+   The shared `.chip` from app.css, sized down to sit beside a 9.5px micro-label without pushing
+   the row taller. Only ever present on a value that needs a caveat, so an untagged slot renders
+   exactly as it did at the fidelity gate. */
+.ip-slot-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; min-width: 0; }
+.ip-slot-head .chip {
+  font-size: 8.5px;
+  padding: 1px 5px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  flex: 0 0 auto;
+}
+.ip-slot-head .chip .glyph { margin-right: 3px; }
 
 /* --- expander bar ---
    The prototype's way of saying "there is more here, but it is not the headline". The button is a
@@ -2421,29 +2472,16 @@ button.ip-minibtn { cursor: pointer; }
 }
 .ip-facts--7 { gap: 7px; }
 
-/* --- Form 144 notices --- */
-.ip-notice-row {
-  display: grid;
-  grid-template-columns: minmax(96px, 1fr) 86px 78px;
-  gap: 9px;
-  align-items: baseline;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--border-tint-rule);
-}
-.ip-notice-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ip-notice-who { font-size: 12.5px; color: var(--ink-body); }
-.ip-notice-plan { font-family: var(--ip-mono); font-size: 10px; color: var(--mono-muted); }
-.ip-notice-sh { font-family: var(--ip-mono); font-size: 11px; color: var(--ink); text-align: right; }
-.ip-notice-date { font-family: var(--ip-mono); font-size: 10.5px; color: var(--mono-muted); text-align: right; }
-.ip-planlist {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 11px;
+/* --- §06's insider-filings prose ---
+   What the Form 144 dot calendar and its notices list became in prototype v4. */
+.ip-plan-line {
   font-family: var(--ip-mono);
   font-size: 11px;
-  color: var(--ink-soft);
+  color: var(--ink-body);
+  line-height: 1.6;
+  text-wrap: pretty;
 }
+.ip-plan-line--soft { margin-top: 4px; color: var(--ink-soft); }
 
 /* --- §06's SVG text --- */
 .ip-tl-today { font-family: var(--ip-mono-fb); font-size: 9.5px; fill: var(--ink); }
