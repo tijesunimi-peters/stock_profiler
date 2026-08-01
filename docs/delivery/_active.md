@@ -3,7 +3,7 @@
 task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
-branch: v3-p5a-institutional @ `4bcbd28` (clean off `master` 9d0d10f — **attempt 4**)
+branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
 next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
@@ -13,6 +13,68 @@ next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31)
   No PM/architect stage this attempt; see below.
 qa_cycles: 0
 updated: 2026-08-01
+
+---
+
+# ▶️ RESUME HERE (after a restart, a crash, or a fresh session)
+
+**Command: `/deliver resume`.** It needs no prior context — it rebuilds from this file plus the
+stage docs. Everything below is what a fresh session needs that is NOT already in those docs.
+
+## Where the work actually is
+
+**All work is COMMITTED AND PUSHED.** Nothing of value lives in the working tree or in `/tmp`.
+If `git log` shows the commits below, nothing was lost:
+
+| commit | what |
+|---|---|
+| `4bcbd28` | phase-2 **backend** — the three register endpoints, mined from the attempt-3 archive |
+| `d575132` | **§01** plumbed + the prototype-v4 markup sync |
+| `a9fe149` | **§02** plumbed |
+| `013ec7c` | 13D/G `typeOfReportingPerson` → §02's Type column |
+| `c64bb95` | manager mix on real data — SIC from each filer's own registration |
+| *(newest)* | the phase-2 checks promoted into `tools/` |
+
+## Bring the environment back
+
+Nothing here is precious — all of it rebuilds. The containers and the seeded DB do NOT survive.
+
+```bash
+# 1. the app under test (the seeded fixture publishes no port of its own)
+docker compose build api
+docker compose --profile e2e run --rm -d -p 8010:8000 --name p5a-preview e2e-app
+#    -> http://localhost:8010/company/AAPL/institutional
+
+# 2. the prototype, only if you need to diff against the design again
+docker run -d --rm --name proto-srv --network stock_profiler_default \
+  -v "$PWD/docs/design/sector-app-prototype-v3:/srv:ro" -w /srv \
+  python:3.11-slim python -m http.server 9000
+
+# 3. tests
+docker compose --profile test run --rm test
+docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
+```
+
+**If the fixture DB looks stale** (a seed changed since it was written — the seeder skips cached
+accessions, so new columns read NULL): delete and let it rebuild.
+`docker run --rm -v "$PWD:/app" -w /app stock_profiler-api rm -f data/e2e.db data/e2e.db-wal data/e2e.db-shm`
+
+**Prototype v4** (the d3 rewrite) is NOT in the repo — it is
+`~/Downloads/SEC Sector Analytics Prototype(3).zip`. Restaging it is only needed to re-measure the
+d3 port; run 11 already has the numbers. Unzip it, swap its CDN `d3@7` for our
+`static/vendor/d3.min.js`, and serve it the same way as step 2 above.
+
+## What to run before handing off any section
+
+`tools/README-p2.md` — the per-section checks, and the two rules behind them. **Every one of those
+scripts has caught a real defect.** The clip sweep in particular must be run **with the webfont
+blocked**, which is the condition headless captures do not reproduce.
+
+## The two live decisions
+
+1. **§03's peer overlap needs a cross-issuer endpoint that does not exist** — see the
+   CANNOT-SOURCE table in `3-implementation.md` before starting §03.
+2. Nothing else is blocked. §03–§06 follow §01/§02's pattern.
 
 ---
 
