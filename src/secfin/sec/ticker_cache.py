@@ -73,6 +73,29 @@ class TickerCache:
         await self._ensure_fresh(client)
         return self._names.get(cik)
 
+    async def tickers_for(self, client: SECClient, ciks: list[int]) -> dict[int, str]:
+        """cik -> ticker for a bounded set of companies -- the reverse of `resolve`.
+
+        For labelling companies we reached by CIK rather than by symbol (the peer-overlap
+        matrix): a chart axis has room for "NVDA" and not for "NVIDIA CORPORATION", and a
+        truncated registrant name identifies nothing. A cik with no ticker in the map is simply
+        absent, so the caller falls back to the name rather than showing a bare number.
+
+        A cik can carry several tickers (share classes); the shortest wins, then alphabetical,
+        so the choice is deterministic and the pick is the plain-common-stock symbol in
+        practice. One pass over the cached ~10k-entry map, no SEC call beyond its normal refresh.
+        """
+        await self._ensure_fresh(client)
+        wanted = set(ciks)
+        out: dict[int, str] = {}
+        for ticker, cik in self._map.items():
+            if cik not in wanted:
+                continue
+            current = out.get(cik)
+            if current is None or (len(ticker), ticker) < (len(current), current):
+                out[cik] = ticker
+        return out
+
     async def suggest(self, client: SECClient, query: str, limit: int = 8) -> list[dict]:
         """Autocomplete candidates for a partial ticker / company name / CIK.
 

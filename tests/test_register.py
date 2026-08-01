@@ -8,9 +8,12 @@ deleted is not a test).
 
 from __future__ import annotations
 
+import pytest
+
 from secfin.normalize.register import (
     STABLE_CAPITAL_WEIGHTS,
     concentration,
+    domicile,
     share_vector,
     stable_capital_share,
     tenure,
@@ -279,3 +282,144 @@ def test_stable_capital_na_when_no_register():
     assert s.status == "na"
     assert s.stable_share is None  # not 0.0
     assert "understates" in s.cannot
+
+
+# --- Lorenz curve (V3-P5a section 03) -----------------------------------------------
+
+
+class TestLorenz:
+    def test_it_is_a_fixed_length_curve_whatever_the_register_size(self):
+        """The payload must not grow with the register -- a real issuer has thousands of filers."""
+        small = concentration(share_vector([_h(1, 10.0), _h(2, 90.0)])).lorenz
+        larger = concentration(share_vector([_h(i, float(i)) for i in range(1, 40)])).lorenz
+        assert small is not None and larger is not None
+        assert len(small) == len(larger) == 101
+
+    def test_it_runs_from_zero_to_the_whole_register(self):
+        curve = concentration(share_vector([_h(i, float(i)) for i in range(1, 21)])).lorenz
+        assert curve[0] == 0.0
+        assert curve[-1] == 1.0
+
+    def test_it_is_monotonically_non_decreasing(self):
+        """A cumulative share that dips would mean a manager held negative shares."""
+        curve = concentration(share_vector([_h(i, float(i * i)) for i in range(1, 26)])).lorenz
+        assert all(b >= a for a, b in zip(curve, curve[1:]))
+
+    def test_a_perfectly_equal_register_is_the_diagonal(self):
+        curve = concentration(share_vector([_h(i, 100.0) for i in range(1, 101)])).lorenz
+        # 100 equal holders: the smallest 25% hold 25% of the register.
+        assert curve[25] == pytest.approx(0.25)
+        assert curve[50] == pytest.approx(0.5)
+
+    def test_it_bows_below_the_diagonal_when_the_register_is_concentrated(self):
+        """The whole point of the curve: the gap from the diagonal IS the concentration."""
+        holders = [_h(1, 9000.0)] + [_h(i, 10.0) for i in range(2, 101)]
+        curve = concentration(share_vector(holders)).lorenz
+        assert curve[50] < 0.5
+        assert curve[90] < 0.9
+
+    def test_it_agrees_with_gini_about_which_register_is_more_concentrated(self):
+        """Curve and coefficient come from the same weights, so they can never disagree."""
+        flat = concentration(share_vector([_h(i, 100.0) for i in range(1, 51)]))
+        skewed = concentration(
+            share_vector([_h(1, 4000.0)] + [_h(i, 10.0) for i in range(2, 51)])
+        )
+        assert skewed.gini > flat.gini
+        assert skewed.lorenz[50] < flat.lorenz[50]
+
+    def test_na_carries_no_curve_rather_than_a_flat_line(self):
+        """A flat line at zero would render as a real, maximally-unequal register."""
+        assert concentration(share_vector([_h(1, 100.0)])).lorenz is None
+
+
+# --- domicile (V3-P5a section 03) ---------------------------------------------------
+
+
+class TestDomicile:
+    def test_us_filers_rank_by_state_and_foreign_filers_by_country(self):
+        result = domicile(
+            [
+                _h(1, 600.0, location="PA"),
+                _h(2, 300.0, location="NY"),
+                _h(3, 100.0, location="V8"),  # Switzerland, per EDGAR's own table
+            ]
+        )
+        assert result.status == "ok"
+        assert [r.place for r in result.rows] == [
+            "United States · Pennsylvania",
+            "United States · New York",
+            "Switzerland",
+        ]
+        assert [r.country for r in result.rows] == ["United States", "United States", "Switzerland"]
+
+    def test_it_weights_by_shares_not_by_filer_count(self):
+        """Fifty small managers in one state are not a bigger presence than one large one."""
+        result = domicile(
+            [_h(1, 900.0, location="PA")]
+            + [_h(i, 10.0, location="NY") for i in range(2, 12)]
+        )
+        assert result.rows[0].place == "United States · Pennsylvania"
+        assert result.rows[0].holder_count == 1
+        assert result.rows[1].holder_count == 10
+        assert result.rows[0].weight == 0.9
+
+    def test_canadian_provinces_roll_up_into_one_country(self):
+        result = domicile([_h(1, 50.0, location="A6"), _h(2, 50.0, location="A8")])
+        assert [r.place for r in result.rows] == ["Canada"]
+        assert result.rows[0].holder_count == 2
+
+    def test_a_manager_holding_several_classes_is_counted_once(self):
+        result = domicile(
+            [
+                _h(1, 300.0, location="PA"),
+                _h(1, 300.0, location="PA"),  # same manager, second share class
+                _h(2, 400.0, location="NY"),
+            ]
+        )
+        assert result.rows[0].holder_count == 1
+        assert result.rows[0].shares == 600.0
+
+    def test_unlocated_filers_are_a_coverage_gap_never_a_rest_of_world_row(self):
+        result = domicile([_h(1, 500.0, location="PA"), _h(2, 500.0)])
+        assert [r.place for r in result.rows] == ["United States · Pennsylvania"]
+        # 100% of what we could place ...
+        assert result.rows[0].weight == 1.0
+        # ... and `coverage` is what stops that reading as 100% of the register.
+        assert result.coverage == 0.5
+        assert result.unlocated_holder_count == 1
+        assert result.unlocated_shares == 500.0
+
+    def test_edgars_own_unknown_code_is_not_a_place(self):
+        result = domicile([_h(1, 500.0, location="PA"), _h(2, 500.0, location="XX")])
+        assert [r.place for r in result.rows] == ["United States · Pennsylvania"]
+        assert result.unlocated_holder_count == 1
+
+    def test_no_location_anywhere_is_na_with_a_reason(self):
+        result = domicile([_h(1, 500.0), _h(2, 500.0)])
+        assert result.status == "na"
+        assert result.rows == []
+        assert "location_backfill" in (result.reason or "")
+        assert "missing coverage" in (result.reason or "")
+
+    def test_the_prior_quarter_supplies_the_tick(self):
+        result = domicile(
+            [_h(1, 600.0, location="PA"), _h(2, 400.0, location="NY")],
+            [_h(1, 500.0, location="PA"), _h(2, 500.0, location="NY")],
+        )
+        assert result.rows[0].prior_weight == 0.5
+        assert result.rows[0].weight == 0.6
+
+    def test_a_place_absent_last_quarter_has_no_prior_not_a_zero(self):
+        """A zero tick would draw at the axis, reading as 'it collapsed' rather than 'it is new'."""
+        result = domicile(
+            [_h(1, 600.0, location="PA"), _h(2, 400.0, location="NY")],
+            [_h(1, 500.0, location="PA")],
+        )
+        by_place = {r.place: r for r in result.rows}
+        assert by_place["United States · New York"].prior_weight is None
+        assert by_place["United States · Pennsylvania"].prior_weight == 1.0
+
+    def test_the_business_address_caveat_travels_with_the_ranking(self):
+        cannot = domicile([_h(1, 100.0, location="PA")]).cannot
+        assert "BUSINESS ADDRESS" in cannot
+        assert "not where its capital originates" in cannot

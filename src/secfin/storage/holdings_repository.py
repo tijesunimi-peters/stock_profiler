@@ -134,6 +134,20 @@ class HoldingsSnapshotRepository(ABC):
         """
 
     @abstractmethod
+    def distinct_holder_counts(self, cusips: list[str], report_period: str) -> dict[str, int]:
+        """How many distinct managers reported each of `cusips` in `report_period`.
+
+        One indexed GROUP BY over the same `(cusip, report_period)` index `holders_of` uses --
+        for RANKING a bounded set of candidate issuers before deciding which few to read holders
+        for (the peer-overlap block picks its peers by ingested register size). Reading full
+        holder lists for every candidate to answer "which are biggest" would be the expensive
+        cross-manager scan guardrail 6 keeps off the request path; this is a count.
+
+        Empty `cusips` returns `{}`. A cusip nobody reported is ABSENT from the result rather
+        than present with 0 -- "not ingested" and "nobody holds it" are different answers.
+        """
+
+    @abstractmethod
     def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
         """`(manager_cik, accession)` for every cached snapshot in `report_period` that has no
         `filing_manager_location` yet -- the work list for `ingest/location_backfill.py`.

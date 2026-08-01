@@ -93,8 +93,34 @@ def _seed_insider(db_path: str) -> None:
                 accession=accession,
                 filed=filed,
                 is_holding=False,
+                is_derivative=False,
             )
         )
+        # Every third filing also carries an option row. Its `shares_owned_after` is the
+        # UNDERLYING share count of an instrument that is not owned stock, so anything summing
+        # insider ownership must drop it -- seeded so that exclusion is actually exercised
+        # rather than assumed (V3-P5a §03's share attribution).
+        if i % 3 == 0:
+            txns.append(
+                InsiderTransaction(
+                    issuer_cik=320193,
+                    issuer_name="Apple Inc.",
+                    owner_name=owner,
+                    owner_relationship=rel,
+                    transaction_date=filed,
+                    security_title="Employee Stock Option (Right to Buy)",
+                    shares=20_000.0,
+                    price_per_share=None,
+                    acquired_disposed="A",
+                    ownership_type="direct",
+                    shares_owned_after=900_000.0,
+                    form_type="4",
+                    accession=accession,
+                    filed=filed,
+                    is_holding=False,
+                    is_derivative=True,
+                )
+            )
     try:
         repo.upsert_insider_transactions(320193, filings, txns)
         print(f"seeded insider: {len(filings)} AAPL filings, {len(txns)} transactions")
@@ -360,8 +386,10 @@ def _seed_nolocation_holdings(db_path: str) -> None:
 # (docs/delivery/institutional-tab-viz/2d-...) a real ~7-node graph with DIFFERENTIATED edges (a
 # 4-manager cluster with Jaccard 0.2-0.6, plus the existing Vanguard/State Street pair on {Ally},
 # plus an isolated Berkshire whose deep synthetic book overlaps no one above the threshold) instead
-# of a 3-node triangle. Overlap is measured by CUSIP; these synthetic "other" CUSIPs stay unresolved
-# by design (fine -- the network measures CUSIP overlap, not CIK). Seeded for the newest quarter only.
+# of a 3-node triangle. Overlap is measured by CUSIP, not CIK, so the network itself does not care
+# whether these resolve. Four of them now DO -- see `_PEER_ISSUERS` below, which gives them an
+# issuer identity so they can double as AAPL's peer group; the other two stay unresolved on
+# purpose. Seeded for the newest quarter only.
 _CO_POOL = {  # cusip -> (issuer_name, $/share) for the shared "other holdings" pool
     "91000AAA1": ("ORCHARD RIDGE CAP CO", 40.0),
     "91000BBB2": ("SILVERBROOK INDS INC", 55.0),
@@ -379,6 +407,24 @@ _COHOLDING_MANAGERS = [
     (202, "MERIDIAN ASSET MGMT", "IL", 140_000_000,
      ["91000AAA1", "91000BBB2", "91000EEE5", "91000FFF6"]),
     (203, "HALLMARK ADVISORS INC", "TX", 90_000_000, ["91000DDD4", "91000FFF6"]),
+]
+
+# The co-holding pool doubles as AAPL's PEER GROUP for the peer-overlap block (V3-P5a §03).
+#
+# Those managers already hold both AAPL and these names, so the overlap is real rather than
+# staged -- the only thing missing was an ISSUER identity: peer overlap compares issuers, and an
+# unresolved CUSIP has no CIK and no SIC to be a peer by. Resolving them and giving each a
+# profile in AAPL's own 2-digit SIC group (35) is what turns the existing rows into a peer set.
+#
+# Deliberately UNEVEN: each name is held by a different subset of AAPL's register, so the matrix
+# comes out asymmetric (a 3-holder peer overlapping AAPL reads 100% one way and a few percent
+# the other) and the exclusive combinations are more than one bar. Two pool CUSIPs are left
+# unresolved so the "candidate we cannot identify as an issuer" path stays exercised.
+_PEER_ISSUERS = [  # (cik, cusip, name, sic, sic description)
+    (910001, "91000AAA1", "ORCHARD RIDGE CAP CO", "3571", "Electronic Computers"),
+    (910002, "91000BBB2", "SILVERBROOK INDS INC", "3572", "Computer Storage Devices"),
+    (910003, "91000CCC3", "TIDEWATER MOBILITY CO", "3585", "Refrigeration & Heating Equipment"),
+    (910004, "91000DDD4", "KESTREL SOFTWARE INC", "3576", "Computer Communications Equipment"),
 ]
 
 
@@ -453,6 +499,9 @@ def _seed_sic(db_path: str) -> None:
         for cik, sic, desc, name in _SIC:
             repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
         for cik, sic, desc, name in _MANAGER_SIC:
+            repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
+        # AAPL's peer group -- same 2-digit SIC (35), each with its own 4-digit code.
+        for cik, _cusip, name, sic, desc in _PEER_ISSUERS:
             repo.upsert(CompanyProfile(cik=cik, sic=sic, sic_description=desc, name=name))
         print(
             f"seeded SIC profiles: {len(_SIC)} companies, {len(_MANAGER_SIC)} 13F managers "
@@ -954,6 +1003,10 @@ def main() -> None:
         cusip.record_resolved("037833100", 320193, "APPLE INC")
         cusip.record_resolved(_JPM_CUSIP, _JPM_CIK, "JPMORGAN CHASE & CO")
         cusip.record_unresolved("02005N100", "ALLY FINL INC")
+        # The peer-group names above: resolving them is what gives them an issuer identity
+        # for /institutional-peer-overlap. The remaining two pool CUSIPs stay unresolved.
+        for peer_cik, peer_cusip, peer_name, _sic, _desc in _PEER_ISSUERS:
+            cusip.record_resolved(peer_cusip, peer_cik, peer_name)
     finally:
         cusip.close()
 

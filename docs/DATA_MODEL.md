@@ -666,6 +666,33 @@ reads above — **no DuckDB, no cross-manager scan** (guardrail 6).
   `by_state` (distinct filer count + summed value per US state/DC code), `outside_states` (any
   non-state code — foreign OR a US territory the `albers-usa` map can't draw), and `unknown`
   (filers whose snapshot predates location tracking). **Nothing is dropped.**
+- `GET /v1/companies/{symbol}/institutional-holder-domicile?period=` **ranks** the same holders by
+  place, weighted by **reported shares** (`_DOMICILE_CAVEATS`). The companion to the choropleth
+  above, not a replacement: that one buckets for a MAP (Plot's `albers-usa` draws the 50 states +
+  DC and nothing else, so every foreign filer lands in one bucket); this one resolves each raw
+  `stateOrCountry` code through **EDGAR's own published code table** and rolls foreign filers up
+  by country. US filers rank by state, everyone else by country — deliberately not the same kind
+  of place, because a US-state breakdown is what the register supports and a world region is not.
+  `prior_period` supplies the tick on each bar; a place absent that quarter has `prior_weight:
+  null` (it was not there — not 0%). Filers we cannot place are a reported `coverage` gap, never
+  folded into a "rest of world" row.
+- `GET /v1/companies/{symbol}/institutional-share-attribution?period=` returns how many shares
+  each ownership filing family reports holding — 13F institutional, insider & affiliate (Forms
+  3/4/5), and 5%-plus beneficial stakes (13D/G) — each against `shares_outstanding`
+  (`_ATTRIBUTION_CAVEATS`). **The rows do not sum, are not disjoint and there is no total**: a
+  holder above 5% files a 13F *and* a 13D/G, and a 10% owner is also an insider. There is
+  deliberately **no "unreported residual" row** — it is the only row that would be a subtraction
+  rather than a measurement, and a remainder of differently-dated numbers is a figure nobody
+  filed (the same reasoning that keeps an "adjusted register" off this view). Each row carries
+  its own `as_of`. See `normalize/attribution.py`.
+- `GET /v1/companies/{symbol}/institutional-peer-overlap?period=&peers=&top=` returns the
+  **asymmetric** manager-overlap matrix between a company and its SIC-group peers, the exclusive
+  combinations behind an UpSet plot, and its largest holders' peer counts
+  (`_PEER_OVERLAP_CAVEATS`). `matrix[i][j]` is the share of the ROW issuer's managers that also
+  report the column issuer, so it is *not* symmetric — a small register overlapping a large one
+  reads high one way and low the other. The diagonal is `null`, never `1.0`. Peers are chosen by
+  SIC prefix then ranked by the size of their own **ingested** register, and `peer_basis` says so
+  on the payload. Bounded live reads only (guardrail 6). See `normalize/overlap.py`.
 
 **`filing_manager_location` — new, stored raw.** `sec/institutional.parse_filing_manager_location`
 reads the filing manager's `stateOrCountry` off the 13F cover page (a document already fetched
@@ -673,7 +700,12 @@ for the co-filer roster) and stores it verbatim on `HoldingsSnapshot`
 (`holdings_snapshots.filing_manager_location`, added via a guarded `ALTER TABLE` migration — old
 rows read back `None` = an honest "unknown", never assumed domestic). Classification into
 state / other / unknown happens at the serve/UI edge in `normalize/geography.py`
-(`US_STATE_CODES`, `classify_location`), keeping the `sec/` client free of business logic.
+(`US_STATE_CODES`, `classify_location`), keeping the `sec/` client free of business logic. The
+code → *place name* resolution the domicile RANKING needs lives beside it in
+`normalize/edgar_locations.py` — **309 codes generated from EDGAR's own published lookup**
+(`/Archives/edgar/lookup-data.js`, fetched with our compliant User-Agent), never typed from
+memory, so no place name here is invented. EDGAR's own `XX` ("Unknown") resolves to `None`, the
+same as an absent code: a coverage gap is never a place.
 **Honesty:** this code is the management entity's *registered business address* — NOT where its
 capital originates and NOT the issuer's location. The choropleth is titled and captioned to say
 exactly that; it is never framed as "clusters of capital."

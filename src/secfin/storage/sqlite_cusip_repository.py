@@ -63,6 +63,19 @@ class SQLiteCusipMapRepository(CusipMapRepository):
         cur = self._conn.execute("SELECT cusip FROM cusip_map WHERE cik = ?", (cik,))
         return [row[0] for row in cur.fetchall()]
 
+    def cusips_for_ciks(self, ciks: list[str] | list[int]) -> dict[int, list[str]]:
+        if not ciks:
+            return {}
+        placeholders = ",".join("?" * len(ciks))
+        cur = self._conn.execute(
+            f"SELECT cik, cusip FROM cusip_map WHERE cik IN ({placeholders})",
+            tuple(int(c) for c in ciks),
+        )
+        out: dict[int, list[str]] = {}
+        for cik, cusip in cur.fetchall():
+            out.setdefault(int(cik), []).append(cusip)
+        return out
+
     def record_resolved(self, cusip: str, cik: int, issuer_name: str) -> None:
         self._conn.execute(_UPSERT_RESOLVED_SQL, (cusip, cik, issuer_name))
 

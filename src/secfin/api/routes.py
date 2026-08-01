@@ -51,10 +51,13 @@ from secfin.normalize.metrics import (
 )
 from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
 from secfin.normalize.manager_category import CATEGORY_LABELS, classify_manager_sic
+from secfin.normalize.attribution import share_attribution
+from secfin.normalize.overlap import peer_overlap
 from secfin.normalize.register import (
     ShareVector,
     composition,
     concentration,
+    domicile,
     share_vector,
     stable_capital_share,
     tenure,
@@ -2986,6 +2989,327 @@ async def get_institutional_holder_geography(
         "by_state": by_state_out,
         "outside_states": {"filer_count": len(outside_managers), "value": outside_value},
         "unknown": {"filer_count": len(unknown_managers), "value": unknown_value},
+    }
+
+
+# Peer-overlap caveats. The overlap ITSELF is reported (two 13Fs each name their issuer); what
+# is derived is the framing -- who counts as a peer, and whether a shared holder means anything.
+_PEER_OVERLAP_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "A shared holder is not a shared view -- broad-market index funds report nearly every "
+    "large issuer, so high overlap usually reflects index construction, not conviction.",
+    "The matrix is deliberately ASYMMETRIC: each cell is a share of the ROW issuer's managers, "
+    "so a small register overlapping a large one reads high one way and low the other.",
+    "Peers are companies sharing this company's SIC industry prefix, ranked by the size of "
+    "their own INGESTED 13F register -- a coverage-dependent choice, not a judgment about "
+    "which companies compete.",
+]
+
+# Domicile caveats. Same underlying field as the choropleth, different question: the choropleth
+# buckets for a map (50 states + DC vs everything else); this RANKS places by shares.
+_DOMICILE_CAVEATS = _ISSUER_CENTRIC_CAVEATS + [
+    "Domicile is the filing manager's registered BUSINESS ADDRESS from its 13F cover page -- "
+    "not where its capital originates, not where its assets are managed, not the company's "
+    "location.",
+    "Inside the US the ranking is by state and elsewhere by country, so the rows are not the "
+    "same kind of place -- deliberate, because a US-state breakdown is what the register "
+    "supports and a world region is not.",
+    "Filers whose location we do not hold are reported as a coverage gap, never folded into a "
+    "'rest of world' row and never counted as zero.",
+]
+
+# Share-attribution caveats. The load-bearing one is the first: these rows DO NOT ADD UP.
+_ATTRIBUTION_CAVEATS = _13F_CAVEATS + [
+    "These rows do NOT sum and are NOT exhaustive -- a holder above 5% files both a 13F and a "
+    "Schedule 13D/G, and a 10% owner is also an insider, so the same shares appear twice. "
+    "There is deliberately no total.",
+    "Each row is measured on its own date (13F at quarter-end and ~45 days stale; Forms 3/4/5 "
+    "within two business days of a trade; 13D/G ten days after crossing 5%), against shares "
+    "outstanding reported on a cover date of its own.",
+    "What no filing accounts for is deliberately NOT shown: a remainder of five "
+    "differently-dated numbers is not a measurement.",
+]
+
+# How many SIC-group companies to consider before picking peers. A cap on the CANDIDATE scan,
+# not on the peer count -- the candidates are then ranked by ingested register size (one counting
+# read), and only the winners get a holder-list read.
+_PEER_CANDIDATE_CAP = 120
+
+# How many recent insider rows to read for the attribution figure. Only the NEWEST row per
+# (owner, security, ownership form) counts -- a position is a state, not an event -- so this is
+# a window wide enough to reach every current insider's latest filing, not a history.
+_ATTRIBUTION_INSIDER_LOOKBACK = 400
+
+
+def _shares_outstanding(facts: list[RawFact]) -> tuple[float | None, str | None, str | None]:
+    """The company's most recently reported shares outstanding: (value, as_of, tag).
+
+    An INSTANT fact, so the latest `instant` wins; ties break on the latest `filed`, which is the
+    repo-wide restatement rule (CLAUDE.md). Returns `(None, None, None)` rather than a zero when
+    the company has no such fact ingested -- a missing denominator is not a company with no
+    shares.
+    """
+    wanted = set(candidate_tags("shares_outstanding"))
+    usable = [
+        f
+        for f in facts
+        if f.gaap_tag in wanted and f.instant and isinstance(f.value, (int, float)) and f.value > 0
+    ]
+    if not usable:
+        return None, None, None
+    best = max(usable, key=lambda f: (f.instant or "", f.filed or ""))
+    return float(best.value), best.instant, best.gaap_tag
+
+
+@router.get(
+    "/companies/{symbol}/institutional-holder-domicile",
+    tags=["Institutional Ownership"],
+    summary="Where a company's 13F filers file from, ranked by reported shares (DERIVED)",
+)
+async def get_institutional_holder_domicile(
+    symbol: str,
+    period: str = Query(..., description="13F quarter-end, e.g. 2026-03-31"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+) -> dict:
+    """The register ranked by where its managers file from -- US states, then countries.
+
+    The companion to `/institutional-holder-geography`, not a replacement for it. That one
+    buckets the same raw `stateOrCountry` code for a CHOROPLETH, which can draw the 50 states
+    and DC and nothing else, so every foreign filer lands in one `outside_states` bucket. This
+    one answers a ranking question instead, so it resolves each code to its place through
+    EDGAR's own published code table (`normalize/edgar_locations.py`) and rolls foreign filers
+    up by country.
+
+    Weighted by reported SHARES, not filer count: fifty small managers in one state are not a
+    bigger presence than one large one.
+
+    `prior` is the same ranking one quarter earlier, for the tick on each bar. A place absent
+    from that quarter has `prior_weight: null` -- it was not there, which is not 0%.
+
+    Locations are backfilled separately (`ingest/location_backfill.py`), so a volume where that
+    has not run returns `status: "na"` with a reason. That is missing coverage, never a register
+    without a domicile.
+
+    A live indexed point read (`holders_of`, twice) plus a pure grouping -- no DuckDB
+    (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    try:
+        prior_period: str | None = prior_quarter_end(period)
+    except ValueError:
+        prior_period = None
+    prior_holders = holdings_repo.holders_of(cusips, prior_period) if prior_period else []
+
+    result = domicile(holdings_repo.holders_of(cusips, period), prior_holders or None)
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "prior_period": prior_period,
+        "domicile": asdict(result),
+        "caveats": _DOMICILE_CAVEATS,
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-share-attribution",
+    tags=["Institutional Ownership"],
+    summary="Shares reported by each ownership filing family, vs shares outstanding (DERIVED)",
+)
+async def get_institutional_share_attribution(
+    symbol: str,
+    period: str = Query(..., description="13F quarter-end, e.g. 2026-03-31"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    fact_repo: RawFactRepository = Depends(get_repo),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+    insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
+    beneficial_repo: BeneficialOwnershipRepository = Depends(get_beneficial_ownership_repo),
+) -> dict:
+    """How many shares each ownership filing family reports holding, against shares outstanding.
+
+    Three rows -- 13F-reported institutional, insider & affiliate (Forms 3/4/5), and 5%-plus
+    beneficial stakes (Schedules 13D/G) -- each measured on ITS OWN date and divided by the
+    company's own most recently reported `shares outstanding`.
+
+    ## There is no total, and there is no residual row
+
+    The rows are **not disjoint**: a holder above 5% files a 13F *and* a 13D/G, and a 10% owner
+    is also an insider, so the same shares legitimately appear twice. Adding them would
+    double-count real holders, which is why no total is returned -- and why a caller must not
+    render them as a stacked bar summing to 100%.
+
+    An earlier design carried a fourth "unreported residual" row (shares outstanding minus the
+    rest). It is deliberately gone: it is the only row that is a *subtraction* rather than a
+    measurement, and a remainder of differently-dated numbers is a figure nobody filed. Same
+    reasoning that keeps an "adjusted register" off this view entirely.
+
+    Derivative rows (options, RSUs, warrants) are EXCLUDED from the insider figure -- their
+    share counts are underlying shares of instruments that are not owned stock. Rows cached
+    before that flag existed count as unknown and are excluded too, with the count surfaced in
+    the row's `reason` so the figure reads as the floor it is.
+
+    Live cache-aside reads (`holders_of`, the insider and 13D/G caches, the fact store) plus a
+    pure computation -- no DuckDB (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(fact_repo, client, cik)
+    cusips = await _cusips_for_issuer(cusip_repo, cik)
+
+    vector = share_vector(holdings_repo.holders_of(cusips, period))
+    outstanding, outstanding_as_of, outstanding_tag = _shares_outstanding(facts)
+    result = share_attribution(
+        institutional_shares=vector.total_shares or None,
+        institutional_holder_count=vector.holder_count or None,
+        institutional_as_of=period,
+        insider_rows=insider_repo.get_insider_transactions(cik, _ATTRIBUTION_INSIDER_LOOKBACK),
+        beneficial_rows=beneficial_repo.get_beneficial_ownership(cik, _BO_TYPE_LOOKBACK),
+        shares_outstanding=outstanding,
+        shares_outstanding_as_of=outstanding_as_of,
+        shares_outstanding_tag=outstanding_tag,
+    )
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "attribution": asdict(result),
+        "caveats": _ATTRIBUTION_CAVEATS,
+    }
+
+
+async def _peer_labels(
+    client: SECClient,
+    ticker_cache: TickerCache,
+    cusip_repo: CusipMapRepository,
+    holdings_repo: HoldingsSnapshotRepository,
+    profile_repo: CompanyProfileRepository,
+    cik: int,
+    period: str,
+    peers: int,
+) -> dict:
+    """Pick this company's peers and look up a symbol for each.
+
+    Candidates are the SIC group (the same axis `analytical/peer_ranks.py` groups on), then
+    ranked by the size of their OWN ingested 13F register -- one counting read over every
+    candidate's CUSIPs, rather than a full holder list each. A candidate with no resolved CUSIP
+    cannot be identified in the 13F data at all and is skipped, not shown empty.
+
+    Tickers come last, for LABELLING only: a matrix axis has room for "NVDA" and not for
+    "NVIDIA CORPORATION", and a truncated registrant name identifies nothing. Peers are reached
+    by CIK, so the symbol has to be looked back up -- one pass over the already-cached ticker
+    map, no extra SEC request.
+    """
+    candidates = profile_repo.sic_group_peers(
+        cik, settings.secfin_peer_sic_digits, _PEER_CANDIDATE_CAP
+    )
+    cusips_by_cik = cusip_repo.cusips_for_ciks([c.cik for c in candidates])
+    counts = holdings_repo.distinct_holder_counts(
+        [cu for group in cusips_by_cik.values() for cu in group], period
+    )
+    ranked = sorted(
+        (
+            (sum(counts.get(cu, 0) for cu in cusips_by_cik.get(c.cik, [])), c)
+            for c in candidates
+            if cusips_by_cik.get(c.cik)
+        ),
+        key=lambda pair: (-pair[0], pair[1].cik),
+    )
+    selected = [profile for size, profile in ranked if size > 0][:peers]
+    return {
+        "selected": selected,
+        "cusips_by_cik": cusips_by_cik,
+        "tickers": await ticker_cache.tickers_for(client, [p.cik for p in selected]),
+    }
+
+
+@router.get(
+    "/companies/{symbol}/institutional-peer-overlap",
+    tags=["Institutional Ownership"],
+    summary="Which managers report this company AND its industry peers (DERIVED framing)",
+)
+async def get_institutional_peer_overlap(
+    symbol: str,
+    period: str = Query(..., description="13F quarter-end, e.g. 2026-03-31"),
+    peers: int = Query(5, ge=1, le=8, description="How many peer issuers to compare against"),
+    top: int = Query(5, ge=1, le=25, description="How many of this company's holders to list"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+) -> dict:
+    """Manager overlap between this company's 13F register and its industry peers'.
+
+    Returns the asymmetric overlap matrix, the exclusive combinations behind an UpSet plot, and
+    this company's largest holders with the peers each also reports.
+
+    ## What is reported and what is derived
+
+    That a manager reported two issuers in the same quarter is stated outright by that manager's
+    own 13F -- this intersects sets of filers, it does not infer a relationship. What IS derived
+    is the framing: which companies count as peers, and whether a shared holder means anything.
+    `cannot` carries both, and the honest reading of a high cell is usually index construction.
+
+    ## How the peers are chosen, and why that is a choice
+
+    Candidates are companies sharing this company's SIC prefix (`secfin_peer_sic_digits`, the
+    same axis `analytical/peer_ranks.py` groups on), capped at a candidate scan. They are then
+    ranked by **the size of their own ingested 13F register** and the largest are kept. That is
+    coverage-dependent by construction: a peer nobody has ingested cannot be compared, so it is
+    absent rather than shown empty. `peer_basis` says this in words, on the payload.
+
+    Bounded and live: one `holders_of` for this company, one batched CUSIP read, one counting
+    read to rank candidates, then one `holders_of` per selected peer -- indexed point reads of
+    the same character as `/institutional-co-holding`, NOT the whole-quarter cross-manager scan
+    reserved for DuckDB (guardrail 6).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        cusips = await _cusips_for_issuer(cusip_repo, cik)
+        focus_holders = holdings_repo.holders_of(cusips, period)
+        peer_tickers = await _peer_labels(
+            client, ticker_cache, cusip_repo, holdings_repo, profile_repo, cik, period, peers
+        )
+        selected = peer_tickers["selected"]
+        cusips_by_cik = peer_tickers["cusips_by_cik"]
+        tickers = peer_tickers["tickers"]
+    focus_vector = share_vector(focus_holders)
+
+    managers_by_issuer: dict[int, set[int]] = {
+        cik: {h.manager_cik for h in focus_holders},
+    }
+    labels: dict[int, str] = {cik: symbol.upper()}
+    names: dict[int, str | None] = {cik: None}
+    for profile in selected:
+        peer_holders = holdings_repo.holders_of(cusips_by_cik.get(profile.cik, []), period)
+        managers_by_issuer[profile.cik] = {h.manager_cik for h in peer_holders}
+        # Ticker where we have one, the registrant's own name otherwise. Never a bare CIK.
+        labels[profile.cik] = tickers.get(profile.cik) or profile.name or str(profile.cik)
+        names[profile.cik] = profile.name
+
+    result = peer_overlap(
+        cik,
+        managers_by_issuer,
+        labels=labels,
+        names=names,
+        focus_weights={r.manager_cik: r.weight for r in focus_vector.rows},
+        focus_names={r.manager_cik: r.manager_name for r in focus_vector.rows},
+        top_holders=top,
+        peer_basis=(
+            f"companies sharing this company's {settings.secfin_peer_sic_digits}-digit SIC "
+            "prefix, ranked by the size of their own ingested 13F register for this quarter"
+        ),
+    )
+    return {
+        "cik": cik,
+        "cusips": cusips,
+        "period": period,
+        "overlap": asdict(result),
+        "caveats": _PEER_OVERLAP_CAVEATS,
     }
 
 

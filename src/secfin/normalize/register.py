@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from secfin.normalize.edgar_locations import describe_location
 from secfin.normalize.manager_category import (
     CATEGORY_LABELS,
     CATEGORY_ORDER,
@@ -44,6 +45,12 @@ STABLE_CAPITAL_WEIGHTS: list[tuple[int, float]] = [(8, 1.0), (4, 0.5), (2, 0.25)
 # computed over one holder is 10,000 (perfect concentration) which is arithmetically true and
 # analytically worthless.
 _MIN_HOLDERS_FOR_CONCENTRATION = 2
+
+# Points on the Lorenz curve, including both endpoints -- one per percent of the manager
+# population. A fixed resolution rather than one point per holder, so the payload does not grow
+# with the register (a whole-market issuer has thousands of filers) and the chart is drawn on
+# the same axis every time.
+_LORENZ_POINTS = 101
 
 
 def _reported_shares(holders: list[IssuerHolder]) -> list[tuple[int, str | None, float]]:
@@ -157,6 +164,11 @@ class RegisterConcentration:
     top5_share: float | None = None
     top10_share: float | None = None
     managers_for_half: int | None = None  # "N managers hold 50%"
+    # Lorenz curve: `lorenz[i]` is the share of the register (0-1) held by the SMALLEST i% of
+    # managers, at 1-point-per-percent. Fixed length whatever the holder count, so the chart is
+    # the same size for a 4-holder register and a 4,000-holder one -- and computed from the same
+    # ascending weights `gini` is, so the curve and the coefficient can never disagree.
+    lorenz: list[float] | None = None
 
 
 _CONCENTRATION_CANNOT = (
@@ -324,6 +336,22 @@ def concentration(vector: ShareVector) -> RegisterConcentration:
     def top(k: int) -> float:
         return sum(weights[:k])
 
+    # Lorenz: cumulative share of the ascending weights, sampled at even population fractions.
+    # `asc` is already sorted smallest-first, which is the order the curve is defined on.
+    running: list[float] = []
+    acc = 0.0
+    for w in asc:
+        acc += w
+        running.append(acc)
+    lorenz: list[float] = []
+    for i in range(_LORENZ_POINTS):
+        fraction = i / (_LORENZ_POINTS - 1)
+        # How many managers the smallest `fraction` of the population covers. Rounding down
+        # keeps every point a REAL cumulative total rather than an interpolation between two.
+        take = int(fraction * n)
+        lorenz.append(0.0 if take <= 0 else min(running[take - 1], 1.0))
+    lorenz[-1] = 1.0  # the whole population holds the whole register, float drift aside
+
     managers_for_half = next(
         (i + 1 for i, r in enumerate(vector.rows) if r.cumulative >= 0.5),
         vector.holder_count,
@@ -343,6 +371,7 @@ def concentration(vector: ShareVector) -> RegisterConcentration:
         top5_share=top(5),
         top10_share=top(10),
         managers_for_half=managers_for_half,
+        lorenz=lorenz,
     )
 
 
@@ -609,4 +638,167 @@ def stable_capital_share(by_period: dict[str, list[IssuerHolder]]) -> StableCapi
         weights=STABLE_CAPITAL_WEIGHTS,
         stable_share=stable,
         quarters_observed=profile.quarters_observed,
+    )
+
+
+@dataclass
+class DomicileRow:
+    """One place the register files from."""
+
+    place: str  # the reader-facing label, e.g. "United States - Pennsylvania" / "Switzerland"
+    country: str  # the grouping key, so a caller can roll up further without re-parsing
+    holder_count: int
+    shares: float
+    weight: float  # of the shares whose holder's location we know (0-1)
+    prior_weight: float | None = None  # the same place one quarter earlier, if we have it
+
+
+@dataclass
+class RegisterDomicile:
+    status: str  # "ok" | "na"
+    reason: str | None
+    formula: str
+    cannot: str
+    population: str
+    rows: list[DomicileRow] = field(default_factory=list)
+    located_holder_count: int = 0
+    unlocated_holder_count: int = 0
+    unlocated_shares: float = 0.0
+    # Share of the register's shares whose filer we could place at all. The honest headline:
+    # a domicile ranking over 40% of the register is a statement about 40% of the register.
+    coverage: float | None = None
+
+
+_DOMICILE_CANNOT = (
+    "This is the BUSINESS ADDRESS each manager registered with the SEC -- where it files from, "
+    "not where its capital originates, where its assets are managed, or where the company is. A "
+    "fund domiciled offshore and run from Connecticut reports whichever address it registered. "
+    "Inside the US the ranking is by state; everywhere else it is by country, so the rows are "
+    "not the same kind of place."
+)
+_DOMICILE_POPULATION = (
+    "ingested filers for this quarter whose 13F cover page carries a business location"
+)
+
+
+def domicile(
+    holders: list[IssuerHolder],
+    prior_holders: list[IssuerHolder] | None = None,
+) -> RegisterDomicile:
+    """Rank the register by where its managers file from, by reported shares.
+
+    Weighted by SHARES, not by filer count: fifty small managers in one state are not a bigger
+    presence than one large one, and the card sits next to share-weighted figures.
+
+    Filers whose location we do not have -- a snapshot ingested before the location column
+    existed, a code EDGAR does not publish -- are counted separately and NEVER folded into a
+    "rest of world" row. That would turn our own coverage gap into a finding about the register.
+    `coverage` says what share of the register the ranking actually describes.
+
+    `prior_holders` supplies the same-place weight one quarter earlier (the tick on each bar).
+    It is optional: without it every `prior_weight` is None, which a caller must render as "no
+    prior quarter", never as a zero-length tick sitting at the axis.
+
+    Pure: no DB, no network, no clock.
+    """
+    formula = (
+        "each filer's 13F cover-page business location, grouped by US state or by country; "
+        "weight = place shares / shares held by filers we could place"
+    )
+
+    def group(rows: list[IssuerHolder]) -> tuple[dict[str, list], float, int, float, int]:
+        """(place -> [country, shares, ciks], located_shares, located_n, unlocated_shares, n)."""
+        places: dict[str, list] = {}
+        located_shares = 0.0
+        unlocated_shares = 0.0
+        located_ciks: set[int] = set()
+        unlocated_ciks: set[int] = set()
+        # A manager's location is on its cover page, so it is identical across that manager's
+        # rows -- but a multi-class issuer gives it several rows, and only some may carry the
+        # column. Take the first non-empty, in one pass (never a scan per manager: this runs on
+        # the request path over a register that can hold thousands of filers).
+        location_by_cik: dict[int, str] = {}
+        for h in rows:
+            if h.location and h.manager_cik not in location_by_cik:
+                location_by_cik[h.manager_cik] = h.location
+        # Sum per MANAGER (same reason `share_vector` does) so a holder is counted once per
+        # place, not once per share class.
+        by_manager: dict[int, tuple[str | None, float]] = {}
+        for cik, _name, shares in _reported_shares(rows):
+            _prev_loc, prev_shares = by_manager.get(cik, (None, 0.0))
+            by_manager[cik] = (location_by_cik.get(cik), prev_shares + shares)
+        for cik, (loc, shares) in by_manager.items():
+            place = describe_location(loc)
+            if place is None:
+                unlocated_ciks.add(cik)
+                unlocated_shares += shares
+                continue
+            located_ciks.add(cik)
+            located_shares += shares
+            bucket = places.setdefault(place.label, [place.country, 0.0, set()])
+            bucket[1] += shares
+            bucket[2].add(cik)
+        return (
+            places,
+            located_shares,
+            len(located_ciks),
+            unlocated_shares,
+            len(unlocated_ciks),
+        )
+
+    places, located_shares, located_n, unlocated_shares, unlocated_n = group(holders)
+    total = located_shares + unlocated_shares
+    coverage = (located_shares / total) if total > 0 else None
+
+    if not places or located_shares <= 0:
+        return RegisterDomicile(
+            status="na",
+            reason=(
+                f"none of the {len(holders)} ingested filing(s) for this quarter carries a "
+                "business location -- 13F cover-page locations are backfilled separately "
+                "(ingest/location_backfill.py), so read this as missing coverage, not as a "
+                "register with no domicile"
+            ),
+            formula=formula,
+            cannot=_DOMICILE_CANNOT,
+            population=_DOMICILE_POPULATION,
+            unlocated_holder_count=unlocated_n,
+            unlocated_shares=unlocated_shares,
+            coverage=coverage,
+        )
+
+    prior_weights: dict[str, float] = {}
+    if prior_holders:
+        prior_places, prior_located, _, _, _ = group(prior_holders)
+        if prior_located > 0:
+            prior_weights = {
+                label: bucket[1] / prior_located for label, bucket in prior_places.items()
+            }
+
+    rows = [
+        DomicileRow(
+            place=label,
+            country=bucket[0],
+            holder_count=len(bucket[2]),
+            shares=bucket[1],
+            weight=bucket[1] / located_shares,
+            # A place absent from the prior quarter has no prior weight -- that is "it was not
+            # there", which is not 0% of a register it was not part of.
+            prior_weight=prior_weights.get(label),
+        )
+        for label, bucket in places.items()
+    ]
+    rows.sort(key=lambda r: (-r.shares, r.place))
+
+    return RegisterDomicile(
+        status="ok",
+        reason=None,
+        formula=formula,
+        cannot=_DOMICILE_CANNOT,
+        population=_DOMICILE_POPULATION,
+        rows=rows,
+        located_holder_count=located_n,
+        unlocated_holder_count=unlocated_n,
+        unlocated_shares=unlocated_shares,
+        coverage=coverage,
     )

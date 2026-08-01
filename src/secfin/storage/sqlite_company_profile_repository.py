@@ -52,5 +52,22 @@ class SQLiteCompanyProfileRepository(CompanyProfileRepository):
             return None
         return CompanyProfile(cik=row[0], sic=row[1], sic_description=row[2], name=row[3])
 
+    def sic_group_peers(self, cik: int, sic_digits: int, limit: int) -> list[CompanyProfile]:
+        own = self.get(cik)
+        if own is None or not own.sic:
+            return []
+        prefix = own.sic.strip()[:sic_digits]
+        if not prefix:
+            return []
+        cur = self._conn.execute(
+            "SELECT cik, sic, sic_description, name FROM company_profiles "
+            "WHERE sic LIKE ? AND cik != ? ORDER BY cik LIMIT ?",
+            (prefix + "%", cik, limit),
+        )
+        return [
+            CompanyProfile(cik=r[0], sic=r[1], sic_description=r[2], name=r[3])
+            for r in cur.fetchall()
+        ]
+
     def close(self) -> None:
         self._conn.close()

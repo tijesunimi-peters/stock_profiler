@@ -157,13 +157,13 @@ def parse_ownership_xml(
     issuer_name = _text(issuer, "issuerName")
 
     tables = []
-    for table_tag, txn_tag, holding_tag in (
-        ("nonDerivativeTable", "nonDerivativeTransaction", "nonDerivativeHolding"),
-        ("derivativeTable", "derivativeTransaction", "derivativeHolding"),
+    for table_tag, txn_tag, holding_tag, is_derivative in (
+        ("nonDerivativeTable", "nonDerivativeTransaction", "nonDerivativeHolding", False),
+        ("derivativeTable", "derivativeTransaction", "derivativeHolding", True),
     ):
         table = root.find(table_tag)
         if table is not None:
-            tables.append((table, txn_tag, holding_tag))
+            tables.append((table, txn_tag, holding_tag, is_derivative))
 
     records: list[InsiderTransaction] = []
     for owner in root.findall("reportingOwner"):
@@ -182,11 +182,21 @@ def parse_ownership_xml(
             "accession": accession,
         }
 
-        for table, txn_tag, holding_tag in tables:
+        for table, txn_tag, holding_tag, is_derivative in tables:
+            # Which TABLE the row sat in is the only reliable derivative marker -- `security_title`
+            # is free text and reading intent out of it would be Track 2.
             for row in table.findall(txn_tag):
-                records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=False)))
+                records.append(
+                    InsiderTransaction(
+                        **common, **_row_fields(row, is_holding=False), is_derivative=is_derivative
+                    )
+                )
             for row in table.findall(holding_tag):
-                records.append(InsiderTransaction(**common, **_row_fields(row, is_holding=True)))
+                records.append(
+                    InsiderTransaction(
+                        **common, **_row_fields(row, is_holding=True), is_derivative=is_derivative
+                    )
+                )
 
     return records
 

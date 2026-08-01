@@ -484,6 +484,17 @@ class InsiderTransaction(BaseModel):
     accession: str | None = None
     filed: str | None = None
     is_holding: bool = False  # True if this is a holding, not a transaction
+    # True when the row came from the ownership form's DERIVATIVE table (options, RSUs,
+    # warrants, convertibles) rather than its non-derivative table. Not a nuance: a derivative
+    # row's `shares` and `shares_owned_after` are the UNDERLYING share count of an instrument
+    # that is not owned stock, so anything summing insider ownership must exclude them or it
+    # reports options as shares. The distinction is in the XML (which table the row sits in) --
+    # it was simply being discarded on parse until 2026-08-01.
+    #
+    # `None` means UNKNOWN, not "no": rows cached before the column existed have no flag, and
+    # defaulting those to False would quietly readmit exactly the option rows this field exists
+    # to keep out. A consumer summing ownership must drop `None` and report the coverage gap.
+    is_derivative: bool | None = None
 
 
 class InsiderFilingMeta(NamedTuple):

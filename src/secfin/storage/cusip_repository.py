@@ -40,6 +40,16 @@ class CusipMapRepository(ABC):
         """
 
     @abstractmethod
+    def cusips_for_ciks(self, ciks: list[str] | list[int]) -> dict[int, list[str]]:
+        """`cusips_for_cik` for a BOUNDED set of issuers, in one indexed read.
+
+        For a cross-issuer view (the peer-overlap block) that needs the CUSIPs of a handful of
+        candidate peers: one read rather than one per candidate. Empty input returns `{}`, and a
+        cik with no resolved CUSIP is simply absent from the result -- never an empty-list entry
+        that would read as "this issuer has no shares".
+        """
+
+    @abstractmethod
     def record_resolved(self, cusip: str, cik: int, issuer_name: str) -> None:
         """Persist a successful resolution (upgrading a prior unresolved row, if any)."""
 

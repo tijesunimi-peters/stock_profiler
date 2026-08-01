@@ -326,6 +326,19 @@ class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
             out.setdefault(manager_cik, set()).add(cusip)
         return out
 
+    def distinct_holder_counts(self, cusips: list[str], report_period: str) -> dict[str, int]:
+        if not cusips:
+            return {}
+        placeholders = ",".join("?" for _ in cusips)
+        # Served by the same (cusip, report_period) index holders_of uses, and returns counts
+        # rather than rows -- so ranking N candidate issuers costs one read, not N holder lists.
+        cur = self._conn.execute(
+            f"SELECT cusip, COUNT(DISTINCT manager_cik) FROM holdings "
+            f"WHERE report_period = ? AND cusip IN ({placeholders}) GROUP BY cusip",
+            (report_period, *cusips),
+        )
+        return {cusip: count for cusip, count in cur.fetchall()}
+
     def snapshots_missing_location(self, report_period: str) -> list[tuple[int, str]]:
         cur = self._conn.execute(
             "SELECT manager_cik, accession FROM holdings_snapshots "
