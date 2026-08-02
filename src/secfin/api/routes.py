@@ -139,6 +139,7 @@ from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
+from secfin.sec.exhibits import find_ex21_filename, parse_ex21
 from secfin.storage.filing_index_repository import FilingIndexRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
@@ -586,6 +587,83 @@ async def get_company_profile(
         first_filing_date=profile.first_filing_date,
     )
 
+
+@public_router.get(
+    "/companies/{symbol}/subsidiaries",
+    tags=["Financials"],
+    summary="Consolidated subsidiaries from the latest 10-K's EX-21 exhibit",
+)
+async def get_subsidiaries(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> dict:
+    """The registrant's consolidated subsidiaries and their jurisdictions, from EX-21.
+
+    ⚠️ **The one endpoint that reads a filing DOCUMENT.** `CLAUDE.md` otherwise forbids parsing
+    HTML; that rule is suspended here alone, by operator ruling 2026-08-02, because EX-21 is the
+    only place this list exists -- it is in neither companyfacts, the DERA datasets, nor
+    `/submissions/`. See `sec/exhibits.py` for what the parser refuses to do.
+
+    Three fetches, all throttled through `SECClient`: the filing index to LOCATE the exhibit (its
+    filename follows no convention -- Apple's is `a10-kexhibit21109272025.htm`), then the exhibit.
+
+    **What this cannot tell you, and the payload says so:** the list is as of that filing, and
+    EX-21 omits subsidiaries the registrant deems immaterial. It is a floor, never a census.
+    `status="na"` with a reason -- never an empty list presented as "no subsidiaries" -- whenever
+    the exhibit is missing, unparseable, or published as prose.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+        annual = filing_repo.get_filings(cik, ["10-K", "10-K/A"], 1)
+        if not annual:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    "No annual report is indexed for this company yet, so there is no exhibit set "
+                    "to look in. Run the filing-index backfill for this filer."
+                ),
+                "subsidiaries": [],
+            }
+        filing = annual[0]
+        acc = (filing.accession or "").replace("-", "")
+        base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}"
+
+        headers = await client.get_text(f"{base}/{filing.accession}-index-headers.html")
+        name = find_ex21_filename(headers)
+        if not name:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    f"The {filing.form} filed {filing.filing_date} carries no EX-21. A registrant "
+                    "with no subsidiaries need not file one, so this is an absence, not a gap."
+                ),
+                "subsidiaries": [],
+                "filing": {"form": filing.form, "filed": filing.filing_date, "accession": filing.accession},
+            }
+
+        result = parse_ex21(await client.get_text(f"{base}/{name}"))
+
+    return {
+        "cik": cik,
+        "status": result.status,
+        "reason": result.reason,
+        "has_ownership": result.has_ownership,
+        "cannot": result.cannot,
+        "subsidiaries": [
+            {"name": x.name, "jurisdiction": x.jurisdiction, "ownership": x.ownership}
+            for x in result.subsidiaries
+        ],
+        "filing": {
+            "form": filing.form,
+            "filed": filing.filing_date,
+            "accession": filing.accession,
+            "exhibit_url": f"{base}/{name}",
+        },
+    }
 
 @public_router.get(
     "/companies/{symbol}/statements/{statement}/condensed",

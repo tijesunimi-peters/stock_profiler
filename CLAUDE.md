@@ -22,6 +22,16 @@ All of these are filed with the SEC in structured form (XBRL for financials, own
 for insider trades, an XML information table for 13F). We **ingest and re-shape structured
 data — we do not scrape or parse HTML.**
 
+> **One documented exception (operator ruling, 2026-08-02): `sec/exhibits.py` parses EX-21**, the
+> subsidiaries exhibit, because that list exists in no structured source — not companyfacts (numeric
+> facts only), not the DERA datasets, not `/submissions/`. It was a parsed list or no list.
+>
+> The exception is deliberately narrow and does not generalise. **A second document parser is a new
+> decision, not a precedent this one already set.** What makes it defensible is that the parser is
+> unwilling: it reads one table, requires a recognisable header or two data rows, and returns
+> `status="na"` with a reason for anything else — because a partial subsidiary list is worse than
+> none, since a reader cannot tell a short list from a badly-parsed one.
+
 **Critical 13F caveat:** 13F is a quarter-end *holdings snapshot*, NOT transactions. Any
 "buy/sell" is DERIVED by diffing consecutive quarters (`normalize/flows.py` → `HoldingDelta`).
 Never present derived deltas as reported trades. Carry the long-only / ~45-day-lag caveats.

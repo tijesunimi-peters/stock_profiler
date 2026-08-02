@@ -106,6 +106,18 @@ class SECClient:
         resp.raise_for_status()
         return resp.content
 
+    async def get_text(self, url: str) -> str:
+        """A text document, through the same throttle.
+
+        For the EDGAR pages that are not JSON -- the filing index and the EX-21 exhibit behind it.
+        `httpx` picks the encoding from the response, which matters here: older EDGAR documents are
+        latin-1 and decoding them as UTF-8 mangles the accented entity names this is fetched for.
+        """
+        await self._limiter.wait()
+        resp = await self._client.get(url)
+        resp.raise_for_status()
+        return resp.text
+
     # --- convenience URL builders -------------------------------------------------
 
     @staticmethod

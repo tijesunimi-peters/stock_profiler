@@ -212,6 +212,68 @@ function identitySentence(p: ProfileResponse): string {
 
 
 
+
+/**
+ * The subsidiary panel's shape, from the EX-21 read.
+ *
+ * `subCount` stays NULL unless we actually have a list. Zero would read as "this registrant has no
+ * subsidiaries", which is a claim about the company; not knowing is a claim about us.
+ *
+ * The "organized outside the U.S." share is counted only from jurisdictions we actually read. It
+ * is the one figure here derived rather than reported, and it is a count over rows on the page —
+ * a reader can check it against the table beneath it, which is the difference between arithmetic
+ * and assertion.
+ */
+function subsidiaryStructure(res: SubsidiariesResponse | null) {
+  const NOTE_TAIL =
+    " EX-21 lists consolidated subsidiaries as of that filing and may omit ones the registrant " +
+    "deems immaterial — a floor, not a census.";
+
+  if (!res || res.status !== "ok" || !res.subsidiaries.length) {
+    return {
+      subCount: null,
+      offshore: null,
+      subs: [],
+      note:
+        (res?.reason ??
+          "The subsidiary exhibit could not be read for this filer.") + NOTE_TAIL,
+    };
+  }
+  const isUS = (j: string | null) => !!j && /\bU\.?S\.?\b|United States/i.test(j);
+  const outside = res.subsidiaries.filter((x) => x.jurisdiction && !isUS(x.jurisdiction)).length;
+  return {
+    subCount: res.subsidiaries.length,
+    offshore: `${Math.round((outside / res.subsidiaries.length) * 100)}%`,
+    /*
+     * When the filer published NO ownership column, the cells are left blank and the panel note
+     * says so once. Nineteen identical "N/A" chips down a column is one fact stated nineteen
+     * times, and the repetition reads as nineteen separate gaps in our data rather than one
+     * absence in the filing. Per-row N/A is kept for the case it means something: a filer who
+     * publishes ownership for some entities and not others.
+     */
+    subs: res.subsidiaries.map((x) => ({
+      name: x.name,
+      jur: x.jurisdiction ?? "N/A",
+      own: res.has_ownership ? (x.ownership ?? "N/A") : "",
+    })),
+    note:
+      (res.has_ownership ? "" : "This filer publishes no ownership column in EX-21 — a blank is not 100%. ") +
+      (res.cannot ?? "") +
+      (res.filing ? ` From the ${res.filing.form} filed ${res.filing.filed}.` : ""),
+  };
+}
+
+/* ------------------------------------------------------------ §01.13 subsidiaries */
+
+interface SubsidiariesResponse {
+  status: string;
+  reason: string | null;
+  has_ownership: boolean;
+  cannot: string;
+  subsidiaries: { name: string; jurisdiction: string | null; ownership: string | null }[];
+  filing?: { form: string; filed: string; accession: string; exhibit_url?: string };
+}
+
 /* ------------------------------------------------------------ §02.6 snapshot tiles */
 
 interface MetricsResponse {
@@ -536,24 +598,23 @@ export const api = {
    * The peer-set pill is still a fixture: it needs `/peers`, which is the next slice.
    */
   companyIdentity: async (symbol: string, subIdx: number): Promise<CompanyIdentity> => {
-    const p = await getJson<ProfileResponse>(
-      `/v1/companies/${encodeURIComponent(symbol)}/profile`,
-    );
+    const enc = encodeURIComponent(symbol);
+    /*
+     * Two reads. The subsidiary one is allowed to FAIL WITHOUT TAKING THE CARD WITH IT: it is the
+     * one endpoint that fetches filing documents, so it is the slowest and the likeliest to be
+     * unavailable, and identity should not disappear because an exhibit could not be reached.
+     */
+    const [p, subs] = await Promise.all([
+      getJson<ProfileResponse>(`/v1/companies/${enc}/profile`),
+      getJson<SubsidiariesResponse>(`/v1/companies/${enc}/subsidiaries`).catch(() => null),
+    ]);
     return {
       profile: profileRows(p),
       links: edgarLinks(p.cik),
       segmentChips: [],
       contextPill: hub.hubContextPill(subIdx >= 0, proto.SUB_COUNTS[subIdx] ?? 0),
       bizText: identitySentence(p),
-      structure: {
-        subCount: null,
-        offshore: null,
-        subs: [],
-        note:
-          "EX-21 lists every consolidated subsidiary and its jurisdiction. It is an exhibit " +
-          "document, and we ingest structured data rather than parsing filing documents — so " +
-          "this is unknown, not zero.",
-      },
+      structure: subsidiaryStructure(subs),
     };
   },
 

@@ -279,8 +279,13 @@ export function HubOverview() {
             d.structure.subs.map((s) => (
               <div className="hub-subs-grid hub-row" key={s.name}>
                 <span className="hub-cell">{s.name}</span>
-                <span className="hub-cell-mono">{s.jur}</span>
-                <span className="hub-cell-mono ta-r">{s.own}</span>
+                <span className="hub-cell-mono">
+                  {s.jur === "N/A" ? <StatusChip status="na" /> : s.jur}
+                </span>
+                {/* A blank ownership column is NOT 100% — most filers publish none at all. */}
+                <span className="hub-cell-mono ta-r">
+                  {s.own === "N/A" ? <StatusChip status="na" /> : s.own}
+                </span>
               </div>
             ))
           ) : (
