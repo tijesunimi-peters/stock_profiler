@@ -11,7 +11,7 @@
  * was filed on.
  */
 import { useState } from "react";
-import { StateBlock } from "@ds";
+import { StateBlock, StatusChip } from "@ds";
 import {
   HUB_SECTIONS, LABEL_TO_ID, unitFmt, HUB_CALCS, type HubCalc, type SnapshotTile,
 } from "../../data/hub-catalog";
@@ -245,7 +245,15 @@ export function HubOverview() {
               {identity.data.profile.map((p) => (
                 <div className="hub-profile-cell" key={p.k}>
                   <span className="hub-profile-k">{p.k}</span>
-                  <span className="hub-profile-v">{p.v}</span>
+                  {/* A chip ONLY on N/A (D-chips). `reason` distinguishes "we cannot source this,
+                      and here is why" from "EDGAR simply did not state it for this filer" —
+                      different facts, and a reader who hovers gets the difference. */}
+                  {/* The chip carries its OWN "N/A" label, so rendering the value text as well
+                      read as "N/A ⊘ N/A". The chip is the value here — glyph and label together,
+                      which is the vocabulary's whole point (never colour alone). */}
+                  <span className="hub-profile-v" title={p.reason}>
+                    {p.v === "N/A" ? <StatusChip status="na" /> : p.v}
+                  </span>
                 </div>
               ))}
             </div>
@@ -256,8 +264,9 @@ export function HubOverview() {
           <div className="hub-panel-head">
             <span className="hub-panel-title">Consolidated subsidiaries</span>
             <span className="hub-hint">
-              EX-21 · {d.structure.subCount} entities · {d.structure.offshore} organized outside
-              the U.S.
+              {d.structure.subCount === null
+                ? "EX-21 · count unknown"
+                : `EX-21 · ${d.structure.subCount} entities · ${d.structure.offshore} organized outside the U.S.`}
             </span>
             <Src href={L.ex21}>Read EX-21 ↗</Src>
           </div>
@@ -266,13 +275,23 @@ export function HubOverview() {
             <span>Jurisdiction</span>
             <span className="ta-r">Ownership</span>
           </div>
-          {d.structure.subs.map((s) => (
-            <div className="hub-subs-grid hub-row" key={s.name}>
-              <span className="hub-cell">{s.name}</span>
-              <span className="hub-cell-mono">{s.jur}</span>
-              <span className="hub-cell-mono ta-r">{s.own}</span>
-            </div>
-          ))}
+          {d.structure.subs.length ? (
+            d.structure.subs.map((s) => (
+              <div className="hub-subs-grid hub-row" key={s.name}>
+                <span className="hub-cell">{s.name}</span>
+                <span className="hub-cell-mono">{s.jur}</span>
+                <span className="hub-cell-mono ta-r">{s.own}</span>
+              </div>
+            ))
+          ) : (
+            /* An empty TABLE would read as "this filer has no subsidiaries". It has some; we do
+               not parse the exhibit that lists them. The state has to say which. */
+            <StateBlock
+              variant="empty"
+              title="Not ingested"
+              copy="EX-21 is an exhibit document. We ingest structured filing data rather than parsing documents, so the subsidiary list is unknown — not empty."
+            />
+          )}
           <div className="hub-note">{d.structure.note}</div>
         </div>
       </section>

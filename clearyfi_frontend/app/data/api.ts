@@ -86,6 +86,129 @@ export const PROVENANCE = {
   ] as readonly string[],
 } as const;
 
+
+/* ============================================================ the real seam
+ *
+ * The first function below actually crosses the network. Everything else still resolves a
+ * fixture, and the `?slow` / `?fail` switches keep working for both — a half-plumbed app has to
+ * be drivable in the same states as a whole one.
+ */
+
+/** One canonical `/v1` read. Errors carry what failed, so the view's `StateBlock` can say it. */
+async function getJson<T>(path: string): Promise<T> {
+  if (SHOULD_FAIL()) {
+    return Promise.reject(new Error("Simulated upstream failure (?fail). No SEC endpoint was called."));
+  }
+  const ms = DELAY();
+  if (ms) await new Promise((r) => setTimeout(r, ms));
+  const res = await fetch(path, { headers: { accept: "application/json" } });
+  if (!res.ok) {
+    // 404 means the ticker is unknown; anything else is upstream. Both need to reach the reader
+    // as words, not as a blank card.
+    throw new Error(
+      res.status === 404
+        ? `No filer matches this ticker (${res.status}).`
+        : `The filings API returned ${res.status}.`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
+/** What `/v1/companies/{symbol}/profile` returns. Fields are null when EDGAR did not state one. */
+interface ProfileResponse {
+  cik: number;
+  name: string | null;
+  sic: string | null;
+  sic_description: string | null;
+  state_of_incorporation: string | null;
+  hq_city: string | null;
+  hq_state: string | null;
+  fiscal_year_end: string | null;
+  filer_category: string | null;
+  ein: string | null;
+  exchanges: string | null;
+  first_filing_date: string | null;
+}
+
+/** EDGAR's MMDD (`"0926"`) as a readable date. Returns null rather than guessing at junk. */
+function formatFiscalYearEnd(mmdd: string | null): string | null {
+  if (!mmdd || mmdd.length !== 4) return null;
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const m = Number(mmdd.slice(0, 2));
+  const d = Number(mmdd.slice(2));
+  if (!(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return null;
+  return `${months[m - 1]} ${d}`;
+}
+
+/**
+ * The cover-page rows, in the design's order.
+ *
+ * **Every row survives, including the ones we cannot source.** Dropping a row would quietly
+ * change what the card claims to cover; a row that says why it is empty does not. The three
+ * `reason` strings below are different facts about the world and are worded to stay different:
+ *
+ *   * NAICS — the SEC assigns SIC. There is no NAICS to fetch, from any source we hold.
+ *   * Employees — a real XBRL tag that virtually no filer uses (1 in ~9,000 on our volume).
+ *   * Auditor — tagged, but only inside the 10-K's inline-XBRL instance, which we do not fetch.
+ *
+ * `null` from the API is a fourth case again — EDGAR holds the field but did not state it for
+ * this filer — and reads as a plain N/A rather than one of the explanations above.
+ */
+const NOT_SOURCED = {
+  naics: "The SEC assigns SIC, not NAICS — there is no NAICS in the filing record.",
+  employees: "A tagged fact almost no filer reports; nothing to show for this one.",
+  auditor: "Named in the 10-K's XBRL instance, which we do not yet fetch.",
+} as const;
+
+function profileRows(p: ProfileResponse): { k: string; v: string; reason?: string }[] {
+  const na = (v: string | null | undefined) => (v && v.trim() ? v : "N/A");
+  const hq = [p.hq_city, p.hq_state].filter(Boolean).join(", ");
+  return [
+    { k: "CIK", v: String(p.cik).padStart(10, "0") },
+    { k: "SIC", v: p.sic ? `${p.sic}${p.sic_description ? ` · ${p.sic_description}` : ""}` : "N/A" },
+    { k: "NAICS", v: "N/A", reason: NOT_SOURCED.naics },
+    { k: "State of incorp.", v: na(p.state_of_incorporation) },
+    { k: "Headquarters", v: na(hq) },
+    { k: "Fiscal year-end", v: na(formatFiscalYearEnd(p.fiscal_year_end)) },
+    { k: "Independent auditor", v: "N/A", reason: NOT_SOURCED.auditor },
+    { k: "Employees", v: "N/A", reason: NOT_SOURCED.employees },
+    { k: "Filer status", v: na(p.filer_category) },
+    { k: "First filing", v: na(p.first_filing_date) },
+  ];
+}
+
+/** EDGAR browse-by-form, built from the REAL cik the API returned. */
+function edgarLinks(cik: number) {
+  const e = (type: string) =>
+    `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${String(cik).padStart(10, "0")}` +
+    `&type=${encodeURIComponent(type)}&dateb=&owner=include&count=40`;
+  return { tenK: e("10-K"), tenQ: e("10-Q"), eightK: e("8-K"), proxy: e("DEF 14A"),
+           forms4: e("4"), ex21: e("10-K"), s3: e("S-3"), all: e("") };
+}
+
+/**
+ * What the registrant is, said from the STRUCTURED record only.
+ *
+ * The design wants the filer's own Item 1 description. That is narrative text and out of scope
+ * (Track 1), and the fixture's paragraph must never ship — attached to a real company it would
+ * read as a claim about that company that nobody made. So this states what the record actually
+ * says: classification, where it is incorporated, where it files from, how long it has filed.
+ * Less than the design asked for, and true.
+ */
+function identitySentence(p: ProfileResponse): string {
+  const bits: string[] = [];
+  if (p.sic_description) bits.push(`Classified by the SEC under SIC ${p.sic} — ${p.sic_description}`);
+  if (p.state_of_incorporation) bits.push(`incorporated in ${p.state_of_incorporation}`);
+  const hq = [p.hq_city, p.hq_state].filter(Boolean).join(", ");
+  if (hq) bits.push(`filing from ${hq}`);
+  if (p.exchanges) bits.push(`listed on ${p.exchanges}`);
+  const head = bits.length ? bits.join(", ") + "." : "The SEC holds no classification for this filer.";
+  const since = p.first_filing_date
+    ? ` EDGAR holds filings from ${p.first_filing_date} onward.`
+    : "";
+  return `${head}${since} This is the registrant's own filing record, not a description of the business — Item 1 is narrative text we do not parse.`;
+}
+
 export const api = {
   sector: (sectorId: string, sub: string | null, period: string) =>
     resolve(surfaces.sectorSurface(sectorId, sub, period)),
@@ -132,17 +255,40 @@ export const api = {
   // all consume the identical multi-quarter read -- splitting them would triple the work".
 
   /** §01 identity + the breadcrumb. Phase A: `/profile` + `/submissions` metadata + `/peers`. */
-  companyIdentity: (symbol: string, subIdx: number) =>
-    resolve<CompanyIdentity>({
-      profile: hub.hubProfile(symbol),
-      links: hub.hubLinks(symbol),
-      segmentChips: hub.hubSegmentChips(symbol),
-      // The sub-industry filer count is a FIGURE (`/sectors` owns it in Phase A), so it is
-      // resolved here rather than looked up in the view and passed back in.
+  /**
+   * §01 identity. **REAL — this one calls `/v1/companies/{symbol}/profile`.**
+   *
+   * First surface off the fixtures. Two things it deliberately does NOT do:
+   *
+   *   * **The segment chips stay unsourced.** A revenue split by segment is ASC 280 dimensional
+   *     data (Phase C), so they render as a single unsourced chip rather than the fixture's
+   *     plausible 55/30/15 — which would be a fabricated split attached to a real company.
+   *   * **The subsidiary table stays empty.** EX-21 is an exhibit document; `CLAUDE.md` forbids
+   *     parsing filing documents, so the count is not "0", it is unknown, and the card says so.
+   *
+   * The peer-set pill is still a fixture: it needs `/peers`, which is the next slice.
+   */
+  companyIdentity: async (symbol: string, subIdx: number): Promise<CompanyIdentity> => {
+    const p = await getJson<ProfileResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/profile`,
+    );
+    return {
+      profile: profileRows(p),
+      links: edgarLinks(p.cik),
+      segmentChips: [],
       contextPill: hub.hubContextPill(subIdx >= 0, proto.SUB_COUNTS[subIdx] ?? 0),
-      bizText: hub.HUB_BIZ_TEXT,
-      structure: hub.hubData(symbol).structure,
-    }),
+      bizText: identitySentence(p),
+      structure: {
+        subCount: null,
+        offshore: null,
+        subs: [],
+        note:
+          "EX-21 lists every consolidated subsidiary and its jurisdiction. It is an exhibit " +
+          "document, and we ingest structured data rather than parsing filing documents — so " +
+          "this is unknown, not zero.",
+      },
+    };
+  },
 
   /**
    * §02.1 condensed statements + §02.6 snapshot tiles.
@@ -423,12 +569,17 @@ export const api = {
 // Phase A swap invisible to them.
 
 export interface CompanyIdentity {
-  profile: ReturnType<typeof hub.hubProfile>;
+  /** `reason` is present only where a row is unsourceable for a NAMED reason, not merely absent. */
+  profile: { k: string; v: string; reason?: string }[];
   links: ReturnType<typeof hub.hubLinks>;
   segmentChips: ReturnType<typeof hub.hubSegmentChips>;
   contextPill: string;
   bizText: string;
-  structure: hub.HubData["structure"];
+  /** `subCount`/`offshore` are null when unknown — never 0, which would read as "none". */
+  structure: Omit<hub.HubData["structure"], "subCount" | "offshore"> & {
+    subCount: number | null;
+    offshore: string | null;
+  };
 }
 
 export interface CompanyFinancials {
