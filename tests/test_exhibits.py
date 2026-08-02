@@ -93,3 +93,64 @@ class TestParseEx21:
         """EX-21 omits immaterial subsidiaries, so the list is a floor and must say so."""
         r = parse_ex21(self._table([("A Ltd", "UK"), ("B Ltd", "UK")]))
         assert "floor" in r.cannot and "immaterial" in r.cannot
+
+
+class TestOwnershipUnits:
+    """Exxon publishes ownership as a bare number with the unit in the column header.
+
+    Surveyed 2026-08-02: of eleven filers whose EX-21 parsed, only Walmart ("100%") and Exxon
+    ("50", "69.6") published ownership at all. Exxon's header reads "Percentage of Voting
+    Securities Owned Directly or Indirectly by Registrant".
+    """
+
+    def _doc(self, header, row):
+        cells = "".join(
+            "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in (header, row)
+        )
+        return f"<table>{cells}</table>"
+
+    def test_a_bare_number_gains_the_percent_its_header_states(self):
+        r = parse_ex21(self._doc(
+            ("Name", "Percentage of Voting Securities Owned", "State or Country of Organization"),
+            ("Imperial Oil Limited", "69.6", "Canada"),
+        ))
+        assert r.subsidiaries[0].ownership == "69.6%"
+
+    def test_a_value_that_already_has_its_unit_is_left_alone(self):
+        r = parse_ex21(self._doc(
+            ("Name", "Percent owned", "Jurisdiction"), ("Sub", "100%", "Delaware"),
+        ))
+        assert r.subsidiaries[0].ownership == "100%"
+
+    def test_only_a_percentage_header_licenses_the_percent_sign(self):
+        """Recognised as ownership, but the header never says percent — so nothing is added.
+
+        Guessing the unit would be inventing it, and "500%" owned is a nonsense a reader would
+        have to catch for us.
+        """
+        r = parse_ex21(self._doc(
+            ("Name", "Ownership", "Jurisdiction"), ("Sub", "500", "Delaware"),
+        ))
+        assert r.subsidiaries[0].ownership == "500"
+
+    def test_an_unrecognised_column_is_not_read_as_ownership_at_all(self):
+        """"Shares held" is not an ownership stake, and the parser does not treat it as one."""
+        r = parse_ex21(self._doc(
+            ("Name", "Shares held", "Jurisdiction"), ("Sub", "500", "Delaware"),
+        ))
+        assert r.has_ownership is False
+        assert r.subsidiaries[0].ownership is None
+
+
+class TestProseExhibitsStayUnread:
+    def test_targets_prose_exhibit_is_na_not_a_guess(self):
+        """Target files EX-21 as running prose — "Target Brands, Inc. (MN) Target Enterprise..."
+
+        One filer in twelve does this. The pattern looks extractable, and that is exactly why it is
+        left alone: a list guessed out of prose is indistinguishable, to a reader, from one read
+        off a table.
+        """
+        doc = ("<html><body><p>List of Significant Subsidiaries (As of January 31, 2026) "
+               "Target Brands, Inc. (MN) Target Enterprise, Inc. (MN)</p></body></html>")
+        r = parse_ex21(doc)
+        assert r.status == "na" and r.subsidiaries == []

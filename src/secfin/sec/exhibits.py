@@ -129,6 +129,24 @@ def _strip_footnote(cell: str) -> str:
     return _FOOTNOTE.sub("", cell.strip())
 
 
+#: A cell that is a bare number -- "50", "69.6". Exxon publishes ownership this way, with the unit
+#: in the column header rather than the cell.
+_BARE_NUMBER = re.compile(r"^\d+(\.\d+)?$")
+
+
+def _with_unit(value: str, header_cell: str) -> str:
+    """Restore the unit the header carries and the cell omits.
+
+    Exxon's EX-21 heads its column "Percentage of Voting Securities Owned Directly or Indirectly by
+    Registrant" and fills it with `50` and `69.6`. Rendering a bare `50` in a column labelled
+    "Ownership" is ambiguous -- it could be a count. The header already says percent; carrying that
+    down to the cell is reshaping, not inventing.
+    """
+    if _BARE_NUMBER.match(value) and re.search(r"percent|%", header_cell, re.I):
+        return f"{value}%"
+    return value
+
+
 def _column_roles(header: list[str]) -> tuple[int, int | None, int | None]:
     """(name_idx, jurisdiction_idx, ownership_idx) from a header row."""
     name_i, jur_i, own_i = 0, None, None
@@ -191,7 +209,11 @@ def parse_ex21(document: str) -> Ex21Result:
             Subsidiary(
                 name=name,
                 jurisdiction=(cells[jur_i] or None) if jur_i is not None and jur_i < len(cells) else None,
-                ownership=(cells[own_i] or None) if own_i is not None and own_i < len(cells) else None,
+                ownership=(
+                    _with_unit(cells[own_i], header[own_i] if own_i < len(header) else "") or None
+                )
+                if own_i is not None and own_i < len(cells)
+                else None,
             )
         )
 
