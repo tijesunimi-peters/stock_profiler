@@ -11,9 +11,18 @@ export interface EntityCell {
     mono?: boolean;
     /** The focal identity (ticker / manager name), rendered larger. */
     primary?: boolean;
+    /**
+     * A small colour chip before the value — used where the entity has a CATEGORY (a 13F filer's
+     * classification). Categorical identity only; never a rating.
+     */
+    swatch?: string;
 }
 export interface EntityBarProps {
     cells: EntityCell[];
+    /** A trailing mono note, right-aligned — the standing caveat about what these values are. */
+    note?: string;
+    /** A second row under a hairline, for a control that changes the focal entity. */
+    footer?: import("react").ReactNode;
     className?: string;
 }
 /**
@@ -23,4 +32,4 @@ export interface EntityBarProps {
  * An unresolved cell renders a drained `—`; that is deliberate, and it is why this component
  * takes `null` rather than making the caller decide what to substitute.
  */
-export declare function EntityBar({ cells, className }: EntityBarProps): import("react").JSX.Element;
+export declare function EntityBar({ cells, note, footer, className }: EntityBarProps): import("react").JSX.Element;

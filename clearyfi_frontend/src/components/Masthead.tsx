@@ -7,6 +7,11 @@ export interface MastheadProps {
    * so as prominently as the fact itself (§9.9).
    */
   meta?: string[];
+  /**
+   * A mono line directly under the title, above the rule — what this page is scoped to
+   * (peer set, period, entity). Distinct from `lede`, which is prose below the rule.
+   */
+  subtitle?: string;
   /** Optional intro paragraph below the rule. */
   lede?: string;
   /**
@@ -24,13 +29,14 @@ export interface MastheadProps {
  * Every data page opens with one. The meta column is where filing age and coverage caveats
  * live, which is why it sits at the top rather than in a footnote.
  */
-export function Masthead({ title, meta = [], lede, eyebrow, className }: MastheadProps) {
+export function Masthead({ title, meta = [], subtitle, lede, eyebrow, className }: MastheadProps) {
   return (
     <div className={["masthead", className].filter(Boolean).join(" ")}>
       <div className="masthead-top">
         <div>
           {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
           <h1>{title}</h1>
+          {subtitle ? <div className="masthead-sub">{subtitle}</div> : null}
         </div>
         {meta.length ? (
           <div className="masthead-meta">

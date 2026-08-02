@@ -149,6 +149,12 @@
   letter-spacing: -0.02em;
 }
 
+.masthead-sub {
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mono-muted);
+}
 .masthead-meta {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -173,7 +179,7 @@
 
 /* Inside the shell the masthead compacts — data pages don't need the marketing scale. */
 .cf-shell .masthead h1 { font-size: 27px; }
-.cf-shell .rule-double { margin-top: 12px; }
+.cf-shell .rule-double { margin: 12px 0 18px; }
 .cf-shell .lede { font-size: 14.5px; }
 
 .section-head {
@@ -183,6 +189,23 @@
   margin: 34px 0 18px;
   border-bottom: 2px solid var(--ink);
   padding-bottom: 8px;
+}
+.section-head.has-sub {
+  display: block;
+  padding-bottom: 9px;
+  margin: 30px 0 16px;
+}
+.section-head-top {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.section-head-sub {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--mono-muted);
 }
 .section-head .n {
   font-family: var(--font-mono);
@@ -833,6 +856,14 @@
   padding: 18px 14px;
   background: var(--bg-card);
   border-right: 1px solid var(--border);
+  /* Pinned to the viewport, not stretched to the document. Subject nav has to be reachable at
+     any scroll depth, and `margin-top:auto` on the footer note only means "bottom of the
+     screen" against a 100vh box — against a 7,000px column it means the bottom of the page. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .shell-brand {
@@ -902,6 +933,11 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
 
 .app-topbar {
+  /* Sticky: the search and the API link stay reachable at any scroll depth, and the rails
+     below already anchor to `top: 74px` on the assumption this bar is still there. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -961,7 +997,45 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 
 /* view rail */
 .shell-body { display: flex; gap: 20px; align-items: flex-start; }
-.shell-rail { width: 178px; flex: none; }
+.shell-rail {
+  width: 178px;
+  flex: none;
+  position: sticky;
+  top: 74px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.shell-rail-rule { height: 1px; background: var(--rule); margin: 14px 4px 12px; }
+.shell-rail-sections { display: flex; flex-direction: column; gap: 1px; }
+.shell-rail-sec {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  padding: 6px 8px;
+  border-radius: 0 6px 6px 0;
+}
+.shell-rail-sec:hover { background: var(--bg-tint); color: var(--ink); }
+.shell-rail-sec.active {
+  background: var(--accent-wash);
+  color: var(--accent-ink);
+  border-left-color: var(--accent);
+}
+.shell-rail-sec-n { font-size: 9.5px; color: var(--mono-muted); }
+.shell-rail-note {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+  padding: 0 4px;
+}
 .shell-rail-label {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -997,12 +1071,12 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
   box-shadow: var(--shadow);
   padding: 14px 16px;
   margin-bottom: 18px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
+  /* The card is a BLOCK: it stacks a cell row and an optional footer row. The horizontal
+     layout belongs to `.shell-entity-row` — leaving flex here made the row one flex item,
+     which shrank and stacked its own cells. */
+  display: block;
 }
-.shell-entity-cell { display: flex; flex-direction: column; gap: 3px; }
+.shell-entity-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .shell-entity-label {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -1020,7 +1094,31 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 }
 /* A value that has not resolved renders drained — never a guess, never 0 (STYLE_GUIDE §7). */
 .shell-entity-value.is-pending { color: var(--mono-muted); font-weight: 400; }
-.shell-entity-sep { width: 1px; height: 34px; background: var(--rule); }
+.shell-entity-sep { width: 1px; height: 34px; background: var(--rule); flex: none; }
+.shell-entity-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.shell-entity-spacer { flex: 1; }
+.shell-entity-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.shell-entity-swatch {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 8px;
+  vertical-align: baseline;
+}
+.shell-entity-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--rule);
+}
 
 /* ============================================================ footer */
 
@@ -1052,7 +1150,13 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 @media (max-width: 640px) {
   .page { padding: 12px 20px 56px; min-width: 0; max-width: 100%; }
   .masthead h1 { font-size: 28px; }
-  .masthead-meta { text-align: left; }
+  .masthead-sub {
+  margin-top: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mono-muted);
+}
+.masthead-meta { text-align: left; }
   .card-grid { grid-template-columns: 1fr; }
   .segmented { max-width: 100%; min-width: 0; overflow-x: auto; }
   .app-footer .tagline { margin-left: 0; }

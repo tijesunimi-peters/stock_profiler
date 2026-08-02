@@ -20,6 +20,16 @@ export interface AppShellProps {
     subjects?: ShellSubject[];
     /** Subject-scoped actions (Compare · Screen · Coverage). */
     actions?: ShellSubject[];
+    /**
+     * Names the subject the actions belong to, rendered as `Actions · {subject}`.
+     *
+     * The actions group is subject-SCOPED — "Compare" means compare sectors on one page and
+     * compare companies on another — so the label states which subject is in scope rather than
+     * letting the reader assume it is global.
+     */
+    actionsSubject?: string;
+    /** Standing reference links. Defaults to docs, methodology and the API reference. */
+    reference?: ShellSubject[];
     /** Placeholder for the global ticker/CIK search. */
     searchPlaceholder?: string;
     className?: string;
@@ -32,4 +42,4 @@ export interface AppShellProps {
  * entity-centric rather than report-centric. There is exactly one shell; do not build a second
  * nav for a new page.
  */
-export declare function AppShell({ children, subjects, actions, searchPlaceholder, className, }: AppShellProps): import("react").JSX.Element;
+export declare function AppShell({ children, subjects, actions, actionsSubject, reference, searchPlaceholder, className, }: AppShellProps): import("react").JSX.Element;

@@ -22,6 +22,16 @@ export interface AppShellProps {
   subjects?: ShellSubject[];
   /** Subject-scoped actions (Compare · Screen · Coverage). */
   actions?: ShellSubject[];
+  /**
+   * Names the subject the actions belong to, rendered as `Actions · {subject}`.
+   *
+   * The actions group is subject-SCOPED — "Compare" means compare sectors on one page and
+   * compare companies on another — so the label states which subject is in scope rather than
+   * letting the reader assume it is global.
+   */
+  actionsSubject?: string;
+  /** Standing reference links. Defaults to docs, methodology and the API reference. */
+  reference?: ShellSubject[];
   /** Placeholder for the global ticker/CIK search. */
   searchPlaceholder?: string;
   className?: string;
@@ -45,6 +55,13 @@ const DEFAULT_ACTIONS: ShellSubject[] = [
   { label: "Compare", href: "/compare" },
   { label: "Screen", href: "/screen" },
   { label: "Coverage", href: "/coverage" },
+];
+
+/** The standing reference group — always last, always the same three. */
+const DEFAULT_REFERENCE: ShellSubject[] = [
+  { label: "Docs & guide", href: "/guide" },
+  { label: "Methodology", href: "/methodology" },
+  { label: "API reference", href: "/docs" },
 ];
 
 function NavItem({ item }: { item: ShellSubject }) {
@@ -84,6 +101,8 @@ export function AppShell({
   children,
   subjects = DEFAULT_SUBJECTS,
   actions = DEFAULT_ACTIONS,
+  actionsSubject,
+  reference = DEFAULT_REFERENCE,
   searchPlaceholder = "Ticker or CIK…",
   className,
 }: AppShellProps) {
@@ -102,9 +121,20 @@ export function AppShell({
 
         {actions.length ? (
           <>
-            <div className="shell-nav-label">Actions</div>
+            <div className="shell-nav-label">
+              {actionsSubject ? `Actions · ${actionsSubject}` : "Actions"}
+            </div>
             {actions.map((a) => (
               <NavItem item={a} key={a.label} />
+            ))}
+          </>
+        ) : null}
+
+        {reference.length ? (
+          <>
+            <div className="shell-nav-label">Reference</div>
+            {reference.map((r) => (
+              <NavItem item={r} key={r.label} />
             ))}
           </>
         ) : null}

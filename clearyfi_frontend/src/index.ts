@@ -25,7 +25,7 @@ export type { AppShellProps, ShellSubject } from "./components/AppShell.js";
 export { EntityBar } from "./components/EntityBar.js";
 export type { EntityBarProps, EntityCell } from "./components/EntityBar.js";
 export { ViewRail } from "./components/ViewRail.js";
-export type { ViewRailProps, ViewRailItem } from "./components/ViewRail.js";
+export type { ViewRailProps, ViewRailItem, ViewRailSection } from "./components/ViewRail.js";
 export { AppFooter } from "./components/AppFooter.js";
 export type { AppFooterProps, FooterLink } from "./components/AppFooter.js";
 

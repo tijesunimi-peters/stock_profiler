@@ -17,6 +17,12 @@ const DEFAULT_ACTIONS = [
     { label: "Screen", href: "/screen" },
     { label: "Coverage", href: "/coverage" },
 ];
+/** The standing reference group — always last, always the same three. */
+const DEFAULT_REFERENCE = [
+    { label: "Docs & guide", href: "/guide" },
+    { label: "Methodology", href: "/methodology" },
+    { label: "API reference", href: "/docs" },
+];
 function NavItem({ item }) {
     const cls = [
         "shell-nav-item",
@@ -39,6 +45,6 @@ function NavItem({ item }) {
  * entity-centric rather than report-centric. There is exactly one shell; do not build a second
  * nav for a new page.
  */
-export function AppShell({ children, subjects = DEFAULT_SUBJECTS, actions = DEFAULT_ACTIONS, searchPlaceholder = "Ticker or CIK…", className, }) {
-    return (_jsxs("div", { className: ["cf-root", "cf-shell", className].filter(Boolean).join(" "), children: [_jsxs("aside", { className: "app-side", "aria-label": "Primary navigation", children: [_jsxs("a", { className: "shell-brand", href: "/", children: [_jsx("span", { className: "shell-brand-name", children: "ClearyFi" }), _jsx("span", { className: "shell-brand-tag", children: "SEC data" })] }), _jsx("div", { className: "shell-nav-label", children: "Subjects" }), subjects.map((s) => (_jsx(NavItem, { item: s }, s.label))), actions.length ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-nav-label", children: "Actions" }), actions.map((a) => (_jsx(NavItem, { item: a }, a.label)))] })) : null, _jsx("div", { className: "shell-side-foot", children: "Data, not investment advice." })] }), _jsxs("div", { className: "app-main", children: [_jsxs("header", { className: "app-topbar", children: [_jsxs("div", { className: "shell-search", children: [_jsx("span", { className: "shell-search-ic", children: "\u2315" }), _jsx("input", { className: "shell-search-input", placeholder: searchPlaceholder }), _jsx("span", { className: "shell-kbd", children: "\u2318K" })] }), _jsx("a", { className: "shell-apiref", href: "/docs", children: "API reference \u2197" })] }), _jsx("main", { className: "page", children: children })] })] }));
+export function AppShell({ children, subjects = DEFAULT_SUBJECTS, actions = DEFAULT_ACTIONS, actionsSubject, reference = DEFAULT_REFERENCE, searchPlaceholder = "Ticker or CIK…", className, }) {
+    return (_jsxs("div", { className: ["cf-root", "cf-shell", className].filter(Boolean).join(" "), children: [_jsxs("aside", { className: "app-side", "aria-label": "Primary navigation", children: [_jsxs("a", { className: "shell-brand", href: "/", children: [_jsx("span", { className: "shell-brand-name", children: "ClearyFi" }), _jsx("span", { className: "shell-brand-tag", children: "SEC data" })] }), _jsx("div", { className: "shell-nav-label", children: "Subjects" }), subjects.map((s) => (_jsx(NavItem, { item: s }, s.label))), actions.length ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-nav-label", children: actionsSubject ? `Actions · ${actionsSubject}` : "Actions" }), actions.map((a) => (_jsx(NavItem, { item: a }, a.label)))] })) : null, reference.length ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-nav-label", children: "Reference" }), reference.map((r) => (_jsx(NavItem, { item: r }, r.label)))] })) : null, _jsx("div", { className: "shell-side-foot", children: "Data, not investment advice." })] }), _jsxs("div", { className: "app-main", children: [_jsxs("header", { className: "app-topbar", children: [_jsxs("div", { className: "shell-search", children: [_jsx("span", { className: "shell-search-ic", children: "\u2315" }), _jsx("input", { className: "shell-search-input", placeholder: searchPlaceholder }), _jsx("span", { className: "shell-kbd", children: "\u2318K" })] }), _jsx("a", { className: "shell-apiref", href: "/docs", children: "API reference \u2197" })] }), _jsx("main", { className: "page", children: children })] })] }));
 }
