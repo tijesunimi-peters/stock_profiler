@@ -19,3 +19,7 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend prototype app
+clearyfi_frontend/node_modules/
+clearyfi_frontend/app-dist/
