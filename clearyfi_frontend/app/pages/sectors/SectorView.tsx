@@ -80,7 +80,9 @@ export function SectorView() {
   const insGlyph = ins.dir === "up" ? "↑" : ins.dir === "down" ? "↓" : "→";
 
   return (
-    <>
+    // The wrapper exists to scope this altitude's section-header scale (12/20) without
+    // re-tuning the design system's own, which other surfaces share.
+    <div className="sector-alt">
       {/* ================================================================ 01 */}
       <SectionHead
         n="01"
@@ -147,15 +149,18 @@ export function SectorView() {
             {et.name.toLowerCase()} · {n} sectors · {AS_OF}
           </span>
         </div>
+        {/*
+          Read-only, as in the prototype. The strip's job is to place this sector among the
+          others on the focused theme; the sector selector in the control bar is the one place
+          that changes which sector you are reading, and having two would split that.
+        */}
         <div className="peerstrip">
           {SECTOR_SCORES[sel.expanded].map((v, i) => {
             const max = Math.max(...SECTOR_SCORES[sel.expanded]);
             return (
-              <button
+              <div
                 key={SECTOR_ABBR[i]}
-                type="button"
                 className={`peerstrip-bar${i === si ? " is-focal" : ""}`}
-                onClick={() => sel.set({ sectorIdx: i, subIdx: -1 })}
                 title={`${SECTOR_NAMES[i]} — ${v}`}
               >
                 <span
@@ -163,7 +168,7 @@ export function SectorView() {
                   style={{ height: `${Math.round((v / max) * 44)}px` }}
                 />
                 <span className="peerstrip-label">{SECTOR_ABBR[i]}</span>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -311,7 +316,7 @@ export function SectorView() {
           </div>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
