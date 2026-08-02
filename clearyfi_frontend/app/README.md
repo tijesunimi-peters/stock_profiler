@@ -32,6 +32,25 @@ knowledge rather than mock data.
 
 `?slow` on any URL adds 900ms of latency so the loading states can be checked without a network.
 
+## Fidelity to the prototype, per view
+
+The reference is `Sector Analytics.dc.html`. Two different things live in this app and it matters
+which one you are looking at:
+
+**Ported** — measured against the prototype's own markup, panel for panel and grid for grid:
+the shell, Sector altitude, Company hub → Overview, Financial history, Institutional 01–07.
+
+**Built from the written specs** — an interpretation of `HANDOFF.md` / the upload spec, never
+reconciled against the prototype: Insider activity, Peer-relative, the six Manager views, and
+both Compare surfaces. These will differ from the prototype in panel set, column widths and
+affordances. Port them before treating them as reference.
+
+A note on what "ported" has to include, learned the expensive way: a section whose headers,
+copy and grids all match can still be a third of the work. The prototype hangs a **source link**
+off nearly every panel header and a **`ƒ derived` chip** off every figure it computed, and those
+two affordances are the page's whole argument — that a reader can check us. A port that renders
+the numbers and drops the links looks finished and isn't.
+
 ## Decisions taken, and why
 
 **Routing — split by altitude** (`RECONCILIATION.md` §2, resolution 3). `/sectors` keeps
