@@ -5325,3 +5325,330 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* ============================================================ insider activity
+ *
+ * The page separates DECISIONS from CONSEQUENCES, and the styling never adds a judgement on top
+ * of that: no slice, arrow or lag figure is tinted good or bad. The one emphasis that exists —
+ * ink rather than muted on a late filing — marks a fact about a deadline, not about a person.
+ */
+
+.ia-masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 10px;
+}
+
+.ia-masthead-left,
+.ia-masthead-right {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ia-masthead-right {
+  gap: 9px;
+}
+
+.ia-name {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 21px;
+  color: var(--ink);
+}
+
+.ia-ticker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--bg-page);
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.ia-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+/* ---------------------------------------------------------------- headline tiles */
+
+.ia-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-top: 14px;
+}
+
+.ia-tile {
+  background: var(--bg-card);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ia-tile-k {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+
+.ia-tile-v {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.ia-tile-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--mono-muted);
+}
+
+.ia-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.ia-mt-card {
+  margin-top: 14px;
+}
+
+.ia-mt {
+  margin: 13px 0 7px;
+}
+
+/* ---------------------------------------------------------------- disposition split */
+
+.ia-splitbar {
+  display: flex;
+  height: 22px;
+  border: 1px solid var(--border-tint);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 9px;
+}
+
+.ia-split-row {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr) 96px 44px;
+  gap: 9px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ia-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+.ia-split-label {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-body);
+}
+
+/* Filing COUNT by side — deliberately a separate bar from the share split above it, because
+   one filing and one million shares are not the same unit and must not share a track. */
+.ia-sidebar {
+  display: flex;
+  height: 14px;
+  border: 1px solid var(--border-tint);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--bg-tint);
+}
+
+.ia-sidebar > div {
+  background: var(--accent);
+}
+
+.ia-sidebar > div.is-out {
+  background: var(--border-strong);
+}
+
+/* ---------------------------------------------------------------- ledger */
+
+.ia-ledger-head,
+.ia-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 84px 78px 52px;
+  gap: 9px;
+}
+
+.ia-ledger-head {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+
+.ia-ledger-row {
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ia-person {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ia-person-name {
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+.ia-person-sub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--mono-muted);
+}
+
+/* Ink, not red: a late filing is a fact about a two-business-day deadline. */
+.hub-cell-mono.is-late {
+  color: var(--ink);
+}
+
+.ia-person-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 104px;
+  gap: 9px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------------------------------------------------------------- code mix */
+
+.ia-code {
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ia-code-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 9px;
+  align-items: baseline;
+}
+
+.ia-code-track {
+  height: 5px;
+  background: var(--bg-tint);
+  border-radius: 3px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.ia-code-track > div {
+  height: 5px;
+  background: var(--accent);
+  opacity: 0.45;
+}
+
+.ia-code-what {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--mono-muted);
+  margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------- Form 144 notices */
+
+.ia-notice-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 86px 78px;
+  gap: 9px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* ---------------------------------------------------------------- forms & limits */
+
+.ia-tintcard {
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.ia-tintcard-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.ia-form-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 11px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ia-form-k {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.ia-form-what {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-body);
+}
+
+.ia-limit-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 9px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.ia-limit-dash {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mono-muted);
+}
+
+.ia-limit-text {
+  font-size: 12.5px;
+  color: var(--ink-body);
+  line-height: 1.5;
+}

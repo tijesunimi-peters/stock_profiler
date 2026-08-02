@@ -106,7 +106,7 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
       {view === "overview" && <HubOverview />}
       {view === "history" && <HistoryView />}
       {view === "institutional" && inst.data && <InstitutionalView surface={inst.data} />}
-      {view === "insider" && insider.data && <InsiderView surface={insider.data} />}
+      {view === "insider" && <InsiderView />}
       {view === "peers" && peers.data && <PeersView surface={peers.data} />}
     </PageShell>
   );
