@@ -267,6 +267,28 @@ three are now ruled; each closes a row of `3-implementation.md`'s gap table.
    lump. The raw `stateOrCountry` is on every holder row, so the breakout is a read, not an
    inference. Rank by **shares** alongside value. **The choropleth endpoint is left alone.**
 
+### 🔒 §04 — the operator's two rulings (2026-08-01). Do NOT re-litigate.
+
+§04 is the section with the **largest** unsourced share: two of its four blocks have no data
+behind them at all, and a third has a column that is Track 2.
+
+4. **D-voting — HONEST EMPTY STATES for both voting blocks, do not ingest.** The vote tiles +
+   ballot items need **8-K Item 5.07**, which is narrative **HTML** — parsing it is out of scope
+   by the no-HTML rule, so it is not merely un-ingested, it is *not something this product does*.
+   Vote-weighted ownership needs **N-PX**, which HAS been structured XML since 2024 and so is
+   genuinely Track-1-eligible — but it is a whole new form family (parser + store + backfill +
+   endpoint), comparable to or larger than everything §03 needed. **Both cards keep their frame
+   and caption and render a reason.** ⚠️ Note the two reasons are DIFFERENT and must not be
+   collapsed: Item 5.07 is "we deliberately do not parse this kind of document", N-PX is "we have
+   not ingested this yet". The first is a scope decision, the second is a coverage gap.
+   💡 N-PX therefore stands as a **legitimate future milestone**; Item 5.07 does not.
+5. **D-purpose — the Item 4 `purpose` column becomes the REPORTING-PERSON TYPE.** The prototype
+   quotes Schedule 13D/G **Item 4** ("Passive — held in the ordinary course of business"), which
+   is free prose = **Track 2**, flagged rather than built. The cover-page **TYPE OF REPORTING
+   PERSON** (IA / BK / CO …) is already ingested and already plumbed onto §02's table — a
+   structured self-classification that fills the same slot and answers a related question (what
+   KIND of holder) without touching prose. No new ingest.
+
 ### 🔒 Still in force from 2026-07-28 (settled before attempt 3; unchanged)
 
 **FIVE company views, and exactly ONE slug retires.**
@@ -753,7 +775,17 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
           a trend of a number we no longer stand behind would be worse than the row was. The foot
           now carries the **denominator** every bar is drawn against. A consequence of the ruling,
           but a visible change to an accepted rendering — needs a look at 4b.
-  - [ ] **§04–§06** — same pattern, section by section. §07 is reference copy and stays.
+  - [ ] **§04 Ownership & stewardship — IN FLIGHT.** Its two rulings are above (**D-voting**,
+        **D-purpose**). ✅ **The state file's old "needs checking" row is RESOLVED:** the 5%-filing
+        amendment chain IS fully ingested — every 13D/G row carries its own `form_type` (incl.
+        `/A`), `filed`, `event_date` and `percent_of_class`, so the lane chart and the filings
+        table both plumb from `beneficial_ownership` with **no new backend at all**.
+        **Sourceable:** the lane chart, the filings table, and the activism head (13D-vs-13G is a
+        `form_type` count). **Empty-stated:** both voting blocks. **Dropped:** the Item 4 purpose
+        prose → reporting-person type.
+        ⚠️ The activism sub-line also claims "no cooperation or standstill agreement filed as an
+        8-K exhibit" — 8-K exhibits are not ingested either; that clause goes.
+  - [ ] **§05–§06** — same pattern, section by section. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.
