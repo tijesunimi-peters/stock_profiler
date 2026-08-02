@@ -11,6 +11,7 @@ from secfin.ingest.backfill import (
     _flush_batch_safely,
     parse_companyfacts_entries,
     pending_entries,
+    slice_todo,
 )
 from secfin.normalize.schema import RawFact
 from secfin.storage.sqlite_repository import SQLiteRawFactRepository
@@ -94,3 +95,36 @@ def test_flush_batch_safely_drops_a_failing_batch_without_raising(tmp_path):
     assert result == (0, 0)
     assert repo.get_ingested_ciks("bulk_companyfacts") == set()
     repo.close()
+
+
+class TestSliceTodo:
+    """`--limit` exists so a whole-market run can be split across sessions.
+
+    It is only safe because the checkpoint table is the sole record of what is done: whatever a
+    run does not reach is still pending, so stopping early can never silently skip a company.
+    """
+
+    def test_limit_takes_the_first_n_pending(self):
+        todo = [(i, f"CIK{i:010d}.json") for i in range(10)]
+        assert slice_todo(todo, 3) == todo[:3]
+
+    def test_no_limit_takes_everything(self):
+        todo = [(1, "a"), (2, "b")]
+        assert slice_todo(todo, None) == todo
+        assert slice_todo(todo, 0) == todo
+        # A negative limit is a caller mistake, not an instruction to do nothing -- doing nothing
+        # would look exactly like "the backfill is finished", which is the wrong thing to imply.
+        assert slice_todo(todo, -5) == todo
+
+    def test_limit_larger_than_pending_is_not_an_error(self):
+        todo = [(1, "a")]
+        assert slice_todo(todo, 99) == todo
+
+    def test_slicing_composes_with_checkpointing(self):
+        """A limited run leaves the remainder pending -- the property the whole split relies on."""
+        entries = [(i, f"CIK{i:010d}.json") for i in range(6)]
+        first = slice_todo(pending_entries(entries, set()), 2)
+        assert [c for c, _ in first] == [0, 1]
+        # after those two are checkpointed, the next run picks up exactly where it left off
+        second = slice_todo(pending_entries(entries, {0, 1}), 2)
+        assert [c for c, _ in second] == [2, 3]

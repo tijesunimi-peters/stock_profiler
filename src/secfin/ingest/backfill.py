@@ -17,7 +17,26 @@
   batches ~batch_size facts across companies, and commits each batch's facts AND
   checkpoint rows in one transaction, so a crash can't leave one without the other.
 
-Run: `python -m secfin.ingest.backfill [--workers N] [--batch-size N] [--data-dir DIR]`
+## Interrupting and resuming
+
+The run is designed to be stopped and picked up later, because a whole-market pass is hours long
+on a small box and the machine has to stay usable meanwhile.
+
+- **Power loss is safe.** Each batch commits its facts AND its checkpoint rows in ONE transaction,
+  so a crash can never leave a company checkpointed but unwritten -- which would skip it forever.
+  The DB is WAL with `synchronous=NORMAL`, so a power cut can lose the last committed batch but
+  cannot corrupt: losing facts and checkpoint together just means that batch is redone.
+- **Ctrl-C is safe and tidy.** SIGINT is ignored in the parser/writer children and handled only in
+  the parent, which stops feeding, sends the stop sentinels, and lets the writer FLUSH what it has
+  before exiting. Without that the writer died mid-queue and its pending batch was simply lost --
+  correct, but it threw away up to `--batch-size` facts of work every time.
+- **`--limit N` does a bounded slice.** Run a few thousand companies, stop, come back later. Safe
+  for exactly the same reason a crash is: anything not checkpointed is retried.
+
+Resuming needs BOTH the checkpoint table and the downloaded zips to survive -- they live on the
+same volume for that reason (see CLAUDE.md on `secfin-data`).
+
+Run: `python -m secfin.ingest.backfill [--workers N] [--batch-size N] [--limit N] [--data-dir DIR]`
 """
 
 from __future__ import annotations
@@ -27,6 +46,7 @@ import json
 import logging
 import multiprocessing as mp
 import re
+import signal
 import time
 import zipfile
 from pathlib import Path
@@ -61,6 +81,9 @@ def pending_entries(entries: list[tuple[int, str]], done: set[int]) -> list[tupl
 
 
 def _parser_worker(zip_path: Path, work_queue: mp.Queue, result_queue: mp.Queue) -> None:
+    # SIGINT is the PARENT's to handle. A Ctrl-C goes to the whole process group, and a parser
+    # dying where it stands leaves the writer waiting on sentinels that never arrive.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     with zipfile.ZipFile(zip_path) as zf:
         while (item := work_queue.get()) is not _STOP:
             cik, entry_name = item
@@ -107,6 +130,9 @@ def _flush_batch_safely(
 
 
 def _writer_loop(db_path: str, result_queue: mp.Queue, num_workers: int, batch_size: int) -> None:
+    # Likewise: the writer must outlive the interrupt long enough to flush its pending batch.
+    # Killing it here is what used to throw away up to `--batch-size` facts on every Ctrl-C.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     repo = SQLiteRawFactRepository(db_path)
     pending_facts: list[RawFact] = []
     pending_checkpoints: list[tuple[int, str | None, int]] = []
@@ -143,8 +169,22 @@ def _writer_loop(db_path: str, result_queue: mp.Queue, num_workers: int, batch_s
         repo.close()
 
 
+def slice_todo(todo: list[tuple[int, str]], limit: int | None) -> list[tuple[int, str]]:
+    """The first `limit` pending entries, or all of them. Pure, for testing.
+
+    A bounded slice is safe for the same reason a crash is: the checkpoint table is the only record
+    of what is done, so anything not reached is simply pending next time.
+    """
+    return todo if not limit or limit <= 0 else todo[:limit]
+
+
 def run_backfill(
-    data_dir: Path, db_path: str, workers: int, batch_size: int, queue_maxsize: int
+    data_dir: Path,
+    db_path: str,
+    workers: int,
+    batch_size: int,
+    queue_maxsize: int,
+    limit: int | None = None,
 ) -> None:
     files = download_bulk_files(data_dir)
     companyfacts_zip = files["companyfacts"]
@@ -158,12 +198,14 @@ def run_backfill(
 
     with zipfile.ZipFile(companyfacts_zip) as zf:
         entries = parse_companyfacts_entries(zf.namelist())
-    todo = pending_entries(entries, already_done)
+    pending = pending_entries(entries, already_done)
+    todo = slice_todo(pending, limit)
     logger.info(
-        "backfill: %d/%d companies pending (%d already checkpointed)",
-        len(todo),
+        "backfill: %d/%d companies pending (%d already checkpointed)%s",
+        len(pending),
         len(entries),
         len(already_done),
+        f"; this run will do {len(todo)} (--limit)" if len(todo) != len(pending) else "",
     )
     if not todo:
         return
@@ -180,14 +222,41 @@ def run_backfill(
         p.start()
     writer.start()
 
-    for entry in todo:
-        work_queue.put(entry)  # blocks (backpressure) once the queue is full
-    for _ in parsers:
-        work_queue.put(_STOP)
+    # The parent owns SIGINT. Children ignore it (see `_parser_worker`), so a Ctrl-C lands here,
+    # stops the feed, and still walks the normal shutdown path -- sentinels, then joins -- which
+    # is what gives the writer a chance to flush its pending batch instead of being killed with it.
+    interrupted = False
 
-    for p in parsers:
-        p.join()
-    writer.join()
+    def _on_sigint(_signum, _frame) -> None:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            logger.warning(
+                "interrupt received -- finishing the current batch and stopping cleanly. "
+                "Re-run to resume; nothing already checkpointed is redone."
+            )
+
+    previous = signal.signal(signal.SIGINT, _on_sigint)
+    try:
+        fed = 0
+        for entry in todo:
+            if interrupted:
+                break
+            work_queue.put(entry)  # blocks (backpressure) once the queue is full
+            fed += 1
+        for _ in parsers:
+            work_queue.put(_STOP)
+
+        for p in parsers:
+            p.join()
+        writer.join()
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+    if interrupted:
+        logger.warning("stopped after feeding %d of %d companies this run", fed, len(todo))
+    elif limit:
+        logger.info("--limit reached: %d companies this run, %d still pending", fed, len(pending) - fed)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -203,6 +272,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--batch-size", type=int, default=settings.secfin_backfill_batch_size)
     p.add_argument("--queue-maxsize", type=int, default=settings.secfin_backfill_queue_maxsize)
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Process at most N pending companies, then stop. For splitting a whole-market run "
+            "across sessions -- anything not reached stays pending and is picked up next time."
+        ),
+    )
     return p
 
 
@@ -210,7 +288,12 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_arg_parser().parse_args(argv)
     run_backfill(
-        Path(args.data_dir), args.db_path, args.workers, args.batch_size, args.queue_maxsize
+        Path(args.data_dir),
+        args.db_path,
+        args.workers,
+        args.batch_size,
+        args.queue_maxsize,
+        args.limit,
     )
 
 
