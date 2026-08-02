@@ -2665,8 +2665,22 @@
   align-items: start;
 }
 
+/*
+ * Section 01's pair is the exception: two cards of unequal content that read as one masthead
+ * for the registrant, so they stretch to a common height rather than each ending where its own
+ * content does.
+ */
+.hub-grid.is-wide {
+  gap: 16px;
+  align-items: stretch;
+}
+
 .hub-mt {
   margin-top: 14px;
+}
+
+.hub-mt-lg {
+  margin-top: 16px;
 }
 
 .hub-mt-sm {
@@ -2962,6 +2976,11 @@
   border-bottom: 1px solid var(--rule);
 }
 
+/*
+ * Three-column footnote rows come in three widths, not one. The measure column is sized to what
+ * it actually holds — "acquisition (code A) · 40,000 sh" needs 104px where "18.2%" needs 66 —
+ * and collapsing them to a single grid pushes short values away from the labels they qualify.
+ */
 .hub-tri-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px 78px;
@@ -2969,6 +2988,23 @@
   align-items: baseline;
   padding: 7px 0;
   border-bottom: 1px solid var(--rule);
+}
+
+/* inventory, goodwill — an amount plus a YoY or headroom qualifier */
+.hub-tri-row.is-amt {
+  grid-template-columns: minmax(0, 1fr) 72px 84px;
+  gap: 8px;
+}
+
+/* share classes, blockholders — a percentage plus a short form name */
+.hub-tri-row.is-narrow {
+  grid-template-columns: minmax(0, 1fr) 66px 52px;
+}
+
+/* the insider rows rule ABOVE each row, because the summary line sits directly over them */
+.hub-tri-row.is-top {
+  border-bottom: none;
+  border-top: 1px solid var(--rule);
 }
 
 .hub-quad {
@@ -3190,7 +3226,7 @@
 .hub-ladder-row {
   display: grid;
   /* 72px, not 56 — "Thereafter" is the widest label and it must not ride over the bar. */
-  grid-template-columns: 72px minmax(0, 1fr) 62px 52px;
+  grid-template-columns: 72px minmax(0, 1fr) 62px 50px;
   gap: 9px;
   align-items: center;
   padding: 6px 0;
@@ -4187,4 +4223,190 @@
   padding: 6px 10px;
   min-width: 260px;
   cursor: pointer;
+}
+
+/* ============================================================ hub · provenance & derivation
+ *
+ * Everything below exists to answer one of two questions the reader is entitled to ask of any
+ * figure on the page: WHERE DID THIS COME FROM (a link to the filing) and WHO COMPUTED THIS
+ * (a chip that opens the arithmetic). Both are affordances of the panel, not of the datum, so
+ * they live in the panel header alongside the label rather than beside individual numbers.
+ */
+
+.hub-src-link {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hub-src-link:hover {
+  text-decoration: underline;
+}
+
+/* An in-app move, styled as a link because that is what it is — but a button, because it is
+   a route change and not a document. */
+.hub-nav-link {
+  display: inline-block;
+  margin-top: 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.hub-nav-link.is-inline {
+  margin-top: 0;
+}
+
+.hub-nav-link:hover {
+  text-decoration: underline;
+}
+
+.hub-calc-chip {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hub-calc-chip.is-open {
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+}
+
+.hub-calc {
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 9px;
+  padding: 11px 13px;
+  margin-top: 10px;
+}
+
+.hub-calc-formula {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.hub-calc-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(120px, 1.6fr);
+  gap: 9px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-top: 1px solid var(--rule);
+}
+
+/* The statements' closing line: the caveat, the derivation chip, and the two source documents,
+   on one baseline. */
+.hub-panel-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.hub-note.no-mt {
+  margin-top: 0;
+}
+
+/* ============================================================ hub · financial snapshot */
+
+.hub-snap-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.hub-snap {
+  background: var(--bg-card);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hub-snap.is-clickable {
+  cursor: pointer;
+}
+
+.hub-snap.is-open {
+  background: var(--bg-tint);
+}
+
+.hub-snap-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+}
+
+.hub-snap-value {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 20px;
+  color: var(--ink);
+  line-height: 1;
+  align-self: flex-start;
+}
+
+.hub-snap-spark {
+  height: 24px;
+}
+
+.hub-snap-yoy {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+/* ============================================================ hub · misc row shapes */
+
+/* Deferred revenue is a ROLL-FORWARD: opening, movements, closing. Four cells of equal weight
+   read as a balance that moved; four stacked key/value rows read as an unordered list. */
+.hub-roll-cell {
+  display: flex;
+  flex-direction: column;
+}
+
+.hub-roll-v {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.hub-ins-summary {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-body);
+  margin-bottom: 6px;
+}
+
+.hub-agree-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px;
+  gap: 9px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
 }

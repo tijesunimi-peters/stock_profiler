@@ -11,10 +11,13 @@
  * was filed on.
  */
 import { useState } from "react";
-import { hubData, HUB_SECTIONS, LABEL_TO_ID, metricDefs, seriesFor, unitFmt } from "../../data/hub";
-import { SeriesChart } from "../../charts/series";
-import { SECTOR_NAMES } from "../../data/prototype";
-import { FILER_BY_SYMBOL } from "../../data/catalog";
+import {
+  hubData, HUB_SECTIONS, LABEL_TO_ID, metricDefs, seriesFor, unitFmt,
+  hubLinks, hubProfile, hubSnapshot, hubInsider, hubSegmentChips, hubContextPill,
+  HUB_BIZ_TEXT, HUB_CALCS, type HubCalc, type SnapshotTile,
+} from "../../data/hub";
+import { SeriesChart, Sparkline } from "../../charts/series";
+import { SECTOR_NAMES, SUB_COUNTS } from "../../data/prototype";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
@@ -32,8 +35,59 @@ function HubHead({ n, title, src, id }: { n: string; title: string; src: string;
   );
 }
 
+/**
+ * A link out to the filing the panel above it was built from.
+ *
+ * Every panel on this page carries one. That is the hub's organising claim made checkable: we
+ * are not asking to be believed about what a filer disclosed, we are handing over the document.
+ */
+function Src({ href, children }: { href: string; children: string }) {
+  return (
+    <a className="hub-src-link" href={href} target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
+
+/**
+ * The chip that opens a derived figure's arithmetic.
+ *
+ * `ƒ` marks it as ours rather than the filer's — the one visual cue that separates a number we
+ * computed from a number that was reported, which is a distinction the whole product rests on.
+ */
+function CalcChip({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`hub-calc-chip${open ? " is-open" : ""}`}
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={open ? `Hide how ${label} is computed` : `Show how ${label} is computed`}
+    >
+      {open ? "ƒ hide" : "ƒ derived"}
+    </button>
+  );
+}
+
+/** The drawer behind a `CalcChip`: formula, the inputs it reads, and where each one comes from. */
+function CalcDrawer({ calc }: { calc: HubCalc }) {
+  return (
+    <div className="hub-calc">
+      <div className="hub-label">How this is computed</div>
+      <div className="hub-calc-formula">{calc.formula}</div>
+      {calc.inputs.map(([k, v]) => (
+        <div className="hub-calc-row" key={k}>
+          <span className="hub-cell">{k}</span>
+          <span className="hub-cell-mono is-soft">{v}</span>
+        </div>
+      ))}
+      <div className="hub-note">{calc.note}</div>
+    </div>
+  );
+}
+
 const STMT_TABS = [
-  { key: "income", label: "Income" },
+  { key: "income", label: "Income statement" },
   { key: "balance", label: "Balance sheet" },
   { key: "cash", label: "Cash flow" },
 ] as const;
@@ -50,8 +104,17 @@ export function HubOverview() {
   const [basis, setBasis] = useState<"filed" | "restated">("filed");
   const [tray, setTray] = useState<string[]>([]);
   const [trayOpen, setTrayOpen] = useState(true);
+  // One open calc drawer and one open snapshot tile at a time — both are asides to the panel
+  // they hang off, and two of them open at once turns the page into a stack of interruptions.
+  const [calc, setCalc] = useState<string | null>(null);
+  const [tile, setTile] = useState<string | null>(null);
 
   const sector = SECTOR_NAMES[sel.sectorIdx];
+  const L = hubLinks(T);
+  const snapshot = hubSnapshot(T);
+  const insider = hubInsider(T);
+  const subActive = sel.subIdx >= 0;
+  const toggleCalc = (id: string) => setCalc((c) => (c === id ? null : id));
 
   return (
     <div className="hub">
@@ -59,10 +122,12 @@ export function HubOverview() {
       <div className="hub-crumb">
         <span className="hub-crumb-sector">{sector}</span>
         <span className="hub-crumb-sep">›</span>
-        <span className="hub-crumb-name">{FILER_BY_SYMBOL[T]?.name ?? T}</span>
+        <span className="hub-crumb-name">{T}</span>
         <span className="hub-crumb-ticker">{T}</span>
         <span className="hub-crumb-spacer" />
-        <span className="hub-crumb-pill">SIC 3674 · peer set {sector}</span>
+        <span className="hub-crumb-pill">
+          {hubContextPill(subActive, SUB_COUNTS[sel.subIdx] ?? 0)}
+        </span>
         <button
           type="button"
           className="hub-crumb-link"
@@ -94,20 +159,15 @@ export function HubOverview() {
       {/* ============================================================ 01 */}
       <section className="hub-sec">
         <HubHead id="s1" n="01" title="Identity & structure" src="cover page · EX-21 · 10-K Item 1" />
-        <div className="hub-grid">
+        <div className="hub-grid is-wide">
           <div className="p-card">
             <div className="hub-label">What the company does · 10-K Item 1</div>
-            <p className="hub-prose">
-              {T} designs and sells semiconductor products across compute, connectivity and
-              embedded end markets, selling through distributors and directly to original
-              equipment manufacturers. Manufacturing is partly outsourced to third-party foundries
-              and assembly and test providers.
-            </p>
+            <p className="hub-prose">{HUB_BIZ_TEXT}</p>
             <div className="hub-chips">
-              {d.segments.map((s) => (
-                <span className="hub-chip" key={s.name}>
+              {hubSegmentChips(T).map((s) => (
+                <span className="hub-chip" key={s.label}>
                   <i style={{ background: s.color }} />
-                  {s.name} <b>{s.revW}</b>
+                  {s.label} <b>{s.pct}</b>
                 </span>
               ))}
             </div>
@@ -115,34 +175,24 @@ export function HubOverview() {
           <div className="p-card is-tint">
             <div className="hub-label">Registrant profile · cover page</div>
             <div className="hub-profile">
-              {[
-                ["CIK", String(FILER_BY_SYMBOL[T]?.cik ?? "—").padStart(10, "0")],
-                ["Ticker", T],
-                ["Exchange", "NASDAQ"],
-                ["State of incorporation", d.structure.subs[0].jur],
-                ["Fiscal year end", "last Sunday of January"],
-                ["Filer status", "Large accelerated"],
-                ["SIC", "3674 · Semiconductors"],
-                ["Employees", d.narrative.humanCapital.heads],
-                ["Auditor", d.audit.firm],
-                ["Shell company", "No"],
-              ].map(([k, v]) => (
-                <div className="hub-profile-cell" key={k}>
-                  <span className="hub-profile-k">{k}</span>
-                  <span className="hub-profile-v">{v}</span>
+              {hubProfile(T).map((p) => (
+                <div className="hub-profile-cell" key={p.k}>
+                  <span className="hub-profile-k">{p.k}</span>
+                  <span className="hub-profile-v">{p.v}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="p-card hub-mt">
+        <div className="p-card hub-mt-lg">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Consolidated subsidiaries</span>
             <span className="hub-hint">
               EX-21 · {d.structure.subCount} entities · {d.structure.offshore} organized outside
               the U.S.
             </span>
+            <Src href={L.ex21}>Read EX-21 ↗</Src>
           </div>
           <div className="hub-table-head hub-subs-grid">
             <span>Entity</span>
@@ -224,7 +274,53 @@ export function HubOverview() {
             );
           })}
 
-          <div className="hub-note">Amounts as originally filed.</div>
+          <div className="hub-panel-foot">
+            <span className="hub-note no-mt">Amounts as originally filed.</span>
+            <CalcChip label={HUB_CALCS.fcf.label} open={calc === "fcf"} onToggle={() => toggleCalc("fcf")} />
+            <Src href={L.tenQ}>Read the 10-Q ↗</Src>
+            <Src href={L.tenK}>10-K ↗</Src>
+          </div>
+          {calc === "fcf" && <CalcDrawer calc={HUB_CALCS.fcf} />}
+        </div>
+
+        {/* financial snapshot — eight XBRL facts with their trailing shape */}
+        <div className="p-card hub-mt-lg">
+          <div className="hub-panel-head">
+            <span className="hub-panel-title">Financial snapshot</span>
+            <span className="hub-hint">
+              XBRL facts · trailing 8 quarters · arrows show direction only, not favorability (§5)
+            </span>
+          </div>
+          <div className="hub-snap-grid">
+            {snapshot.map((m) => (
+              <SnapTile
+                key={m.label}
+                m={m}
+                open={tile === m.label}
+                onOpen={() => setTile((x) => (x === m.label ? null : m.label))}
+                inTray={tray.includes(LABEL_TO_ID[m.label] ?? "")}
+                onTray={() => {
+                  const id = LABEL_TO_ID[m.label];
+                  if (!id) return;
+                  setTray((x) => (x.includes(id) ? x.filter((k) => k !== id) : [...x, id]));
+                  setTrayOpen(true);
+                }}
+              />
+            ))}
+          </div>
+          {snapshot.map((m) =>
+            tile === m.label && LABEL_TO_ID[m.label] ? (
+              <TrendDrawer
+                key={m.label}
+                T={T}
+                id={LABEL_TO_ID[m.label]}
+                range={range}
+                setRange={setRange}
+                basis={basis}
+                setBasis={setBasis}
+              />
+            ) : null,
+          )}
         </div>
 
         <div className="hub-divider">Footnote detail — where the explanation usually lives</div>
@@ -233,6 +329,7 @@ export function HubOverview() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Revenue disaggregation · ASC 606</span>
+              <Src href={L.tenK}>Read the footnote ↗</Src>
             </div>
             {d.footnotes.disagg.map((x) => (
               <div className="hub-comp-row" key={x.label}>
@@ -257,9 +354,12 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Inventory composition</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Inventory composition</span>
+              <Src href={L.tenK}>Read the footnote ↗</Src>
+            </div>
             {d.footnotes.inv.map((x) => (
-              <div className="hub-tri-row" key={x.label}>
+              <div className="hub-tri-row is-amt" key={x.label}>
                 <span className="hub-cell">{x.label}</span>
                 <span className="hub-cell-mono ta-r">{x.amt}</span>
                 <span className="hub-cell-mono ta-r is-soft">{x.yoy}</span>
@@ -272,7 +372,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Debt maturity ladder</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Debt maturity ladder</span>
+              <Src href={L.tenK}>Read the debt footnote ↗</Src>
+            </div>
             {d.footnotes.debtLadder.map((x) => (
               <div className="hub-ladder-row" key={x.y}>
                 <span className="hub-cell-mono is-soft">{x.y}</span>
@@ -287,7 +390,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Effective tax rate reconciliation</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Effective tax rate reconciliation</span>
+              <CalcChip label={HUB_CALCS.etr.label} open={calc === "etr"} onToggle={() => toggleCalc("etr")} />
+            </div>
             {d.footnotes.tax.rows.map((x) => (
               <div className="hub-kv-row" key={x.k}>
                 <span className="hub-cell">{x.k}</span>
@@ -302,21 +408,27 @@ export function HubOverview() {
               Valuation allowance {d.footnotes.tax.va} · unrecognized tax benefits{" "}
               {d.footnotes.tax.utb}
             </div>
+            {calc === "etr" && <CalcDrawer calc={HUB_CALCS.etr} />}
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Deferred revenue roll-forward</div>
-            {[
-              ["Opening balance", d.footnotes.defrev.open],
-              ["Billed / deferred", d.footnotes.defrev.billed],
-              ["Recognized in revenue", d.footnotes.defrev.rec],
-              ["Closing balance", d.footnotes.defrev.close],
-            ].map(([k, v]) => (
-              <div className="hub-kv-row" key={k}>
-                <span className="hub-cell">{k}</span>
-                <span className="hub-cell-mono">{v}</span>
-              </div>
-            ))}
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Deferred revenue roll-forward</span>
+              <Src href={L.tenK}>Read the footnote ↗</Src>
+            </div>
+            <div className="hub-quad">
+              {[
+                ["Opening balance", d.footnotes.defrev.open],
+                ["Billed / deferred", d.footnotes.defrev.billed],
+                ["Recognized in revenue", d.footnotes.defrev.rec],
+                ["Closing balance", d.footnotes.defrev.close],
+              ].map(([k, v]) => (
+                <div className="hub-roll-cell" key={k}>
+                  <span className="hub-hint">{k}</span>
+                  <span className="hub-roll-v">{v}</span>
+                </div>
+              ))}
+            </div>
             <div className="hub-foot-rule">
               <div className="hub-label">Allowance for credit losses</div>
               <div className="hub-cell-mono is-soft">
@@ -327,7 +439,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Stock compensation by line item</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Stock compensation by line item</span>
+              <Src href={L.tenK}>Read the footnote ↗</Src>
+            </div>
             {d.footnotes.sbc.lines.map((x) => (
               <div className="hub-comp-row" key={x.label}>
                 <div className="hub-comp-head">
@@ -346,14 +461,18 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Goodwill by reporting unit</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Goodwill by reporting unit</span>
+              <CalcChip label={HUB_CALCS.gwhead.label} open={calc === "gwhead"} onToggle={() => toggleCalc("gwhead")} />
+            </div>
             {d.footnotes.gwUnits.map((g, i) => (
-              <div className="hub-tri-row" key={`${g.name}${i}`}>
+              <div className="hub-tri-row is-amt" key={`${g.name}${i}`}>
                 <span className="hub-cell">{g.name}</span>
                 <span className="hub-cell-mono ta-r">{g.gw}</span>
                 <span className="hub-cell-mono ta-r is-soft">{g.head} headroom</span>
               </div>
             ))}
+            {calc === "gwhead" && <CalcDrawer calc={HUB_CALCS.gwhead} />}
             <div className="hub-note">
               Leases: {d.footnotes.leases.tot} liability · {d.footnotes.leases.wa}{" "}
               weighted-average term · {d.footnotes.leases.disc} discount rate
@@ -369,6 +488,8 @@ export function HubOverview() {
           <div className="hub-panel-head">
             <span className="hub-panel-title">Reportable segments</span>
             <span className="hub-hint">revenue and operating income as disclosed</span>
+            <CalcChip label={HUB_CALCS.segmargin.label} open={calc === "segmargin"} onToggle={() => toggleCalc("segmargin")} />
+            <Src href={L.tenK}>Read the segment footnote ↗</Src>
           </div>
           <div className="hub-table-head hub-seg-grid">
             <span>Segment</span>
@@ -395,11 +516,15 @@ export function HubOverview() {
             </div>
           ))}
           <div className="hub-note">{d.segNote}</div>
+          {calc === "segmargin" && <CalcDrawer calc={HUB_CALCS.segmargin} />}
         </div>
 
         <div className="hub-grid hub-mt">
           <div className="p-card">
-            <div className="hub-label">Long-lived assets by country</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Long-lived assets by country</span>
+              <Src href={L.tenK}>Read the segment footnote ↗</Src>
+            </div>
             {d.geoAssets.map((g) => (
               <div className="hub-geo-row" key={g.name}>
                 <span className="hub-seg-name">
@@ -412,7 +537,12 @@ export function HubOverview() {
             ))}
           </div>
           <div className="p-card">
-            <div className="hub-label">Customer concentration · filers must name any customer &gt;10%</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">
+                Customer concentration · filers must name any customer &gt;10%
+              </span>
+              <Src href={L.tenK}>Read Item 1 ↗</Src>
+            </div>
             {d.custConc.map((c) => (
               <div className="hub-cust-row" key={c.label}>
                 <span className="hub-cell">
@@ -434,7 +564,10 @@ export function HubOverview() {
         <HubHead id="s4" n="04" title="Capital & ownership" src="cash flow statement · 10-Q Item 5 · DEF 14A · 13D/G" />
         <div className="hub-grid">
           <div className="p-card">
-            <div className="hub-label">Share count roll-forward</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Share count roll-forward</span>
+              <Src href={L.tenQ}>Read the 10-Q ↗</Src>
+            </div>
             {d.capital.roll.map((r) => (
               <div className="hub-kv-row" key={r.k}>
                 <span className="hub-cell">{r.k}</span>
@@ -449,7 +582,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Repurchase program</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Repurchase program</span>
+              <Src href={L.tenQ}>Read 10-Q Item 5 ↗</Src>
+            </div>
             <div className="hub-quad">
               <div>
                 <span className="hub-hint">Authorized</span>
@@ -474,9 +610,12 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Class structure & voting</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Class structure &amp; voting</span>
+              <Src href={L.proxy}>Read the proxy ↗</Src>
+            </div>
             {d.capital.classes.map((c) => (
-              <div className="hub-tri-row" key={c.c}>
+              <div className="hub-tri-row is-narrow" key={c.c}>
                 <span className="hub-cell">{c.c}</span>
                 <span className="hub-cell-mono ta-r">{c.sh}</span>
                 <span className="hub-cell-mono ta-r is-soft">{c.v}</span>
@@ -489,9 +628,12 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Reported blockholders · 13D/G</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Reported blockholders · 13D/G</span>
+              <Src href={L.all}>EDGAR filings ↗</Src>
+            </div>
             {d.capital.holders.map((h) => (
-              <div className="hub-tri-row" key={h.name}>
+              <div className="hub-tri-row is-narrow" key={h.name}>
                 <span className="hub-cell">{h.name}</span>
                 <span className="hub-cell-mono ta-r">{h.pct}</span>
                 <span className="hub-cell-mono ta-r is-soft">{h.form}</span>
@@ -506,7 +648,10 @@ export function HubOverview() {
         <HubHead id="s5" n="05" title="Governance & people" src="DEF 14A · 8-K Item 5.02 · Forms 3/4/5" />
         <div className="hub-grid">
           <div className="p-card">
-            <div className="hub-label">Officer & director changes</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Officer &amp; director changes</span>
+              <Src href={L.eightK}>Read the 8-Ks ↗</Src>
+            </div>
             {d.governance.turnover.map((t, i) => (
               <div className="hub-tri-row" key={`${t.role}${i}`}>
                 <span className="hub-cell">{t.role}</span>
@@ -518,7 +663,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Board composition</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Board composition</span>
+              <Src href={L.proxy}>Read the proxy ↗</Src>
+            </div>
             <div className="hub-quad">
               <div>
                 <span className="hub-hint">Board size</span>
@@ -543,7 +691,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">CEO pay mix · summary compensation table</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">CEO pay mix · summary compensation table</span>
+              <Src href={L.proxy}>Read the proxy ↗</Src>
+            </div>
             {d.governance.comp.map((c) => (
               <div className="hub-comp-row" key={c.k}>
                 <div className="hub-comp-head">
@@ -560,6 +711,39 @@ export function HubOverview() {
               {d.governance.sayOnPay}
             </div>
           </div>
+
+          {/*
+            Section 16 activity, summarised. The counts are of FILINGS, not of conviction: an
+            officer disposing under a 10b5-1 plan adopted a year earlier files the same Form 4
+            as one selling on the day. `dir` names the direction and stops there.
+          */}
+          <div className="p-card">
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">Insider transactions</span>
+              <span className="hub-hint">{insider.window}</span>
+            </div>
+            <div className="hub-ins-summary">
+              {insider.buy} acquisitions · {insider.sell} dispositions · net {insider.net} (
+              {insider.dir})
+            </div>
+            {insider.rows.map((r, i) => (
+              <div className="hub-tri-row is-top" key={`${r.off}${i}`}>
+                <span className="hub-cell">{r.off}</span>
+                <span className="hub-cell-mono is-soft">
+                  {r.type} · {r.shares}
+                </span>
+                <span className="hub-cell-mono ta-r">{r.date}</span>
+              </div>
+            ))}
+            <div className="hub-note">{d.governance.plans}</div>
+            <button
+              type="button"
+              className="hub-nav-link"
+              onClick={() => navigate(sel.href(`/company/${T}/insider`))}
+            >
+              Full insider activity view →
+            </button>
+          </div>
         </div>
       </section>
 
@@ -568,7 +752,10 @@ export function HubOverview() {
         <HubHead id="s6" n="06" title="Accounting quality & audit" src="auditor report · Item 9A · 8-K 4.01 / 4.02 · 12b-25" />
         <div className="hub-grid">
           <div className="p-card">
-            <div className="hub-label">Auditor</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Auditor</span>
+              <Src href={L.tenK}>Read the auditor report ↗</Src>
+            </div>
             <div className="hub-firm">
               <span className="hub-firm-name">{d.audit.firm}</span>
               <span className="hub-cell-mono is-soft">{d.audit.tenure}</span>
@@ -585,7 +772,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Critical audit matters</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Critical audit matters</span>
+              <Src href={L.tenK}>Read the CAMs ↗</Src>
+            </div>
             {d.audit.cams.map((c, i) => (
               <div className="hub-cam" key={`${c.name}${i}`}>
                 <div className="hub-cam-name">{c.name}</div>
@@ -613,7 +803,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Critical accounting estimates</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Critical accounting estimates</span>
+              <Src href={L.tenK}>Read Item 7 ↗</Src>
+            </div>
             <div className="hub-estimates">
               {d.audit.estimates.map((e) => (
                 <span key={e}>{e}</span>
@@ -634,6 +827,7 @@ export function HubOverview() {
               estimable" means the filer disclosed a matter without a recordable amount, not that
               the exposure is zero
             </span>
+            <Src href={L.tenK}>Read Item 3 ↗</Src>
           </div>
           <div className="hub-table-head hub-legal-grid">
             <span>Matter</span>
@@ -711,6 +905,7 @@ export function HubOverview() {
               {d.narrative.rfCount} risk factors · {d.narrative.rfDelta} vs prior year ·{" "}
               {d.narrative.rfWords}
             </span>
+            <Src href={L.tenK}>Read Item 1A ↗</Src>
           </div>
           {d.narrative.rfDiff.map((r, i) => (
             <div className="hub-rf-row" key={`${r.kind}${i}`}>
@@ -725,7 +920,10 @@ export function HubOverview() {
 
         <div className="hub-grid hub-mt">
           <div className="p-card">
-            <div className="hub-label">Management-attributed drivers · MD&amp;A</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Management-attributed drivers · MD&amp;A</span>
+              <Src href={L.tenK}>Read MD&amp;A ↗</Src>
+            </div>
             <div className="hub-quotes">
               {d.narrative.mdna.map((m) => (
                 <span key={m}>{m}</span>
@@ -738,7 +936,10 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Cybersecurity · Item 1C</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Cybersecurity · Item 1C</span>
+              <Src href={L.tenK}>Read Item 1C ↗</Src>
+            </div>
             <div className="hub-facts">
               <span>{d.narrative.cyber.gov}</span>
               <span>{d.narrative.cyber.framework}</span>
@@ -754,11 +955,14 @@ export function HubOverview() {
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Material agreements · 8-K 1.01</div>
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Material agreements · 8-K 1.01</span>
+              <Src href={L.eightK}>Read the 8-Ks ↗</Src>
+            </div>
             {d.narrative.agreements.map((a, i) => (
-              <div className="hub-kv-row" key={`${a.t}${i}`}>
+              <div className="hub-agree-row" key={`${a.t}${i}`}>
                 <span className="hub-cell">{a.t}</span>
-                <span className="hub-cell-mono is-soft">{a.date}</span>
+                <span className="hub-cell-mono is-soft ta-r">{a.date}</span>
               </div>
             ))}
           </div>
@@ -773,7 +977,61 @@ export function HubOverview() {
         </div>
       </section>
 
-      {tray.length > 0 && trayOpen && <ComparisonTray T={T} ids={tray} setIds={setTray} onHide={() => setTrayOpen(false)} range={range} basis={basis} />}
+      {tray.length > 0 && trayOpen && (
+        <ComparisonTray
+          T={T}
+          ids={tray}
+          setIds={setTray}
+          onHide={() => setTrayOpen(false)}
+          range={range}
+          basis={basis}
+          onOpenHistory={() => navigate(sel.href(`/company/${T}/history`))}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One financial-snapshot tile: the level, its trailing-8-quarter shape, and the YoY move.
+ *
+ * The spark carries no axis on purpose — it is there to show whether the level arrived smoothly
+ * or jumped, and a reader who needs the numbers opens the tile. The YoY arrow is direction only;
+ * nothing here is coloured by whether the move is welcome.
+ */
+function SnapTile({
+  m, open, onOpen, inTray, onTray,
+}: {
+  m: SnapshotTile;
+  open: boolean;
+  onOpen: () => void;
+  inTray: boolean;
+  onTray: () => void;
+}) {
+  const trackable = !!LABEL_TO_ID[m.label];
+  return (
+    <div
+      className={`hub-snap${open ? " is-open" : ""}${trackable ? " is-clickable" : ""}`}
+      onClick={() => trackable && onOpen()}
+    >
+      <span className="hub-snap-label">{m.label}</span>
+      <span className={`hub-snap-value${trackable ? " hub-cue" : ""}`}>{m.value}</span>
+      <div className="hub-snap-spark">
+        <Sparkline points={m.spark.map((v, i) => ({ period: String(i), value: v }))} height={24} />
+      </div>
+      <span className="hub-snap-yoy">{m.yoy}</span>
+      {trackable && (
+        <button
+          type="button"
+          className={`hub-tray-add${inTray ? " is-in" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onTray();
+          }}
+        >
+          {inTray ? "− in tray" : "+ compare"}
+        </button>
+      )}
     </div>
   );
 }
@@ -869,7 +1127,7 @@ function TrendDrawer({
  * read shape, not level.
  */
 function ComparisonTray({
-  T, ids, setIds, onHide, range, basis,
+  T, ids, setIds, onHide, range, basis, onOpenHistory,
 }: {
   T: string;
   ids: string[];
@@ -877,6 +1135,7 @@ function ComparisonTray({
   onHide: () => void;
   range: "8q" | "20q" | "5y";
   basis: "filed" | "restated";
+  onOpenHistory: () => void;
 }) {
   const defs = metricDefs(T);
   const picked = ids.map((id) => seriesFor(T, id, range, basis)).filter((s): s is NonNullable<typeof s> => !!s);
@@ -889,6 +1148,9 @@ function ComparisonTray({
       <div className="hub-tray-head">
         <div className="hub-tray-items">
           <span className="hub-panel-title is-sm">Comparison chart</span>
+          <button type="button" className="hub-nav-link is-inline" onClick={onOpenHistory}>
+            Open in Financial history →
+          </button>
           {picked.map((s, i) => (
             <span className="hub-tray-chip" key={s.label}>
               <span className={`hub-tray-swatch is-${kinds[i % kinds.length]}`} />
