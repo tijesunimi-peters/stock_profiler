@@ -19,7 +19,11 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist app-dist",
+    "dev": "node scripts/copy-assets.mjs && vite",
+    "app:build": "node scripts/copy-assets.mjs && vite build",
+    "app:preview": "vite preview --port 5174 --strictPort",
+    "app:typecheck": "tsc -p app/tsconfig.json --noEmit"
   },
   "peerDependencies": {
     "react": ">=18",
