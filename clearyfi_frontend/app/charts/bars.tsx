@@ -14,20 +14,105 @@ const M = { top: 14, right: 16, bottom: 28, left: 46 };
 
 // ---------------------------------------------------------------------------- histogram
 
+export interface HistogramBin {
+  label: string;
+  n: number;
+  /** Marks the bin the median falls in — the dashed rule is drawn on it. */
+  median?: boolean;
+}
+
 export interface HistogramData {
   values: number[];
   /** Printed as the median label — pass the real median, NOT the bin it lands in. */
   median: number;
   format: (v: number) => string;
   xLabel?: string;
+  /**
+   * Pre-binned categories, used INSTEAD of binning `values`.
+   *
+   * For a quantity that is already discrete and small — business days to file, say — letting d3
+   * choose thresholds invents fractional buckets ("1.4 to 1.8 days") that the underlying data
+   * cannot occupy. When the categories are the data, pass them.
+   */
+  bins?: HistogramBin[];
 }
 
 const histogramDraw: DrawFn<HistogramData> = (svg, { d3, still, width, height, data, container }) => {
   svg.selectAll("*").remove();
-  if (!data.values.length) return;
+  if (!data.bins?.length && !data.values.length) return;
   const iw = width - M.left - M.right;
   const ih = height - M.top - M.bottom;
   const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  // Categorical branch: the caller already knows the buckets, so a band scale draws them as the
+  // discrete things they are rather than as slices of a continuum.
+  if (data.bins?.length) {
+    const bins = data.bins;
+    const bx = d3
+      .scaleBand()
+      .domain(bins.map((b) => b.label))
+      .range([0, iw])
+      .paddingInner(0.28);
+    const bw = Math.max(3, bx.bandwidth());
+    const cx = (b: HistogramBin) => (bx(b.label) ?? 0) + bx.bandwidth() / 2;
+    const mx = d3.max(bins, (b) => b.n) ?? 1;
+    const by = d3.scaleLinear().domain([0, mx]).range([ih, 0]);
+
+    gridStyle(
+      g.append("g").call(d3.axisLeft(by).tickValues([0, mx / 2, mx]).tickFormat((v) => String(Math.round(v as number))).tickSize(-iw) as any),
+    );
+    gridStyle(g.append("g").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(bx).tickSize(0) as any));
+
+    const rects = g
+      .selectAll("rect")
+      .data(bins)
+      .join("rect")
+      .attr("rx", 1.5)
+      .attr("x", (b) => cx(b) - bw / 2)
+      .attr("width", bw)
+      .attr("y", (b) => by(b.n))
+      .attr("height", (b) => Math.max(1, ih - by(b.n)))
+      .style("fill", "var(--accent)")
+      .style("fill-opacity", 0.45);
+
+    anim(rects, still)
+      .attr("y", (b: any) => by(b.n))
+      .attr("height", (b: any) => Math.max(1, ih - by(b.n)));
+
+    attachReadout(rects, container, (b: any) => [
+      `${b.label}${data.xLabel ? ` ${data.xLabel}` : ""}`,
+      `${b.n} filing${b.n === 1 ? "" : "s"}`,
+    ]);
+
+    for (const b of bins.filter((z) => z.median)) {
+      const mlx = cx(b);
+      g.append("line")
+        .attr("x1", mlx)
+        .attr("x2", mlx)
+        .attr("y1", -4)
+        .attr("y2", ih)
+        .style("stroke", "var(--ink)")
+        .style("stroke-width", 1.6)
+        .style("stroke-dasharray", "4 3");
+      mono(
+        g
+          .append("text")
+          .attr("x", clampX(mlx + 5, iw))
+          .attr("y", -6)
+          .attr("text-anchor", edgeAnchor(mlx, iw))
+          .text(`median ${data.format(data.median)}`),
+        9.5,
+      );
+    }
+
+    if (data.xLabel) {
+      mono(
+        g.append("text").attr("x", iw / 2).attr("y", ih + 26).attr("text-anchor", "middle").text(data.xLabel),
+        9,
+      );
+    }
+    return;
+  }
 
   const x = d3
     .scaleLinear()
@@ -90,19 +175,27 @@ const histogramDraw: DrawFn<HistogramData> = (svg, { d3, still, width, height, d
 };
 
 export function Histogram({
-  values,
+  values = [],
+  bins,
   median,
   format = (v) => String(Math.round(v)),
+  xLabel,
   height = 200,
   label,
 }: {
-  values: number[];
+  values?: number[];
+  /** Pass instead of `values` when the buckets are already discrete. */
+  bins?: HistogramBin[];
   median: number;
   format?: (v: number) => string;
+  xLabel?: string;
   height?: number;
   label?: string;
 }) {
-  const data = useMemo(() => ({ values, median, format }), [values, median, format]);
+  const data = useMemo(
+    () => ({ values, bins, median, format, xLabel }),
+    [values, bins, median, format, xLabel],
+  );
   return <Chart draw={histogramDraw} data={data} height={height} label={label} />;
 }
 

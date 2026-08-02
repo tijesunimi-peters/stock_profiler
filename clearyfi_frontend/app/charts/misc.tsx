@@ -8,7 +8,7 @@
  */
 import { useMemo } from "react";
 import { Chart } from "./Chart";
-import { attachReadout, gridStyle, makeReadout, mono, placeLabel, sans, textWidth, type Box, type DrawFn } from "./kernel";
+import { attachReadout, edgeAnchor, gridStyle, makeReadout, mono, placeLabel, sans, textWidth, type Box, type DrawFn } from "./kernel";
 
 /**
  * Width of the widest row label, measured from the DOM.
@@ -462,6 +462,14 @@ export interface CalendarNotice {
   /** Encoded as AREA — hence scaleSqrt, never a radius scale. */
   size: number;
   label: string;
+  /**
+   * Filled vs hollow, for a binary property of the notice — on Form 144, whether it references a
+   * Rule 10b5-1 plan.
+   *
+   * Fill, not hue: the distinction is categorical and carries no ordering, and spending a second
+   * color here would read as one kind of notice being worse than the other. Defaults to filled.
+   */
+  filled?: boolean;
 }
 
 const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => string }> = (
@@ -487,12 +495,17 @@ const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => s
     .domain([0, d3.max(data.notices, (n) => n.size) ?? 1])
     .range([2, 13]);
 
-  gridStyle(
-    g
-      .append("g")
-      .attr("transform", `translate(0,${ih})`)
-      .call(d3.axisBottom(x).ticks(Math.max(3, Math.floor(iw / 120))).tickSize(-ih) as any),
-  );
+  const xAxis = g
+    .append("g")
+    .attr("transform", `translate(0,${ih})`)
+    .call(d3.axisBottom(x).ticks(Math.max(3, Math.floor(iw / 120))).tickSize(-ih) as any);
+  gridStyle(xAxis);
+  // A tick sitting on the domain edge centres its label half-outside the frame — "February"
+  // was overhanging the left edge by 8px. Anchor the outermost labels inward instead.
+  xAxis.selectAll<SVGTextElement, unknown>("text").each(function () {
+    const cx = Number(this.parentElement?.getAttribute("transform")?.match(/translate\(([-\d.]+)/)?.[1] ?? 0);
+    d3.select(this).attr("text-anchor", edgeAnchor(cx, iw));
+  });
 
   const readout = container ? makeReadout(container) : null;
   readout?.hide();
@@ -503,8 +516,8 @@ const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => s
     .attr("cx", (d) => x(new Date(d.date)))
     .attr("cy", (_d, i) => ih / 2 + ((i % 5) - 2) * 9)
     .attr("r", (d) => r(d.size))
-    .style("fill", "var(--accent)")
-    .style("fill-opacity", 0.45)
+    .style("fill", (d) => (d.filled === false ? "var(--bg-card)" : "var(--accent)"))
+    .style("fill-opacity", (d) => (d.filled === false ? 1 : 0.45))
     .style("stroke", "var(--accent)")
     .style("stroke-width", 1)
     .on("mousemove", (event, d) => {
