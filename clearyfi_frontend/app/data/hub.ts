@@ -79,6 +79,8 @@ export interface HubData {
     sayOnPay: string;
     related: string;
     clawback: string;
+    /** How many insiders are trading under a pre-adopted plan — context for the Form 4 counts. */
+    plans: string;
   };
   audit: {
     firm: string;
@@ -333,6 +335,7 @@ export function hubData(T: string): HubData {
     clawback: gt("cb", 0.85)
       ? "Clawback applied · recovery of incentive comp disclosed"
       : "Clawback policy adopted; no recovery events",
+    plans: `${ri("p10", 1, 6)} officers with 10b5-1 plans adopted in the trailing year`,
   };
 
   // ---------------------------------------------------------------- 6 · accounting & audit
@@ -664,17 +667,247 @@ export function hubData(T: string): HubData {
   };
 }
 
-/** The hub's eight sections — the ordinals the rail's jump list addresses. */
+/**
+ * The hub's eight sections — the ordinals the rail's jump list addresses.
+ *
+ * Two labels are deliberately SHORTER than the section headers they point at ("Accounting
+ * quality", "Obligations"): the rail is 178px wide and a jump list that wraps stops being
+ * scannable. The ordinals are what actually bind rail to header, so the text may compress.
+ */
 export const HUB_SECTIONS = [
   { n: "01", label: "Identity & structure", href: "#s1" },
   { n: "02", label: "Financial detail", href: "#s2" },
   { n: "03", label: "Segments & geography", href: "#s3" },
   { n: "04", label: "Capital & ownership", href: "#s4" },
   { n: "05", label: "Governance & people", href: "#s5" },
-  { n: "06", label: "Accounting quality & audit", href: "#s6" },
-  { n: "07", label: "Obligations & contingencies", href: "#s7" },
+  { n: "06", label: "Accounting quality", href: "#s6" },
+  { n: "07", label: "Obligations", href: "#s7" },
   { n: "08", label: "Disclosure change", href: "#s8" },
 ];
+
+// ============================================================ the registrant's own record
+
+/**
+ * The CIK the hub shows and links with.
+ *
+ * Salted `cik` so the profile card, the EDGAR links, and anything else that needs an identity
+ * all derive the SAME number for a ticker — a page that linked to one filer and displayed
+ * another would be worse than one that linked nowhere.
+ */
+export function hubCik(T: string): string {
+  return String(320000 + Math.round(seedN(`${T}cik`) * 680000)).padStart(7, "0");
+}
+
+/** EDGAR browse-by-form-type for one registrant, by form. */
+export function hubLinks(T: string): Record<
+  "tenK" | "tenQ" | "eightK" | "proxy" | "forms4" | "ex21" | "s3" | "all",
+  string
+> {
+  const cik = hubCik(T);
+  const e = (type: string) =>
+    `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=${encodeURIComponent(type)}&dateb=&owner=include&count=40`;
+  // ex21 is an EXHIBIT to the 10-K, not a form type of its own — EDGAR has no browse for it,
+  // so the honest destination is the annual report that carries it.
+  return {
+    tenK: e("10-K"), tenQ: e("10-Q"), eightK: e("8-K"), proxy: e("DEF 14A"),
+    forms4: e("4"), ex21: e("10-K"), s3: e("S-3"), all: e(""),
+  };
+}
+
+/**
+ * What the registrant says it does — condensed from Item 1, and fixed rather than generated.
+ *
+ * Deliberately NOT interpolated per ticker: a business description assembled from a template
+ * would read as a claim about that specific filer while being nothing of the kind.
+ */
+export const HUB_BIZ_TEXT =
+  "Designs and markets semiconductor products across compute, connectivity, and analog end-markets, " +
+  "selling primarily to OEMs and distributors worldwide through a mix of in-house and third-party " +
+  "foundry capacity. Summary condensed from the most recent 10-K, Item 1 (Business).";
+
+/** The cover-page facts, in the prototype's order. */
+export function hubProfile(T: string): { k: string; v: string }[] {
+  const { pick, ri } = seeded(T);
+  const hqCities = ["Santa Clara, CA", "Austin, TX", "San Jose, CA", "San Diego, CA", "Phoenix, AZ", "Norwood, MA", "Chandler, AZ", "Milpitas, CA"];
+  const emp = (8 + Math.round(seedN(`${T}emp`) * 52)) * 1000;
+  return [
+    { k: "CIK", v: hubCik(T) },
+    { k: "SIC", v: "3674 · Semiconductors" },
+    { k: "NAICS", v: "334413" },
+    { k: "State of incorp.", v: "Delaware" },
+    { k: "Headquarters", v: pick(hqCities, "hq") },
+    { k: "Fiscal year-end", v: pick(["Dec 31", "Jan 28", "Sep 30", "Jun 30", "Dec 30"], "fye") },
+    { k: "Independent auditor", v: pick(["Big Four A", "Big Four B", "Big Four C", "Big Four D"], "aud") },
+    { k: "Employees", v: emp.toLocaleString() },
+    { k: "Filer status", v: "Large accelerated filer" },
+    { k: "First 10-K", v: `FY${1979 + ri("yr", 0, 26)}` },
+  ];
+}
+
+/** The peer-set pill in the breadcrumb — rank within whichever set is active. */
+export function hubContextPill(subActive: boolean, subCount: number): string {
+  return subActive ? `NAICS 334413 · rank 4 / ${subCount}` : "SIC 3674 · rank 5 / 62";
+}
+
+/** The segment mix shown as chips on the identity card — the filer's own reportable split. */
+export function hubSegmentChips(T: string): { label: string; pct: string; color: string }[] {
+  const names = ["Core products", "Services & licensing", "Other"];
+  const colors = ["var(--accent)", "var(--gaap)", "var(--border-strong)"];
+  const s1 = 55 + Math.round(seedN(`${T}seg`) * 25);
+  const s2 = Math.round((100 - s1) * 0.66);
+  return [s1, s2, 100 - s1 - s2].map((v, i) => ({ label: names[i], pct: `${v}%`, color: colors[i] }));
+}
+
+export interface SnapshotTile {
+  label: string;
+  src: string;
+  value: string;
+  yoy: string;
+  /** Eight points, the last one equal to the headline level. */
+  spark: number[];
+}
+
+/**
+ * The financial snapshot tiles: eight XBRL facts, each with a trailing-8-quarter shape.
+ *
+ * The YoY line carries an arrow and nothing else — no colour, no up-is-good. Direction is a
+ * fact about the series; whether it is welcome is a judgement we do not make (STYLE_GUIDE §5).
+ */
+export function hubSnapshot(T: string): SnapshotTile[] {
+  const spec: { label: string; src: string; unit: "$B" | "%" | "M"; base: number; span: number }[] = [
+    { label: "Revenue", src: "TTM · Income stmt", unit: "$B", base: 5, span: 32 },
+    { label: "Gross margin", src: "derived · IS", unit: "%", base: 38, span: 28 },
+    { label: "Operating margin", src: "derived · IS", unit: "%", base: 13, span: 26 },
+    { label: "Net income", src: "TTM · IS", unit: "$B", base: 0.8, span: 8 },
+    { label: "Free cash flow", src: "TTM · CFO − capex", unit: "$B", base: 0.7, span: 7 },
+    { label: "Cash & ST inv.", src: "Balance sheet", unit: "$B", base: 1.5, span: 11 },
+    { label: "Total debt", src: "Balance sheet", unit: "$B", base: 0.3, span: 8 },
+    { label: "Diluted shares", src: "Cover · 10-Q", unit: "M", base: 250, span: 1500 },
+  ];
+  const fmt = (v: number, u: string) =>
+    u === "%" ? `${v.toFixed(1)}%` : u === "M" ? `${Math.round(v)}M` : `$${Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1)}B`;
+
+  return spec.map((s) => {
+    const lvl = s.base + seedN(T + s.label) * s.span;
+    const g = (seedN(`${T}${s.label}g`) - 0.35) * 0.45;
+    const spark: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const t = i / 7;
+      const noise = (seedN(`${T}${s.label}${i}`) - 0.5) * lvl * 0.07;
+      spark.push(Math.max(0.05, lvl * 0.82 + g * lvl * t + noise));
+    }
+    spark[7] = lvl;
+    const yb = spark[3] || spark[0];
+    const yp = ((spark[7] - yb) / Math.abs(yb)) * 100;
+    const arrow = Math.abs(yp) < 1 ? "→" : yp > 0 ? "↑" : "↓";
+    return {
+      label: s.label,
+      src: s.src,
+      value: fmt(lvl, s.unit),
+      yoy: `${arrow} ${yp >= 0 ? "+" : "−"}${Math.abs(yp).toFixed(1)}% YoY`,
+      spark,
+    };
+  });
+}
+
+export interface HubInsider {
+  buy: number;
+  sell: number;
+  net: string;
+  dir: string;
+  window: string;
+  rows: { form: string; off: string; type: string; shares: string; date: string }[];
+}
+
+/**
+ * The Section 16 summary the hub carries — a pointer to the insider view, not a replacement.
+ *
+ * `dir` names the direction categorically ("net acquisitions") rather than scoring it. An
+ * officer selling into a 10b5-1 plan and one selling on impulse file the same form.
+ */
+export function hubInsider(T: string): HubInsider {
+  const { pick } = seeded(T);
+  const buy = 6 + Math.floor(seedN(`${T}ib`) * 10);
+  const sell = 8 + Math.floor(seedN(`${T}isl`) * 14);
+  const net = buy - sell;
+  const officers = ["CEO", "CFO", "EVP, Operations", "SVP, Worldwide Sales", "Director", "General Counsel", "Chief Accounting Officer"];
+  return {
+    buy, sell,
+    net: `${net >= 0 ? "+" : "−"}${Math.abs(net)}`,
+    dir: net > 0 ? "net acquisitions" : net < 0 ? "net dispositions" : "balanced",
+    window: "trailing 90 days · Forms 3/4/5",
+    rows: [0, 1, 2].map((i) => {
+      const acq = seedN(`${T}bs${i}`) > 0.5;
+      const shN = (2 + Math.floor(seedN(`${T}shq${i}`) * 40)) * 1000;
+      const day = 2 + Math.floor(seedN(`${T}dd${i}`) * 24);
+      return {
+        form: "Form 4",
+        off: pick(officers, `off${i}`),
+        type: acq ? "acquisition (code A)" : "disposition (code D)",
+        shares: `${shN.toLocaleString()} sh`,
+        date: `2026-04-${String(day).padStart(2, "0")}`,
+      };
+    }),
+  };
+}
+
+export interface HubCalc {
+  id: string;
+  label: string;
+  formula: string;
+  inputs: [string, string][];
+  note: string;
+}
+
+/**
+ * The four figures on this page that no filer reports — the arithmetic, opened on demand.
+ *
+ * Each one exists because we computed it, so each one has to say so and show its inputs. The
+ * `note` is the part that matters: it names the condition under which our number and a filer's
+ * own number would legitimately differ.
+ */
+export const HUB_CALCS: Record<string, HubCalc> = {
+  fcf: {
+    id: "fcf",
+    label: "Free cash flow",
+    formula: "Cash from operations − capital expenditures",
+    inputs: [
+      ["Cash from operations", "10-K / 10-Q statement of cash flows"],
+      ["Capital expenditures", "purchases of property and equipment, same statement"],
+    ],
+    note: "Not a filed line item. Filers define free cash flow differently in their own non-GAAP reconciliations; this is our definition, applied identically to every filer.",
+  },
+  gwhead: {
+    id: "gwhead",
+    label: "Goodwill headroom",
+    formula: "(Reporting-unit fair value − carrying amount) ÷ carrying amount",
+    inputs: [
+      ["Carrying amount", "goodwill footnote, by reporting unit"],
+      ["Fair value", "quantitative impairment test disclosure where given"],
+    ],
+    note: "Only computable where the filer discloses the quantitative test. Where the filer relies on a qualitative assessment, headroom is not derivable and is shown as not available.",
+  },
+  segmargin: {
+    id: "segmargin",
+    label: "Segment operating margin",
+    formula: "Segment operating income ÷ segment revenue",
+    inputs: [
+      ["Segment operating income", "ASC 280 footnote"],
+      ["Segment revenue", "ASC 280 footnote"],
+    ],
+    note: "Segment operating income is defined by the filer and excludes items management does not allocate. It is not comparable across filers.",
+  },
+  etr: {
+    id: "etr",
+    label: "Effective tax rate",
+    formula: "Income tax provision ÷ pre-tax income",
+    inputs: [
+      ["Income tax provision", "income statement"],
+      ["Pre-tax income", "income statement"],
+    ],
+    note: "The reconciliation shown is the filer's own bridge from the statutory rate. Rate components are as disclosed, not recomputed.",
+  },
+};
 
 // ============================================================ metric time series
 
