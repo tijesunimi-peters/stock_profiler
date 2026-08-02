@@ -38,12 +38,21 @@ The reference is `Sector Analytics.dc.html`. Two different things live in this a
 which one you are looking at:
 
 **Ported** — measured against the prototype's own markup, panel for panel and grid for grid:
-the shell, Sector altitude, Company hub → Overview, Financial history, Institutional 01–07.
+the shell, Sector altitude, Qualitative, Filings, Company hub → Overview, Financial history,
+Institutional 01–07.
 
 **Built from the written specs** — an interpretation of `HANDOFF.md` / the upload spec, never
 reconciled against the prototype: Insider activity, Peer-relative, the six Manager views, and
 both Compare surfaces. These will differ from the prototype in panel set, column widths and
 affordances. Port them before treating them as reference.
+
+Two deliberate departures from the prototype, both on ported surfaces:
+
+- The Filings view's **form tabs actually filter**. The prototype wires them to a no-op. A
+  control that visibly does nothing is worse than no control, so they were made real.
+- Every page keeps its **"Data notes & coverage" block**, which the prototype has nowhere. These
+  carry the standard caveats the product commits to; dropping them app-wide to match a design
+  file is a product decision, not a port detail.
 
 A note on what "ported" has to include, learned the expensive way: a section whose headers,
 copy and grids all match can still be a third of the work. The prototype hangs a **source link**
