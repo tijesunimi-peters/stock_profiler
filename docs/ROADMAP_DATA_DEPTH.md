@@ -167,6 +167,30 @@ phase is deliberately funded.
   not a mapping extension, and competes with other post-launch work. Operator
   decision with the spike doc in hand.
 
+## Phase 3b — Generic filing index from `/submissions/` (DECIDED 2026-08-01, in build)
+
+**One store, three consumers**, from a payload we already download on every company request.
+
+`sec/insider.py:_recent_filings()` already walks `/submissions/`'s parallel arrays filtered to
+Forms 3/4/5. Generalising that walk yields, per (cik, accession): `form` · `filingDate` ·
+**`acceptanceDateTime`** · `accessionNumber` · **`items`** · `reportDate` · `primaryDocument`.
+
+| consumer | what it takes |
+|---|---|
+| **V3-P5a §06 supply events** | existence + date of S-1/S-3/SC TO/Form 25/Form 15 — turns four *asserted* absences into *earned* ones |
+| **V3-P5a §06 acceptance-lag histogram** | `acceptanceDateTime` − quarter end, per 13F-HR filer |
+| **V3-P3** (`ROADMAP_APP_V3` §6) | 8-K `items` + acceptance timestamps — **the parallel track rides on this and stops being separate work** |
+
+⚠️ **Existence and date only, never terms.** Lock-up length, tender price and share counts live in
+the documents and their exhibits — prose, Track 2. A card built on this may say "no S-1/S-3 among
+the N filings we scanned"; it may **not** say "no lock-up restrictions", which remains
+unanswerable.
+
+💡 Verified 2026-08-01 with our compliant User-Agent: AAPL's recent submissions carry `25-NSE`,
+`S-3ASR`, `424B2`, `8-A12B`, `S-8` and 44 `144`s; a Vanguard 13F-HR carries
+`acceptanceDateTime` alongside `filingDate` (they agree at day granularity, diverging only for
+after-hours filings, where EDGAR assigns the next business day as the filing date).
+
 ## Phase 4 — The N-forms: N-PX (proxy votes) and N-PORT (fund holdings)
 
 **Status: DECIDED to build later** (operator, 2026-08-01) — *"We will build on the N forms later

@@ -289,6 +289,47 @@ behind them at all, and a third has a column that is Track 2.
    structured self-classification that fills the same slot and answers a related question (what
    KIND of holder) without touching prose. No new ingest.
 
+### 🔒 §06 — the operator's four rulings (2026-08-01). Do NOT re-litigate.
+
+§06 turned out to be **more sourceable than the gap table claimed**, and to contain the largest
+concentration of one specific defect: **absence claims about filings we never look at**
+("No lock-up restrictions currently on file", "No tender offer on file", "No Form 25 or Form 15
+filed", "No confidential treatment requests on file this quarter"). That is §04's activism-clause
+problem as an entire card.
+
+6. **D-supply — BUILD THE INGEST.** *(Operator chose this over empty-stating the card. I had
+   flagged it as "a separate milestone, not part of this port"; the operator's call stands.)*
+   ✅ **Verified: every supply form family IS in the `/submissions/` JSON we already fetch**, with
+   dates — AAPL alone has `25-NSE`, `S-3ASR`, `424B2`, `8-A12B`, `S-8`, and 44 `144`s.
+   ⚠️ **This gives EXISTENCE + DATE, never TERMS.** Lock-up *length* lives in an underwriting-
+   agreement exhibit, which is prose = Track 2, so **"no lock-up restrictions" stays unanswerable
+   even after this lands**. What the card can honestly say is "no S-1/S-3 in the N filings we
+   scanned" — an **earned** absence rather than an asserted one, which is the actual defect.
+7. **D-filing-index — GENERIC, not supply-only.** One store: form · filing date ·
+   **`acceptanceDateTime`** · accession · **`items`** · report date, per CIK. One pass over a
+   payload we already download serves **three consumers**: §06's supply events, §06's acceptance
+   lag, and **V3-P3's 8-K item codes — so the parallel track stops being separate work.**
+   The mechanism already exists: `sec/insider.py:_recent_filings()` walks these same parallel
+   arrays filtered to Forms 3/4/5. Generalise it.
+8. **D-acceptance — TRUE ACCEPTANCE LAG.** ⚠️ **This ruling was REVISED because I gave a wrong
+   premise.** I said acceptance timestamps were not stored and were V3-P3 work; the operator
+   ruled "relabel as filing lag" on that basis. **`acceptanceDateTime` is in the `/submissions/`
+   JSON we already fetch**, next to `filingDate` — verified on real Vanguard 13F-HRs. Corrected
+   and re-asked; the operator chose true acceptance lag. §06's histogram is captioned as the
+   design intended, and **§01 can drop its "these are filing dates, not acceptance timestamps"
+   caveat** once the index is populated.
+   💡 Measured: at DAY granularity the two agree on every sample (29/38/42/39). They diverge only
+   for after-hours filings, where EDGAR assigns the NEXT business day as `filingDate`.
+9. **D-10b5-1 — CAPTURE `aff10b5One` NOW.** ✅ **Verified present in the Form 4 XML we already
+   download** (real AAPL filing, value `false`). Our parser discards it. Same small shape as §04's
+   `is_derivative`: parser + schema field + guarded migration. Turns §06's "10b5-1 cooling-off"
+   row and the plan count into real data. **It also benefits the existing Insider view**, which
+   today cannot distinguish a planned sale from a discretionary one.
+
+**Not a fork, decided and recorded:** §06's *"Index-manager share counts stepped up together in
+3Q25 — consistent with an index inclusion event"* is an **inference presented as an observation**
+and is removed outright. Nothing sources it and nothing should.
+
 ### 🔒 Still in force from 2026-07-28 (settled before attempt 3; unchanged)
 
 **FIVE company views, and exactly ONE slug retires.**
