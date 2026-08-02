@@ -1,0 +1,10 @@
+{
+  "pkg": "@clearyfi/design-prototype",
+  "globalName": "ClearyFiDS",
+  "shape": "package",
+  "buildCmd": "npm run build",
+  "srcDir": "src",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "dist/clearyfi.css",
+  "extraFonts": ["dist/fonts/fonts.css"]
+}

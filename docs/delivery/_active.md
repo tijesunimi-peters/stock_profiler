@@ -898,10 +898,31 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         🔶 **N-PORT applied the D-voting precedent without re-asking**: a structured-XML form we do
         not ingest gets an honest empty state whose copy says "not ingested yet", not "cannot be
         reported". Same shape as N-PX, ruled one section earlier. Flagged for overrule.
-  - [ ] **§06** — WILL need a ruling: supply events (S-1/S-3, SC TO, Form 25/15) and the
-        acceptance-lag histogram are both unsourced. Acceptance timestamps are V3-P3.
-        💡 Check prototype v4 first — §06's Form 144 card was already retired by the design.
-        §07 is reference copy and stays.
+  - [x] **§06 BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet operator-accepted.**
+        🎉 **`IP06` deleted — and with it the LAST literal. The NOT-REAL-DATA banner is GONE**,
+        because it names the sections still on literals and there are none. **D-literals is
+        satisfied: no prototype literal remains anywhere in the ported view.**
+        703 pytest, **5/5 §06 controls**, `svgOverflow=0` webfont-blocked, `zeros: []`, 0 errors.
+        **The absence claims are now CHECKED**: "Tender offers: none found", followed by
+        *"counted over 1,000 indexed filings, 2015-06-01 to 2026-07-31"*. `p2-drive-06.js`
+        asserts every "none" is scoped AND that the three removed things stayed removed.
+        ⚠️ **Three layout defects, all one cause: I invented class names instead of using the
+        ported ones.** `.ip-supply` does not exist (the ported class is `.ip-facts`), so the
+        supply lines ran together into one paragraph; the mechanics lines did the same; and I
+        wrapped the two revealed cards in a `.ip-grid2` of my own rather than the accepted
+        `.ip-grid2--nested`, so they stacked full-width and **stretched 306-unit charts to 660,
+        doubling every label**. The accepted build's wrappers are load-bearing — phase 1's §06
+        entry says exactly this about the mirror-image mistake.
+        ⚠️ **And I deleted two shared chart builders** (`ipTimeline`, `ipHistogram`) with the
+        replacement, because they sat between §06's blocks and §07. Restored from HEAD.
+        🔶 **DEVIATION, listed:** the timeline's "10b5-1 cooling-off" row is gone. `aff10b5One`
+        says a trade was made UNDER a plan; it does not carry the plan's ADOPTION date, and a
+        cooling-off window can only be drawn from one. The flag feeds a **count** on the insider
+        card instead ("53 of 144 transactions, across 5 insiders"). Drawing the band from
+        anything else would be inventing a date.
+        Also gone, as ruled: the index-inclusion **inference**, the confidential-treatment
+        absence (a form family we do not index), and the Item 405 line (DEF 14A prose).
+  - [ ] **§06 QA + 4b** — the LAST gate for phase 2. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.

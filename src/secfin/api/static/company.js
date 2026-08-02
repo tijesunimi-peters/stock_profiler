@@ -762,7 +762,7 @@
    * when the last literal goes. Nothing here re-derives a number the API owns.
    * ======================================================================================== */
 
-  var IP_DONE = ["01", "02", "03", "04", "05"]; // sections wired to real filings data
+  var IP_DONE = ["01", "02", "03", "04", "05", "06"]; // sections wired to real filings data
 
   var IP_SERIES_QUARTERS = 5; // the prototype's own axis length for §02's over-time charts
   var IP_FLOW_QUARTERS = 6;   // §03's diverging-flow axis, the prototype's own length
@@ -776,6 +776,7 @@
    * filings — most of them — so this read goes to SEC every time. Pre-existing (see 4-qa.md),
    * not introduced here, and the reason not to raise the number further. */
   var IP_BO_LIMIT = 40;
+  var IP_INSIDER_LIMIT = 60;  // §06 reads the plan-marking flag off these, not the amounts
 
   /* "This request has not answered yet" -- distinct from both `null` (never asked) and
    * `{_err}` (asked and failed). Without it a section repainted mid-load renders its honest
@@ -798,6 +799,8 @@
     attribution: null,  // /institutional-share-attribution -- reported shares vs outstanding (§03)
     overlap: null,      // /institutional-peer-overlap    -- cross-issuer manager overlap (§03)
     beneficial: null,   // /beneficial-ownership          -- Schedule 13D/G filings (§04)
+    filings: null,      // /filing-index                  -- supply events + acceptance lag (§06)
+    insider: null,      // /insider-trades                -- Forms 3/4/5, for the 10b5-1 flag (§06)
     registers: {},      // period -> that quarter's register (§02's over-time charts)
     status: "idle",     // idle | loading | ready | error
     error: null,
@@ -812,7 +815,7 @@
     IP_DATA.error = null;
     IP_DATA.registers = {};
     ["register", "shape", "filed", "activity", "series", "flows", "domicile", "attribution",
-      "overlap", "beneficial"].forEach(function (k) { IP_DATA[k] = IP_PENDING; });
+      "overlap", "beneficial", "filings", "insider"].forEach(function (k) { IP_DATA[k] = IP_PENDING; });
     var report = onProgress || function () {};
     var base = "/companies/" + encodeURIComponent(symbol) + "/institutional";
     var q = period ? "?period=" + encodeURIComponent(period) : "";
@@ -863,6 +866,14 @@
           land("beneficial",
             soft(P.api("/companies/" + encodeURIComponent(symbol) +
               "/beneficial-ownership?limit=" + IP_BO_LIMIT)), ["04"]),
+          // §06. The filing index is period-scoped only for the acceptance lag, which is
+          // measured over the register's MANAGERS for that quarter.
+          land("filings",
+            soft(P.api("/companies/" + encodeURIComponent(symbol) + "/filing-index" + pq)),
+            ["06"]),
+          land("insider",
+            soft(P.api("/companies/" + encodeURIComponent(symbol) +
+              "/insider-trades?limit=" + IP_INSIDER_LIMIT)), ["06"]),
         ]).then(function (r) {
           /* The older quarters are DEFERRED until the primary calls have settled.
            *
@@ -3901,142 +3912,363 @@
     );
   }
 
-  /* ============================ §06 · Register limits & supply ============================ */
-  var IP06 = {
-    supply: [
-      "No lock-up restrictions currently on file",
-      "No tender offer on file",
-      "No Form 25 or Form 15 filed",
-    ],
-    // Windows on a shared time axis; x positions recovered from the capture, like §04's lanes.
-    timeline: {
-      grid: [[233.2381, ""], [311.8901, "Jan 26"], [387.9634, "Mar 26"], [466.6154, "May 26"], [545.2674, "Jul 26"]],
-      today: [574.9231, "today"],
-      rows: [
-        { name: "10b5-1 cooling-off", sub: "Rule 10b5-1 · 90 days", x: 250, w: 116.044,
-          mark: 366.044, label: "first trade eligible", anchor: "start" },
-        { name: "Next 13F window", sub: "13F-HR · 45 days", x: 543.978, w: 58.022,
-          mark: 602, label: "filing deadline", anchor: "end" },
-      ],
-    },
-    timelineNote:
-      "Only windows that are actually on file appear here — a row exists when a filing dates it. " +
-      "Dates come from the filings themselves. A registration or an expiry establishes when shares " +
-      "may be sold; it does not say that any sale occurred.",
-    supplyNote:
-      "Registration statements establish which shares may be resold; they do not indicate that a " +
-      "sale occurred.",
-    plans: "6 officers and directors with 10b5-1 plans referenced in the trailing year",
-    delinquent: "No Item 405 delinquencies disclosed",
-    insiderXrefNote:
-      "Section 16 filings are reported in full on their own view. Insider ownership above comes " +
-      "from the DEF 14A table, which is dated as of the proxy record date.",
-    mechanics: [
-      "No confidential treatment requests on file this quarter",
-      "14 amended 13F-HR filings restating a prior position",
-      "Index-manager share counts stepped up together in 3Q25 — consistent with an index inclusion event",
-      "Median filing lag 40 days after quarter end",
-    ],
-    // Acceptance-lag histogram. Counts recovered from the bar heights and they come out integral,
-    // which is the check that the axis was recovered rather than guessed.
-    lag: {
-      counts: [3, 2, 9, 20, 41, 84, 118, 163, 89, 71, 43, 16, 5, 4],
-      axisMax: 163,
-      yTicks: ["0", "82", "163"],
-      xLabels: [[0, "33"], [2, "35"], [4, "37"], [6, "39"], [8, "41"], [10, "43"], [12, "45"]],
-      median: { i: 7, label: "median 40" },
-      caption: "days after quarter end",
-    },
-    lagNote:
-      "Distribution of EDGAR acceptance lag across this quarter’s 13F-HR filings, in days after " +
-      "quarter end. The statutory deadline is 45 days, so the register is never complete before then.",
-    amendments: {
-      values: [4.9119, 2.9, 9.8833, 7.8714, 3.972, 10.9553, 8.9434, 6.9315, 6.7995],
-      axisMin: 2.9, axisMax: 11.6, color: "var(--gaap-color)",
-      ticks: ["2.9", "5.1", "7.3", "9.5", "11.6"],
-    },
-    quarters9: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
-    amendmentsNote:
-      "Amended 13F-HR filings per 100 filings in the register, by quarter. Amendments restate a " +
-      "position already reported — a higher rate means the first read of a quarter is less reliable.",
-    mechanicsNote: "Mechanics describe the completeness of the register itself, not the company.",
-  };
+  /* ============================ §06 · Filing mechanics ============================
+   * PHASE 2. `IP06` is gone. §06 held the largest concentration of one specific defect: it
+   * ASSERTED absences about filings we never looked at ("No tender offer on file", "No Form 25
+   * or Form 15 filed", "No confidential treatment requests"). The operator ruled BUILD THE
+   * INGEST (D-supply), so those become CHECKED absences, scoped to a window we state.
+   *
+   *   supply-side events        /filing-index -> supply.categories
+   *   next-window timeline      a filing RULE (the 45-day statute), like §01's speed block
+   *   acceptance-lag histogram  /filing-index -> acceptance_lag, over the REGISTER'S MANAGERS
+   *   amendment rate            period_meta.amendment_count per ingested quarter
+   *   10b5-1 plan use           the insider rows' `rule_10b5_1` flag
+   *
+   * ⚠️ THE ONE SENTENCE THIS SECTION TURNS ON: an absence over a WINDOW is not an absence over
+   * HISTORY. Every zero here is followed by the window it was checked against, and when nothing
+   * has been indexed the card says "we have not looked" rather than "none on file".
+   * ==================================================================================== */
 
   function ipSection06() {
+    if (IP_DATA.status === "idle" || ipPending(IP_DATA.filings)) {
+      return P.states.loading({ title: "Loading filing mechanics" });
+    }
+    /* The grid wrappers are the accepted build's, and they are load-bearing: §06's two revealed
+     * cards SHARE A ROW at ~340px each, which is the width its 306-unit charts are authored for.
+     * Stacking them full-width stretches those charts to the column and doubles every label.
+     * (Phase 1 paid for the mirror image of this — see the log's §06 entry.) */
     return (
       '<div class="ip-grid2">' +
       ip06Supply() +
       ipExpander(
         "Also in this section",
-        "insider filings beyond Form 4 · how complete the register itself is",
-        '<div class="ip-grid2 ip-grid2--nested">' + ip06Form144() + ip06Mechanics() + "</div>"
+        "insider filing mechanics · how complete the register itself is",
+        '<div class="ip-grid2 ip-grid2--nested">' + ip06Insider() + ip06Mechanics() + "</div>"
       ) +
       "</div>"
     );
   }
 
+  // ---------- supply-side events ----------
+
   function ip06Supply() {
-    return (
+    var f = IP_DATA.filings;
+    var block = ipPending(f) || ipErr(f) ? null : f.supply;
+    var head =
       '<div class="ip-card ip-card--flush ip-card--full">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Supply-side events</h3>' +
       '<span class="ip-card-note">S-1 / S-3 · SC TO · Form 25 / 15</span>' +
-      "</div>" +
-      '<div class="ip-facts">' +
-      IP06.supply.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
-      "</div>" +
+      (block && block.status !== "ok" ? ipStatusChip("na") : "") +
+      "</div>";
+    if (ipPending(f)) return head + ip03Loading() + "</div>";
+    if (ipErr(f) || !block || block.status !== "ok") {
+      return head + ip03Empty(ipWhy(
+        ipErr(f) ? f : block,
+        "no filing index has been ingested for this company, so we have not looked"
+      )) + "</div>";
+    }
+    /* Each row is a CHECKED count. A zero here means "none among the filings we read", which is
+     * why the window below it is not decoration -- it is what makes the zero a statement. */
+    var rows = block.categories
+      .map(function (c) {
+        var body = c.count
+          ? c.count + (c.latest_filed ? " · latest " + c.latest_form + " " + c.latest_filed : "")
+          : "none found";
+        return "<span><span>" + P.esc(c.label + ": " + body) + "</span></span>";
+      })
+      .join("");
+    var window = block.covered_from && block.covered_to
+      ? block.covered_from + " to " + block.covered_to
+      : "the filings we hold";
+    return (
+      head +
+      '<div class="ip-facts">' + rows + "</div>" +
       '<div class="ip-subbar ip-subbar--windows">' +
       '<span class="ip-micro">Windows and expiries ahead</span>' +
       ipChip("06-windows") +
       "</div>" +
-      ipTimeline(IP06.timeline, 660, 154) +
-      '<div class="ip-caption"><span>' + P.esc(IP06.timelineNote) + "</span></div>" +
-      '<div class="ip-caption ip-caption--10"><span>' + P.esc(IP06.supplyNote) + "</span></div>" +
+      ipTimeline(ip06TimelineSpec(), 660, 154) +
+      '<div class="ip-caption"><span>' + P.esc(ip06TimelineNote()) + "</span></div>" +
+      '<div class="ip-caption ip-caption--10"><span>' + P.esc(
+        "Counted over " + ipCount(block.indexed_count) + " indexed filings, " + window +
+        ". A count of none means none among those — EDGAR's recent-filings window is not a " +
+        "company's whole history, so this is a checked absence over a period, not a claim about " +
+        "all time. These are filings that EXIST: a registration statement establishes which " +
+        "shares may be resold, and says nothing about whether a sale occurred or on what terms. " +
+        "Lock-up length lives in an exhibit we do not parse, so no count here answers it."
+      ) + "</span></div>" +
       "</div>"
     );
   }
 
-  /* Prototype v4 gutted this card. The Form 144 dot calendar, its ⤡ Expand, the notices list and
-   * the cooling-off line are all gone from the design — Section 16 moved to a view of its own.
-   * Ported as-is, which also retires the largest CANNOT-SOURCE row in 3-implementation.md: we
-   * were about to build an honest empty state for a card the design no longer has. */
-  function ip06Form144() {
+  /* The timeline carries ONE row now, and it is a filing RULE rather than a figure: the next
+   * statutory 13F window, from the same 45-day calendar arithmetic §01's deadline uses.
+   *
+   * 🔶 DEVIATION, listed: the prototype's second row was a "10b5-1 cooling-off" window. We now
+   * capture the Form 4 Rule 10b5-1 box (D-10b5-1), but that flag says a trade was made UNDER a
+   * plan — it does not carry the plan's ADOPTION date, and a cooling-off window can only be drawn
+   * from an adoption date. So the flag feeds a COUNT on the insider card below instead of a dated
+   * band here. Drawing the band from anything else would be inventing a date. */
+  function ip06TimelineSpec() {
+    var deadlineDays = 45;
+    var reg = IP_DATA.register;
+    if (!ipErr(reg) && reg && reg.period_meta && reg.period_meta.deadline_days) {
+      deadlineDays = reg.period_meta.deadline_days;
+    }
+    var due = ipNextDeadline(deadlineDays);
+    var today = ipTodayIso();
+    // The axis runs from today to a fortnight past the deadline, so the band has room to read.
+    var lo = Date.parse(today);
+    var hi = Date.parse(due) + 14 * 86400000;
+    var X0 = 250, X1 = 620;
+    var x = function (iso) {
+      var v = Date.parse(iso);
+      if (isNaN(v) || hi === lo) return X0;
+      return X0 + ((v - lo) / (hi - lo)) * (X1 - X0);
+    };
+    var grid = [];
+    var d = new Date(lo);
+    d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+    for (var i = 0; i < 8; i++) {
+      d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+      if (d.getTime() > hi) break;
+      var iso = d.toISOString().slice(0, 10);
+      grid.push([x(iso), ipMonthLabel(iso)]);
+    }
+    return {
+      grid: grid,
+      today: [x(today), "today"],
+      rows: [
+        {
+          name: "Next 13F window",
+          sub: "13F-HR · " + deadlineDays + " days",
+          x: x(today),
+          w: Math.max(8, x(due) - x(today)),
+          mark: x(due),
+          label: "filing deadline",
+          anchor: "end",
+        },
+      ],
+      deadline: due,
+    };
+  }
+
+  function ipMonthLabel(iso) {
+    var M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return M[+iso.slice(5, 7) - 1] + " " + iso.slice(2, 4);
+  }
+
+  function ip06TimelineNote() {
+    var spec = ip06TimelineSpec();
     return (
+      "The next statutory 13F window closes " + spec.deadline + " — that is the filing rule " +
+      "applied to the calendar, not a prediction about any filer. Only windows a filing actually " +
+      "dates can appear here; a registration or an expiry establishes when shares may be sold, " +
+      "and does not say that any sale occurred."
+    );
+  }
+
+  // ---------- insider filing mechanics ----------
+
+  /* The 10b5-1 flag, as a count over the insider rows we hold. `rule_10b5_1` is the filer's own
+   * cover-box declaration that a trade was PRE-ARRANGED; `null` is unknown (pre-2022 filings
+   * predate the box), and unknown is reported rather than folded into either answer. */
+  function ip06PlanUse() {
+    var a = IP_DATA.insider;
+    // /insider-trades returns a bare ARRAY of transactions, not an envelope.
+    if (ipPending(a) || ipErr(a) || !Array.isArray(a)) return null;
+    var rows = a.filter(function (t) { return !t.is_holding; });
+    if (!rows.length) return null;
+    var planned = 0, discretionary = 0, unknown = 0;
+    var owners = {};
+    rows.forEach(function (t) {
+      if (t.rule_10b5_1 === true) { planned += 1; owners[t.owner_name || "?"] = true; }
+      else if (t.rule_10b5_1 === false) discretionary += 1;
+      else unknown += 1;
+    });
+    return {
+      total: rows.length,
+      planned: planned,
+      discretionary: discretionary,
+      unknown: unknown,
+      owners: Object.keys(owners).length,
+    };
+  }
+
+  function ip06Insider() {
+    var use = ip06PlanUse();
+    var head =
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Insider filings</h3>' +
-      '<span class="ip-card-note">Forms 3/4/5 · Form 144 · Item 405</span>' +
-      "</div>" +
-      '<div class="ip-plan-line">' + P.esc(IP06.plans) + "</div>" +
-      '<div class="ip-plan-line ip-plan-line--soft">' + P.esc(IP06.delinquent) + "</div>" +
-      ipGoLink(
-        "Insider activity view — ledger, transaction codes, Form 144 notices →",
-        "ip-xref-link--block"
-      ) +
-      '<div class="ip-caption">' + P.esc(IP06.insiderXrefNote) + "</div>" +
+      '<span class="ip-card-note">Rule 10b5-1 plan use, from the Form 4 cover box</span>' +
+      (use ? "" : ipStatusChip("na")) +
+      ipLink("Read the Forms 4 ↗", ipEdgarFts("4")) +
+      "</div>";
+    if (ipPending(IP_DATA.insider)) return head + ip03Loading() + "</div>";
+    if (!use) {
+      return head + ip03Empty(
+        "No Form 3/4/5 transaction has been ingested for this issuer, so there is nothing to " +
+        "classify."
+      ) + "</div>";
+    }
+    return (
+      head +
+      '<div class="ip-plan-line">' + P.esc(
+        use.planned
+          ? use.planned + " of " + use.total + " reported transactions were made under a Rule " +
+            "10b5-1 plan, across " + use.owners + " insider(s)."
+          : "None of the " + use.total + " reported transactions we hold was marked as made " +
+            "under a Rule 10b5-1 plan."
+      ) + "</div>" +
+      '<div class="ip-plan-line ip-plan-line--soft">' + P.esc(
+        use.unknown
+          ? use.unknown + " transaction(s) carry no plan marking at all — Forms 4 filed before " +
+            "the box existed. Those are unknown, not discretionary."
+          : "Every transaction we hold carries an explicit plan marking."
+      ) + "</div>" +
+      '<div class="ip-caption"><span>' + P.esc(
+        "A 10b5-1 plan is pre-arranged: the trade was scheduled in advance rather than decided " +
+        "when it executed. The marking is the filer's own, on the Form 4 cover page — it is a " +
+        "disclosure, not our judgment, and it says nothing about why the plan was adopted."
+      ) + "</span></div>" +
+      ipGoLink("Insider activity view — ledger, transaction codes →") +
       "</div>"
     );
   }
 
+  // ---------- register mechanics ----------
+
   function ip06Mechanics() {
-    return (
-      '<div class="ip-card ip-card--flush">' +
+    var f = IP_DATA.filings;
+    var lag = ipPending(f) || ipErr(f) ? null : f.acceptance_lag;
+    var pop = ipPending(f) || ipErr(f) ? null : f.lag_population;
+    var reg = IP_DATA.register;
+    var meta = ipErr(reg) || !reg ? null : reg.period_meta;
+    var amend = ip06AmendmentSeries();
+
+    var lines = [];
+    if (meta && meta.amendment_count !== null && meta.amendment_count !== undefined) {
+      lines.push(
+        meta.amendment_count
+          ? meta.amendment_count + " amended 13F-HR filing(s) restating a prior position this " +
+            "quarter"
+          : "No amended 13F-HR filing this quarter among the filers we ingested"
+      );
+    }
+    if (lag && lag.status === "ok" && lag.median_days !== null) {
+      lines.push("Median acceptance lag " + lag.median_days + " days after quarter end");
+    }
+    /* ⚠️ REMOVED, deliberately: the prototype's "Index-manager share counts stepped up together
+     * in 3Q25 — consistent with an index inclusion event". That is an INFERENCE presented as an
+     * observation; nothing sources it and nothing should. Also gone: "No confidential treatment
+     * requests on file this quarter", which asserted an absence about a form family we do not
+     * index at all. */
+    var head =
+      '<div class="ip-card">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Register mechanics</h3>' +
-      '<span class="ip-card-note">completeness of the register itself</span>' +
-      "</div>" +
-      '<div class="ip-facts ip-facts--7">' +
-      IP06.mechanics.map(function (t) { return "<span><span>" + P.esc(t) + "</span></span>"; }).join("") +
-      "</div>" +
-      '<div class="ip-micro ip-micro--block">Acceptance lag across this quarter’s filings</div>' +
-      ipHistogram(IP06.lag, 306, 175) +
-      '<div class="ip-caption"><span>' + P.esc(IP06.lagNote) + "</span></div>" +
-      '<div class="ip-micro ip-micro--block">Amendments per 100 filings</div>' +
-      ipAreaChart(IP06.amendments, IP06.quarters9, 306, 160) +
-      '<div class="ip-caption"><span>' + P.esc(IP06.amendmentsNote) + "</span></div>" +
-      '<div class="ip-caption ip-caption--10"><span>' + P.esc(IP06.mechanicsNote) + "</span></div>" +
+      '<span class="ip-card-note">how completely and how late the register assembles</span>' +
+      "</div>";
+    return (
+      head +
+      (lines.length
+        ? '<div class="ip-facts ip-facts--7">' +
+          lines.map(function (l) { return "<span><span>" + P.esc(l) + "</span></span>"; }).join("") +
+          "</div>"
+        : "") +
+      '<div class="ip-micro ip-micro--block">Acceptance lag across this quarter\u2019s filings</div>' +
+      (lag && lag.status === "ok"
+        ? ipHistogram(ip06LagSpec(lag), 306, 175) +
+          '<div class="ip-caption"><span>' + P.esc(ip06LagNote(lag, pop)) + "</span></div>"
+        : ip03Empty(ipWhy(
+            lag,
+            "no indexed 13F filing carries both a reported period and an acceptance timestamp"
+          ))) +
+      '<div class="ip-micro ip-micro--block">Amended filings per 100 filers</div>' +
+      (amend
+        ? ipAreaChart(amend.series, amend.labels, 306, 160) +
+          '<div class="ip-caption"><span>' + P.esc(
+            "Amended 13F-HR filings as a share of the filers we ingested each quarter. An " +
+            "amendment restates a position already reported, so a higher rate means the first " +
+            "read of a quarter was less reliable."
+          ) + "</span></div>"
+        : ip03Empty(
+            "Fewer than two ingested quarters carry an amendment count, so there is no rate to " +
+            "chart."
+          )) +
+      '<div class="ip-caption ip-caption--10"><span>' + P.esc(
+        "Mechanics describe the completeness of the REGISTER, not the company."
+      ) + "</span></div>" +
       "</div>"
     );
+  }
+
+  /* The histogram in `ipHistogram`'s own shape. The prototype's bins were recovered from bar
+   * heights; the API returns one bucket per day, so the bins are the data. */
+  function ip06LagSpec(lag) {
+    var max = Math.max.apply(null, lag.counts);
+    var ax = ipNiceAxis(max, function (v) { return ipCount(Math.round(v)); }, true);
+    // Label roughly every other bucket, and always the ends, so a long axis stays readable.
+    var step = Math.max(1, Math.ceil(lag.days.length / 7));
+    var labels = [];
+    lag.days.forEach(function (d, i) {
+      if (i % step === 0 || i === lag.days.length - 1) labels.push([i, String(d)]);
+    });
+    var medianIndex = 0, best = Infinity;
+    lag.days.forEach(function (d, i) {
+      var gap = Math.abs(d - (lag.median_days || 0));
+      if (gap < best) { best = gap; medianIndex = i; }
+    });
+    return {
+      counts: lag.counts,
+      axisMax: ax.axisMax,
+      yTicks: [ax.ticks[0], ax.ticks[2], ax.ticks[4]],
+      xLabels: labels,
+      median: { i: medianIndex, label: "median " + lag.median_days },
+      caption: "days after quarter end",
+    };
+  }
+
+  function ip06LagNote(lag, pop) {
+    var covered = pop && pop.manager_count
+      ? " Measured over " + ipCount(pop.indexed_manager_count) + " of the " +
+        ipCount(pop.manager_count) + " managers holding this quarter's register — the rest have " +
+        "no filing index yet, so this describes the ones we indexed."
+      : "";
+    return (
+      "When EDGAR ACCEPTED each 13F-HR, in days after the quarter it reports on. The statutory " +
+      "deadline is 45 days, so the register is never complete before then." + covered +
+      (lag.reason ? " " + lag.reason + "." : "")
+    );
+  }
+
+  /* Amendments per ingested quarter, as a share of that quarter's filers. Both numbers come from
+   * the same `period_meta` the freshness strip uses, so the chart and §01 cannot disagree. */
+  function ip06AmendmentSeries() {
+    var qs = ip02Quarters();
+    var values = [], labels = [];
+    qs.forEach(function (period) {
+      var r = IP_DATA.registers[period];
+      var m = r && r.period_meta;
+      if (!m || m.ingested_filer_count === null || !m.ingested_filer_count) return;
+      var count = m.amendment_count;
+      if (count === null || count === undefined) return;
+      values.push((count / m.ingested_filer_count) * 100);
+      labels.push(ipQuarter(period));
+    });
+    if (values.length < 2) return null;
+    var ax = ipNiceAxis(Math.max.apply(null, values) || 1, function (v) { return v.toFixed(1); });
+    return {
+      labels: labels,
+      series: {
+        values: values,
+        axisMax: ax.axisMax,
+        color: "var(--gaap-color)",
+        ticks: ax.ticks,
+      },
+    };
   }
 
   /* Windows and expiries on a shared time axis: one row per dated window, a rounded band for its
@@ -4555,7 +4787,7 @@
     "06-windows": {
       title: "Windows and expiries ahead",
       note: "every dated window currently on file",
-      render: function (w) { return ipTimeline(IP06.timeline, w, 154); },
+      render: function (w) { return ipTimeline(ip06TimelineSpec(), w, 154); },
     },
     "05-cohorts": {
       title: "Holder persistence by entry cohort",
