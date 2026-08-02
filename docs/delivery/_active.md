@@ -803,8 +803,15 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         `cached_filing_count >= limit`, and an issuer with 3 structured 13D/G filings can never
         reach 60. Set to 40 to match `_BO_TYPE_LOOKBACK` so it shares one cache state. **The cache
         rule itself is a pre-existing bug affecting §01/§02/§04 — recorded, not fixed.**
-  - [ ] **§04 QA + 4b** — §04 has a rendered surface, so the operator gate is mandatory. Can be
-        walked together with §05's if both land before the next gate.
+  - [x] ✅ **§04+§05 QA DONE** (2026-08-01) — `4-qa.md`, **PASS pending the manual gate**.
+        **⚠️ FIVE QA pairs now sit in this folder and ONLY the filenames tell them apart:**
+        `*-phase1.md` = the fidelity gate · `*-p2-s01.md` = §01 · `*-p2-s0203.md` = §02+§03 ·
+        `4-qa.md` / `4b-manual-verification.md` = **§04+§05, awaiting sign-off**.
+  - [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`** (12 rows, ~5 min, covers §04
+        AND §05). The judgement rows are **5/6/11**: three empty states that must read as
+        DIFFERENT KINDS of gap, not blur into "no data". 🔶 And **N-PORT was decided without
+        asking** — the D-voting precedent applied to an identical case; overrule if that reading
+        is wrong.
   - [x] **§05 Holder behavior BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet
         operator-accepted**; it shares §04's open gate. `IP05` deleted. 686 pytest (+9),
         **5/5 §05 controls**, `svgOverflow=0` webfont-blocked, `zeros: []`, 0 page errors.
