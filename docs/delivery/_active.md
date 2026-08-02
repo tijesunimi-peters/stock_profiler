@@ -819,6 +819,18 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         needed**. 8-K Item 5.07's HTML exclusion stays separate and permanent. **§06 does not need
         to re-ask for that shape** — only for anything genuinely new.
   - [x] ✅ **§01–§05 ARE ALL OPERATOR-ACCEPTED.** Only §06 remains.
+  - 📌 **N-FORMS: BUILD LATER, and the groundwork is recorded** (operator, 2026-08-01) — *"We will
+        build on the N forms later considering they exist on SEC EDGAR."* **Verified against real
+        filings rather than asserted** and written up as **`ROADMAP_DATA_DEPTH.md` Phase 4**:
+        N-PX's `proxytable.xml` carries `howVoted` + `managementRecommendation` + `sharesVoted`
+        (exactly §04's vote-weighted split) and NPORT-P's `primary_doc.xml` carries `seriesName` +
+        `balance` + **`pctVal`** (exactly §05's "% of fund", reported not derived). Both join via
+        `cusip`/`isin` to the existing CUSIP map. **Track 1 throughout — no HTML, no new base dep.**
+        ⚠️ **The real constraint is SIZE: one N-PX `proxytable.xml` measured 28.4 MB.** It needs a
+        bounded backfill with a single writer (guardrail 8) and streaming parse — not the
+        per-company cache-aside path. **N-PORT is the gentler one and should go first.**
+        ⚠️ It does NOT unblock §04's 8-K Item 5.07 outcomes — those stay HTML and out of scope, so
+        that card keeps its empty state permanently.
   - [x] **§05 Holder behavior BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet
         operator-accepted**; it shares §04's open gate. `IP05` deleted. 686 pytest (+9),
         **5/5 §05 controls**, `svgOverflow=0` webfont-blocked, `zeros: []`, 0 page errors.

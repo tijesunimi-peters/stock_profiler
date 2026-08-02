@@ -167,6 +167,72 @@ phase is deliberately funded.
   not a mapping extension, and competes with other post-launch work. Operator
   decision with the spike doc in hand.
 
+## Phase 4 — The N-forms: N-PX (proxy votes) and N-PORT (fund holdings)
+
+**Status: DECIDED to build later** (operator, 2026-08-01) — *"We will build on the N forms later
+considering they exist on SEC EDGAR."* Not scheduled; recorded so the work is not re-derived.
+
+**These are Track 1.** Both are structured XML on EDGAR. No HTML parsing, no LLM, no new base
+dependency — they fit the existing `sec/` → `normalize/` → `storage/` → `serve` shape exactly the
+way 13F and the ownership forms do.
+
+### ✅ Verified against real filings, 2026-08-01 (fetched with our compliant User-Agent)
+
+Not asserted — checked. Two recent accessions, their EDGAR directory listings read directly:
+
+| form | accession | documents |
+|---|---|---|
+| **N-PX** | `0001104659-25-083022` (CIK 1006415, filed 2025-08-26) | `primary_doc.xml` 12 KB + **`proxytable.xml` 28.4 MB** |
+| **NPORT-P** | `0001193125-26-232053` (CIK 356476, filed 2026-05-20) | `primary_doc.xml` 24 KB + `edgar.htm` |
+
+**N-PX `proxytable.xml` element names, read off the filing:**
+`issuerName` · `cusip` · `isin` · `meetingDate` · `voteDescription` · `voteCategory` ·
+`categoryType` · **`howVoted`** · **`managementRecommendation`** · **`sharesVoted`** ·
+`sharesOnLoan` · `voteSeries` · `voteSource` · `voteRecord` · `otherVoteDescription`
+
+**NPORT-P `primary_doc.xml` holding fields, read off the filing:**
+`name` · `cusip` · `isin` · `lei` · `title` · **`balance`** · `units` · `curCd` · **`valUSD`** ·
+**`pctVal`** · `fairValLevel` · `securityLending` · `seriesName` · `seriesLei` · `regName` ·
+`regLei`
+
+### What each one unblocks
+
+- **N-PX → V3-P5a §04's "Vote-weighted ownership"**, which currently renders an honest empty
+  state. `howVoted` against `managementRecommendation`, weighted by `sharesVoted`, is *exactly*
+  the "voted with management / voted against at least one item / no N-PX record" split the design
+  asks for — and `cusip`/`isin` join straight to the existing CUSIP map.
+- **N-PORT → §05's "Fund-level positions"**, also an honest empty state today. `seriesName` is the
+  fund, `balance`/`units` the position, and **`pctVal` is the position as a percentage of the
+  fund's portfolio** — the design's "% of fund" column, reported rather than derived. `valUSD` is
+  market-derived and should stay excluded, which §05's copy already says.
+
+### ⚠️ What it does NOT unblock
+
+**8-K Item 5.07's certified meeting outcomes stay out of scope.** That is narrative HTML, and the
+no-HTML-parsing rule is a standing decision rather than a backlog item — §04's voting card keeps
+its empty state even after the N-forms land. The two gaps on that card are different in kind and
+the copy says so deliberately.
+
+### ⚠️ The scale problem, and it is the real design constraint
+
+**One N-PX `proxytable.xml` was 28.4 MB.** A fund complex files one per series per year, and every
+row is a vote on one ballot item at one meeting. This is a materially different ingest shape from
+13F:
+
+- It cannot be handled the way per-company cache-aside reads are — it needs a bounded backfill
+  with a single writer, like `ingest/backfill.py` (guardrail 8).
+- Streaming/iterative parsing, not `ET.fromstring` on the whole document.
+- The useful subset is narrow: only votes whose `cusip`/`isin` resolves to an issuer we serve.
+  **Filter on the way in, not after.**
+
+N-PORT is the gentler of the two (tens of KB per filing) and is the sensible one to build first.
+
+### Operator ruling that governs the interim (D-voting, widened 2026-08-01)
+
+Until these land, **any structured-XML form family we do not ingest gets an honest empty state
+whose copy says "not ingested yet"** — never "cannot be reported", and never a fabricated figure.
+That ruling now covers the CLASS, not one form, so no fresh decision is needed for the next one.
+
 ## Non-goals (do not drift here)
 
 - **Presentation-linkbase hierarchy.** Real parent→child statement structure varies
