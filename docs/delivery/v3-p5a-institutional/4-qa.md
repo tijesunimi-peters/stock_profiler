@@ -7,7 +7,10 @@
 `*-phase1.md` = fidelity gate · `*-p2-s01.md` = §01 · `*-p2-s0203.md` = §02+§03 ·
 `*-p2-s0405.md` = §04+§05 · **this pair = §06.** A green report in any other says nothing here.
 
-**Verdict: PASS — pending manual UI verification.** → **`4b-manual-verification.md`**
+**Verdict: ✅ PASS — operator CONFIRMED 2026-08-01** (`4b-manual-verification.md`, signed).
+All 12 rows first-pass. The judgement row landed — *"Reads as scoped to the window"* — and row 11
+corroborated it independently: JPM's shorter index window read as a shorter window rather than as
+a company that never filed.
 
 ---
 
@@ -132,7 +135,7 @@ a test; no inference presented as observation.
 
 ## Manual UI verification
 
-See **`4b-manual-verification.md`** — 12 rows. **Operator outcome:** ⏳ pending.
+See **`4b-manual-verification.md`** — 12 rows. **Operator outcome:** ✅ **Confirmed 2026-08-01**, walked interactively in three batches.
 
 ---
 
@@ -141,6 +144,15 @@ See **`4b-manual-verification.md`** — 12 rows. **Operator outcome:** ⏳ pendi
 **PASS — pending manual UI verification.** Four defects found and fixed this cycle (D-QA-8…10 plus
 the recorded pre-existing one). 703 pytest, e2e clean, every driven check green across §01–§06.
 
-**Blocked on:** the operator hand-running **`4b-manual-verification.md`**. The judgement row is
-**whether a scoped absence reads as scoped** — that is the whole of D-supply, and it is the one
-thing QA cannot settle for itself.
+✅ **Operator CONFIRMED 2026-08-01.** §06 is accepted, and with it **the whole of phase 2**:
+§01–§06 are all operator-accepted and **D-literals is satisfied**.
+
+**D-supply is delivered, not merely implemented.** The distinction it was built for — a *checked*
+absence versus an *asserted* one — was confirmed from two directions: the scoping reads as scoping
+on AAPL, and JPM's shorter window reads as a shorter window rather than as a company that never
+filed. That is what justified building the ingest instead of empty-stating the card.
+
+Follow-on work, none of it blocking: the **N-forms** (`ROADMAP_DATA_DEPTH` Phase 4, N-PORT first);
+the **filing-cache rule** (`count >= limit` is unsatisfiable for a form family with few filings);
+the **~3–5s page load** on a whole-market volume; and **`rule_10b5_1` is now available to the
+Insider view**, which does not yet use it.

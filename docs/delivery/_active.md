@@ -4,7 +4,7 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: manual      ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: done        ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
   ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
@@ -930,10 +930,17 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         Corrected to the register's managers: **45.0 days**, the real statutory deadline.
         **No test would have failed; both versions returned a well-formed histogram.** It was
         caught by looking at the number and asking whether it made sense.
-  - [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`** (12 rows, ~5 min). **The
-        judgement row is 4**: does *"Tender offers: none found"* read as scoped to the window
-        printed beneath it, or as "this never happened"? That is the whole of D-supply and the one
-        thing QA cannot settle. §07 is reference copy and stays.
+  - [x] ✅ **🚦 OPERATOR GATE PASSED — §06 ACCEPTED, AND PHASE 2 IS COMPLETE** (2026-08-01).
+        All 12 rows first-pass — **the third gate in succession to run that way**.
+        **The judgement row landed:** *"Reads as scoped to the window."* And **row 11 corroborated
+        it from the other direction** — JPM's visibly shorter index window read as a shorter
+        window rather than as a company that never filed a registration statement. **That is what
+        justified building the ingest instead of empty-stating the card: D-supply is delivered,
+        not merely implemented.** The removed 10b5-1 cooling-off band is **accepted as built**.
+        Trail: **`4b-manual-verification.md`** (signed, answers verbatim).
+  - [x] 🎉 **§01–§06 ALL OPERATOR-ACCEPTED. D-LITERALS IS SATISFIED** — no prototype literal
+        remains anywhere in the ported view, which is why the NOT-REAL-DATA banner is *gone*
+        rather than hidden. §07 is reference copy and stays as written.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.
