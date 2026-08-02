@@ -21,6 +21,14 @@ updated: 2026-08-02
 - [x] 4 QA Tester             -> 4-qa.md  (✅ PASS — pending manual UI verification)
 - [x] 4b Operator manual verification -> 4b-manual-verification.md  ✅ **CONFIRMED 2026-08-02**
 
+## P0b — the remaining seven views (follow-on, same task folder)
+- [x] P0b-1 Company  `cf01f6c`  · HistoryView, InsiderView, PeersView
+- [x] P0b-2 Sectors  `39e8837`  · SectorView, QualitativeView, FilingsView, SectorPage
+- [x] P0b-3 Manager  `8bd8fab`  · ManagerPage + the six views, **plus a chart-readout leak fix**
+- [x] P0b QA         -> `4-qa-p0b.md`   ✅ PASS, 73 driven assertions, 0 product defects
+- [x] P0b 4b operator verification -> `4b-manual-verification-p0b.md`  ✅ **CONFIRMED 2026-08-02**
+- [ ] P0b-4 Retirement · delete `surfaces.ts`/`metrics.ts`, kill the 27 `state.tsx` shim usages  ⬅ **NEXT, and now unblocked**
+
 ---
 
 # ✅ PHASE 0 IS COMPLETE AND ACCEPTED
