@@ -113,3 +113,19 @@ export function percentileOf(v: number, xs: number[]): number {
   const below = xs.filter((x) => x < v).length;
   return Math.round((below / xs.length) * 100);
 }
+
+/**
+ * The prototype's own seed function, reproduced exactly.
+ *
+ * `seedN(ticker + salt)` returns a number in `[0, 1)` — FNV-1a modulo 100000. Porting it
+ * verbatim is what makes the ported hub render the SAME figures the design was drawn against,
+ * rather than a differently-random set of plausible ones.
+ */
+export function seedN(key: string): number {
+  let x = 2166136261;
+  for (let i = 0; i < key.length; i++) {
+    x ^= key.charCodeAt(i);
+    x = Math.imul(x, 16777619);
+  }
+  return ((x >>> 0) % 100000) / 100000;
+}

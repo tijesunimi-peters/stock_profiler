@@ -11,7 +11,7 @@ venv/
 .env
 
 # Local data / cache
-data/
+/data/
 *.db
 *.sqlite3
 
