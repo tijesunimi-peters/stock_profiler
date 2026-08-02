@@ -11,11 +11,12 @@
  * was filed on.
  */
 import { useState } from "react";
+import { StateBlock } from "@ds";
 import {
-  hubData, HUB_SECTIONS, LABEL_TO_ID, metricDefs, seriesFor, unitFmt,
-  hubLinks, hubProfile, hubSnapshot, hubInsider, hubSegmentChips, hubContextPill,
-  HUB_BIZ_TEXT, HUB_CALCS, type HubCalc, type SnapshotTile,
-} from "../../data/hub";
+  HUB_SECTIONS, LABEL_TO_ID, unitFmt, HUB_CALCS, type HubCalc, type SnapshotTile,
+} from "../../data/hub-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
 import { SeriesChart, Sparkline } from "../../charts/series";
 import { SECTOR_NAMES, SUB_COUNTS } from "../../data/prototype";
 import { useSelection } from "../../state";
@@ -86,6 +87,17 @@ function CalcDrawer({ calc }: { calc: HubCalc }) {
   );
 }
 
+/*
+ * The fiscal key this page reads.
+ *
+ * A constant for now because the app carries no real period state — `state.tsx` pins
+ * `period: "2026-Q1"` as a compatibility shim. Named here rather than inlined so Phase A has one
+ * place to thread the reader's actual selection through, and so the three-vocabulary problem
+ * (fiscal pair vs 13F quarter-end vs lookback count) is visible at the call site.
+ */
+const HUB_YEAR = 2026;
+const HUB_PERIOD = "Q1";
+
 const STMT_TABS = [
   { key: "income", label: "Income statement" },
   { key: "balance", label: "Balance sheet" },
@@ -95,7 +107,24 @@ const STMT_TABS = [
 export function HubOverview() {
   const sel = useSelection();
   const T = sel.focal;
-  const d = hubData(T);
+  const subActive = sel.subIdx >= 0;
+
+  /*
+   * Seven reads, grouped by the BACKEND read pattern they will become — not by the section they
+   * feed. `data/api.ts` documents which endpoints replace each body at Phase A; the point of
+   * drawing the boundaries here is that the swap is a body change, not another refactor.
+   *
+   * The `year`/`fiscalPeriod` pair is threaded even though the fixture ignores it: the real
+   * `/metrics` and `/statements` both REQUIRE a year, and a `FiscalPeriod` carries none of its own.
+   * Passing it now is what stops Phase A having to re-thread it through every call site.
+   */
+  const identity = useApi(() => api.companyIdentity(T, subActive, SUB_COUNTS[sel.subIdx] ?? 0), [T, subActive, sel.subIdx]);
+  const financials = useApi(() => api.companyFinancials(T, HUB_YEAR, HUB_PERIOD), [T]);
+  const footnotes = useApi(() => api.companyFootnotes(T, HUB_YEAR, HUB_PERIOD), [T]);
+  const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T]);
+  const governance = useApi(() => api.companyGovernance(T), [T]);
+  const disclosure = useApi(() => api.companyDisclosure(T), [T]);
+
   const [stmt, setStmt] = useState<"income" | "balance" | "cash">("income");
   // One open drawer at a time, and one shared range/basis across every drawer — the axis
   // controls belong to the reader's question, not to the row they happened to open it from.
@@ -110,11 +139,51 @@ export function HubOverview() {
   const [tile, setTile] = useState<string | null>(null);
 
   const sector = SECTOR_NAMES[sel.sectorIdx];
-  const L = hubLinks(T);
-  const snapshot = hubSnapshot(T);
-  const insider = hubInsider(T);
-  const subActive = sel.subIdx >= 0;
   const toggleCalc = (id: string) => setCalc((c) => (c === id ? null : id));
+
+  /*
+   * Gate on ALL SEVEN, after every hook. Once these are real endpoints the sensible thing is to
+   * paint each section as its own read lands; today they resolve in the same tick, so a
+   * per-section skeleton would be theatre. Progressive paint belongs in Phase A, where the
+   * latency is real and the choice can be measured.
+   */
+  const reads = [identity, financials, footnotes, segments, governance, disclosure];
+  const failed = reads.find((r) => r.error);
+  if (failed) return <StateBlock variant="error" copy={failed.error!.message} />;
+  if (!identity.data || !financials.data || !footnotes.data || !segments.data || !governance.data || !disclosure.data) {
+    return <StateBlock variant="loading" copy="Reading this filer's facts." />;
+  }
+
+  const L = identity.data.links;
+  const snapshot = financials.data.snapshot;
+  const insider = governance.data.insider;
+
+  /*
+   * The section payloads, re-assembled under the shape the JSX below already reads.
+   *
+   * This is the ADAPTER boundary in miniature (operator ruling 2026-08-02): the seam hands back
+   * whatever the endpoint family returns, and the view is handed the shape it renders. It renames
+   * and regroups; it computes nothing. Keeping the render code untouched is also what makes the
+   * before/after DOM diff meaningful — a refactor that rewrites the markup cannot prove it
+   * changed nothing.
+   */
+  const d = {
+    changes: disclosure.data.changes,
+    structure: identity.data.structure,
+    years: financials.data.years,
+    statements: financials.data.statements,
+    segments: segments.data.segments,
+    segNote: segments.data.segNote,
+    geoAssets: segments.data.geoAssets,
+    custConc: segments.data.custConc,
+    capital: footnotes.data.capital,
+    governance: governance.data.governance,
+    audit: disclosure.data.audit,
+    obligations: footnotes.data.obligations,
+    footnotes: footnotes.data.footnotes,
+    narrative: disclosure.data.narrative,
+    covenant: footnotes.data.covenant,
+  };
 
   return (
     <div className="hub">
@@ -125,9 +194,7 @@ export function HubOverview() {
         <span className="hub-crumb-name">{T}</span>
         <span className="hub-crumb-ticker">{T}</span>
         <span className="hub-crumb-spacer" />
-        <span className="hub-crumb-pill">
-          {hubContextPill(subActive, SUB_COUNTS[sel.subIdx] ?? 0)}
-        </span>
+        <span className="hub-crumb-pill">{identity.data.contextPill}</span>
         <button
           type="button"
           className="hub-crumb-link"
@@ -162,9 +229,9 @@ export function HubOverview() {
         <div className="hub-grid is-wide">
           <div className="p-card">
             <div className="hub-label">What the company does · 10-K Item 1</div>
-            <p className="hub-prose">{HUB_BIZ_TEXT}</p>
+            <p className="hub-prose">{identity.data.bizText}</p>
             <div className="hub-chips">
-              {hubSegmentChips(T).map((s) => (
+              {identity.data.segmentChips.map((s) => (
                 <span className="hub-chip" key={s.label}>
                   <i style={{ background: s.color }} />
                   {s.label} <b>{s.pct}</b>
@@ -175,7 +242,7 @@ export function HubOverview() {
           <div className="p-card is-tint">
             <div className="hub-label">Registrant profile · cover page</div>
             <div className="hub-profile">
-              {hubProfile(T).map((p) => (
+              {identity.data.profile.map((p) => (
                 <div className="hub-profile-cell" key={p.k}>
                   <span className="hub-profile-k">{p.k}</span>
                   <span className="hub-profile-v">{p.v}</span>
@@ -1064,7 +1131,15 @@ function TrendDrawer({
   basis: "filed" | "restated";
   setBasis: (b: "filed" | "restated") => void;
 }) {
-  const s = seriesFor(T, id, range, basis);
+  // Fetched ON INTERACTION, not with the page: the drawer only exists once a row is opened, and
+  // its window/basis controls refetch. That is why the series has its own seam function rather
+  // than riding `companyFinancials` — see `data/api.ts`.
+  const res = useApi(() => api.companyMetricSeries(T, id, range, basis), [T, id, range, basis]);
+  if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
+  if (!res.data) return <StateBlock variant="loading" copy="Reading this metric's history." />;
+  const s = res.data.series;
+  // A metric with no series is a structural absence, not a failure — the row simply has nothing
+  // to open. Rendering nothing is right; rendering an empty chart would imply a measured zero.
   if (!s) return null;
   const shown = s.vals.filter((v): v is number => v != null);
   const fmt = unitFmt(s.unit, shown[shown.length - 1]);
@@ -1137,8 +1212,20 @@ function ComparisonTray({
   basis: "filed" | "restated";
   onOpenHistory: () => void;
 }) {
-  const defs = metricDefs(T);
-  const picked = ids.map((id) => seriesFor(T, id, range, basis)).filter((s): s is NonNullable<typeof s> => !!s);
+  /*
+   * One read per tray item, in parallel. `ids` is reader-controlled and varies in length, so it
+   * cannot be a hook per metric — the count would change between renders. Fanning out inside a
+   * single `useApi` keeps the hook count fixed and matches the operator ruling that the frontend
+   * may make as many requests as it needs.
+   */
+  const res = useApi(
+    () => Promise.all(ids.map((id) => api.companyMetricSeries(T, id, range, basis))),
+    [T, ids.join("|"), range, basis],
+  );
+  if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
+  if (!res.data) return null; // the tray is an aside; a shimmer pinned to the viewport would nag
+  const defs = res.data[0]?.defs ?? [];
+  const picked = res.data.map((r) => r.series).filter((s): s is NonNullable<typeof s> => !!s);
   if (!picked.length) return null;
   const units = Array.from(new Set(picked.map((s) => s.unit)));
   const kinds = ["focal", "b", "peer"] as const;
@@ -1201,17 +1288,24 @@ export { HUB_SECTIONS };
  */
 export function HubRail() {
   const sel = useSelection();
-  const d = hubData(sel.focal);
+  // Its own read: the rail rides EVERY hub view, including the four this task does not touch, so
+  // it cannot depend on the Overview's payload. Phase A: `/filing-index` — one walk, several
+  // consumers (this rail, §05.1, §06.4–6.6, §08.4/8.6).
+  const res = useApi(() => api.companyFilingEvents(sel.focal), [sel.focal]);
   const [filter, setFilter] = useState("all");
 
-  const forms = ["all", ...Array.from(new Set(d.timeline.map((e) => e.form)))];
-  const rows = filter === "all" ? d.timeline : d.timeline.filter((e) => e.form === filter);
+  if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
+  if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's filing index." />;
+  const timeline = res.data.timeline;
+
+  const forms = ["all", ...Array.from(new Set(timeline.map((e) => e.form)))];
+  const rows = filter === "all" ? timeline : timeline.filter((e) => e.form === filter);
 
   return (
     <div className="rail-card">
       <div className="rail-label">Filing timeline</div>
       <div className="hub-hint hub-mb-sm">
-        every form as filed · {rows.length} of {d.timeline.length} filings shown
+        every form as filed · {rows.length} of {timeline.length} filings shown
       </div>
       <div className="hub-tl-filters">
         {forms.map((f) => (

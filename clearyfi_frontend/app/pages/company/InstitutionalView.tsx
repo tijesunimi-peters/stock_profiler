@@ -6,11 +6,12 @@
  * outstanding. That constraint is why this view looks the way it does.
  */
 import { useState } from "react";
-import { ChartCard, Disclosure, StatTile, StatTileRow, STANDARD_DISCLOSURES } from "@ds";
-import { INST_HEADS, edgarLink, instFreshness, instRegister, INST_GLOSSARY, instBehavior, instFlows, instLimits, instRegisterExtras, instSnapshot, instSteward, type Calc } from "../../data/hub";
+import { ChartCard, Disclosure, StateBlock, StatTile, StatTileRow, STANDARD_DISCLOSURES } from "@ds";
+import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
 import { SECTOR_NAMES } from "../../data/prototype";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
-import type { CompanyInstitutionalSurface } from "../../data/surfaces";
 import { compact, humanDate } from "../../lib/format";
 import { CompositionStrip } from "@ds";
 import { SeriesChart, Sparkline, StackedAreaChart, StepChart } from "../../charts/series";
@@ -92,32 +93,76 @@ function InstHead({ id }: { id: string }) {
   );
 }
 
-export function InstitutionalView({ surface }: { surface: CompanyInstitutionalSurface }) {
+/*
+ * The two period vocabularies this view speaks.
+ *
+ * Constants for now — the app carries no real period state (`state.tsx` pins a shim). Named so
+ * Phase A has one place to thread the reader's selection through, and so it stays visible that a
+ * 13F quarter-end is a CALENDAR date while the series endpoints take a lookback COUNT. Neither is
+ * the `(year, FiscalPeriod)` pair the financial statements use.
+ */
+const INST_QUARTER_END = "2026-03-31";
+const INST_QUARTERS = 9;
+
+/*
+ * No props.
+ *
+ * It used to take `surface: CompanyInstitutionalSurface` from the seam AND call eight `inst*()`
+ * builders directly — two independently-seeded fixtures describing the SAME register. The value
+ * derived from the prop (`reported`) was never rendered, so removing it changes nothing on screen;
+ * what it removes is the standing ability for one view to contradict itself, which is precisely
+ * what `surfaces.ts`'s own header forbids ("no two views can disagree about the same fact").
+ */
+export function InstitutionalView() {
   const sel = useSelection();
-  const reported = surface.holders.reduce((a, h) => a + h.shares, 0);
-  const f = instFreshness(sel.focal);
-  const reg = instRegister(sel.focal);
-  const snap = instSnapshot(sel.focal);
+  const T = sel.focal;
+
+  /*
+   * Six reads, mapped onto endpoints that ALREADY SHIP (V3-P5a, operator-accepted 2026-08-01), so
+   * these boundaries are the backend's rather than ones invented here. Note the two period
+   * vocabularies: a 13F QUARTER-END for point-in-time reads, a LOOKBACK COUNT for the series ones.
+   * They are not interchangeable — see `data/api.ts`.
+   */
+  const snapshotRead = useApi(() => api.instRegisterSnapshot(T, INST_QUARTER_END), [T]);
+  const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
+  const flowsRead = useApi(() => api.instFlows(T, INST_QUARTER_END), [T]);
+  const behaviourRead = useApi(() => api.instBehaviour(T, INST_QUARTERS), [T]);
+  const stewardRead = useApi(() => api.instStewardship(T, INST_QUARTER_END), [T]);
+  const limitsRead = useApi(() => api.instLimits(T), [T]);
+
   const [openCalc, setOpenCalc] = useState<string | null>(null);
   const [formsOpen, setFormsOpen] = useState(false);
-  const ext = instRegisterExtras(sel.focal);
   const cik = FILER_BY_SYMBOL[sel.focal]?.cik ?? 0;
   // One overlay for both expandable charts in this section — same pattern as Financial history.
   const [zoom, setZoom] = useState<null | "register" | "mgrGrid" | "flow" | "pareto" | "tree" | "upset">(null);
-  const flows = instFlows(sel.focal);
   const [holdView, setHoldView] = useState<"ranked" | "treemap">("ranked");
   const [overlapView, setOverlapView] = useState<"combos" | "peers">("combos");
   const [flowsOpen, setFlowsOpen] = useState(false);
-  const stew = instSteward(sel.focal);
   const [stewOpen, setStewOpen] = useState(false);
   const [stripZoom, setStripZoom] = useState(false);
-  const beh = instBehavior(sel.focal);
   const [behOpen, setBehOpen] = useState(false);
   const [cohortZoom, setCohortZoom] = useState(false);
-  const lim = instLimits(sel.focal);
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [ganttZoom, setGanttZoom] = useState(false);
   const [holdersOpen, setHoldersOpen] = useState(false);
+
+  // Gate after every hook. See the note in HubOverview: per-section paint is a Phase A decision,
+  // where the latency is real enough to measure.
+  const reads = [snapshotRead, seriesRead, flowsRead, behaviourRead, stewardRead, limitsRead];
+  const failed = reads.find((r) => r.error);
+  if (failed) return <StateBlock variant="error" copy={failed.error!.message} />;
+  if (!snapshotRead.data || !seriesRead.data || !flowsRead.data || !behaviourRead.data || !stewardRead.data || !limitsRead.data) {
+    return <StateBlock variant="loading" copy="Reading this issuer's 13F register." />;
+  }
+
+  const f = snapshotRead.data.freshness;
+  const snap = snapshotRead.data.snapshot;
+  const ext = snapshotRead.data.extras;
+  const reg = seriesRead.data.register;
+  const flows = flowsRead.data.flows;
+  const stew = stewardRead.data.steward;
+  const beh = behaviourRead.data.behavior;
+  const lim = limitsRead.data.limits;
 
   return (
     <div className="hub">

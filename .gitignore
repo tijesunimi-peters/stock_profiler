@@ -26,3 +26,7 @@ clearyfi_frontend/app-dist/
 
 # vite cache
 clearyfi_frontend/.vite/
+# Render-equivalence snapshots (scripts/render_snapshot.mjs). Generated, and deliberately NOT
+# committed: a baseline QA regenerates from the base commit is stronger evidence than one the
+# engineer hands over, and a committed one rots the moment the design moves.
+clearyfi_frontend/.render/

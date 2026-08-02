@@ -13,7 +13,7 @@ import { useSelection } from "../../state";
 import { PageShell } from "../../ui/Shell";
 import { humanDate } from "../../lib/format";
 import { HubOverview, HubRail, HUB_SECTIONS } from "./HubOverview";
-import { INST_SECTIONS } from "../../data/hub";
+import { INST_SECTIONS } from "../../data/hub-catalog";
 import { PX_GROUPS } from "../../data/peers";
 import { HistoryView } from "./HistoryView";
 import { InstitutionalView } from "./InstitutionalView";
@@ -32,8 +32,16 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
   const sel = useSelection();
   const period = sel.period;
 
+  /*
+   * `overview` still feeds the masthead and the entity bar, which belong to the PAGE rather than
+   * to any one view. The institutional read is gone: `InstitutionalView` fetches and gates itself
+   * now, so keeping a second read here would have shown a spinner for a payload nothing rendered.
+   *
+   * `insider` and `peers` are the same shape of leftover — their views were ported off the seam
+   * and neither reads what is fetched here. They still drive the gate below and are retired with
+   * those views in P0b; naming it rather than leaving it to be rediscovered.
+   */
   const overview = useApi(() => api.company(symbol, period, sel.subIndustry), [symbol, period, sel.subIndustry]);
-  const inst = useApi(() => api.companyInstitutional(symbol, period), [symbol, period]);
   const insider = useApi(() => api.companyInsider(symbol, period), [symbol, period]);
   const peers = useApi(() => api.companyPeers(symbol, period, sel.subIndustry), [symbol, period, sel.subIndustry]);
 
@@ -54,8 +62,15 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
     onSelect: () => sel.set({ pxGroup: g.key }),
   }));
 
+  /*
+   * Which read the page-level state block watches. `overview` and `institutional` are null here
+   * because those two views now carry their own loading/error states — two stacked spinners for
+   * one page is worse than one, and the view's own is the one that knows what it is waiting for.
+   */
   const active =
-    view === "history" ? null : view === "institutional" ? inst : view === "insider" ? insider : view === "peers" ? peers : overview;
+    view === "history" || view === "institutional" || view === "overview"
+      ? null
+      : view === "insider" ? insider : view === "peers" ? peers : null;
   const o = overview.data;
 
   const disclosures = [
@@ -122,7 +137,7 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
 
       {view === "overview" && <HubOverview />}
       {view === "history" && <HistoryView />}
-      {view === "institutional" && inst.data && <InstitutionalView surface={inst.data} />}
+      {view === "institutional" && <InstitutionalView />}
       {view === "insider" && <InsiderView />}
       {view === "peers" && <PeersView />}
     </PageShell>
