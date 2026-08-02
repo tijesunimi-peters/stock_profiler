@@ -36,6 +36,8 @@
  */
 import * as surfaces from "./surfaces";
 import * as hub from "./hub";
+import * as insider from "./insider";
+import * as peers from "./peers";
 
 const DELAY = () => (typeof location !== "undefined" && location.search.includes("slow") ? 900 : 0);
 /**
@@ -224,6 +226,41 @@ export const api = {
   companyFilingEvents: (symbol: string) =>
     resolve<CompanyFilingEvents>({ timeline: hub.hubData(symbol).timeline }),
 
+  /**
+   * §Insider activity. Phase A: `/companies/{symbol}/insider-trades`.
+   *
+   * ONE ledger feeds every panel — tiles, disposition split, code mix, per-person rollup and the
+   * latency histogram all derive from the same rows. That is structural: the moment two panels
+   * sample independently they can disagree. So it stays one seam call, not five.
+   *
+   * `rule_10b5_1` and `is_derivative` now ride on the real endpoint (V3-P5a). Note what it still
+   * cannot say: the flag reports a trade was made UNDER a plan, never the plan's adoption date, so
+   * no cooling-off window can be drawn from it (D-10b5-1).
+   */
+  companyInsiderActivity: (symbol: string, _windowDays: number) =>
+    resolve<CompanyInsiderActivity>({
+      ledger: insider.insiderData(symbol),
+      form144: insider.f144Ledger(symbol),
+    }),
+
+  /**
+   * §Peer-relative. Phase A: `/peers` + `/peers/{metric}/distribution` +
+   * `/sectors/{group}/{metric}/companies`, all keyed on the filer's SIC group.
+   *
+   * `beyond` is the ragged half — acceptance lag and extension-tag share are `M`, auditor and CAM
+   * counts need the 10-K instance parse (V3), and risk-factor counts are Track 2 and get an honest
+   * empty state. Grouped here anyway because they share the peer set, not because they share a
+   * source.
+   */
+  companyPeerRelative: (symbol: string, _year: number, _fiscalPeriod: string) =>
+    resolve<CompanyPeerRelative>({
+      rows: peers.distRows(symbol),
+      extras: peers.peerExtras(symbol),
+      flags: peers.companyFlags(symbol),
+      recentFilings: peers.RECENT_FILINGS,
+      themePercentiles: peers.CO_THEME_PCT,
+    }),
+
   // ========================================================== Company Hub → Institutional
   // These map onto endpoints that ALREADY SHIP (V3-P5a, operator-accepted 2026-08-01), so the
   // boundaries are the ones the backend already drew.
@@ -312,6 +349,19 @@ export interface CompanyDisclosure {
 
 export interface CompanyFilingEvents {
   timeline: hub.HubData["timeline"];
+}
+
+export interface CompanyInsiderActivity {
+  ledger: ReturnType<typeof insider.insiderData>;
+  form144: ReturnType<typeof insider.f144Ledger>;
+}
+
+export interface CompanyPeerRelative {
+  rows: ReturnType<typeof peers.distRows>;
+  extras: ReturnType<typeof peers.peerExtras>;
+  flags: ReturnType<typeof peers.companyFlags>;
+  recentFilings: typeof peers.RECENT_FILINGS;
+  themePercentiles: typeof peers.CO_THEME_PCT;
 }
 
 export interface InstRegisterSnapshot {

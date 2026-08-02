@@ -14,7 +14,7 @@ import { PageShell } from "../../ui/Shell";
 import { humanDate } from "../../lib/format";
 import { HubOverview, HubRail, HUB_SECTIONS } from "./HubOverview";
 import { INST_SECTIONS } from "../../data/hub-catalog";
-import { PX_GROUPS } from "../../data/peers";
+import { PX_GROUPS } from "../../data/hub-catalog";
 import { HistoryView } from "./HistoryView";
 import { InstitutionalView } from "./InstitutionalView";
 import { InsiderView } from "./InsiderView";
@@ -42,8 +42,6 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
    * those views in P0b; naming it rather than leaving it to be rediscovered.
    */
   const overview = useApi(() => api.company(symbol, period, sel.subIndustry), [symbol, period, sel.subIndustry]);
-  const insider = useApi(() => api.companyInsider(symbol, period), [symbol, period]);
-  const peers = useApi(() => api.companyPeers(symbol, period, sel.subIndustry), [symbol, period, sel.subIndustry]);
 
   // Both long views carry a jump list; each addresses its own section ordinals.
   const railSections = view === "overview" ? HUB_SECTIONS : view === "institutional" ? INST_SECTIONS : [];
@@ -63,14 +61,13 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
   }));
 
   /*
-   * Which read the page-level state block watches. `overview` and `institutional` are null here
-   * because those two views now carry their own loading/error states — two stacked spinners for
-   * one page is worse than one, and the view's own is the one that knows what it is waiting for.
+   * No page-level state block any more: ALL FIVE views now carry their own loading and error
+   * states, and each knows what it is waiting for in a way this component cannot. The three
+   * decorative reads that used to sit here — fetching payloads their views never rendered, then
+   * gating on them — are gone with P0b-1.
+   *
+   * `overview` stays because it feeds the masthead and entity bar, which belong to the PAGE.
    */
-  const active =
-    view === "history" || view === "institutional" || view === "overview"
-      ? null
-      : view === "insider" ? insider : view === "peers" ? peers : null;
   const o = overview.data;
 
   const disclosures = [
@@ -132,9 +129,6 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
       onView={(v) => navigate(sel.href(`/company/${symbol}/${v}`))}
       disclosures={disclosures}
     >
-      {active?.loading && !active.data && <StateBlock variant="loading" copy="Reading this filer's facts." />}
-      {active?.error && <StateBlock variant="error" copy={active.error.message} />}
-
       {view === "overview" && <HubOverview />}
       {view === "history" && <HistoryView />}
       {view === "institutional" && <InstitutionalView />}

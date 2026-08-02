@@ -61,7 +61,8 @@ const settled = async () => {
   await page.waitForFunction(
     () => {
       const r = document.querySelector(".alt-content");
-      return !!r && !!r.querySelector(".hub") && !r.querySelector(".state-loading");
+      // View-agnostic — see the note in render_snapshot.mjs. `.hub` is not every view's root.
+      return !!r && r.childElementCount > 0 && !r.querySelector(".state-loading");
     },
     { timeout: 20_000 },
   );

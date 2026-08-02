@@ -41,3 +41,17 @@ export {
 } from "./hub";
 
 export type { HubCalc, Calc, SnapshotTile, MetricDef, SeriesResult, StatementRowData } from "./hub";
+
+/*
+ * Structure from the OTHER ported modules, same rule: not a filing fact, no endpoint behind it,
+ * survives Phase A unchanged.
+ *   `CODES`      — the Form 4 transaction-code vocabulary (P = open-market buy, S = sale, …).
+ *                  Defined by the SEC, not by a filer.
+ *   `PX_GROUPS`  — the Peer-relative rail's switch groups.
+ *   `METRIC_DEFS`/`fmtVal` — metric definitions and their formatters, the same class of thing
+ *                  `catalog.ts` holds for the sector views.
+ */
+export { CODES } from "./insider";
+export type { Side, CodeDef, LedgerRow, InsiderData, F144Notice } from "./insider";
+export { PX_GROUPS, METRIC_DEFS, fmtVal } from "./peers";
+export type { PeerXRow, PresenceTable, MethodMix, PeerExtras, DistRow } from "./peers";

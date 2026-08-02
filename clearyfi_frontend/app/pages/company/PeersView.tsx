@@ -15,11 +15,10 @@
  */
 import { useState } from "react";
 import { GEO_COLORS, GEO_LABELS, GEO_MIX, SECTOR_NAMES, SUB_COUNTS, THEMES } from "../../data/prototype";
-import {
-  CO_THEME_PCT, PX_GROUPS, RECENT_FILINGS, companyFlags, distRows, peerExtras,
-  type PeerXRow, type PresenceTable,
-} from "../../data/peers";
-import { hubContextPill, hubSegmentChips } from "../../data/hub";
+import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
 import { PeerStrip } from "../../charts/strips";
 import { SeriesChart, Sparkline } from "../../charts/series";
 import { useSelection } from "../../state";
@@ -163,6 +162,10 @@ function MixRows({ rows }: { rows: { k: string; n: string; w: string; focal: boo
   );
 }
 
+/* Same fiscal key as the hub — see the note in HubOverview.tsx. */
+const PX_YEAR = 2026;
+const PX_PERIOD = "Q1";
+
 export function PeersView() {
   const sel = useSelection();
   const T = sel.focal;
@@ -170,13 +173,36 @@ export function PeersView() {
   // cannot both claim the same id.
   const [openSpark, setOpenSpark] = useState<string | null>(null);
 
-  const rows = distRows(T);
-  const X = peerExtras(T);
   const subActive = sel.subIdx >= 0;
+
+  /*
+   * Two reads, and the SECOND is shared with the Company hub. `companyIdentity` is what supplies
+   * the segment chips and the peer-set pill on both surfaces — so the two views cannot show a
+   * different peer rank for the same filer, which is the class of contradiction the seam exists to
+   * make impossible.
+   */
+  const peerRead = useApi(() => api.companyPeerRelative(T, PX_YEAR, PX_PERIOD), [T]);
+  const identity = useApi(
+    () => api.companyIdentity(T, subActive, SUB_COUNTS[sel.subIdx] ?? 0),
+    [T, subActive, sel.subIdx],
+  );
+
+  if (peerRead.error || identity.error) {
+    return <StateBlock variant="error" copy={(peerRead.error ?? identity.error)!.message} />;
+  }
+  if (!peerRead.data || !identity.data) {
+    return <StateBlock variant="loading" copy="Reading this filer's peer set." />;
+  }
+
+  const rows = peerRead.data.rows;
+  const X = peerRead.data.extras;
+  const CO_THEME_PCT = peerRead.data.themePercentiles;
+  const RECENT_FILINGS = peerRead.data.recentFilings;
+  const flags = peerRead.data.flags;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
   const geo = GEO_MIX[sel.sectorIdx] ?? GEO_MIX[0];
-  const segs = hubSegmentChips(T);
+  const segs = identity.data.segmentChips;
   /*
    * Picking a peer NAVIGATES rather than setting state. The path names the registrant and the
    * path wins (see `SelectionProvider`), so writing `?focal=` alone would change the query,
@@ -195,7 +221,7 @@ export function PeersView() {
         </div>
         <div className="qual-masthead-right">
           <span className="hub-crumb-pill">
-            {hubContextPill(subActive, SUB_COUNTS[sel.subIdx] ?? 0)}
+            {identity.data.contextPill}
           </span>
           <span className="qual-sections">10-Q · Q1 FY26</span>
         </div>
@@ -342,7 +368,7 @@ export function PeersView() {
             <div className="hub-panel-head is-split">
               <span className="hub-panel-title">Filing history &amp; flags</span>
               <div className="px-flags">
-                {companyFlags(T).map((f) => (
+                {flags.map((f) => (
                   <span
                     key={f.label}
                     className="qual-chip"

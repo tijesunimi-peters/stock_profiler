@@ -10,7 +10,9 @@
  * consequences of a grant or a vesting date, and folding them into one "net insider buying"
  * figure is the most common way this data is misread.
  */
-import { insiderData } from "../../data/insider";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
 import { Histogram } from "../../charts/bars";
 import { DotCalendar } from "../../charts/misc";
 import { PeerStrip } from "../../charts/strips";
@@ -26,10 +28,22 @@ function Src({ href, children }: { href: string; children: string }) {
   );
 }
 
+/*
+ * The window this view reads. A constant while the app carries no real period state; named so
+ * Phase A threads the reader's selection through one place. `/insider-trades` bounds by FILING
+ * COUNT rather than by days, so this becomes a `limit` there — a third period vocabulary, and
+ * deliberately not conflated with the fiscal pair or the 13F quarter-end.
+ */
+const INSIDER_WINDOW_DAYS = 180;
+
 export function InsiderView() {
   const sel = useSelection();
   const T = sel.focal;
-  const d = insiderData(T);
+  const res = useApi(() => api.companyInsiderActivity(T, INSIDER_WINDOW_DAYS), [T]);
+
+  if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
+  if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's Section 16 filings." />;
+  const d = res.data.ledger;
 
   return (
     <div className="ia">

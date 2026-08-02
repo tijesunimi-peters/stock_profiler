@@ -34,12 +34,13 @@
  *     -v "$PWD/clearyfi_frontend":/app -w /home/pptruser \
  *     -e PUPPETEER_CACHE_DIR=/home/pptruser/.cache/puppeteer \
  *     ghcr.io/puppeteer/puppeteer:latest \
- *     node render_snapshot.mjs --dist /app/app-dist --out /app/.render/before --verify-stable
+ *     node render_snapshot.mjs --dist /app/app-dist --out /app/.render/before \
+ *       --verify-stable --chown "$(id -u):$(id -g)"
  *
  * Then, after the change:  ... --out /app/.render/after   &&   diff -r .render/before .render/after
  */
 import { createServer } from "node:http";
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile, chown, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 import puppeteer from "puppeteer";
@@ -57,6 +58,13 @@ function argOf(flag) {
 const DIST = resolve(argOf("--dist") ?? "app-dist");
 const outDir = resolve(argOf("--out") ?? ".render/out");
 const verifyStable = args.includes("--verify-stable");
+/*
+ * The container runs as root so it can write into the bind mount, which leaves the snapshots
+ * root-owned and undeletable from the host without sudo. Running as the host user instead does
+ * NOT work: /home/pptruser, where Chromium lives, is not traversable by another uid. So write as
+ * root and hand the results back — `--chown "$(id -u):$(id -g)"`.
+ */
+const OWNER = (argOf("--chown") ?? "").split(":").map(Number);
 const PORT = 5199;
 
 /**
@@ -68,7 +76,7 @@ const PORT = 5199;
  * them than one does.
  */
 const TICKERS = ["NVDA", "AMD", "INTC"];
-const VIEWS = ["overview", "institutional"];
+const VIEWS = ["overview", "institutional", "history", "insider", "peers"];
 
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -119,10 +127,47 @@ async function capture(page, ticker, view) {
   await page.waitForFunction(
     () => {
       const root = document.querySelector(".alt-content");
-      return !!root && !!root.querySelector(".hub") && !root.querySelector(".state-loading");
+      // View-AGNOSTIC on purpose. An earlier version waited for `.hub`, which is the Overview and
+      // Institutional root — Insider roots at `.ia`, so widening the matrix made the predicate
+      // time out on a page that had rendered perfectly. Settled means: the content column exists,
+      // it has painted something, and nothing inside it is still loading.
+      return !!root && root.childElementCount > 0 && !root.querySelector(".state-loading");
     },
     { timeout: 20_000 },
   );
+  /*
+   * Then wait for the DOM to STOP CHANGING.
+   *
+   * The predicate above only says data has arrived. Charts append their own DOM in effects that
+   * run afterwards — `charts/kernel.ts:makeReadout` imperatively adds a hidden `.chart-readout`
+   * host into every chart container — so a capture taken the moment loading ends can beat them
+   * and record a page that is still assembling.
+   *
+   * That is not hypothetical: it produced a one-element phantom diff on the Insider view, which
+   * looked exactly like a refactor regression and was not. Quiescence is the honest signal, and
+   * it is view- and chart-agnostic in a way that waiting for named selectors is not.
+   */
+  await page.evaluate(
+    (quietMs) =>
+      new Promise((done) => {
+        let timer = setTimeout(finish, quietMs);
+        const obs = new MutationObserver(() => {
+          clearTimeout(timer);
+          timer = setTimeout(finish, quietMs);
+        });
+        obs.observe(document.body, { childList: true, subtree: true, attributes: true });
+        // Cap it: a page with a permanently ticking animation must not hang the run.
+        const cap = setTimeout(finish, 5000);
+        function finish() {
+          clearTimeout(timer);
+          clearTimeout(cap);
+          obs.disconnect();
+          done(undefined);
+        }
+      }),
+    400,
+  );
+
   return normalise(await page.$eval(".alt-content", (el) => el.outerHTML));
 }
 
@@ -159,6 +204,12 @@ try {
 } finally {
   await browser.close();
   server.close();
+}
+
+if (OWNER.length === 2 && OWNER.every(Number.isFinite)) {
+  const [uid, gid] = OWNER;
+  await chown(outDir, uid, gid);
+  for (const f of await readdir(outDir)) await chown(join(outDir, f), uid, gid);
 }
 
 console.log(failures ? `\nFAILED with ${failures} problem(s)` : `\nOK — snapshots in ${outDir}`);

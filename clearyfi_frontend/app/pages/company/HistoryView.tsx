@@ -9,7 +9,10 @@
  * readable, and the picker says so rather than silently ignoring the click.
  */
 import { useState } from "react";
-import { metricDefs, seriesFor, unitFmt } from "../../data/hub";
+import { unitFmt } from "../../data/hub-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
 import { SECTOR_NAMES } from "../../data/prototype";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { SeriesChart } from "../../charts/series";
@@ -37,10 +40,24 @@ export function HistoryView() {
   const [basis, setBasis] = useState<"filed" | "restated">("filed");
   const [zoom, setZoom] = useState(false);
 
-  const defs = metricDefs(T);
+  /*
+   * One read per picked metric, in parallel. `picked` is reader-controlled and varies in length,
+   * so it cannot be a hook per metric — the hook count would change between renders. Same shape as
+   * the hub's comparison tray, and the same seam function: Phase A's `/metrics/{metric}/history`
+   * is per-metric, so fanning out here is what the endpoint actually wants.
+   */
+  const res = useApi(
+    () => Promise.all(picked.map((id) => api.companyMetricSeries(T, id, range, basis))),
+    [T, picked.join("|"), range, basis],
+  );
+
+  if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
+  if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's metric history." />;
+
+  const defs = res.data[0]?.defs ?? [];
   const series = picked
-    .map((id, i) => ({ id, color: SLOT_COLORS[i % SLOT_COLORS.length], s: seriesFor(T, id, range, basis) }))
-    .filter((x): x is { id: string; color: string; s: NonNullable<ReturnType<typeof seriesFor>> } => !!x.s);
+    .map((id, i) => ({ id, color: SLOT_COLORS[i % SLOT_COLORS.length], s: res.data![i]?.series ?? null }))
+    .filter((x): x is { id: string; color: string; s: NonNullable<typeof x.s> } => !!x.s);
 
   const groups: { name: string; items: typeof defs }[] = [];
   for (const m of defs) {
