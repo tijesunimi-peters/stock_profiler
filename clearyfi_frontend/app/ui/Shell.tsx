@@ -10,6 +10,7 @@
  */
 import { useEffect, type ReactNode } from "react";
 import { AppShell, Disclosure, Masthead, ViewRail } from "@ds";
+import { SyntheticBanner } from "./SyntheticBanner";
 import type { ShellSubject, ViewRailItem, ViewRailSection } from "@ds";
 import { useSelection } from "../state";
 import { navigate } from "../router";
@@ -178,6 +179,7 @@ export function PageShell({
       actionsSubject={subjectLabelFor(subject)}
       searchPlaceholder="Search ticker or CIK…"
     >
+      <SyntheticBanner />
       <Masthead title={title} subtitle={subtitle} meta={right ? [right] : undefined} />
       {controlBar}
       {views && activeView ? (

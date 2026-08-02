@@ -56,10 +56,29 @@ function resolve<T>(value: T): Promise<T> {
   return ms ? new Promise((r) => setTimeout(() => r(value), ms)) : Promise.resolve(value);
 }
 
-/** Every payload says where it came from. Today: nowhere real. */
+/**
+ * Every payload says where it came from. Today: nowhere real.
+ *
+ * `syntheticSurfaces` drives `ui/SyntheticBanner` — REMOVE A NAME FROM THIS LIST as each surface
+ * is plumbed onto real endpoints, and when the list empties the banner stops rendering by itself.
+ * That disappearance is the acceptance evidence for the plumbing roadmap, the same way
+ * `ipBanner()` proved it in the server-rendered app.
+ */
 export const PROVENANCE = {
   synthetic: true,
   note: "Deterministic-synthetic figures. No SEC endpoint is being called.",
+  syntheticSurfaces: [
+    "company overview",
+    "financial history",
+    "institutional",
+    "insider activity",
+    "peer-relative",
+    "sector",
+    "qualitative",
+    "filings",
+    "manager",
+    "compare",
+  ] as readonly string[],
 } as const;
 
 export const api = {

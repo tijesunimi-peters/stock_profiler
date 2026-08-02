@@ -6269,3 +6269,55 @@
   background: var(--ink);
   opacity: 0.5;
 }
+
+/* ============================================================ synthetic disclosure banner
+ *
+ * Sits above the masthead on every page. Borrows `--ext-*` — the extension-tag palette, which
+ * already means "this value did not come from the standard taxonomy, read it differently".
+ * A synthetic figure is the same instruction, louder. The system has no danger token, and
+ * inventing one for an element scheduled for deletion would be the wrong thing to leave behind.
+ */
+.synth-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 9px 14px;
+  margin-bottom: 14px;
+  background: var(--ext-bg);
+  border: 1px solid var(--ext-border);
+  /* The one asymmetry: a heavier left edge, so the strip reads as a margin note against the page
+     rather than as a card of its own. It is an annotation ON the page, not content IN it. */
+  border-left: 3px solid var(--ext-color);
+  border-radius: 2px;
+}
+
+.synth-banner-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ext-color);
+  flex: none;
+}
+
+.synth-banner-copy {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+/* The list is identifiers, so it is set in the utility face — and it is the part that SHRINKS as
+   surfaces are plumbed. When it empties the component returns null and the banner is gone. */
+.synth-banner-list {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mono-muted);
+  flex-basis: 100%;
+}
+
+@media (max-width: 640px) {
+  .synth-banner { padding: 8px 10px; }
+  .synth-banner-copy { font-size: 12px; }
+}
