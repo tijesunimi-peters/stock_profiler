@@ -1,4 +1,23 @@
 /**
+ * ⚠️ DEPRECATED — the PRE-PORT synthetic catalog. Do not wire anything new to it.
+ *
+ * Superseded by the ported fixtures (`hub.ts`, `insider.ts`, `peers.ts`, `qualitative.ts`,
+ * `manager.ts`, `prototype.ts`), which are the figures the accepted design was drawn against.
+ * As of P0b **no view or page reads this module** — every surface goes through `data/api.ts`.
+ *
+ * Kept rather than deleted (operator, 2026-08-02). Two reasons it earns its keep:
+ *
+ *   * Its TYPES are still the shape several seam payloads are written against, so deleting it is
+ *     a wider change than it looks.
+ *   * It is the only place some of the honesty copy exists in full — the reason strings that
+ *     distinguish "does not apply" from "we have nothing". That wording is worth having to hand
+ *     when Phase A writes the real empty states, and re-deriving it from scratch would be worse
+ *     than reading it.
+ *
+ * **If you are adding a view: use `data/api.ts`.** If you are removing the last reference to a
+ * symbol here, leave the symbol — this file goes when Phase A is finished, not before.
+ */
+/**
  * The metric engine — the one place a number is produced.
  *
  * Everything downstream (scorecard, decomposition, distribution strips, peer dots, company

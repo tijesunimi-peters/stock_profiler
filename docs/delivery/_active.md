@@ -27,7 +27,11 @@ updated: 2026-08-02
 - [x] P0b-3 Manager  `8bd8fab`  · ManagerPage + the six views, **plus a chart-readout leak fix**
 - [x] P0b QA         -> `4-qa-p0b.md`   ✅ PASS, 73 driven assertions, 0 product defects
 - [x] P0b 4b operator verification -> `4b-manual-verification-p0b.md`  ✅ **CONFIRMED 2026-08-02**
-- [ ] P0b-4 Retirement · delete `surfaces.ts`/`metrics.ts`, kill the 27 `state.tsx` shim usages  ⬅ **NEXT, and now unblocked**
+- [x] P0b-4 **DEPRECATION, not deletion** (operator, 2026-08-02) · `surfaces.ts`, `metrics.ts` and
+      the `state.tsx` shims carry a ⚠️ DEPRECATED banner naming `data/api.ts` as the replacement.
+      Kept because their TYPES still back several seam payloads, because they hold honesty copy
+      Phase A will want, and because the pinned `period` shim is the honest record of the
+      three-period-vocabulary problem. **They go when Phase A is finished, not before.**
 
 ---
 
@@ -60,6 +64,17 @@ in `docs/delivery/react-plumbing-p0/`.
    to save a round-trip.
 5. **Scope option C** — the seam resolves the **ported** builders (`hub.ts` et al), not
    `surfaces.ts`. The adapters written now are the ones that survive Phase A.
+
+## ▶️ IN FLIGHT — whole-market backfill (started 2026-08-02)
+
+`docker compose run -d --name secfin-backfill --rm api python -m secfin.ingest.backfill --workers 6`
+
+Local docker volume `stock_profiler_secfin-data`, **not prod** — the operator's "backups before
+re-ingest" ruling governs the PROD volume and is untouched by this. 6 of 16 cores so the machine
+stays usable. Additive (COALESCE upsert), so it does not destroy existing rows.
+
+Watch: `docker logs -f secfin-backfill` · Stop: `docker stop secfin-backfill` (clean — SIGINT is
+handled, the writer flushes, and `--limit`/checkpointing make a re-run resume where it left off).
 
 ## NOT decided — blocks Phase A, not Phase 0
 

@@ -54,8 +54,18 @@ export interface SelectionApi extends Selection {
   /** A link to `path` that carries the whole selection with it. */
   href: (path: string, overrides?: Partial<Selection>) => string;
   /**
-   * TEMPORARY compatibility shims for the views still running on the pre-port synthetic
-   * catalog. They disappear as each view is rebuilt against the prototype's own data.
+   * ⚠️ DEPRECATED shims — no view reads these any more (P0b). Do not add a new caller.
+   *
+   * They translated the prototype's state vocabulary into the pre-port catalog's: `sectorIdx`
+   * (a number) into `sectorId` (a string), plus two constants standing in for state the ported
+   * views do not carry. Every view now reads through `data/api.ts`, so nothing here is load-
+   * bearing.
+   *
+   * Kept rather than deleted (operator, 2026-08-02) because `period` is the honest record of a
+   * problem Phase A has to solve: it is pinned to "2026-Q1" and the real API speaks THREE period
+   * vocabularies — a `(year, FiscalPeriod)` pair for facts, a 13F quarter-end date, and a
+   * lookback count. Deleting the constant would delete the reminder that no real period state
+   * exists yet.
    */
   period: string;
   sectorId: string;
@@ -63,7 +73,7 @@ export interface SelectionApi extends Selection {
   focalTicker: string;
 }
 
-/** Maps the prototype's sector index onto the pre-port catalog id. Removed with the shims. */
+/** Maps the prototype's sector index onto the pre-port catalog id. ⚠️ Deprecated with the shims above. */
 const LEGACY_SECTOR_IDS = [
   "semis", "software", "hardware", "biotech", "pharma",
   "banks", "retail", "energy", "utilities", "semis", "telecom",
