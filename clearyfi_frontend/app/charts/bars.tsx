@@ -201,11 +201,31 @@ export function Histogram({
 
 // ---------------------------------------------------------------------------- stacked columns
 
+/**
+ * The band colours a stacked column uses, for `n` parts.
+ *
+ * Exported so a caller that lays its legend out in the DOM can colour the swatches from the
+ * same ramp the chart fills with. A legend whose colours do not match the bars is worse than
+ * no legend, and the ramp is the chart's, not the caller's, to choose.
+ */
+export function stackRamp(n: number): string[] {
+  const lo = [0xc0, 0x70, 0x3a];
+  const hi = [0xf0, 0xdc, 0xc6];
+  const span = Math.max(1, n - 1);
+  return Array.from({ length: n }, (_x, i) => {
+    const t = i / span;
+    const c = lo.map((v, j) => Math.round(v + (hi[j] - v) * t));
+    return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+  });
+}
+
 export interface StackedColumnsData {
   columns: { key: string; label: string; parts: { key: string; label: string; value: number }[] }[];
   format: (v: number) => string;
   /** Render each column as 100% of itself. */
   normalize?: boolean;
+  /** Off when the caller lays the legend out itself — see `stackRamp`. */
+  legend?: boolean;
 }
 
 const stackedColsDraw: DrawFn<StackedColumnsData> = (svg, { d3, still, width, height, data, container }) => {
@@ -284,6 +304,8 @@ const stackedColsDraw: DrawFn<StackedColumnsData> = (svg, { d3, still, width, he
   // The legend WRAPS. Laid out on one line it runs off the frame as soon as the segment labels
   // are prose rather than tokens ("Interest, financing or regulated tariff" overhung by 149px
   // at 1024) — and a legend outside the viewBox is silently clipped, not scrollable.
+  if (data.legend === false) return;
+
   let lx = 0;
   let ly = 0;
   partKeys.forEach((k, i) => {
@@ -304,16 +326,18 @@ export function StackedColumns({
   columns,
   format = (v) => String(v),
   normalize,
+  legend,
   height = 240,
   label,
 }: {
   columns: StackedColumnsData["columns"];
   format?: (v: number) => string;
   normalize?: boolean;
+  legend?: boolean;
   height?: number;
   label?: string;
 }) {
-  const data = useMemo(() => ({ columns, format, normalize }), [columns, format, normalize]);
+  const data = useMemo(() => ({ columns, format, normalize, legend }), [columns, format, normalize, legend]);
   return <Chart draw={stackedColsDraw} data={data} height={height} label={label} />;
 }
 

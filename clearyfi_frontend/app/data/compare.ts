@@ -52,8 +52,8 @@ export interface SectorCompare {
     bLabel: string;
     a: number;
     b: number;
-    spreadA: { lo: number; q1: number; med: number; q3: number; hi: number };
-    spreadB: { lo: number; q1: number; med: number; q3: number; hi: number };
+    spreadA: { q1: number; med: number; q3: number };
+    spreadB: { q1: number; med: number; q3: number };
     fmt: (v: number) => string;
   }[];
 }
@@ -88,10 +88,10 @@ export function sectorCompare(ai: number, bi: number, peerCount: number): Sector
       a: m.a, b: m.b,
       aLabel: fmtMetric(m.a, m.fmt),
       bLabel: fmtMetric(m.b, m.fmt),
-      // lo/hi are the whiskers: 1.6x the IQR half-width, so the band reads as a band and the
-      // strip still has somewhere to put the tails.
-      spreadA: { lo: m.a - spreadA * 1.6, q1: m.a - spreadA, med: m.a, q3: m.a + spreadA, hi: m.a + spreadA * 1.6 },
-      spreadB: { lo: m.b - spreadB * 1.6, q1: m.b - spreadB, med: m.b, q3: m.b + spreadB, hi: m.b + spreadB * 1.6 },
+      // q1/q3 only. The prototype's rail spans the IQR across both sectors and draws no
+      // whiskers — inventing tails would put marks on the page no filing supports.
+      spreadA: { q1: m.a - spreadA, med: m.a, q3: m.a + spreadA },
+      spreadB: { q1: m.b - spreadB, med: m.b, q3: m.b + spreadB },
       fmt: (v: number) => fmtMetric(v, m.fmt),
     };
   });
@@ -107,6 +107,23 @@ export function sectorCompare(ai: number, bi: number, peerCount: number): Sector
     cards,
   };
 }
+
+/**
+ * The company comparison's seven sections — the rail's jump list.
+ *
+ * 02 is abbreviated to "Reported figures" where the section header reads "Reported figures, as
+ * filed", the same compression the hub rail uses: the ordinals bind rail to header, so the text
+ * may shorten to stay on one line.
+ */
+export const CC_SECTIONS = [
+  { n: "01", label: "Financial metrics", href: "#c1" },
+  { n: "02", label: "Reported figures", href: "#c2" },
+  { n: "03", label: "Business model", href: "#c3" },
+  { n: "04", label: "Disclosure & governance", href: "#c4" },
+  { n: "05", label: "Managers holding both", href: "#c5" },
+  { n: "06", label: "Filing basis", href: "#c6" },
+  { n: "07", label: "What can be compared", href: "#c7" },
+];
 
 // ============================================================ company vs company
 
@@ -397,7 +414,7 @@ export function companyCompare(aTicker: string, bTicker: string): CompanyCompare
     revMix: {
       segs: [
         { label: "Products & goods", color: "var(--accent)" },
-        { label: "Services & support", color: "var(--gaap)" },
+        { label: "Services & support", color: "var(--gaap-color)" },
         { label: "Subscription & licensing", color: "#A88C5F" },
         { label: "Interest, financing or regulated tariff", color: "var(--border-strong)" },
       ],
@@ -413,7 +430,7 @@ export function companyCompare(aTicker: string, bTicker: string): CompanyCompare
     geo: {
       segs: [
         { label: "Americas", color: "var(--accent)" },
-        { label: "EMEA", color: "var(--gaap)" },
+        { label: "EMEA", color: "var(--gaap-color)" },
         { label: "Asia-Pacific", color: "#A88C5F" },
         { label: "Other", color: "var(--border-strong)" },
       ],

@@ -4505,7 +4505,7 @@
 
 .qual-card.is-warn,
 .p-card.is-warn-border {
-  border-color: var(--ext);
+  border-color: var(--ext-color);
 }
 
 .qual-card-head {
@@ -4762,14 +4762,14 @@
 }
 
 .qual-side-title.is-ext {
-  color: var(--ext);
+  color: var(--ext-color);
   margin-bottom: 4px;
 }
 
 .qual-side-count {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ext);
+  color: var(--ext-color);
 }
 
 .qual-side-total {
@@ -4796,7 +4796,7 @@
   gap: 8px;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--ext);
+  color: var(--ext-color);
   margin-top: 4px;
 }
 
@@ -4863,7 +4863,7 @@
 }
 
 .qual-matrix-num.is-new {
-  color: var(--gaap);
+  color: var(--gaap-color);
 }
 
 .qual-matrix-num.is-none {
@@ -4933,7 +4933,7 @@
   gap: 7px;
   font-family: var(--font-mono);
   font-size: 9.5px;
-  color: var(--ext);
+  color: var(--ext-color);
   background: var(--ext-bg);
   border: 1px solid var(--ext-border);
   border-radius: 6px;
@@ -5067,7 +5067,7 @@
 .qual-def-count {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ext);
+  color: var(--ext-color);
   flex: none;
 }
 
@@ -6606,7 +6606,7 @@
 /* The second bar is the SAME sector weighted by stake instead of counted — a different
    measure of the same thing, so it takes the second identity hue, not a shade of the first. */
 .mgr-sec-fill.is-stake {
-  background: var(--gaap);
+  background: var(--gaap-color);
 }
 
 .mgr-sec-med {
@@ -6621,7 +6621,7 @@
 .mgr-sec-sw {
   font-family: var(--font-mono);
   font-size: 10.5px;
-  color: var(--gaap);
+  color: var(--gaap-color);
 }
 
 .mgr-legend {
@@ -6651,7 +6651,7 @@
 }
 
 .mgr-key.is-stake {
-  background: var(--gaap);
+  background: var(--gaap-color);
 }
 
 /* ---------------------------------------------------------------- voting */
@@ -6704,7 +6704,7 @@
 }
 
 .mgr-vote-bar .is-against {
-  background: var(--gaap);
+  background: var(--gaap-color);
   opacity: 0.55;
 }
 
@@ -7032,7 +7032,7 @@
 }
 
 .cmp-swatch.is-b {
-  background: var(--gaap);
+  background: var(--gaap-color);
 }
 
 .cmp-name {
@@ -7092,7 +7092,7 @@
 
 .cmp-pills-label.is-b,
 .hub-label.is-b {
-  color: var(--gaap);
+  color: var(--gaap-color);
 }
 
 .cmp-pill {
@@ -7120,8 +7120,8 @@
 
 .cmp-pill.is-b.is-active {
   color: #fff;
-  background: var(--gaap);
-  border-color: var(--gaap);
+  background: var(--gaap-color);
+  border-color: var(--gaap-color);
 }
 
 .cmp-pickers {
@@ -7230,7 +7230,7 @@
 }
 
 .cmp-score-bar .is-b {
-  background: var(--gaap);
+  background: var(--gaap-color);
 }
 
 .cmp-score-v {
@@ -7322,32 +7322,124 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 12px;
 }
 
-.cmp-card-fill {
-  height: 12px;
-  border-radius: 6px;
-  min-width: 2px;
+.cmp-card-track {
+  flex: 1;
+  height: 10px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 5px;
+  overflow: hidden;
 }
 
-.cmp-card-fill.is-a {
+.cmp-card-track > span {
+  display: block;
+  height: 100%;
+}
+
+.cmp-card-track .is-a {
   background: var(--accent);
 }
 
-.cmp-card-fill.is-b {
-  background: var(--gaap);
+.cmp-card-track .is-b {
+  background: var(--gaap-color);
 }
 
+/* 70px fixed so both values right-align to the same edge whatever their length. */
 .cmp-card-v {
+  width: 70px;
+  text-align: right;
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--ink);
+  font-size: 11.5px;
   flex: none;
 }
 
-.cmp-card-spread {
+.cmp-card-v.is-a {
+  color: var(--accent-ink);
+}
+
+.cmp-card-v.is-b {
+  color: var(--gaap-color);
+}
+
+/* ---------------------------------------------------------------- spread rails */
+
+.cmp-spread {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin-top: 10px;
+}
+
+.cmp-spread-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cmp-spread-k {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  width: 10px;
+  flex: none;
+}
+
+.cmp-spread-k.is-a {
+  color: var(--accent-ink);
+}
+
+.cmp-spread-k.is-b {
+  color: var(--gaap-color);
+}
+
+.cmp-spread-rail {
+  position: relative;
+  display: block;
+  flex: 1;
+  height: 16px;
+}
+
+.cmp-spread-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border-tint);
+}
+
+.cmp-spread-band {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 3px;
+  opacity: 0.22;
+}
+
+.cmp-spread-band.is-a,
+.cmp-spread-tick.is-a {
+  background: var(--accent);
+}
+
+.cmp-spread-band.is-b,
+.cmp-spread-tick.is-b {
+  background: var(--gaap-color);
+}
+
+.cmp-spread-tick {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 2px;
+}
+
+.cmp-spread-scale {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--mono-muted);
 }
 
 /* ---------------------------------------------------------------- company sections */
@@ -7367,8 +7459,27 @@
   border-top: 1px solid var(--rule);
 }
 
+/* The summary is the section's headline claim, so it reads at 11px in ink-soft rather than as
+   a muted hint. */
 .cmp-summary {
-  margin-bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.cmp-measure-why {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--mono-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The chip closes the row, hard right — it is the verdict the row builds to. */
+.cmp-chip.is-end {
+  justify-self: end;
 }
 
 .cmp-gov {
@@ -7404,81 +7515,118 @@
 }
 
 .cmp-gov-labels .is-b {
-  color: var(--gaap);
+  color: var(--gaap-color);
 }
 
 .cmp-ov-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(60px, 1.1fr) 52px 52px 112px;
-  gap: 10px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) 56px 56px;
+  gap: 9px;
+  align-items: baseline;
   padding: 7px 0;
   border-top: 1px solid var(--rule);
+}
+
+.cmp-ov-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .cmp-ov-name {
   font-size: 12.5px;
   color: var(--ink-body);
-  min-width: 0;
 }
 
-.cmp-ov-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
+/* The tilt is stated in words under the name. The scatter beside it already carries the
+   geometry, so repeating it as a bar would say the same thing twice. */
+.cmp-ov-tilt {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
 }
 
-.cmp-ov-bar {
-  display: block;
-  height: 7px;
-  background: var(--bg-tint);
-  border-radius: 3px;
-  overflow: hidden;
+.cmp-ov-a,
+.cmp-ov-b {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 
-.cmp-ov-bar > span {
-  display: block;
-  height: 7px;
-  border-radius: 3px;
-  opacity: 0.55;
+.cmp-ov-a {
+  color: var(--accent-ink);
 }
 
-.cmp-ov-bar .is-a {
-  background: var(--accent);
-}
-
-.cmp-ov-bar .is-b {
-  background: var(--gaap);
+.cmp-ov-b {
+  color: var(--gaap-color);
 }
 
 /* ---------------------------------------------------------------- basis & measures */
 
-.cmp-basis-row {
-  display: grid;
-  grid-template-columns: minmax(110px, 1.1fr) minmax(70px, 1fr) minmax(70px, 1fr) 74px minmax(0, 2fr);
-  gap: 10px;
-  align-items: baseline;
+.cmp-basis {
   padding: 9px 0;
   border-top: 1px solid var(--rule);
+}
+
+.cmp-basis-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) minmax(80px, 1fr) minmax(80px, 1fr) 74px;
+  gap: 10px;
+  align-items: baseline;
+}
+
+/* The note sits UNDER the row, not as a fifth column — it is prose about the row above, and a
+   grid track makes it compete with the values for width. */
+.cmp-basis-note {
+  margin-top: 4px;
 }
 
 .cmp-measure-row {
   display: grid;
-  grid-template-columns: minmax(110px, 1fr) 92px minmax(0, 2.4fr);
-  gap: 10px;
+  grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) 84px;
+  gap: 12px;
   align-items: baseline;
   padding: 9px 0;
   border-top: 1px solid var(--rule);
 }
 
+.cmp-trait-head,
 .cmp-trait-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 92px 92px 70px;
+  grid-template-columns: minmax(120px, 1fr) 54px 54px;
   gap: 10px;
-  align-items: baseline;
-  padding: 8px 0;
+}
+
+.cmp-trait-head {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  padding-bottom: 6px;
+}
+
+.cmp-trait-row {
+  align-items: center;
+  padding: 6px 0;
   border-top: 1px solid var(--rule);
+}
+
+/* yes/no, centred under the ticker that owns the column. A trait a filer does not have is a
+   fact about its statements, so "no" is muted rather than marked. */
+.cmp-mark {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+  color: var(--mono-muted);
+  background: var(--bg-tint);
+  border-radius: 5px;
+  padding: 2px 0;
+}
+
+.cmp-mark.is-yes {
+  color: var(--accent-ink);
+  background: var(--accent-wash);
 }
 
 .cmp-basis-k {
@@ -7526,4 +7674,132 @@
 .cmp-chip.is-absent {
   color: var(--mono-muted);
   background: var(--bg-tint);
+}
+
+/* ---------------------------------------------------------------- compare · chart + side col */
+
+/* The prototype's two-column shape: chart on the left, legend and note beside it. Below 260px
+   per column they stack, which is what auto-fit is for. */
+.cmp-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.cmp-split-chart,
+.cmp-split-side {
+  min-width: 0;
+}
+
+.cmp-legend-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cmp-legend-col.is-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.cmp-legend-col span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--ink-body);
+}
+
+.cmp-legend-col i {
+  width: 11px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.cmp-expand {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  float: right;
+  margin: -30px 0 0;
+}
+
+/* ---------------------------------------------------------------- compare · zoom overlay */
+
+.cmp-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(28, 26, 22, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+}
+
+.cmp-zoom-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(28, 26, 22, 0.3);
+  padding: 20px 22px;
+  width: 100%;
+  max-width: 1360px;
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+}
+
+.cmp-zoom-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.cmp-zoom-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cmp-zoom-h {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.cmp-zoom-close {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+
+.cmp-zoom-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  min-height: min(58vh, 520px);
 }
