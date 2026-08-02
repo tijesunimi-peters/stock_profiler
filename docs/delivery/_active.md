@@ -4,8 +4,9 @@ task_slug: react-plumbing-p0
 request: Phase 0 of `docs/ROADMAP_REACT_PLUMBING.md` — move the Company Hub Overview and
   Institutional views onto the `clearyfi_frontend` data seam (pixel-identical refactor), so the
   Phase A endpoint swap is a body change and not another refactor.
-branch: `react-plumbing-p0` (off `master` @ `bb1e672`) — **uncommitted**
-next_stage: qa
+branch: merged — `061dd99` (refactor) + `d03c633` (banner) are **in `master`**; the stale
+  `react-plumbing-p0` pointer still sits at the old base `bb1e672` and can be deleted
+next_stage: done
 qa_cycles: 0
 updated: 2026-08-02
 
@@ -17,16 +18,25 @@ updated: 2026-08-02
 - [x] 1 Product Manager       -> 1-brief.md
 - [x] 2 Principal Architect   -> 2-architecture.md
 - [x] 3 Frontend  -> 3-implementation.md  (AC-1..AC-9 green; AC-10 partial — no dark theme exists)
-- [ ] 4 QA Tester             -> 4-qa.md
-- [ ] 4b Operator manual verification -> 4b-manual-verification.md
+- [x] 4 QA Tester             -> 4-qa.md  (✅ PASS — pending manual UI verification)
+- [x] 4b Operator manual verification -> 4b-manual-verification.md  ✅ **CONFIRMED 2026-08-02**
 
 ---
 
-# ▶️ RESUME HERE
+# ✅ PHASE 0 IS COMPLETE AND ACCEPTED
 
-**Command: `/deliver resume`.** Rebuilds from this file + `docs/delivery/react-plumbing-p0/`.
-**Nothing is committed** — `1-brief.md`, `2-architecture.md`, `docs/ROADMAP_REACT_PLUMBING.md` and
-`scripts/v1_tag_coverage.py` are all untracked in the working tree.
+All five stages done, operator-confirmed 2026-08-02. Everything is **committed to `master`**:
+`061dd99` (refactor) · `d03c633` (banner) · this doc set. The stale `react-plumbing-p0` branch
+pointer still sits at the old base `bb1e672` and can be deleted.
+
+# ▶️ WHAT'S NEXT — Phase A, and it is blocked
+
+**Phase A is the one that actually calls endpoints.** It cannot start until the two decisions under
+"NOT decided" below are made. A third item is unblocked and cheap whenever you want it: **P0b**,
+the remaining views onto the seam (now including the Manager port that landed on top of this work).
+
+`/deliver <request>` starts the next task and overwrites this file; the record survives in git and
+in `docs/delivery/react-plumbing-p0/`.
 
 ## Operator rulings so far (all 2026-08-02)
 
