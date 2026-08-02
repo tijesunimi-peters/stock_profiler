@@ -13,10 +13,36 @@ from typing import NamedTuple
 
 
 class CompanyProfile(NamedTuple):
+    """One filer's identity, as EDGAR states it.
+
+    The cover-page fields below come from `/submissions/CIK##########.json` -- NOT from
+    companyfacts, which carries numeric facts only. That distinction is why they are stored here
+    rather than derived: verified 2026-08-02 that companyfacts holds exactly two `dei` tags, so
+    incorporation state, filer status and the rest are structurally absent from it.
+
+    Every one is optional. EDGAR omits fields for some filers, and a missing value must read as
+    unknown -- never as an empty string and never as a default that looks like a fact.
+    """
+
     cik: int
     sic: str | None
     sic_description: str | None
     name: str | None
+    # --- cover-page identity, all from /submissions/ ---
+    state_of_incorporation: str | None = None
+    hq_city: str | None = None
+    hq_state: str | None = None
+    #: EDGAR's `fiscalYearEnd`, an MMDD string ("0926" = 26 September). Stored raw; formatting is
+    #: the caller's job, and storing a formatted string would lose the ordering.
+    fiscal_year_end: str | None = None
+    #: EDGAR's `category`, e.g. "Large accelerated filer". Its own vocabulary, not ours.
+    filer_category: str | None = None
+    ein: str | None = None
+    exchanges: str | None = None
+    #: Earliest filing date EDGAR holds for this filer. Taken from `filings.files` where present --
+    #: the OLDER paginated history, not the rolling recent window -- so "first filing" means what
+    #: it says. Apple's reaches 1994-01-26; the recent window alone would have said 2015.
+    first_filing_date: str | None = None
 
 
 class CompanyProfileRepository(ABC):

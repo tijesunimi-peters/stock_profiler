@@ -551,11 +551,17 @@ async def get_company_profile(
     A pure operational-store read (no facts fetch, no SEC call beyond the cached ticker->CIK
     resolution), so it is cheap enough to sit alongside the page's other page-load requests.
 
-    **Deliberately narrow.** The other cover-page identity fields a reader might expect (NAICS,
-    state of incorporation, headquarters, auditor, employees, filer status) are TEXT facts, and
-    the SEC's companyfacts API carries numeric facts only -- they are structurally absent from
-    our store, not merely un-ingested. We omit them rather than serve a fabricated or
-    permanently-empty field.
+    Carries the cover-page identity too -- incorporation state, headquarters, fiscal year end,
+    filer category, EIN, exchanges and the date of the filer's FIRST filing. Those come from
+    `/submissions/`, which `ingest/sic_backfill.py` already walks for the SIC. They are NOT in
+    companyfacts (verified: a companyfacts payload carries two `dei` tags), which is why this
+    endpoint used to omit them.
+
+    Still absent, each for its own reason: **NAICS** (the SEC assigns SIC; deriving one would
+    present our mapping as the filer's), **employees** (a real tag that about one filer in nine
+    thousand uses), and **auditor** (`dei:AuditorName` is tagged, but only inside the 10-K's
+    inline-XBRL instance -- a document fetch this endpoint does not do). A null here means EDGAR
+    did not state it, or the profile has not been backfilled since these columns were added.
 
     A company with facts but no ingested profile row returns 200 with null fields (the same
     convention /peers uses for an unranked company) -- an unknown TICKER is the 404.
@@ -570,6 +576,14 @@ async def get_company_profile(
         name=profile.name,
         sic=profile.sic,
         sic_description=profile.sic_description,
+        state_of_incorporation=profile.state_of_incorporation,
+        hq_city=profile.hq_city,
+        hq_state=profile.hq_state,
+        fiscal_year_end=profile.fiscal_year_end,
+        filer_category=profile.filer_category,
+        ein=profile.ein,
+        exchanges=profile.exchanges,
+        first_filing_date=profile.first_filing_date,
     )
 
 

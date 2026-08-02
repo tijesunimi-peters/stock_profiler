@@ -76,11 +76,20 @@ class Statement(BaseModel):
 class CompanyProfileInfo(BaseModel):
     """A company's filer identity: name + SIC industry assignment, as EDGAR assigns them.
 
-    Deliberately small. The prototype's other cover-page identity fields (NAICS, state of
-    incorporation, headquarters, auditor, employee count, filer status) are **text** facts, and
-    the SEC's companyfacts API carries NUMERIC facts only -- so they are structurally absent
-    from our store rather than missing through an ingest gap. Serving a field we cannot source
-    would mean inventing it, so this model carries only what is really stored (V3-P4).
+    The cover-page fields come from `/submissions/`, NOT from companyfacts -- verified 2026-08-02
+    that a companyfacts payload carries exactly two `dei` tags, so incorporation state, filer
+    status and the rest are structurally absent from it. That was the reasoning behind this model
+    being name+SIC only (V3-P4); it was right about companyfacts and wrong about the submissions
+    payload, which we already download and which carries them plainly.
+
+    Three fields a reader might still expect are NOT here, and each for a different reason:
+
+    * **NAICS** -- the SEC assigns SIC, not NAICS. Not in `/submissions/` and not in the DERA
+      datasets either (checked). Deriving one from SIC would present our mapping as the filer's.
+    * **Employees** -- `EntityNumberOfEmployees` is a real tag used by roughly one filer in nine
+      thousand. Effectively nobody reports it, so a field would be null almost always.
+    * **Auditor** -- `dei:AuditorName` IS tagged, but only inside the 10-K's inline-XBRL instance,
+      which is a document fetch this endpoint does not do. It stays out until that path exists.
 
     Every field is nullable: a company we have facts for but no ingested profile row is a valid
     200 with nulls (the same convention /peers uses for an unranked company), NOT a 404. An
@@ -91,6 +100,24 @@ class CompanyProfileInfo(BaseModel):
     name: str | None = None
     sic: str | None = None
     sic_description: str | None = None
+    #: EDGAR's two-letter code. "CA" is California for a US incorporation; for a foreign one it is
+    #: a country code. We serve it raw rather than expanding it, because the same two letters mean
+    #: different things in the two cases and a wrong expansion is worse than a code.
+    state_of_incorporation: str | None = None
+    hq_city: str | None = None
+    hq_state: str | None = None
+    #: MMDD as EDGAR writes it -- "0926" is 26 September. Raw, so the caller formats it and the
+    #: ordering survives.
+    fiscal_year_end: str | None = None
+    #: EDGAR's own vocabulary: "Large accelerated filer", "Non-accelerated filer", ...
+    filer_category: str | None = None
+    ein: str | None = None
+    #: Comma-joined listing venues, e.g. "Nasdaq".
+    exchanges: str | None = None
+    #: Oldest filing EDGAR holds, read from the FULL history (`filings.files`), not the rolling
+    #: recent window -- which for a prolific filer covers about a year and would badly understate
+    #: how long the company has been filing.
+    first_filing_date: str | None = None
     source: str = "SEC EDGAR filer index (SIC assignment)"
 
 
