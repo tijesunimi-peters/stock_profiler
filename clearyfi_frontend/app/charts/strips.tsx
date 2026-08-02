@@ -32,6 +32,14 @@ export interface StripMark {
   kind: "focal" | "a" | "b";
 }
 
+export interface StripQuantiles {
+  lo: number;
+  hi: number;
+  q1: number;
+  q3: number;
+  med: number;
+}
+
 export interface StripData {
   peers: StripDatum[];
   marks: StripMark[];
@@ -40,6 +48,16 @@ export interface StripData {
   axisLabels: boolean;
   /** Explicit domain, when several strips must share one axis. */
   domain?: [number, number];
+  /**
+   * Pre-computed quantiles, for a strip that has a distribution but no per-filer dots — the
+   * sector altitude, where the band IS the message and no single filer is focal.
+   */
+  quantiles?: StripQuantiles;
+  /** Jitter lanes for the dot cloud. */
+  lanes: number;
+  laneGap: number;
+  bandH: number;
+  medColor: string;
 }
 
 const PAD = 10;
@@ -53,26 +71,33 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
   container?.querySelectorAll(".chart-readout").forEach((n) => n.remove());
 
   const bandTop = 6;
-  const bandH = 16;
+  const bandH = data.bandH;
   const axisY = bandTop + bandH + 12;
 
-  if (!vals.length && !marks.length) {
+  if (!vals.length && !marks.length && !data.quantiles) {
     mono(svg.append("text").attr("x", 0).attr("y", 16).text("no comparable value in this peer set"));
     return;
   }
 
   const sorted = [...vals].sort((a, b) => a - b);
-  const q = (p: number) => {
+  const qf = (p: number) => {
     if (!sorted.length) return 0;
     const i = (sorted.length - 1) * p;
-    const lo = Math.floor(i);
-    const hi = Math.ceil(i);
-    return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+    const l = Math.floor(i);
+    const h = Math.ceil(i);
+    return l === h ? sorted[l] : sorted[l] + (sorted[h] - sorted[l]) * (i - l);
+  };
+  const Q = data.quantiles ?? {
+    lo: sorted[0],
+    hi: sorted[sorted.length - 1],
+    q1: qf(0.25),
+    q3: qf(0.75),
+    med: qf(0.5),
   };
 
   const markVals = marks.map((m) => m.value);
-  const lo = data.domain ? data.domain[0] : Math.min(...sorted, ...markVals);
-  const hi = data.domain ? data.domain[1] : Math.max(...sorted, ...markVals);
+  const lo = data.domain ? data.domain[0] : Math.min(Q.lo, ...markVals);
+  const hi = data.domain ? data.domain[1] : Math.max(Q.hi, ...markVals);
   const pad = (hi - lo || Math.abs(hi) || 1) * 0.08;
 
   const x = d3
@@ -82,7 +107,7 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
     .clamp(true);
 
   // A distribution of one is not a distribution — no band, no median rule, and say so.
-  const distributional = sorted.length >= 2;
+  const distributional = !!data.quantiles || sorted.length >= 2;
 
   svg
     .append("line")
@@ -99,18 +124,18 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
       .attr("y", bandTop)
       .attr("height", bandH)
       .attr("rx", 3)
-      .attr("x", x(q(0.25)))
-      .attr("width", Math.max(2, x(q(0.75)) - x(q(0.25))))
+      .attr("x", x(Q.q1))
+      .attr("width", Math.max(2, x(Q.q3) - x(Q.q1)))
       .style("fill", "var(--accent-wash)")
       .style("stroke", "var(--accent-wash-border)");
 
     svg
       .append("line")
-      .attr("x1", x(q(0.5)))
-      .attr("x2", x(q(0.5)))
+      .attr("x1", x(Q.med))
+      .attr("x2", x(Q.med))
       .attr("y1", bandTop - 3)
       .attr("y2", bandTop + bandH + 3)
-      .style("stroke", "var(--ink)")
+      .style("stroke", data.medColor)
       .style("stroke-width", 1.5);
   }
 
@@ -128,7 +153,10 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
           .append("circle")
           // Rule 1: entering marks land at final geometry.
           .attr("cx", (d) => x(d.value as number))
-          .attr("cy", (_d, i) => bandTop + bandH / 2 + ((i % 3) - 1) * 3.4)
+          .attr(
+            "cy",
+            (_d, i) => bandTop + bandH / 2 + ((i % data.lanes) - (data.lanes - 1) / 2) * data.laneGap,
+          )
           .attr("r", 3.1),
       (update) => update,
       (exit) => exit.remove(),
@@ -140,7 +168,11 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
 
   anim(dots, still)
     .attr("cx", (d: StripDatum) => x(d.value as number))
-    .attr("cy", (_d: StripDatum, i: number) => bandTop + bandH / 2 + ((i % 3) - 1) * 3.4);
+    .attr(
+      "cy",
+      (_d: StripDatum, i: number) =>
+        bandTop + bandH / 2 + ((i % data.lanes) - (data.lanes - 1) / 2) * data.laneGap,
+    );
 
   const readout = container ? makeReadout(container) : null;
   readout?.hide();
@@ -188,9 +220,9 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
   if (axisLabels) {
     const ticks: [number, string][] = distributional
       ? [
-          [sorted[0], format(sorted[0])],
-          [q(0.5), format(q(0.5))],
-          [sorted[sorted.length - 1], format(sorted[sorted.length - 1])],
+          [Q.lo, format(Q.lo)],
+          [Q.med, format(Q.med)],
+          [Q.hi, format(Q.hi)],
         ]
       : sorted.length === 1
         ? [[sorted[0], format(sorted[0])]]
@@ -219,31 +251,152 @@ const stripDraw: DrawFn<StripData> = (svg, { d3, still, width, height, data, con
 };
 
 export interface PeerStripProps {
-  peers: StripDatum[];
+  peers?: StripDatum[];
   marks?: StripMark[];
+  /** Use instead of `peers` when the distribution is known but its members are not plotted. */
+  quantiles?: StripQuantiles;
   format?: (v: number) => string;
   onPick?: (id: string) => void;
   axisLabels?: boolean;
   domain?: [number, number];
   height?: number;
   label?: string;
+  /**
+   * `track` is the sector-altitude strip: band + median, no dots, 34px tall.
+   * `cloud` is the company-altitude strip: five jitter lanes of peer dots, 66px tall.
+   * Both are the SAME routine — the difference is inputs, not a second chart.
+   */
+  variant?: "track" | "cloud";
 }
 
+const GEOM = {
+  track: { height: 34, bandH: 14, lanes: 1, laneGap: 0, medColor: "var(--ink)" },
+  cloud: { height: 66, bandH: 16, lanes: 5, laneGap: 8.6, medColor: "var(--mono-muted)" },
+} as const;
+
 export function PeerStrip({
-  peers,
+  peers = [],
   marks = [],
+  quantiles,
   format = (v) => String(Math.round(v * 100) / 100),
   onPick,
   axisLabels = true,
   domain,
-  height = 66,
+  height,
   label,
+  variant = "cloud",
 }: PeerStripProps) {
+  const g = GEOM[variant];
   const data = useMemo<StripData>(
-    () => ({ peers, marks, format, onPick, axisLabels, domain }),
-    [peers, marks, format, onPick, axisLabels, domain],
+    () => ({
+      peers,
+      marks,
+      quantiles,
+      format,
+      onPick,
+      axisLabels,
+      domain,
+      lanes: g.lanes,
+      laneGap: g.laneGap,
+      bandH: g.bandH,
+      medColor: g.medColor,
+    }),
+    [peers, marks, quantiles, format, onPick, axisLabels, domain, g],
   );
-  return <Chart className="dist-strip" draw={stripDraw} data={data} height={height} label={label} />;
+  return (
+    <Chart
+      className="dist-strip"
+      draw={stripDraw}
+      data={data}
+      height={height ?? g.height + (axisLabels ? 26 : 0)}
+      label={label}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------- spread overlay
+
+export interface SpreadBand {
+  id: string;
+  label: string;
+  kind: "a" | "b";
+  lo: number;
+  q1: number;
+  med: number;
+  q3: number;
+  hi: number;
+}
+
+/**
+ * Two sectors' middle-half bands and medians on ONE shared axis.
+ *
+ * Overlaying rather than stacking is the point: the reader is comparing spread, and two
+ * separate axes would let different scales masquerade as different dispersion. A/B color is
+ * categorical identity — neither band is the winner.
+ */
+const spreadDraw: DrawFn<{ bands: SpreadBand[]; format: (v: number) => string }> = (
+  svg,
+  { d3, width, height, data },
+) => {
+  svg.selectAll("*").remove();
+  if (!data.bands.length) return;
+  const lo = Math.min(...data.bands.map((b) => b.lo));
+  const hi = Math.max(...data.bands.map((b) => b.hi));
+  const pad = (hi - lo || 1) * 0.08;
+  const x = d3.scaleLinear().domain([lo - pad, hi + pad]).range([PAD, width - PAD]);
+
+  data.bands.forEach((b, i) => {
+    const y = 12 + i * 26;
+    const fill = b.kind === "b" ? "var(--gaap-color)" : "var(--accent)";
+    svg
+      .append("line")
+      .attr("x1", x(b.lo))
+      .attr("x2", x(b.hi))
+      .attr("y1", y)
+      .attr("y2", y)
+      .style("stroke", "var(--border-strong)");
+    svg
+      .append("rect")
+      .attr("x", x(b.q1))
+      .attr("width", Math.max(2, x(b.q3) - x(b.q1)))
+      .attr("y", y - 8)
+      .attr("height", 16)
+      .attr("rx", 3)
+      .style("fill", fill)
+      .style("fill-opacity", 0.18)
+      .style("stroke", fill)
+      .style("stroke-opacity", 0.5);
+    svg
+      .append("line")
+      .attr("x1", x(b.med))
+      .attr("x2", x(b.med))
+      .attr("y1", y - 11)
+      .attr("y2", y + 11)
+      .style("stroke", fill)
+      .style("stroke-width", 2);
+    mono(
+      svg
+        .append("text")
+        .attr("x", clampX(x(b.med), width))
+        .attr("y", y + 22)
+        .attr("text-anchor", edgeAnchor(x(b.med), width))
+        .text(`${b.label} ${data.format(b.med)}`),
+      9,
+    );
+  });
+};
+
+export function SpreadOverlay({
+  bands,
+  format = (v) => String(Math.round(v * 10) / 10),
+  label,
+}: {
+  bands: SpreadBand[];
+  format?: (v: number) => string;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ bands, format }), [bands, format]);
+  return <Chart draw={spreadDraw} data={data} height={bands.length * 26 + 28} label={label} />;
 }
 
 // ---------------------------------------------------------------------------- window strip

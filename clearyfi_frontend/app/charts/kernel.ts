@@ -49,11 +49,13 @@ export const ROW_NAME = 19;
 /**
  * A transition that respects rule 2. Use for UPDATES only — entering marks are placed directly.
  */
+// Returns `any` on purpose: the Selection/Transition union has incompatible `attr` overloads,
+// and every call site here only chains attr/style, which both support identically.
 export function anim<E extends d3.BaseType, D>(
   sel: d3.Selection<E, D, any, any>,
   still: boolean,
   dur = DUR,
-): d3.Selection<E, D, any, any> | d3.Transition<E, D, any, any> {
+): any {
   return still ? sel : sel.transition().duration(dur).ease(EASE);
 }
 
@@ -80,7 +82,7 @@ export function textWidth(node: SVGTextElement | null): number {
  * Edge anchoring, not width arithmetic. A centred label that would cross the canvas edge
  * switches its anchor and pins to the edge (RECONCILIATION §6.1).
  */
-export function edgeAnchor(x: number, width: number, pad = 4): "start" | "middle" | "end" {
+export function edgeAnchor(x: number, width: number): "start" | "middle" | "end" {
   if (x < width * 0.08) return "start";
   if (x > width * 0.92) return "end";
   return "middle";
@@ -196,6 +198,30 @@ export function makeReadout(container: HTMLElement): {
       el.remove();
     },
   };
+}
+
+/**
+ * Attach the shared hover readout to a selection of marks.
+ *
+ * Every chart reads into ONE boxed mono stack, so a reading never looks like a foreign widget.
+ * A native `<title>` is not a substitute: it waits about a second, renders in the OS font, and
+ * cannot show more than one line — the readout is the interaction, the title is the fallback.
+ */
+export function attachReadout<E extends d3.BaseType, D>(
+  sel: d3.Selection<E, D, any, any>,
+  container: HTMLElement | null,
+  lines: (d: D) => string[],
+): void {
+  if (!container) return;
+  const readout = makeReadout(container);
+  readout.hide();
+  sel
+    .style("cursor", "default")
+    .on("mousemove", function (event: any, d: any) {
+      const [px, py] = d3.pointer(event, container as any);
+      readout.show(px, py, lines(d));
+    })
+    .on("mouseleave", () => readout.hide());
 }
 
 /**

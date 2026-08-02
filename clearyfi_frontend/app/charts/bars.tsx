@@ -1,0 +1,722 @@
+/**
+ * Bar-family charts: histogram, stacked columns, event strip, divergence, pareto, dumbbell,
+ * gantt.
+ *
+ * Ranked bars take ONE fill with emphasis, never a palette — a per-bar hue would read as
+ * category when the bars are one magnitude. Magnitude ramps stay single-hue sequential, never
+ * diverging, never green/red (HANDOFF §3.1, §3.6).
+ */
+import { useMemo } from "react";
+import { Chart } from "./Chart";
+import { anim, attachReadout, clampX, edgeAnchor, gridStyle, makeReadout, mono, sans, type DrawFn } from "./kernel";
+
+const M = { top: 14, right: 16, bottom: 28, left: 46 };
+
+// ---------------------------------------------------------------------------- histogram
+
+export interface HistogramData {
+  values: number[];
+  /** Printed as the median label — pass the real median, NOT the bin it lands in. */
+  median: number;
+  format: (v: number) => string;
+  xLabel?: string;
+}
+
+const histogramDraw: DrawFn<HistogramData> = (svg, { d3, still, width, height, data, container }) => {
+  svg.selectAll("*").remove();
+  if (!data.values.length) return;
+  const iw = width - M.left - M.right;
+  const ih = height - M.top - M.bottom;
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const x = d3
+    .scaleLinear()
+    .domain(d3.extent(data.values) as [number, number])
+    .nice();
+  const bins = d3.bin().domain(x.domain() as [number, number]).thresholds(12)(data.values);
+  x.range([0, iw]);
+  const y = d3
+    .scaleLinear()
+    .domain([0, d3.max(bins, (b) => b.length) ?? 1])
+    .nice()
+    .range([ih, 0]);
+
+  gridStyle(g.append("g").call(d3.axisLeft(y).ticks(4).tickSize(-iw) as any));
+  gridStyle(
+    g
+      .append("g")
+      .attr("transform", `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(6).tickSize(0).tickFormat((v) => data.format(v as number)) as any),
+  );
+
+  const bars = g
+    .selectAll("rect")
+    .data(bins)
+    .join("rect")
+    .attr("x", (b) => x(b.x0 as number) + 0.5)
+    .attr("width", (b) => Math.max(1, x(b.x1 as number) - x(b.x0 as number) - 1))
+    .attr("y", (b) => y(b.length))
+    .attr("height", (b) => ih - y(b.length))
+    .style("fill", "var(--accent)")
+    .style("fill-opacity", 0.55);
+
+  anim(bars, still)
+    .attr("y", (b: any) => y(b.length))
+    .attr("height", (b: any) => ih - y(b.length));
+
+  attachReadout(bars, container, (b: any) => [
+    `${data.format(b.x0)} – ${data.format(b.x1)}`,
+    `${b.length} observation${b.length === 1 ? "" : "s"}`,
+  ]);
+
+  const mx = x(data.median);
+  g.append("line")
+    .attr("x1", mx)
+    .attr("x2", mx)
+    .attr("y1", -4)
+    .attr("y2", ih)
+    .style("stroke", "var(--ink)")
+    .style("stroke-width", 1.5);
+  mono(
+    g
+      .append("text")
+      .attr("x", clampX(mx, iw))
+      .attr("y", -6)
+      .attr("text-anchor", edgeAnchor(mx, iw))
+      // The median label prints the PASSED median, not the bin edge it happens to sit on.
+      .text(`median ${data.format(data.median)}`),
+    9,
+  );
+};
+
+export function Histogram({
+  values,
+  median,
+  format = (v) => String(Math.round(v)),
+  height = 200,
+  label,
+}: {
+  values: number[];
+  median: number;
+  format?: (v: number) => string;
+  height?: number;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ values, median, format }), [values, median, format]);
+  return <Chart draw={histogramDraw} data={data} height={height} label={label} />;
+}
+
+// ---------------------------------------------------------------------------- stacked columns
+
+export interface StackedColumnsData {
+  columns: { key: string; label: string; parts: { key: string; label: string; value: number }[] }[];
+  format: (v: number) => string;
+  /** Render each column as 100% of itself. */
+  normalize?: boolean;
+}
+
+const stackedColsDraw: DrawFn<StackedColumnsData> = (svg, { d3, still, width, height, data, container }) => {
+  svg.selectAll("*").remove();
+  container?.querySelectorAll(".chart-readout").forEach((n) => n.remove());
+  const iw = width - M.left - M.right;
+  const ih = height - M.top - M.bottom;
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const x = d3
+    .scaleBand<string>()
+    .domain(data.columns.map((c) => c.key))
+    .range([0, iw])
+    .padding(0.42);
+  const totals = data.columns.map((c) => c.parts.reduce((a, p) => a + p.value, 0));
+  const yMax = data.normalize === false ? Math.max(...totals) : 100;
+  const y = d3.scaleLinear().domain([0, yMax]).nice().range([ih, 0]);
+
+  gridStyle(
+    g.append("g").call(
+      d3
+        .axisLeft(y)
+        .ticks(4)
+        .tickSize(-iw)
+        .tickFormat((v) => (data.normalize === false ? data.format(v as number) : `${v}%`)) as any,
+    ),
+  );
+  gridStyle(g.append("g").attr("transform", `translate(0,${ih})`).call(d3.axisBottom(x).tickSize(0) as any));
+
+  const partKeys = Array.from(new Set(data.columns.flatMap((c) => c.parts.map((p) => p.key))));
+  const ramp = d3
+    .scaleLinear<string>()
+    .domain([0, Math.max(1, partKeys.length - 1)])
+    .range(["#c0703a", "#f0dcc6"]);
+
+  const readout = container ? makeReadout(container) : null;
+  readout?.hide();
+
+  for (const col of data.columns) {
+    const total = col.parts.reduce((a, p) => a + p.value, 0) || 1;
+    let acc = 0;
+    const scaled = col.parts.map((p) => {
+      const v = data.normalize === false ? p.value : (p.value / total) * 100;
+      const seg = { ...p, y0: acc, y1: acc + v, shown: v };
+      acc += v;
+      return seg;
+    });
+    const cg = g.append("g").attr("transform", `translate(${x(col.key) ?? 0},0)`);
+    const rects = cg
+      .selectAll("rect")
+      .data(scaled)
+      .join("rect")
+      .attr("x", 0)
+      .attr("width", x.bandwidth())
+      .attr("y", (d) => y(d.y1))
+      .attr("height", (d) => Math.max(0, y(d.y0) - y(d.y1)))
+      .style("fill", (d) => ramp(partKeys.indexOf(d.key)))
+      .style("stroke", "var(--bg-card)")
+      .style("stroke-width", 0.6);
+
+    anim(rects, still)
+      .attr("y", (d: any) => y(d.y1))
+      .attr("height", (d: any) => Math.max(0, y(d.y0) - y(d.y1)));
+
+    rects
+      .on("mousemove", (event, d) => {
+        const [px, py] = d3.pointer(event, container as any);
+        readout?.show(px, py, [d.label, `${Math.round(d.shown * 10) / 10}${data.normalize === false ? "" : "%"}`, col.label]);
+      })
+      .on("mouseleave", () => readout?.hide());
+
+    rects.append("title").text((d) => `${col.label} · ${d.label}`);
+  }
+
+  const lg = svg.append("g").attr("transform", `translate(${M.left},${height - 8})`);
+  let lx = 0;
+  partKeys.forEach((k, i) => {
+    const label = data.columns.flatMap((c) => c.parts).find((p) => p.key === k)?.label ?? k;
+    const row = lg.append("g").attr("transform", `translate(${lx},0)`);
+    row.append("rect").attr("width", 8).attr("height", 8).attr("y", -8).attr("rx", 2).style("fill", ramp(i));
+    mono(row.append("text").attr("x", 12).attr("y", -1).text(label), 8.5);
+    lx += 22 + label.length * 5.4;
+  });
+};
+
+export function StackedColumns({
+  columns,
+  format = (v) => String(v),
+  normalize,
+  height = 240,
+  label,
+}: {
+  columns: StackedColumnsData["columns"];
+  format?: (v: number) => string;
+  normalize?: boolean;
+  height?: number;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ columns, format, normalize }), [columns, format, normalize]);
+  return <Chart draw={stackedColsDraw} data={data} height={height} label={label} />;
+}
+
+// ---------------------------------------------------------------------------- event strip
+
+export interface EventLane {
+  id: string;
+  label: string;
+  events: { id: string; date: string; kind: string; title: string }[];
+}
+
+/**
+ * Dated filings, one lane per holder. The tick step adapts to the span so the axis never
+ * crowds; the origin tick belongs to the x axis only (RECONCILIATION §6.4).
+ */
+const eventStripDraw: DrawFn<{ lanes: EventLane[] }> = (
+  svg,
+  { d3, width, height, data, container },
+) => {
+  svg.selectAll("*").remove();
+  container?.querySelectorAll(".chart-readout").forEach((n) => n.remove());
+  const left = 96;
+  const iw = width - left - 16;
+  const ih = height - 30;
+  const g = svg.append("g").attr("transform", `translate(${left},10)`);
+
+  const all = data.lanes.flatMap((l) => l.events);
+  if (!all.length) {
+    mono(svg.append("text").attr("x", 0).attr("y", 18).text("no filings in this window"));
+    return;
+  }
+  const x = d3
+    .scaleTime()
+    .domain(d3.extent(all, (e) => new Date(e.date)) as [Date, Date])
+    .range([0, iw])
+    .nice();
+  const yb = d3
+    .scaleBand<string>()
+    .domain(data.lanes.map((l) => l.id))
+    .range([0, ih])
+    .padding(0.32);
+
+  gridStyle(
+    g
+      .append("g")
+      .attr("transform", `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(Math.max(3, Math.floor(iw / 110))).tickSize(-ih) as any),
+  );
+
+  for (const lane of data.lanes) {
+    const y = (yb(lane.id) ?? 0) + yb.bandwidth() / 2;
+    sans(
+      svg
+        .append("text")
+        .attr("x", left - 10)
+        .attr("y", y + 13.5)
+        .attr("text-anchor", "end")
+        .text(lane.label),
+      10.5,
+      500,
+    );
+    g.append("line")
+      .attr("x1", 0)
+      .attr("x2", iw)
+      .attr("y1", y)
+      .attr("y2", y)
+      .style("stroke", "var(--border)")
+      .style("stroke-width", 1);
+  }
+
+  const readout = container ? makeReadout(container) : null;
+  readout?.hide();
+
+  const marks = g
+    .append("g")
+    .selectAll("g")
+    .data(data.lanes.flatMap((l) => l.events.map((e) => ({ ...e, lane: l.id, laneLabel: l.label }))))
+    .join("g")
+    .attr(
+      "transform",
+      (d) => `translate(${x(new Date(d.date))},${(yb(d.lane) ?? 0) + yb.bandwidth() / 2})`,
+    );
+
+  // Categorical flag hues only — restatement and going-concern are categories, not bad values.
+  marks
+    .append("circle")
+    .attr("r", 4)
+    .style("fill", (d) =>
+      d.kind === "restatement" || d.kind === "going-concern"
+        ? "var(--ext-color)"
+        : d.kind === "amendment"
+          ? "var(--gaap-color)"
+          : "var(--accent)",
+    )
+    .style("stroke", "var(--bg-card)")
+    .style("stroke-width", 1.4);
+
+  marks
+    .on("mousemove", (event, d) => {
+      const [px, py] = d3.pointer(event, container as any);
+      readout?.show(px, py, [d.title, d.date, d.laneLabel]);
+    })
+    .on("mouseleave", () => readout?.hide());
+
+  marks.append("title").text((d) => `${d.laneLabel} · ${d.date} — ${d.title}`);
+};
+
+export function EventStrip({ lanes, height, label }: { lanes: EventLane[]; height?: number; label?: string }) {
+  const data = useMemo(() => ({ lanes }), [lanes]);
+  return (
+    <Chart
+      draw={eventStripDraw}
+      data={data}
+      height={height ?? Math.max(90, lanes.length * 26 + 40)}
+      label={label}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------- divergence
+
+export interface DivergeRow {
+  key: string;
+  label: string;
+  /** Positive above the axis, negative below. */
+  value: number;
+}
+
+const divergeDraw: DrawFn<{ rows: DivergeRow[]; format: (v: number) => string }> = (
+  svg,
+  { d3, still, width, height, data, container },
+) => {
+  svg.selectAll("*").remove();
+  const iw = width - M.left - M.right;
+  const ih = height - M.top - M.bottom - 12;
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const max = Math.max(...data.rows.map((r) => Math.abs(r.value)), 1);
+  const y = d3.scaleLinear().domain([-max, max]).range([ih, 0]); // symmetric
+  const x = d3
+    .scaleBand<string>()
+    .domain(data.rows.map((r) => r.key))
+    .range([0, iw])
+    .padding(0.35);
+
+  gridStyle(g.append("g").call(d3.axisLeft(y).ticks(5).tickSize(-iw).tickFormat((v) => data.format(v as number)) as any));
+
+  g.append("line")
+    .attr("x1", 0)
+    .attr("x2", iw)
+    .attr("y1", y(0))
+    .attr("y2", y(0))
+    .style("stroke", "var(--ink)")
+    .style("stroke-width", 1.2);
+
+  const bars = g
+    .selectAll("rect")
+    .data(data.rows)
+    .join("rect")
+    .attr("x", (d) => x(d.key) ?? 0)
+    .attr("width", x.bandwidth())
+    .attr("y", (d) => (d.value >= 0 ? y(d.value) : y(0)))
+    .attr("height", (d) => Math.abs(y(d.value) - y(0)))
+    .style("fill", "var(--accent)")
+    .style("fill-opacity", (d) => (d.value >= 0 ? 0.72 : 0.35));
+
+  anim(bars, still)
+    .attr("y", (d: DivergeRow) => (d.value >= 0 ? y(d.value) : y(0)))
+    .attr("height", (d: DivergeRow) => Math.abs(y(d.value) - y(0)));
+
+  attachReadout(bars, container, (d: DivergeRow) => [
+    d.label,
+    data.format(d.value),
+    d.value >= 0 ? "added" : "reduced",
+  ]);
+  bars.append("title").text((d) => `${d.label} — ${data.format(d.value)}`);
+
+  data.rows.forEach((r) => {
+    const cx = (x(r.key) ?? 0) + x.bandwidth() / 2;
+    mono(
+      g
+        .append("text")
+        .attr("x", clampX(cx, iw))
+        .attr("y", ih + 14)
+        .attr("text-anchor", edgeAnchor(cx, iw))
+        .text(r.label),
+      8.5,
+    );
+  });
+};
+
+export function DivergeChart({
+  rows,
+  format = (v) => String(Math.round(v)),
+  height = 200,
+  label,
+}: {
+  rows: DivergeRow[];
+  format?: (v: number) => string;
+  height?: number;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ rows, format }), [rows, format]);
+  return <Chart draw={divergeDraw} data={data} height={height} label={label} />;
+}
+
+// ---------------------------------------------------------------------------- pareto
+
+export interface ParetoRow {
+  key: string;
+  label: string;
+  value: number;
+  /** Prior-period value, drawn as a ghost line in the same hue. */
+  prior?: number;
+}
+
+const paretoDraw: DrawFn<{ rows: ParetoRow[]; format: (v: number) => string }> = (
+  svg,
+  { d3, still, width, height, data, container },
+) => {
+  svg.selectAll("*").remove();
+  const right = 44;
+  const iw = width - M.left - right;
+  const ih = height - M.top - M.bottom - 14;
+  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+
+  const rows = [...data.rows].sort((a, b) => b.value - a.value);
+  const total = rows.reduce((a, r) => a + r.value, 0) || 1;
+  const x = d3
+    .scaleBand<string>()
+    .domain(rows.map((r) => r.key))
+    .range([0, iw])
+    .padding(0.3);
+  const y = d3
+    .scaleLinear()
+    .domain([0, d3.max(rows, (r) => r.value) ?? 1])
+    .nice()
+    .range([ih, 0]);
+  const yc = d3.scaleLinear().domain([0, 100]).range([ih, 0]);
+
+  gridStyle(g.append("g").call(d3.axisLeft(y).ticks(4).tickSize(-iw).tickFormat((v) => data.format(v as number)) as any));
+  gridStyle(
+    g
+      .append("g")
+      .attr("transform", `translate(${iw},0)`)
+      .call(d3.axisRight(yc).ticks(4).tickFormat((v) => `${v}%`) as any),
+  );
+
+  // One fill with emphasis on the leader — not a palette.
+  const bars = g
+    .selectAll("rect")
+    .data(rows)
+    .join("rect")
+    .attr("x", (d) => x(d.key) ?? 0)
+    .attr("width", x.bandwidth())
+    .attr("y", (d) => y(d.value))
+    .attr("height", (d) => ih - y(d.value))
+    .style("fill", "var(--accent)")
+    .style("fill-opacity", (_d, i) => (i === 0 ? 0.9 : 0.45));
+
+  anim(bars, still)
+    .attr("y", (d: ParetoRow) => y(d.value))
+    .attr("height", (d: ParetoRow) => ih - y(d.value));
+
+  attachReadout(bars, container, (d: ParetoRow) => {
+    const share = (d.value / total) * 100;
+    return [
+      d.label,
+      data.format(d.value),
+      `${share.toFixed(1)}% of the total`,
+      d.prior != null ? `prior ${data.format(d.prior)}` : "",
+    ].filter(Boolean);
+  });
+  bars.append("title").text((d) => `${d.label} — ${data.format(d.value)}`);
+
+  let acc = 0;
+  const cum = rows.map((r) => {
+    acc += r.value;
+    return { key: r.key, pct: (acc / total) * 100 };
+  });
+  const line = d3
+    .line<{ key: string; pct: number }>()
+    .x((d) => (x(d.key) ?? 0) + x.bandwidth() / 2)
+    .y((d) => yc(d.pct));
+  g.append("path")
+    .datum(cum)
+    .attr("d", line)
+    .attr("fill", "none")
+    .style("stroke", "var(--ink)")
+    .style("stroke-width", 1.5);
+
+  if (rows.some((r) => r.prior != null)) {
+    let pacc = 0;
+    const ptotal = rows.reduce((a, r) => a + (r.prior ?? 0), 0) || 1;
+    const pcum = rows.map((r) => {
+      pacc += r.prior ?? 0;
+      return { key: r.key, pct: (pacc / ptotal) * 100 };
+    });
+    g.append("path")
+      .datum(pcum)
+      .attr("d", line)
+      .attr("fill", "none")
+      .style("stroke", "var(--ink)")
+      .style("stroke-opacity", 0.35)
+      .style("stroke-dasharray", "4 3")
+      .style("stroke-width", 1.3);
+  }
+
+  // Drop labels rather than let them collide: mono 8.5px paints ~5.3px/char, so a band narrower
+  // than its own label gets every Nth label instead. A clipped or overlapping axis is worse
+  // than a sparser one, and the bar's <title> still carries the full name.
+  const widest = Math.max(...rows.map((r) => r.label.length)) * 5.3;
+  const step = Math.max(1, Math.ceil(widest / Math.max(1, x.step())));
+  rows.forEach((r, i) => {
+    if (i % step !== 0) return;
+    const cx = (x(r.key) ?? 0) + x.bandwidth() / 2;
+    mono(
+      g
+        .append("text")
+        .attr("x", clampX(cx, iw))
+        .attr("y", ih + 14)
+        .attr("text-anchor", edgeAnchor(cx, iw))
+        .text(r.label),
+      8.5,
+    );
+  });
+};
+
+export function ParetoChart({
+  rows,
+  format = (v) => String(Math.round(v)),
+  height = 240,
+  label,
+}: {
+  rows: ParetoRow[];
+  format?: (v: number) => string;
+  height?: number;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ rows, format }), [rows, format]);
+  return <Chart draw={paretoDraw} data={data} height={height} label={label} />;
+}
+
+// ---------------------------------------------------------------------------- dumbbell
+
+export interface DumbbellRow {
+  key: string;
+  label: string;
+  prior: number;
+  current: number;
+}
+
+/** Hollow = prior, filled = current. One row per manager. */
+const dumbbellDraw: DrawFn<{ rows: DumbbellRow[]; format: (v: number) => string }> = (
+  svg,
+  { d3, width, height, data, container },
+) => {
+  svg.selectAll("*").remove();
+  // Wide enough for a full manager name — these are cover-page identities and truncating one
+  // ("Geode Capital Manage…") makes two filers look like the same filer.
+  const left = 168;
+  const iw = width - left - 54;
+  const ih = height - 26;
+  const g = svg.append("g").attr("transform", `translate(${left},8)`);
+
+  const all = data.rows.flatMap((r) => [r.prior, r.current]);
+  const x = d3
+    .scaleLinear()
+    .domain([Math.min(...all, 0), Math.max(...all)])
+    .nice()
+    .range([0, iw]);
+  const y = d3
+    .scaleBand<string>()
+    .domain(data.rows.map((r) => r.key))
+    .range([0, ih])
+    .padding(0.4);
+
+  gridStyle(
+    g
+      .append("g")
+      .attr("transform", `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(4).tickSize(-ih).tickFormat((v) => data.format(v as number)) as any),
+  );
+
+  for (const r of data.rows) {
+    const cy = (y(r.key) ?? 0) + y.bandwidth() / 2;
+    sans(
+      svg
+        .append("text")
+        .attr("x", left - 10)
+        .attr("y", cy + 11.5)
+        .attr("text-anchor", "end")
+        .text(r.label),
+      10.5,
+      500,
+    );
+    g.append("line")
+      .attr("x1", x(r.prior))
+      .attr("x2", x(r.current))
+      .attr("y1", cy)
+      .attr("y2", cy)
+      .style("stroke", "var(--border-strong)")
+      .style("stroke-width", 2);
+    g.append("circle")
+      .attr("cx", x(r.prior))
+      .attr("cy", cy)
+      .attr("r", 4)
+      .style("fill", "var(--bg-card)")
+      .style("stroke", "var(--ink-soft)")
+      .style("stroke-width", 1.4);
+    const cur = g.append("circle").attr("cx", x(r.current)).attr("cy", cy).attr("r", 4.2).style("fill", "var(--accent)");
+    attachReadout(cur, container, () => [
+      r.label,
+      `current ${data.format(r.current)}`,
+      `prior ${data.format(r.prior)}`,
+      `${r.current - r.prior >= 0 ? "↑ +" : "↓ −"}${data.format(Math.abs(r.current - r.prior))}`,
+    ]);
+    mono(
+      g
+        .append("text")
+        .attr("x", iw + 8)
+        .attr("y", cy + 3.5)
+        .text(data.format(r.current)),
+      9,
+    );
+  }
+};
+
+export function DumbbellChart({
+  rows,
+  format = (v) => String(Math.round(v)),
+  label,
+}: {
+  rows: DumbbellRow[];
+  format?: (v: number) => string;
+  label?: string;
+}) {
+  const data = useMemo(() => ({ rows, format }), [rows, format]);
+  return <Chart draw={dumbbellDraw} data={data} height={Math.max(90, rows.length * 26 + 30)} label={label} />;
+}
+
+// ---------------------------------------------------------------------------- gantt
+
+export interface GanttRow {
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  kind?: "window" | "expiry";
+}
+
+/** Forward-time windows and expiries — lock-up ends, blackout windows, filing deadlines. */
+const ganttDraw: DrawFn<{ rows: GanttRow[]; today?: string }> = (svg, { d3, width, height, data }) => {
+  svg.selectAll("*").remove();
+  const left = 132;
+  const iw = width - left - 18;
+  const ih = height - 28;
+  const g = svg.append("g").attr("transform", `translate(${left},8)`);
+
+  const dates = data.rows.flatMap((r) => [new Date(r.start), new Date(r.end)]);
+  if (!dates.length) return;
+  const x = d3.scaleTime().domain(d3.extent(dates) as [Date, Date]).range([0, iw]).nice();
+  const y = d3.scaleBand<string>().domain(data.rows.map((r) => r.key)).range([0, ih]).padding(0.35);
+
+  gridStyle(
+    g
+      .append("g")
+      .attr("transform", `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(Math.max(3, Math.floor(iw / 120))).tickSize(-ih) as any),
+  );
+
+  for (const r of data.rows) {
+    const cy = y(r.key) ?? 0;
+    sans(
+      svg.append("text").attr("x", left - 10).attr("y", cy + y.bandwidth() / 2 + 11.5).attr("text-anchor", "end").text(r.label),
+      10.5,
+      500,
+    );
+    g.append("rect")
+      .attr("x", x(new Date(r.start)))
+      .attr("y", cy)
+      .attr("width", Math.max(2, x(new Date(r.end)) - x(new Date(r.start))))
+      .attr("height", y.bandwidth())
+      .attr("rx", 3)
+      .style("fill", r.kind === "expiry" ? "var(--bg-tint)" : "var(--accent-wash)")
+      .style("stroke", r.kind === "expiry" ? "var(--border-strong)" : "var(--accent-wash-border)")
+      .append("title")
+      .text(`${r.label} — ${r.start} → ${r.end}`);
+  }
+
+  if (data.today) {
+    const tx = x(new Date(data.today));
+    g.append("line")
+      .attr("x1", tx)
+      .attr("x2", tx)
+      .attr("y1", -4)
+      .attr("y2", ih)
+      .style("stroke", "var(--ink)")
+      .style("stroke-width", 1.2)
+      .style("stroke-dasharray", "3 2");
+    mono(g.append("text").attr("x", clampX(tx, iw)).attr("y", -6).attr("text-anchor", edgeAnchor(tx, iw)).text("today"), 8.5);
+  }
+};
+
+export function GanttChart({ rows, today, label }: { rows: GanttRow[]; today?: string; label?: string }) {
+  const data = useMemo(() => ({ rows, today }), [rows, today]);
+  return <Chart draw={ganttDraw} data={data} height={Math.max(100, rows.length * 28 + 34)} label={label} />;
+}
