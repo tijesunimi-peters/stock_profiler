@@ -39,11 +39,11 @@ which one you are looking at:
 
 **Ported** — measured against the prototype's own markup, panel for panel and grid for grid:
 the shell, Sector altitude, Qualitative, Filings, Company hub → Overview, Financial history,
-Institutional 01–07, Insider activity, Peer-relative, the six Manager views.
+Institutional 01–07, Insider activity, Peer-relative, the six Manager views, both Compare
+surfaces.
 
-**Built from the written specs** — an interpretation of `HANDOFF.md` / the upload spec, never
-reconciled against the prototype: both Compare surfaces. These will differ from the prototype
-in panel set, column widths and affordances. Port them before treating them as reference.
+**Built from the written specs** — nothing remains. Every data surface in the app is now
+measured against the prototype rather than interpreted from `HANDOFF.md`.
 
 Two deliberate departures from the prototype, both on ported surfaces:
 

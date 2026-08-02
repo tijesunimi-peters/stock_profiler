@@ -281,13 +281,22 @@ const stackedColsDraw: DrawFn<StackedColumnsData> = (svg, { d3, still, width, he
   }
 
   const lg = svg.append("g").attr("transform", `translate(${M.left},${height - 8})`);
+  // The legend WRAPS. Laid out on one line it runs off the frame as soon as the segment labels
+  // are prose rather than tokens ("Interest, financing or regulated tariff" overhung by 149px
+  // at 1024) — and a legend outside the viewBox is silently clipped, not scrollable.
   let lx = 0;
+  let ly = 0;
   partKeys.forEach((k, i) => {
     const label = data.columns.flatMap((c) => c.parts).find((p) => p.key === k)?.label ?? k;
-    const row = lg.append("g").attr("transform", `translate(${lx},0)`);
+    const w = 22 + label.length * 5.4;
+    if (lx > 0 && lx + w > iw) {
+      lx = 0;
+      ly += 13;
+    }
+    const row = lg.append("g").attr("transform", `translate(${lx},${ly})`);
     row.append("rect").attr("width", 8).attr("height", 8).attr("y", -8).attr("rx", 2).style("fill", ramp(i));
     mono(row.append("text").attr("x", 12).attr("y", -1).text(label), 8.5);
-    lx += 22 + label.length * 5.4;
+    lx += w;
   });
 };
 

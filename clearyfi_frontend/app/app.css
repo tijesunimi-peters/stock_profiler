@@ -6995,3 +6995,535 @@
   font-size: 13px;
   color: var(--ink);
 }
+
+/* ============================================================ compare
+ *
+ * A and B are IDENTITIES, not scores. The two hues say which column is which and nothing about
+ * which is better — no row on either surface declares a winner, and an inverted metric carries
+ * a text marker rather than a flipped fill.
+ */
+
+.cmp-masthead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 12px;
+}
+
+.cmp-side {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cmp-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.cmp-swatch.is-a {
+  background: var(--accent);
+}
+
+.cmp-swatch.is-b {
+  background: var(--gaap);
+}
+
+.cmp-name {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.cmp-vs {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--mono-muted);
+}
+
+.cmp-spacer {
+  flex: 1;
+}
+
+.cmp-counts {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.cmp-cross {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 6px;
+  padding: 3px 9px;
+}
+
+/* ---------------------------------------------------------------- pickers */
+
+.cmp-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.cmp-pills-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+
+.cmp-pills-label.is-a,
+.hub-label.is-a {
+  color: var(--accent-ink);
+}
+
+.cmp-pills-label.is-b,
+.hub-label.is-b {
+  color: var(--gaap);
+}
+
+.cmp-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.cmp-pill.is-sm {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.cmp-pill.is-a.is-active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.cmp-pill.is-b.is-active {
+  color: #fff;
+  background: var(--gaap);
+  border-color: var(--gaap);
+}
+
+.cmp-pickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.cmp-picker {
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 11px;
+  padding: 12px 13px;
+}
+
+.cmp-picker-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* ---------------------------------------------------------------- basis bar */
+
+/* Deliberately ABOVE every figure: what lines up decides whether the rest means anything. */
+.cmp-basis-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 9px;
+  padding: 9px 13px;
+  margin-top: 14px;
+}
+
+.cmp-basis-text {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.cmp-key {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+}
+
+.cmp-key span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ---------------------------------------------------------------- sector scores */
+
+.p-card.cmp-scores {
+  padding: 8px 18px;
+  margin-top: 16px;
+}
+
+.cmp-score-row {
+  display: grid;
+  grid-template-columns: 170px 1fr 84px;
+  gap: 16px;
+  align-items: center;
+  padding: 11px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-score-name {
+  font-size: 13.5px;
+  color: var(--ink-body);
+}
+
+.cmp-score-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cmp-score-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 12px;
+}
+
+.cmp-score-bar > span:first-child {
+  height: 12px;
+  border-radius: 6px;
+  min-width: 2px;
+}
+
+.cmp-score-bar .is-a {
+  background: var(--accent);
+}
+
+.cmp-score-bar .is-b {
+  background: var(--gaap);
+}
+
+.cmp-score-v {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink);
+  flex: none;
+  width: 26px;
+  text-align: right;
+}
+
+.cmp-gap {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+  color: var(--ink-soft);
+}
+
+/* A ten-point gap is worth noticing, so it takes ink. Still not a verdict. */
+.cmp-gap.is-strong {
+  color: var(--ink);
+}
+
+.p-card.cmp-radar {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) 1fr;
+  gap: 24px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.cmp-radar-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.cmp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
+.cmp-head-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.cmp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.cmp-card {
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 13px 15px;
+}
+
+.cmp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cmp-card-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.cmp-card-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cmp-card-bar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 12px;
+}
+
+.cmp-card-fill {
+  height: 12px;
+  border-radius: 6px;
+  min-width: 2px;
+}
+
+.cmp-card-fill.is-a {
+  background: var(--accent);
+}
+
+.cmp-card-fill.is-b {
+  background: var(--gaap);
+}
+
+.cmp-card-v {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  flex: none;
+}
+
+.cmp-card-spread {
+  margin-top: 10px;
+}
+
+/* ---------------------------------------------------------------- company sections */
+
+.p-card.cmp-section {
+  margin-top: 16px;
+}
+
+.cmp-sub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  margin: 18px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-summary {
+  margin-bottom: 8px;
+}
+
+.cmp-gov {
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-gov-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.cmp-gov-k {
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+.cmp-gov-labels {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.cmp-gov-labels .is-a {
+  color: var(--accent-ink);
+}
+
+.cmp-gov-labels .is-b {
+  color: var(--gaap);
+}
+
+.cmp-ov-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(60px, 1.1fr) 52px 52px 112px;
+  gap: 10px;
+  align-items: center;
+  padding: 7px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-ov-name {
+  font-size: 12.5px;
+  color: var(--ink-body);
+  min-width: 0;
+}
+
+.cmp-ov-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cmp-ov-bar {
+  display: block;
+  height: 7px;
+  background: var(--bg-tint);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cmp-ov-bar > span {
+  display: block;
+  height: 7px;
+  border-radius: 3px;
+  opacity: 0.55;
+}
+
+.cmp-ov-bar .is-a {
+  background: var(--accent);
+}
+
+.cmp-ov-bar .is-b {
+  background: var(--gaap);
+}
+
+/* ---------------------------------------------------------------- basis & measures */
+
+.cmp-basis-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.1fr) minmax(70px, 1fr) minmax(70px, 1fr) 74px minmax(0, 2fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-measure-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 92px minmax(0, 2.4fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-trait-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 92px 92px 70px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.cmp-basis-k {
+  font-size: 12.5px;
+  color: var(--ink-body);
+  min-width: 0;
+}
+
+/* Grid children default to min-content, so a long "why" sentence pushes the track wider than
+   the row. Every cell in these three rows opts out. */
+.cmp-basis-row > *,
+.cmp-measure-row > *,
+.cmp-trait-row > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cmp-basis-note {
+  min-width: 0;
+}
+
+/* "differs" and "not shared" take the accent because they are what the reader must ACT on —
+   not because either is bad. An unaligned basis is a fact about two businesses. */
+.cmp-chip {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 2px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cmp-chip.is-differs,
+.cmp-chip.is-both {
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+
+.cmp-chip.is-absent {
+  color: var(--mono-muted);
+  background: var(--bg-tint);
+}
