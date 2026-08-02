@@ -40,6 +40,7 @@ import * as insider from "./insider";
 import * as peers from "./peers";
 import * as proto from "./prototype";
 import * as qual from "./qualitative";
+import * as mgr from "./manager";
 
 const DELAY = () => (typeof location !== "undefined" && location.search.includes("slow") ? 900 : 0);
 /**
@@ -269,6 +270,35 @@ export const api = {
       basePeerCount: proto.BASE_PEER_COUNT,
     }),
 
+  // ========================================================== Manager altitude
+
+  /**
+   * One manager, everything about it. Phase A: `/managers/{cik}/holdings` + `/activity` +
+   * `/periods`, plus `/beneficial-ownership` for the 5% stakes.
+   *
+   * The six views already shared one payload, which is right for the same reason the Insider
+   * ledger is: a footprint and an activity chart drawn from independent reads can disagree about
+   * the same quarter.
+   *
+   * **The period axes ride WITH the data.** They used to be module-level constants zipped against
+   * series that lived in the payload (`MANAGER_QUARTERS[i]` against `d.posTrend[i]`), so a length
+   * mismatch would have silently mislabelled a chart rather than failed. Phase A makes this
+   * concrete: `/managers/{cik}/periods` is per-manager, so a shared constant would have been
+   * wrong the moment two managers had different filed histories.
+   *
+   * `npxYears` is N-PX, which is NOT ingested — the voting view gets an honest empty state under
+   * the D-voting ruling, never a fabricated series.
+   */
+  managerProfile: (cik: number | string) =>
+    resolve<ManagerProfile>({
+      ...mgr.managerData(cik),
+      quarters: mgr.MANAGER_QUARTERS,
+      npxYears: mgr.NPX_YEARS,
+    }),
+
+  /** The covered 13F filers. Phase A: whichever managers the holdings store has ingested. */
+  managerRoster: () => resolve<ManagerRoster>({ roster: mgr.MANAGER_ROSTER }),
+
   // ========================================================== Sector altitude
 
   /**
@@ -439,6 +469,15 @@ export interface CompanyDisclosure {
 
 export interface CompanyFilingEvents {
   timeline: hub.HubData["timeline"];
+}
+
+export type ManagerProfile = mgr.ManagerData & {
+  quarters: typeof mgr.MANAGER_QUARTERS;
+  npxYears: typeof mgr.NPX_YEARS;
+};
+
+export interface ManagerRoster {
+  roster: typeof mgr.MANAGER_ROSTER;
 }
 
 export interface SectorOverview {

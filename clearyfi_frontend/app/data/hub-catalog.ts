@@ -55,3 +55,10 @@ export { CODES } from "./insider";
 export type { Side, CodeDef, LedgerRow, InsiderData, F144Notice } from "./insider";
 export { PX_GROUPS, METRIC_DEFS, fmtVal } from "./peers";
 export type { PeerXRow, PresenceTable, MethodMix, PeerExtras, DistRow } from "./peers";
+
+/*
+ * Manager display helpers. `mgrColor` maps a manager TYPE (index, active, hedge fund) to a swatch
+ * — categorical identity, not a ranking and not a figure.
+ */
+export { mgrColor } from "./manager";
+export type { Manager, ManagerData, UniverseDist, HistBin, CampEvent, Campaign } from "./manager";

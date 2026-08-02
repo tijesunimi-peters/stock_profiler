@@ -175,6 +175,19 @@ export function makeReadout(container: HTMLElement): {
   hide: () => void;
   destroy: () => void;
 } {
+  /*
+   * Idempotent per container.
+   *
+   * Callers were each expected to clear the previous readout before re-rendering, and four of the
+   * twelve did not — so every re-render leaked a hidden div. A manager footprint with four charts
+   * was carrying twenty-one of them. Invisible (they are `display: none` until hovered) and
+   * unbounded, which is the worst combination: nothing looks wrong while the DOM grows.
+   *
+   * Putting it here rather than adding a fifth copy of the cleanup line makes it structural — a
+   * new chart cannot forget.
+   */
+  container.querySelectorAll(":scope > .chart-readout").forEach((n) => n.remove());
+
   const el = document.createElement("div");
   el.className = "chart-readout";
   el.setAttribute("aria-hidden", "true");

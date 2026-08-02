@@ -13,7 +13,8 @@ import { DumbbellChart, EventStrip, Histogram, ParetoChart } from "../../charts/
 import { SeriesChart, StepChart } from "../../charts/series";
 import { ScatterPlot } from "../../charts/misc";
 import { PeerStrip, WindowStrip } from "../../charts/strips";
-import { MANAGER_QUARTERS, NPX_YEARS, type ManagerData, type UniverseDist } from "../../data/manager";
+import type { ManagerProfile } from "../../data/api";
+import type { UniverseDist } from "../../data/hub-catalog";
 
 /** The numbered header every manager view opens with. */
 function MgrHead({ n, title, src }: { n?: string; title: string; src: string }) {
@@ -66,13 +67,13 @@ function UniverseStrip({ d, name, note }: { d: UniverseDist; name: string; note:
   );
 }
 
-function SourceFoot({ d }: { d: ManagerData }) {
+function SourceFoot({ d }: { d: ManagerProfile }) {
   return <div className="mgr-source">{d.sourceNote}</div>;
 }
 
 // ============================================================ 01 · profile
 
-export function ProfileView({ d }: { d: ManagerData }) {
+export function ProfileView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <MgrHead n="01" title="Profile" src="who this filer is, and what it has on record" />
@@ -89,7 +90,7 @@ export function ProfileView({ d }: { d: ManagerData }) {
           <span className="hub-hint">nine quarters of 13F information tables</span>
         </div>
         <SeriesChart
-          series={[{ id: "pos", label: "Positions", kind: "focal", points: d.posTrend.map((v, i) => ({ period: MANAGER_QUARTERS[i], value: v })) }]}
+          series={[{ id: "pos", label: "Positions", kind: "focal", points: d.posTrend.map((v, i) => ({ period: d.quarters[i], value: v })) }]}
           format={(v) => Math.round(v).toLocaleString()}
           height={180}
           label="Positions reported per quarter"
@@ -117,7 +118,7 @@ export function ProfileView({ d }: { d: ManagerData }) {
 
 // ============================================================ 02 · register footprint
 
-export function FootprintView({ d }: { d: ManagerData }) {
+export function FootprintView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <MgrHead n="02" title="Register footprint" src="disclosed stakes across issuers — not portfolio weights" />
@@ -259,7 +260,7 @@ export function FootprintView({ d }: { d: ManagerData }) {
 
 // ============================================================ 03 · voting record
 
-export function VotingView({ d }: { d: ManagerData }) {
+export function VotingView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <MgrHead n="03" title="Voting record" src="N-PX — how this manager voted the shares it reported" />
@@ -274,7 +275,7 @@ export function VotingView({ d }: { d: ManagerData }) {
           <span className="hub-hint">share of compensation votes cast against, by N-PX year</span>
         </div>
         <SeriesChart
-          series={[{ id: "ag", label: "Against say-on-pay", kind: "b", points: d.againstTrend.map((v, i) => ({ period: NPX_YEARS[i], value: v })) }]}
+          series={[{ id: "ag", label: "Against say-on-pay", kind: "b", points: d.againstTrend.map((v, i) => ({ period: d.npxYears[i], value: v })) }]}
           format={(v) => `${v.toFixed(1)}%`}
           height={180}
           label="Dissent over time"
@@ -342,7 +343,7 @@ export function VotingView({ d }: { d: ManagerData }) {
 
 // ============================================================ 04 · 5% filings
 
-export function FivePercentView({ d }: { d: ManagerData }) {
+export function FivePercentView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <MgrHead n="04" title="5% filings" src="Schedules 13D and 13G filed by this manager" />
@@ -410,7 +411,7 @@ export function FivePercentView({ d }: { d: ManagerData }) {
 
 // ============================================================ 05 · filing activity
 
-export function ActivityView({ d }: { d: ManagerData }) {
+export function ActivityView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <div className="mgr-head">
@@ -602,7 +603,7 @@ export function ActivityView({ d }: { d: ManagerData }) {
 
 // ============================================================ 06 · filing behaviour
 
-export function BehaviourView({ d }: { d: ManagerData }) {
+export function BehaviourView({ d }: { d: ManagerProfile }) {
   return (
     <div className="mgr">
       <MgrHead n="05" title="Filing behaviour" src="how and when this manager files, not how it performs" />
@@ -652,7 +653,7 @@ export function BehaviourView({ d }: { d: ManagerData }) {
           <span className="hub-hint">by quarter</span>
         </div>
         <SeriesChart
-          series={[{ id: "amd", label: "Amendments per 100", kind: "b", points: d.amendSeries.map((v, i) => ({ period: MANAGER_QUARTERS[i], value: v })) }]}
+          series={[{ id: "amd", label: "Amendments per 100", kind: "b", points: d.amendSeries.map((v, i) => ({ period: d.quarters[i], value: v })) }]}
           format={(v) => v.toFixed(1)}
           height={170}
           label="Amendments per 100 filings"

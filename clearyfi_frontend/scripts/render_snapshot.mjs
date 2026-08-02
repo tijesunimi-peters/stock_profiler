@@ -82,7 +82,16 @@ const VIEWS = ["overview", "institutional", "history", "insider", "peers"];
  * Sector routes are not per-ticker, so they are captured separately rather than crossed with the
  * ticker list — a 3x cross would triple the run to prove the same thing three times.
  */
-const EXTRA_ROUTES = ["sectors/sector", "sectors/qualitative", "sectors/filings"];
+const EXTRA_ROUTES = [
+  "sectors/sector", "sectors/qualitative", "sectors/filings",
+  // A CIK that is actually IN the roster. An earlier pass used one that was not, and every
+  // manager cell captured the 404 state at 585 chars — a baseline that would have "passed" a
+  // diff while proving nothing about the six views.
+  "manager/1094012/profile", "manager/1094012/footprint", "manager/1094012/voting",
+  "manager/1094012/five-percent", "manager/1094012/activity", "manager/1094012/behaviour",
+  // ...and one that is NOT, so the not-found state stays covered on purpose.
+  "manager/102909/profile",
+];
 
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
@@ -194,7 +203,7 @@ try {
 
   for (const route of EXTRA_ROUTES) {
     const html = await capture(page, null, route);
-    await writeFile(join(outDir, `${route.replace("/", "-")}.html`), html + "\n");
+    await writeFile(join(outDir, `${route.replace(/\//g, "-")}.html`), html + "\n");
     console.log(`  captured ${route}  (${html.length.toLocaleString()} chars)`);
   }
 

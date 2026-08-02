@@ -9,7 +9,9 @@ import { EntityBar, StateBlock, STANDARD_DISCLOSURES } from "@ds";
 import { navigate } from "../../router";
 import { useSelection } from "../../state";
 import { PageShell } from "../../ui/Shell";
-import { MANAGER_ROSTER, managerData, mgrColor } from "../../data/manager";
+import { mgrColor } from "../../data/hub-catalog";
+import { api, type ManagerProfile } from "../../data/api";
+import { useApi } from "../../lib/useApi";
 import {
   ActivityView,
   BehaviourView,
@@ -31,6 +33,33 @@ const VIEWS = [
 export function ManagerPage({ cik, view }: { cik: number; view: string }) {
   const sel = useSelection();
   const padded = String(cik).padStart(10, "0");
+
+  /*
+   * Roster first, then the manager. The roster resolves whether this CIK is one we cover — which
+   * is a lookup against ingested data, not a routing decision, so it belongs behind the seam. In
+   * Phase A an unknown CIK is a 404 from the holdings store rather than a miss in a local array,
+   * and this is the shape that survives that change.
+   */
+  const rosterRead = useApi(() => api.managerRoster(), []);
+  const profileRead = useApi(() => api.managerProfile(padded), [padded]);
+
+  const err = rosterRead.error ?? profileRead.error;
+  if (err) {
+    return (
+      <PageShell subject="manager" title={`CIK ${cik}`} disclosures={["No data is shown on this page."]}>
+        <StateBlock variant="error" copy={err.message} />
+      </PageShell>
+    );
+  }
+  if (!rosterRead.data || !profileRead.data) {
+    return (
+      <PageShell subject="manager" title="Managers" disclosures={["No data is shown on this page."]}>
+        <StateBlock variant="loading" copy="Reading this filer's 13F history." />
+      </PageShell>
+    );
+  }
+
+  const MANAGER_ROSTER = rosterRead.data.roster;
   const known = MANAGER_ROSTER.find((m) => m.cik === padded);
 
   if (!known) {
@@ -47,7 +76,7 @@ export function ManagerPage({ cik, view }: { cik: number; view: string }) {
     );
   }
 
-  const d = managerData(known.cik);
+  const d: ManagerProfile = profileRead.data;
 
   return (
     <PageShell
@@ -115,7 +144,7 @@ export function ManagerPage({ cik, view }: { cik: number; view: string }) {
  * The closing line is the whole altitude's caveat — only the filing ACT is near-real-time, and
  * the positions inside a 13F are as of a quarter end that may be months back.
  */
-function ManagerRail({ d }: { d: ReturnType<typeof managerData> }) {
+function ManagerRail({ d }: { d: ManagerProfile }) {
   return (
     <>
       <div className="rail-card">
