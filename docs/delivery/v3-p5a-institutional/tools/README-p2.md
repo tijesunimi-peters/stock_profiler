@@ -25,6 +25,7 @@ docker run --rm --user root --network stock_profiler_default \
 | **`p2-inert.js`** | Every `[data-ip-derive]` has a panel to open — no badge that renders and does nothing | `02-topten`'s badge, inert since phase 1 (run 14) |
 | **`p2-drive-controls.js`** | Each control's **resulting state**, not that a click was accepted (§02) | the double-bound listener that made every toggle run twice and land where it started (run 14) |
 | **`p2-noprior.js`** | §03 renders with **no prior-quarter register** — no ghost line drawn from nulls, and the legend and caption both say so | the operator-reported crash: `ipRankedShare` called `path(spec.prior)` unconditionally and §03 threw, so it never rendered at all |
+| **`p2-drive-04.js`** | §04's five controls, **plus that its two empty states differ in KIND** — "we do not parse HTML" (scope) vs "not ingested yet" (coverage) — and that neither empty card kept an affordance its data can no longer feed | — |
 | **`p2-drive-03.js`** | §03's ten controls, including **both view toggles AND their return**, and `⤡ Expand` in **both** overlap views | §03 has the section's only view toggles — the one control class where "the click was accepted" and "the view actually changed" can differ |
 | **`p2-edge-cases.js`** | A thin register and an unresolvable ticker; **`zeros: []`** — no missing value rendered as `0` | — |
 | **`p2-read-section.js`** | Reads a section back off the live page after the fetch settles — the values, not the source | — |

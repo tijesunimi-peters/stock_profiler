@@ -762,11 +762,20 @@
    * when the last literal goes. Nothing here re-derives a number the API owns.
    * ======================================================================================== */
 
-  var IP_DONE = ["01", "02", "03"]; // sections wired to real filings data
+  var IP_DONE = ["01", "02", "03", "04"]; // sections wired to real filings data
 
   var IP_SERIES_QUARTERS = 5; // the prototype's own axis length for §02's over-time charts
   var IP_FLOW_QUARTERS = 6;   // §03's diverging-flow axis, the prototype's own length
   var IP_RANKED_ROWS = 10;    // §03's "ten largest managers", the prototype's own count
+  var IP_LANES = 6;           // §04: holders charted as lanes; the rest stay in the table below
+  /* 13D/G filings to read. Matches `_BO_TYPE_LOOKBACK` server-side ON PURPOSE: the page already
+   * asks for beneficial-ownership rows at that limit (§01's filed-since, §02's type join), and
+   * the cache is keyed on "do we hold at least `limit` filings", so a THIRD different limit
+   * would be a third cache state for the same rows.
+   * ⚠️ Note that limit can never be reached for an issuer with fewer than 40 structured 13D/G
+   * filings — most of them — so this read goes to SEC every time. Pre-existing (see 4-qa.md),
+   * not introduced here, and the reason not to raise the number further. */
+  var IP_BO_LIMIT = 40;
 
   /* "This request has not answered yet" -- distinct from both `null` (never asked) and
    * `{_err}` (asked and failed). Without it a section repainted mid-load renders its honest
@@ -788,6 +797,7 @@
     domicile: null,     // /institutional-holder-domicile -- where the filers file from (§03)
     attribution: null,  // /institutional-share-attribution -- reported shares vs outstanding (§03)
     overlap: null,      // /institutional-peer-overlap    -- cross-issuer manager overlap (§03)
+    beneficial: null,   // /beneficial-ownership          -- Schedule 13D/G filings (§04)
     registers: {},      // period -> that quarter's register (§02's over-time charts)
     status: "idle",     // idle | loading | ready | error
     error: null,
@@ -802,7 +812,7 @@
     IP_DATA.error = null;
     IP_DATA.registers = {};
     ["register", "shape", "filed", "activity", "series", "flows", "domicile", "attribution",
-      "overlap"].forEach(function (k) { IP_DATA[k] = IP_PENDING; });
+      "overlap", "beneficial"].forEach(function (k) { IP_DATA[k] = IP_PENDING; });
     var report = onProgress || function () {};
     var base = "/companies/" + encodeURIComponent(symbol) + "/institutional";
     var q = period ? "?period=" + encodeURIComponent(period) : "";
@@ -848,6 +858,11 @@
           land("domicile", soft(P.api(base + "-holder-domicile" + pq)), ["03"]),
           land("attribution", soft(P.api(base + "-share-attribution" + pq)), ["03"]),
           land("overlap", soft(P.api(base + "-peer-overlap" + pq)), ["03"]),
+          // §04. Not period-scoped: a 5% stake is a standing position with its own amendment
+          // chain, not a quarter-end snapshot.
+          land("beneficial",
+            soft(P.api("/companies/" + encodeURIComponent(symbol) +
+              "/beneficial-ownership?limit=" + IP_BO_LIMIT)), ["04"]),
         ]).then(function (r) {
           /* The older quarters are DEFERRED until the primary calls have settled.
            *
@@ -3213,82 +3228,26 @@
   }
 
   /* ============================ §04 · Ownership & stewardship ============================
-   * Every value is a prototype literal. The lane chart's x positions were RECOVERED from the
-   * captured SVG (the prototype maps filing dates to a time axis we do not have), like §01's
-   * dumbbell — read back, never invented. */
-  var IP04 = {
-    // Quarter gridlines: x and label, straight off the capture.
-    laneGrid: [[228.3412, "2025-03"], [344.911, "2025-06"], [461.4807, "2025-09"], [576.7834, "2025-12"]],
-    lanes: [
-      { name: "Index manager B", form: "SC 13G",
-        events: [[215.6706, "10.3%", "initial"], [399.3947, "11.3%", "amendment 1"], [622.3976, "11.6%", "amendment 2"]] },
-      { name: "Activist partners LP", form: "SC 13G",
-        events: [[223.273, "12.9%", "initial"], [389.2582, "12.5%", "amendment 1"], [630, "13.7%", "amendment 2"]] },
-      { name: "Strategic holder Inc.", form: "SC 13G",
-        events: [[203, "7.1%", "initial"], [348.7122, "8.1%", "amendment 1"], [448.8101, "7.7%", "amendment 2"], [559.0445, "7.4%", "amendment 3"]] },
-    ],
-    laneNote:
-      "Each lane is one holder above the 5% threshold; the dot is a filing and the figure above it " +
-      "the stake reported in that filing. 13D and 13G are the holder\u2019s own categorical choice of " +
-      "form, shown as identity, not judgment.",
-    filings: [
-      { name: "Index manager B", purpose: "Passive — held in the ordinary course of business",
-        latest: "Amendment 3 · 2026-03-23", form: "SC 13G", stake: "11.6%" },
-      { name: "Activist partners LP", purpose: "Passive — held in the ordinary course of business",
-        latest: "Amendment 1 · 2026-02-02", form: "SC 13G", stake: "13.7%" },
-      { name: "Strategic holder Inc.", purpose: "Passive — held in the ordinary course of business",
-        latest: "Amendment 5 · 2026-06-08", form: "SC 13G", stake: "7.4%" },
-    ],
-    filingsNote:
-      "13D and 13G are categorical filing choices, not a judgment about the holder. Purpose language " +
-      "is quoted in condensed form from Item 4.",
-    voteTiles: [
-      ["Say-on-pay support", "59.5%", true],
-      ["Director withhold", "8.3%", true],
-      ["Turnout", "80.2%", false],
-      ["Ballot items", "5", false],
-    ],
-    // Ordered by the against share, which is what the micro-label above them says.
-    voteItems: [
-      { item: "Report on political spending", who: "shareholder", outcome: "not approved", forPct: "16.4%", against: "83.6%", abstain: "0.0%" },
-      { item: "Say-on-pay (advisory)", who: "management", outcome: "approved", forPct: "59.5%", against: "40.5%", abstain: "0.0%" },
-      { item: "Election of directors (slate)", who: "management", outcome: "all elected", forPct: "91.7%", against: "8.3%", abstain: "0.0%" },
-      { item: "Ratification of auditor", who: "management", outcome: "approved", forPct: "97.3%", against: "2.4%", abstain: "0.3%" },
-    ],
-    voteItemsNote:
-      "Every bar is 100% of the shares voted on that item, split for / against / abstain-or-withheld, " +
-      "ordered by the against share. Totals are the certified figures in 8-K Item 5.07.",
-    dissenters: [
-      ["Pension system F", "against say-on-pay", "18.5M"],
-      ["Index manager C", "withheld from 2 directors", "9.6M"],
-      ["Index manager B", "for the shareholder proposal", "36.3M"],
-      ["Index manager A", "against auditor ratification", "27.4M"],
-    ],
-    votingNote:
-      "Outcomes are certified in 8-K Item 5.07. Manager-level votes come from each fund's N-PX and " +
-      "are reported for the most recent annual meeting.",
-    voteWeighted: [
-      ["Voted with management", "46%", "var(--accent)"],
-      ["Voted against at least one item", "40%", "var(--gaap-color)"],
-      ["No N-PX record", "14%", "var(--ink-soft)"],
-    ],
-    dissentShares: "310M",
-    voteWeightedNote:
-      "Shares are matched from 13F-HR to the filing manager's N-PX record for the most recent annual " +
-      "meeting, and reconciled against the certified outcome in 8-K Item 5.07 — dissent here is at " +
-      "least the institutional portion of the largest against-vote on the ballot. Managers with no " +
-      "N-PX on file, including non-fund managers not subject to it, are reported separately rather " +
-      "than assumed either way.",
-    activism: {
-      head: "No SC 13D on file — every holder above the 5% threshold has filed on Schedule 13G.",
-      sub: "3 beneficial ownership filings currently on file, all passive · no cooperation or standstill agreement filed as an 8-K exhibit.",
-      note:
-        "Item 4 is the holder's own stated purpose. Amendments are required when that purpose " +
-        "materially changes — the sequence is the record, not an inference.",
-    },
-  };
+   * PHASE 2. `IP04` is gone. §04 has the LARGEST unsourced share of any section, and the
+   * operator ruled on it 2026-08-01:
+   *
+   *   lane chart + filings table  beneficial_ownership (13D/G)  -- plumbed, NO new backend
+   *   activism head               a form_type count over the same rows
+   *   voting (tiles + ballot)     8-K Item 5.07  -- D-voting: EMPTY STATE, and never ingested
+   *   vote-weighted ownership     N-PX           -- D-voting: EMPTY STATE, not ingested YET
+   *   the Item 4 "purpose" column Track 2 prose  -- D-purpose: replaced by the cover-page type
+   *
+   * ⚠️ THE TWO EMPTY STATES SAY DIFFERENT THINGS, AND COLLAPSING THEM WOULD BE A LIE.
+   *   * 8-K Item 5.07 is narrative HTML. We do not parse HTML — that is a standing scope
+   *     decision, not a backlog item, so its copy must NOT imply "coming soon".
+   *   * N-PX has been structured XML since 2024, so it is genuinely Track-1-eligible and simply
+   *     is not ingested yet. That one IS a coverage gap and may honestly say so.
+   * ==================================================================================== */
 
   function ipSection04() {
+    if (IP_DATA.status === "idle" || ipPending(IP_DATA.beneficial)) {
+      return P.states.loading({ title: "Loading the 5%-plus ownership filings" });
+    }
     return (
       ip04Beneficial() +
       ip04Voting() +
@@ -3300,147 +3259,323 @@
     );
   }
 
+  /* ---------- the 13D/G filings, grouped into one lane per holder ----------
+   *
+   * Every row we ingest carries its OWN `form_type` (including `/A`), `filed`, `event_date` and
+   * `percent_of_class`, so a holder's amendment chain is already a sequence — no derivation and
+   * no new endpoint. Grouping is by `owner_name` as filed: the forms carry no CIK for a
+   * reporting person, which is the same limit §02's type column documents. A filer that renames
+   * itself therefore reads as two holders, and the caption says so. */
+  function ip04Filers() {
+    var b = IP_DATA.beneficial;
+    if (ipPending(b) || ipErr(b) || !b.beneficial_ownership || !b.beneficial_ownership.length) {
+      return null;
+    }
+    var byOwner = {};
+    b.beneficial_ownership.forEach(function (f) {
+      if (!f.owner_name || !f.filed) return;
+      (byOwner[f.owner_name] = byOwner[f.owner_name] || []).push(f);
+    });
+    var owners = Object.keys(byOwner).map(function (name) {
+      var rows = byOwner[name].slice().sort(function (a, c) {
+        return a.filed < c.filed ? -1 : a.filed > c.filed ? 1 : 0;
+      });
+      var latest = rows[rows.length - 1];
+      return {
+        name: name,
+        rows: rows,
+        latest: latest,
+        /* A final amendment reporting 0% is a real, REPORTED zero -- it is how a holder says it
+         * has dropped back under 5%. Real data has these and the prototype never did, so the
+         * copy has to distinguish "holds nothing" from "exited": the number is identical and the
+         * meaning is not. */
+        exited: latest.percent_of_class === 0,
+        // 13D anywhere in the chain is the signal; a holder that started passive and filed a 13D
+        // is not a 13G filer any more.
+        hasD: rows.some(function (r) { return /13D/.test(r.form || ""); }),
+      };
+    });
+    if (!owners.length) return null;
+    // Largest current stake first, so the lane chart and the table rank the same way.
+    owners.sort(function (a, c) {
+      return (c.latest.percent_of_class || 0) - (a.latest.percent_of_class || 0);
+    });
+    return owners;
+  }
+
+  // "SCHEDULE 13G/A" -> "SC 13G"; the prototype's own short form, and what the table shows.
+  function ip04ShortForm(form) {
+    if (!form) return IP_NA;
+    return /13D/.test(form) ? "SC 13D" : /13G/.test(form) ? "SC 13G" : form;
+  }
+
+  /* Amendment labels for one filer's chain.
+   *
+   * `form_type` carries the "/A" but not WHICH amendment, so the ordinal is counted here --
+   * stated as "amendment N" the way the prototype does, never as an SEC-assigned number, because
+   * the SEC assigns none.
+   *
+   * ⚠ Counted over the AMENDMENTS, not over the array. Using the array index produced
+   * "amendment 0" for any filer whose earliest ingested filing is already an /A — which is the
+   * common case, because the original often predates the structured-XML floor we parse. The
+   * first amendment is 1 whether or not we hold the initial filing it amends. */
+  function ip04EventLabels(rows) {
+    var n = 0;
+    return rows.map(function (r) {
+      if (!/\/A/.test(r.form_type || "")) return "initial";
+      n += 1;
+      return "amendment " + n;
+    });
+  }
+
+  // How many of a filer's ingested filings are amendments -- the table's "Amendment N".
+  function ip04AmendmentCount(rows) {
+    return rows.filter(function (r) { return /\/A/.test(r.form_type || ""); }).length;
+  }
+
+  /* The lane chart's spec, with x positions COMPUTED from filing dates.
+   *
+   * The prototype's x values were recovered from its capture because it maps dates onto a time
+   * axis we did not have; now we do. The axis spans the earliest to the latest filing across all
+   * holders, with a small inset so an edge dot is not half-clipped, and the gridlines are the
+   * calendar quarter boundaries inside that span -- so the labels are real dates rather than the
+   * capture's four fixed ones. */
+  function ip04LaneSpec(owners, W) {
+    var all = [];
+    owners.forEach(function (o) { o.rows.forEach(function (r) { all.push(r.filed); }); });
+    if (all.length < 2) return null;
+    var t = all.map(function (d) { return Date.parse(d); }).filter(function (v) { return !isNaN(v); });
+    if (t.length < 2) return null;
+    var lo = Math.min.apply(null, t), hi = Math.max.apply(null, t);
+    /* X0 clears the lane's name/form gutter, which is right-anchored at 175 viewBox units. The
+     * prototype's earliest dot sat at ~203 and got away with it because its lane names were
+     * short; a real filer name is wider, and the first event label (centred on its dot) then ran
+     * back under the form label -- rendering "SC 13Gamendment 1". */
+    var X0 = 240, X1 = (W || 660) - 30;
+    // A single-day span would divide by zero; park everything mid-axis instead.
+    var x = function (iso) {
+      var v = Date.parse(iso);
+      if (isNaN(v) || hi === lo) return (X0 + X1) / 2;
+      return X0 + ((v - lo) / (hi - lo)) * (X1 - X0);
+    };
+    // Quarter boundaries inside the span, capped so the labels cannot collide.
+    var grid = [];
+    var d = new Date(lo);
+    d = new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1));
+    for (var guard = 0; guard < 40; guard++) {
+      d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 3, 1));
+      if (d.getTime() > hi) break;
+      grid.push([x(d.toISOString().slice(0, 10)), d.toISOString().slice(0, 7)]);
+    }
+    var step = Math.ceil(grid.length / 5) || 1;
+    grid = grid.filter(function (_, i) { return i % step === 0; });
+    return {
+      laneGrid: grid,
+      lanes: owners.slice(0, IP_LANES).map(function (o) {
+        return {
+          name: ipShortManager(o.name, 22),
+          full: o.name,
+          form: ip04ShortForm(o.latest.form_type),
+          events: (function () {
+            var labels = ip04EventLabels(o.rows);
+            return o.rows.map(function (r, i) {
+              return [
+                x(r.filed),
+                r.percent_of_class === null || r.percent_of_class === undefined
+                  ? IP_NA
+                  : r.percent_of_class.toFixed(1) + "%",
+                labels[i],
+              ];
+            });
+          })(),
+        };
+      }),
+      hiddenOwners: Math.max(0, owners.length - IP_LANES),
+    };
+  }
+
   function ip04Beneficial() {
-    var rows = IP04.filings
-      .map(function (f) {
+    var owners = ip04Filers();
+    var head =
+      '<div class="ip-card">' +
+      '<div class="ip-card-head ip-card-head--tight">' +
+      '<h3 class="ip-card-title">Beneficial ownership filings</h3>' +
+      '<span class="ip-card-note">SC 13D / 13G · above the 5% threshold</span>' +
+      ipLink("Read the filings ↗", ipEdgarFts("SC 13D,SC 13G")) +
+      "</div>";
+    if (ipPending(IP_DATA.beneficial)) return head + ip03Loading() + "</div>";
+    if (!owners) {
+      return head + ip03Empty(
+        "No structured Schedule 13D/G has been ingested for this issuer. That can mean nobody " +
+        "has crossed 5%, or that the filings predate the structured-XML era we parse — it is " +
+        "not a confirmed absence of large holders."
+      ) + "</div>";
+    }
+    var lane = ip04LaneSpec(owners, 660);
+    var rows = owners
+      .map(function (o) {
+        var l = o.latest;
+        var amendments = ip04AmendmentCount(o.rows);
+        // D-purpose: the Item 4 prose slot now carries the cover-page TYPE OF REPORTING PERSON --
+        // structured, already ingested, and the same field §02's table shows.
+        var type = l.reporting_person_type_label ||
+          (l.reporting_person_type ? l.reporting_person_type : null);
         return (
           '<div class="ip-bo-row">' +
           '<div class="ip-bo-id">' +
-          '<span class="ip-bo-name"><span>' + P.esc(f.name) + "</span></span>" +
-          '<span class="ip-bo-purpose"><span>' + P.esc(f.purpose) + "</span></span>" +
-          '<span class="ip-bo-latest"><span>' + P.esc(f.latest) + "</span></span>" +
+          '<span class="ip-bo-name"><span title="' + P.esc(o.name) + '">' +
+          P.esc(ipShortManager(o.name, 34)) + "</span></span>" +
+          '<span class="ip-bo-purpose"><span>' +
+          (type ? P.esc(type) : "Reporting-person type not stated on the filing") +
+          "</span></span>" +
+          '<span class="ip-bo-latest"><span>' +
+          P.esc((amendments > 0 ? "Amendment " + amendments : "Initial filing") +
+            " · " + (l.filed || IP_NA) +
+            (o.exited ? " · reported below 5% and exited" : "")) + "</span></span>" +
           "</div>" +
-          '<span class="ip-bo-form"><span>' + P.esc(f.form) + "</span></span>" +
-          '<span class="ip-bo-stake"><span>' + P.esc(f.stake) + "</span></span>" +
+          '<span class="ip-bo-form"><span>' + P.esc(ip04ShortForm(l.form_type)) + "</span></span>" +
+          '<span class="ip-bo-stake"><span>' +
+          P.esc(l.percent_of_class === null || l.percent_of_class === undefined
+            ? IP_NA
+            : l.percent_of_class.toFixed(1) + "%") + "</span></span>" +
           "</div>"
         );
       })
       .join("");
     return (
-      '<div class="ip-card">' +
-      '<div class="ip-card-head ip-card-head--tight">' +
-      '<h3 class="ip-card-title">Beneficial ownership filings</h3>' +
-      '<span class="ip-card-note">SC 13D / 13G · above the 5% threshold</span>' +
-      ipLink("Read the filings ↗", IP_EDGAR_SC13) +
-      "</div>" +
+      head +
       '<div class="ip-subbar ip-subbar--tight">' +
       '<span class="ip-micro">Filing history · stake as reported in each filing</span>' +
-      ipChip("04-lanes") +
+      (lane ? ipChip("04-lanes") : "") +
       "</div>" +
-      '<div data-ip-chart="04-lanes">' + ipLaneChart(IP04, 660, 278) + "</div>" +
-      '<div class="ip-caption"><span>' + P.esc(IP04.laneNote) + "</span></div>" +
+      (lane
+        ? '<div data-ip-chart="04-lanes">' + ipLaneChart(lane, 660, ip04LaneHeight(lane)) + "</div>" +
+          '<div class="ip-caption"><span>' + P.esc(
+            "Each lane is one holder that has crossed the 5% threshold and filed; the dot is a " +
+            "filing and the figure above it the stake reported in THAT filing. A final " +
+            "amendment reporting 0% is an exit back below 5%, not a holding of nothing. 13D and " +
+            "13G are the holder's own categorical choice of form, shown as identity, not " +
+            "judgment." +
+            (lane.hiddenOwners
+              ? " " + lane.hiddenOwners + " further holder(s) are in the table below but not " +
+                "charted."
+              : "")
+          ) + "</span></div>"
+        : ip03Empty(
+            "Only one filing has been ingested for this issuer, so there is no chain to draw. A " +
+            "single dot is not a history."
+          )) +
       '<div class="ip-micro ip-micro--block">Current filings on file</div>' +
       rows +
-      '<div class="ip-caption">' + P.esc(IP04.filingsNote) + "</div>" +
+      '<div class="ip-caption">' + P.esc(
+        "13D and 13G are categorical filing choices, not a judgment about the holder. The second " +
+        "line is the cover page's TYPE OF REPORTING PERSON — the filer's own declaration of what " +
+        "kind of entity it is, not what it intends. Holders are grouped by the name as filed, " +
+        "because these forms carry no CIK for a reporting person, so a filer that renames itself " +
+        "reads as two."
+      ) + "</div>" +
       "</div>"
     );
   }
 
+  // One lane per holder at the prototype's 76px pitch, plus its header and axis gutter.
+  function ip04LaneHeight(lane) {
+    return Math.max(150, 60 + lane.lanes.length * 76 + 20);
+  }
+
+  /* ---------- voting: an empty state, and NOT a "coming soon" one (D-voting) ---------- */
+
   function ip04Voting() {
-    var tiles = IP04.voteTiles
-      .map(function (t) {
-        return (
-          '<div class="ip-vtile">' +
-          '<span class="ip-micro">' + P.esc(t[0]) + "</span>" +
-          '<span class="ip-vtile-val' + (t[2] ? "" : " ip-vtile-val--plain") + '"><span>' +
-          P.esc(t[1]) + "</span></span>" +
-          "</div>"
-        );
-      })
-      .join("");
-    var items = IP04.voteItems
-      .map(function (v) {
-        return (
-          '<div class="ip-vote">' +
-          '<div class="ip-vote-head">' +
-          '<span class="ip-vote-item"><span>' + P.esc(v.item) + "</span></span>" +
-          '<span class="ip-vote-meta"><span>' + P.esc(v.who) + "</span> · <span>" +
-          P.esc(v.outcome) + "</span></span>" +
-          "</div>" +
-          '<div class="ip-vote-bar">' +
-          '<div class="ip-vote-for" style="width:' + P.esc(v.forPct) + '"></div>' +
-          '<div class="ip-vote-against" style="width:' + P.esc(v.against) + '"></div>' +
-          '<div class="ip-vote-abstain" style="width:' + P.esc(v.abstain) + '"></div>' +
-          "</div>" +
-          '<div class="ip-vote-legend"><span>for <span>' + P.esc(v.forPct) + "</span></span>" +
-          "<span>against <span>" + P.esc(v.against) + "</span></span>" +
-          "<span>abstain / withheld <span>" + P.esc(v.abstain) + "</span></span></div>" +
-          "</div>"
-        );
-      })
-      .join("");
-    var dissent = IP04.dissenters
-      .map(function (d) {
-        return (
-          '<div class="ip-vm-row">' +
-          '<span class="ip-vm-name"><span>' + P.esc(d[0]) + "</span></span>" +
-          '<span class="ip-vm-how"><span>' + P.esc(d[1]) + "</span></span>" +
-          '<span class="ip-vm-shares"><span>' + P.esc(d[2]) + "</span></span>" +
-          "</div>"
-        );
-      })
-      .join("");
     return (
       '<div class="ip-card">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Voting behavior</h3>' +
       '<span class="ip-card-note">8-K Item 5.07 outcomes · manager-level votes from N-PX</span>' +
-      ipLink("Read Item 5.07 ↗", IP_EDGAR_8K) +
-      ipLink("N-PX ↗", IP_EDGAR_NPX) +
+      ipStatusChip("na") +
+      ipLink("Read Item 5.07 ↗", ipEdgarFts("8-K")) +
+      ipLink("N-PX ↗", ipEdgarFts("N-PX")) +
       "</div>" +
-      '<div class="ip-vtiles">' + tiles + "</div>" +
-      '<div class="ip-micro ip-micro--votes">How each item was voted · ordered by the against share</div>' +
-      items +
-      '<div class="ip-caption"><span>' + P.esc(IP04.voteItemsNote) + "</span></div>" +
-      '<div class="ip-micro ip-micro--dissent">Managers voting against management</div>' +
-      dissent +
-      '<div class="ip-caption"><span>' + P.esc(IP04.votingNote) + "</span></div>" +
+      ip03Empty(
+        "Annual-meeting vote results are certified in 8-K Item 5.07, which is a narrative HTML " +
+        "exhibit. This product ingests structured filings only and does not parse HTML, so these " +
+        "outcomes are outside what it can report — not merely missing. The links above go to the " +
+        "filings themselves."
+      ) +
+      '<div class="ip-caption"><span>' + P.esc(
+        "Manager-level votes would come from each fund's N-PX. N-PX has been a structured XML " +
+        "form since 2024, so it is something this product could ingest — it simply has not been " +
+        "ingested yet. The two gaps on this card are different in kind, which is why they are " +
+        "stated separately."
+      ) + "</span></div>" +
       "</div>"
     );
   }
 
   function ip04VoteWeighted() {
-    var rows = IP04.voteWeighted
-      .map(function (r) {
-        return (
-          '<div class="ip-vw">' +
-          '<div class="ip-vw-head"><span class="ip-vw-label"><span>' + P.esc(r[0]) + "</span></span>" +
-          '<span class="ip-vw-val"><span>' + P.esc(r[1]) + "</span></span></div>" +
-          '<div class="ip-vw-bar"><div class="ip-vw-fill" style="width:' + P.esc(r[1]) +
-          ";background:" + r[2] + '"></div></div>' +
-          "</div>"
-        );
-      })
-      .join("");
     return (
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Vote-weighted ownership</h3>' +
       '<span class="ip-card-note">13F shares matched to the manager\'s N-PX record</span>' +
+      ipStatusChip("na") +
       "</div>" +
-      rows +
-      '<div class="ip-vw-foot">' +
-      '<span class="ip-vw-foot-label">Shares behind a dissenting vote</span>' +
-      '<span class="ip-vw-foot-val"><span>' + P.esc(IP04.dissentShares) + "</span></span>" +
-      "</div>" +
-      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(IP04.voteWeightedNote) + "</span></div>" +
+      ip03Empty(
+        "This would match each 13F filer's shares to how that manager actually voted, using its " +
+        "N-PX record. N-PX is not ingested yet. Showing a split without it would mean guessing " +
+        "how managers voted from how they hold, which is exactly the inference this view exists " +
+        "not to make."
+      ) +
+      '<div class="ip-caption ip-caption--tight"><span>' + P.esc(
+        "Managers with no N-PX on file — including non-fund managers not subject to it — would " +
+        "be reported separately rather than assumed either way."
+      ) + "</span></div>" +
       "</div>"
     );
   }
 
+  /* ---------- the activism trail: a form_type count, and nothing more ---------- */
+
   function ip04Activism() {
-    return (
+    var owners = ip04Filers();
+    var head =
       '<div class="ip-card">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Activism trail</h3>' +
-      '<span class="ip-card-note">SC 13D amendments · 8-K Item 1.01 exhibits</span>' +
-      ipLink("Read the 13D chain ↗", IP_EDGAR_SC13) +
-      "</div>" +
+      '<span class="ip-card-note">SC 13D amendments</span>' +
+      ipLink("Read the 13D chain ↗", ipEdgarFts("SC 13D")) +
+      "</div>";
+    if (!owners) {
+      return head + ip03Empty(
+        "No structured Schedule 13D/G ingested for this issuer, so there is no filing trail to " +
+        "read either way."
+      ) + "</div>";
+    }
+    var activists = owners.filter(function (o) { return o.hasD; });
+    var amendments = owners.reduce(function (t, o) { return t + ip04AmendmentCount(o.rows); }, 0);
+    var headline = activists.length
+      ? activists.length + " of " + owners.length + " holder(s) above 5% have filed on Schedule " +
+        "13D — the form a holder chooses when it is not merely a passive investor."
+      : "No SC 13D on file — every holder above the 5% threshold has filed on Schedule 13G.";
+    var live = owners.filter(function (o) { return !o.exited; }).length;
+    var gone = owners.length - live;
+    var sub = live + " filer(s) currently reporting a position above 5%" +
+      (gone ? ", plus " + gone + " that has since filed an exit below it" : "") +
+      (amendments ? ", across " + amendments + " amendment(s)." : ".");
+    return (
+      head +
       '<div class="ip-act">' +
-      '<span class="ip-act-head"><span>' + P.esc(IP04.activism.head) + "</span></span>" +
-      '<span class="ip-act-sub"><span>' + P.esc(IP04.activism.sub) + "</span></span>" +
+      '<span class="ip-act-head"><span>' + P.esc(headline) + "</span></span>" +
+      '<span class="ip-act-sub"><span>' + P.esc(sub) + "</span></span>" +
       "</div>" +
-      '<div class="ip-caption"><span>' + P.esc(IP04.activism.note) + "</span></div>" +
+      // ⚠ The prototype's caption also claimed "no cooperation or standstill agreement filed as
+      // an 8-K exhibit". 8-K exhibits are not ingested, and asserting an absence we never looked
+      // for is worse than saying nothing -- so that clause is gone (D-voting's neighbour).
+      '<div class="ip-caption"><span>' + P.esc(
+        "The choice of form is the record: a holder files 13D rather than 13G when it does not " +
+        "qualify as passive, and amends when its position or purpose materially changes. What " +
+        "each filer SAID in Item 4 is free text, which this product does not extract — so the " +
+        "sequence of filings is shown, and the stated intent behind it is not."
+      ) + "</span></div>" +
       "</div>"
     );
   }
@@ -4331,7 +4466,11 @@
     "04-lanes": {
       title: "Beneficial ownership filings",
       note: "one lane per holder above the 5% threshold",
-      render: function (w) { return ipLaneChart(IP04, w, 278); },
+      render: function (w) {
+        var owners = ip04Filers();
+        var lane = owners && ip04LaneSpec(owners, w);
+        return lane ? ipLaneChart(lane, w, ip04LaneHeight(lane)) : "";
+      },
     },
     /* View-aware, like "03-ranked": Expand opens whichever view the card is showing. Both titles
      * and notes are the prototype's own, driven out of it. */

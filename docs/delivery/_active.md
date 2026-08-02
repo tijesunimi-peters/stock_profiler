@@ -775,7 +775,33 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
           a trend of a number we no longer stand behind would be worse than the row was. The foot
           now carries the **denominator** every bar is drawn against. A consequence of the ruling,
           but a visible change to an accepted rendering — needs a look at 4b.
-  - [ ] **§04 Ownership & stewardship — IN FLIGHT.** Its two rulings are above (**D-voting**,
+  - [x] ✅ **§04 Ownership & stewardship DONE** (2026-08-01). **`IP04` deleted; NO new backend** —
+        the only server change was expanding the reporting-person type LABEL on the
+        beneficial-ownership route, so `TYPE_OF_REPORTING_PERSON` stays the one place that map
+        lives. 677 pytest, `svgOverflow=0` webfont-blocked, **5/5 §04 controls**, `zeros: []`,
+        0 page errors.
+        **Both empty states landed with DIFFERENT copy, and `p2-drive-04.js` asserts they differ
+        in KIND** — collapsing "we do not parse HTML" (a scope decision) into "not ingested yet"
+        (a coverage gap) would misreport Item 5.07 as a backlog item.
+        ⚠️ **Three defects real data surfaced that literals never could:**
+        1. **"amendment 0"** — I numbered amendments by array index, but a filer's earliest
+           INGESTED filing is usually already an `/A` (the original predates the structured-XML
+           floor). Amendments are now counted over the amendments, so the first is 1 whether or
+           not we hold the initial it amends.
+        2. **The first event label ran back under the lane's form label** ("SC 13Gamendment 1").
+           The prototype's earliest dot sat at x≈203 and got away with it because its lane names
+           were short; real filer names are wider. Axis now starts at 240.
+        3. **A 0.0% final amendment is an EXIT, not a holding of nothing.** Vanguard's real chain
+           ends at 0.0%/0 shares — a reported zero that means "dropped back under 5%". The
+           prototype had no exit case, so three pieces of copy were false: the lane caption said
+           "above the 5% threshold", the table read as a current 0% holding, and the activism
+           line counted an exited filer as current. All three now distinguish it.
+        💡 **And one I nearly shipped:** `IP_BO_LIMIT` at 60 would have forced a LIVE SEC FETCH ON
+        EVERY PAGE LOAD, permanently — `_beneficial_ownership_for_cik` serves from cache only if
+        `cached_filing_count >= limit`, and an issuer with 3 structured 13D/G filings can never
+        reach 60. Set to 40 to match `_BO_TYPE_LOOKBACK` so it shares one cache state. **The cache
+        rule itself is a pre-existing bug affecting §01/§02/§04 — recorded, not fixed.**
+  - [ ] ~~**§04 Ownership & stewardship — IN FLIGHT.**~~ Its two rulings are above (**D-voting**,
         **D-purpose**). ✅ **The state file's old "needs checking" row is RESOLVED:** the 5%-filing
         amendment chain IS fully ingested — every 13D/G row carries its own `form_type` (incl.
         `/A`), `filed`, `event_date` and `percent_of_class`, so the lane chart and the filings

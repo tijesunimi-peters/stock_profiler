@@ -2123,7 +2123,20 @@ async def get_beneficial_ownership(
     return {
         "cik": cik,
         "caveats": _BENEFICIAL_OWNERSHIP_CAVEATS,
-        "beneficial_ownership": owners,
+        # The cover-page type CODE is what the filing carries; the human label is expanded here
+        # rather than in the client so `TYPE_OF_REPORTING_PERSON` stays the one place that map
+        # lives -- `_vector_payload` expands it the same way for the register's holders table.
+        "beneficial_ownership": [
+            {
+                **o.model_dump(),
+                "reporting_person_type_label": (
+                    TYPE_OF_REPORTING_PERSON.get(o.type_of_reporting_person)
+                    if o.type_of_reporting_person
+                    else None
+                ),
+            }
+            for o in owners
+        ],
     }
 
 

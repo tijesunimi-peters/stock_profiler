@@ -515,3 +515,84 @@ something §03 introduced — but §03 did add four calls to the pile.
 concurrent requests serialise on one event loop. Getting below it means either a composite
 endpoint for this view or moving store reads off the loop — both are real architectural changes,
 and single-process is a deliberate constraint. **Flagging, not fixing.**
+
+---
+
+# Phase 2 · §04 — Ownership & stewardship
+
+**Stage:** Senior Frontend Engineer → QA Tester · **Branch:** `v3-p5a-institutional`
+
+**`IP04` is deleted, and §04 needed essentially NO new backend.** The only server change was
+expanding the reporting-person type *label* on `beneficial-ownership`, so
+`TYPE_OF_REPORTING_PERSON` stays the one place that map lives (`_vector_payload` already expands
+it the same way for §02's table).
+
+## What each block became
+
+| block | outcome |
+|---|---|
+| Lane chart (one lane per 5%+ holder) | **Plumbed** from `beneficial_ownership`. x positions are now COMPUTED from filing dates; the prototype's were recovered from its capture because it mapped dates onto a time axis we did not have. |
+| Filings table | **Plumbed.** The Item 4 `purpose` column → the cover-page **TYPE OF REPORTING PERSON** (D-purpose). |
+| Voting (tiles, ballot items, dissenters) | **Empty state** (D-voting) — 8-K Item 5.07 is narrative HTML. |
+| Vote-weighted ownership | **Empty state** (D-voting) — N-PX not ingested. |
+| Activism trail | **Plumbed** as a `form_type` count. The "no standstill agreement filed as an 8-K exhibit" clause is **gone**: 8-K exhibits are not ingested, and asserting an absence we never looked for is worse than saying nothing. |
+
+## ⚠️ The two empty states say different things, and that is asserted
+
+`p2-drive-04.js` checks the two reasons **differ in kind**, because collapsing them would
+misreport a scope decision as a backlog item:
+
+- **8-K Item 5.07 is narrative HTML.** We do not parse HTML — a standing scope decision. Its copy
+  must not imply "coming soon".
+- **N-PX has been structured XML since 2024**, so it is genuinely Track-1-eligible and simply is
+  not ingested. That one *is* a coverage gap and says so.
+
+## Three defects real data surfaced that literals never could
+
+1. **"amendment 0".** I numbered amendments by array index, but a filer's earliest *ingested*
+   filing is usually already an `/A` — the original predates the structured-XML floor we parse.
+   Amendments are now counted over the amendments, so the first is **1** whether or not we hold
+   the initial filing it amends.
+2. **The first event label ran back under the lane's form label** — rendering `SC 13Gamendment 1`.
+   The prototype's earliest dot sat at x≈203 and got away with it because its lane names were
+   short ("Index manager B"); a real registrant name is wider. The axis now starts at 240.
+3. **A 0.0% final amendment is an EXIT, not a holding of nothing.** Vanguard's real chain on AAPL
+   ends at `0.0% / 0 shares` — a *reported* zero meaning "dropped back under 5%". The prototype
+   had no exit case, so three pieces of copy were false: the lane caption said "above the 5%
+   threshold", the table read as a current 0% holding, and the activism line counted an exited
+   filer as current. All three now distinguish it. **This is the "measured zero is a zero" rule
+   meeting a case where the zero also carries meaning.**
+
+## 💡 One I nearly shipped
+
+`IP_BO_LIMIT` at **60** would have forced a **live SEC fetch on every page load, permanently**.
+`_beneficial_ownership_for_cik` serves from cache only when `cached_filing_count(cik) >= limit`,
+and an issuer with 3 structured 13D/G filings can never reach 60 — so the condition is
+unsatisfiable and every request re-fetches. Set to **40**, matching `_BO_TYPE_LOOKBACK`, so §01's
+filed-since, §02's type join and §04 all share one cache state.
+
+🔶 **The cache rule itself is a pre-existing bug** — `count >= limit` cannot distinguish "we hold
+3 because that is all there is" from "we hold 3 because we only fetched 3", so it re-fetches
+forever for any issuer with fewer filings than the limit. It affects insider trades and 13D/G
+alike. **Recorded, not fixed** — the honest fix is a "fetched up to N" marker in the store, which
+is a schema change across three form families.
+
+## Verification
+
+- **`pytest` 677 passed, 9 skipped.**
+- **`p2-drive-04.js` (new, committed): 5 controls, 0 failures** — the expander, `⤡ Expand` on the
+  lane chart (asserting the dialog re-authors real dots, not a scaled copy), all four `↗` links as
+  real EDGAR anchors following the viewed issuer, no orphaned affordance on either empty card, and
+  the two empty states differing in kind.
+- **`p2-clip-sweep.js`: `svgOverflow=0 domBleed=0`** webfont loaded *and* blocked.
+- §01–§03 re-driven with no regression; `p2-noprior.js` still clean.
+- Screenshots eyeballed at DPR 2, collapsed and expanded.
+
+## For QA
+
+1. **The two empty states are the point of this section** — check they read as different *kinds*
+   of gap, not as two flavours of "no data".
+2. **The 0.0% exit row.** Confirm it reads as an exit and not as a holder of nothing.
+3. **Amendment numbering** on a filer whose chain starts with an `/A`.
+4. §04 has no view toggles and no derivation badges — confirmed against the prototype before
+   building, so there is nothing there to be inert.
