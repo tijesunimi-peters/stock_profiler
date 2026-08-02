@@ -114,6 +114,8 @@ export interface PageShellProps {
   onView?: (view: string) => void;
   /** In-page jump list for the active view's sections. */
   sections?: ViewRailSection[];
+  /** Heading over the section list. Override when the entries are not in-page anchors. */
+  sectionsLabel?: string;
   /** The mono note pinned under the rail. */
   railNote?: string;
   /** 132px at sector altitude, 178px in the hub and manager views. */
@@ -140,6 +142,7 @@ export function PageShell({
   activeView,
   onView,
   sections,
+  sectionsLabel,
   railNote,
   railWidth = 132,
   contentMax = 960,
@@ -183,6 +186,7 @@ export function PageShell({
           active={activeView}
           onChange={(v) => onView?.(v)}
           sections={sections}
+          sectionsLabel={sectionsLabel}
           note={railNote}
           width={railWidth}
         >

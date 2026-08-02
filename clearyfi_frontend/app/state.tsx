@@ -39,6 +39,14 @@ export interface Selection {
   compareB: number;
   compareX: string;
   compareY: string;
+  /**
+   * Which "beyond the financials" group the Peer-relative view is showing.
+   *
+   * A selection rather than component state: it belongs in the URL for the same reason the
+   * focused theme does — a reader who links someone to the ownership comparison should not
+   * land them on disclosure behaviour.
+   */
+  pxGroup: string;
 }
 
 export interface SelectionApi extends Selection {
@@ -73,6 +81,7 @@ const KEYS: Record<keyof Selection, string> = {
   compareB: "b",
   compareX: "x",
   compareY: "y",
+  pxGroup: "px",
 };
 
 const NUMERIC: (keyof Selection)[] = ["sectorIdx", "subIdx", "managerCik", "compareA", "compareB"];
@@ -90,6 +99,7 @@ const DEFAULTS: Selection = {
   compareB: 1,
   compareX: "NVDA",
   compareY: "AMD",
+  pxGroup: "disclosure",
 };
 
 const STORAGE = "clearyfi:selection";
@@ -143,6 +153,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       compareB: get("compareB"),
       compareX: get("compareX"),
       compareY: get("compareY"),
+      pxGroup: get("pxGroup"),
     };
     // Guard against a hand-edited URL naming something that does not exist.
     if (next.sectorIdx < 0 || next.sectorIdx >= SECTOR_NAMES.length) next.sectorIdx = 0;

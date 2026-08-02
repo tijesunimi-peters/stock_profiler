@@ -12,6 +12,15 @@ export interface ViewRailSection {
     href: string;
     /** Marks the section currently in view. */
     current?: boolean;
+    /**
+     * Makes the entry a SWITCH rather than a jump: the handler runs and the anchor navigation is
+     * suppressed.
+     *
+     * For a page that renders one group at a time, the entries address content that is not on the
+     * page yet, so a plain anchor would scroll nowhere. The `href` stays real so the row is still
+     * a link — middle-click and "copy link" keep working.
+     */
+    onSelect?: () => void;
 }
 export interface ViewRailProps {
     views: ViewRailItem[];

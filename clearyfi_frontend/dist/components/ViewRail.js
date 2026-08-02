@@ -11,5 +11,10 @@ export function ViewRail({ views, active, onChange, label = "Views", sections, s
                             .filter(Boolean)
                             .join(" "), onClick: () => onChange?.(v.value), children: v.label }, v.value))), sections?.length ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-rail-rule" }), _jsx("div", { className: "shell-rail-label", children: sectionsLabel }), _jsx("div", { className: "shell-rail-sections", children: sections.map((s) => (_jsxs("a", { href: s.href, className: ["shell-rail-sec", s.current ? "active" : null]
                                         .filter(Boolean)
-                                        .join(" "), children: [_jsx("span", { className: "shell-rail-sec-n", children: s.n }), _jsx("span", { children: s.label })] }, s.href))) })] })) : null, note ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-rail-rule" }), _jsx("div", { className: "shell-rail-note", children: note })] })) : null] }), _jsx("div", { className: "shell-viewport", children: children })] }));
+                                        .join(" "), onClick: s.onSelect
+                                        ? (e) => {
+                                            e.preventDefault();
+                                            s.onSelect?.();
+                                        }
+                                        : undefined, children: [_jsx("span", { className: "shell-rail-sec-n", children: s.n }), _jsx("span", { children: s.label })] }, s.href))) })] })) : null, note ? (_jsxs(_Fragment, { children: [_jsx("div", { className: "shell-rail-rule" }), _jsx("div", { className: "shell-rail-note", children: note })] })) : null] }), _jsx("div", { className: "shell-viewport", children: children })] }));
 }
