@@ -775,7 +775,9 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
           a trend of a number we no longer stand behind would be worse than the row was. The foot
           now carries the **denominator** every bar is drawn against. A consequence of the ruling,
           but a visible change to an accepted rendering — needs a look at 4b.
-  - [x] ✅ **§04 Ownership & stewardship DONE** (2026-08-01). **`IP04` deleted; NO new backend** —
+  - [x] **§04 Ownership & stewardship BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet
+        operator-accepted**: D-manual-gate applies, so §04 needs its own 4b hand-run before it is
+        done. QA + 4b for §04 is the open item below. **`IP04` deleted; NO new backend** —
         the only server change was expanding the reporting-person type LABEL on the
         beneficial-ownership route, so `TYPE_OF_REPORTING_PERSON` stays the one place that map
         lives. 677 pytest, `svgOverflow=0` webfont-blocked, **5/5 §04 controls**, `zeros: []`,
@@ -801,17 +803,18 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         `cached_filing_count >= limit`, and an issuer with 3 structured 13D/G filings can never
         reach 60. Set to 40 to match `_BO_TYPE_LOOKBACK` so it shares one cache state. **The cache
         rule itself is a pre-existing bug affecting §01/§02/§04 — recorded, not fixed.**
-  - [ ] ~~**§04 Ownership & stewardship — IN FLIGHT.**~~ Its two rulings are above (**D-voting**,
-        **D-purpose**). ✅ **The state file's old "needs checking" row is RESOLVED:** the 5%-filing
-        amendment chain IS fully ingested — every 13D/G row carries its own `form_type` (incl.
-        `/A`), `filed`, `event_date` and `percent_of_class`, so the lane chart and the filings
-        table both plumb from `beneficial_ownership` with **no new backend at all**.
-        **Sourceable:** the lane chart, the filings table, and the activism head (13D-vs-13G is a
-        `form_type` count). **Empty-stated:** both voting blocks. **Dropped:** the Item 4 purpose
-        prose → reporting-person type.
-        ⚠️ The activism sub-line also claims "no cooperation or standstill agreement filed as an
-        8-K exhibit" — 8-K exhibits are not ingested either; that clause goes.
-  - [ ] **§05–§06** — same pattern, section by section. §07 is reference copy and stays.
+  - [ ] **§04 QA + 4b** — §04 has a rendered surface, so the operator gate is mandatory. Can be
+        walked together with §05's if both land before the next gate.
+  - [ ] **§05 Holder behavior** — should be the EASIEST of the set and need no ruling:
+        `register-shape` already returns everything it wants (turnover, tenure cohorts, the
+        retention grid, median holding period), all of it already consumed by §03's stable-capital
+        card. ⚠️ Its `ipCohortGrid` is a triangular heatmap whose cells carry BOTH a printed value
+        and a recovered fill-opacity — the opacity was computed from the unrounded share, so it is
+        not recoverable from the label and must be computed, not adapted.
+  - [ ] **§06** — WILL need a ruling: supply events (S-1/S-3, SC TO, Form 25/15) and the
+        acceptance-lag histogram are both unsourced. Acceptance timestamps are V3-P3.
+        💡 Check prototype v4 first — §06's Form 144 card was already retired by the design.
+        §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.
