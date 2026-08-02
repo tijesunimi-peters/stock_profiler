@@ -236,7 +236,16 @@ interface CondensedResponse {
  */
 const STATEMENT_ROWS: Record<
   "income" | "balance" | "cash",
-  { label: string; concept: string | null; rule?: boolean; bold?: boolean; derived?: boolean; reason?: string }[]
+  {
+    label: string;
+    concept: string | null;
+    rule?: boolean;
+    bold?: boolean;
+    derived?: boolean;
+    reason?: string;
+    /** Set only on a row the adapter is sanctioned to compute. `get` returns one column's value. */
+    compute?: (get: (concept: string) => number | null) => number | null;
+  }[]
 > = {
   income: [
     { label: "Revenue", concept: "revenue" },
@@ -274,10 +283,27 @@ const STATEMENT_ROWS: Record<
       label: "Free cash flow (derived)",
       concept: null,
       derived: true,
-      reason:
-        "Cash from operations less capital expenditures — see the ƒ drawer. Not a filed line, and " +
-        "the adapter does not compute it: a figure we work out here would arrive without the " +
-        "status and provenance the API attaches to everything it reports.",
+      /*
+       * THE ONE DERIVATION THE ADAPTER MAKES (operator ruling, 2026-08-02).
+       *
+       * The general rule stands — if a number is not in the response the card renders N/A, because
+       * a figure computed here arrives without the status the API attaches to reported values.
+       * This row is the sanctioned exception: the design marks it `derived`, the ƒ chip says so on
+       * the face of the card, and the drawer holds the formula, its inputs, and the caveat that
+       * filers define free cash flow differently in their own non-GAAP reconciliations. The
+       * provenance is carried; that is what the exception turns on.
+       */
+      compute: (get) => {
+        const cfo = get("cash_from_operations");
+        const capex = get("capital_expenditures");
+        // Both, or nothing. Half the inputs cannot make a whole figure, and a partial answer here
+        // would be indistinguishable from a real one.
+        if (cfo === null || capex === null) return null;
+        // Capex is subtracted as a MAGNITUDE. Filers report it either way — as a positive payment
+        // (Apple does) or as a negative outflow — and a sign-naive subtraction silently ADDS it
+        // for the second group, producing a plausible number that is wrong by twice capex.
+        return cfo - Math.abs(capex);
+      },
     },
     { label: "Acquisitions, net", concept: "payments_for_acquisitions" },
     { label: "Share repurchases", concept: "share_repurchases" },
@@ -315,6 +341,9 @@ const columnLabel = (c: CondensedResponse["columns"][number]) => {
 
 function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "cash") {
   const byConcept = new Map(res.rows.map((r) => [r.canonical_concept, r]));
+  /** One column's value for a concept, or null when that period did not report it. */
+  const valueAt = (i: number) => (concept: string) => byConcept.get(concept)?.values[i] ?? null;
+
   return STATEMENT_ROWS[key].map((spec) => {
     const row = spec.concept ? byConcept.get(spec.concept) : undefined;
     return {
@@ -322,10 +351,11 @@ function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "ca
       strongRule: !!spec.rule,
       bold: !!spec.bold,
       derived: !!spec.derived,
-      reason: row ? undefined : spec.reason,
-      vals: res.columns.map((_c, i) =>
-        row ? statementValue(row.values[i], row.unit) : "N/A",
-      ),
+      reason: row || spec.compute ? undefined : spec.reason,
+      vals: res.columns.map((_c, i) => {
+        if (spec.compute) return statementValue(spec.compute(valueAt(i)), "USD");
+        return row ? statementValue(row.values[i], row.unit) : "N/A";
+      }),
     };
   });
 }
