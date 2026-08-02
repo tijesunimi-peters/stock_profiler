@@ -211,6 +211,120 @@ function identitySentence(p: ProfileResponse): string {
 }
 
 
+
+/* ------------------------------------------------------------ §02.6 snapshot tiles */
+
+interface MetricsResponse {
+  metrics: {
+    metric: string; label: string; value: number | null; unit: string;
+    basis: string | null; status: string; reason: string | null;
+  }[];
+}
+interface MetricHistoryResponse {
+  metric: string; label: string; unit: string;
+  points: { fiscal_year: number; fiscal_period: string; value: number | null; status: string }[];
+}
+
+/**
+ * The eight snapshot tiles, and where each one really comes from.
+ *
+ * Two are `null` on purpose. "Cash & ST inv." and "Total debt" each name a figure no filer files
+ * as one line — cash plus marketable securities, long-term plus current debt. Summing two
+ * reported numbers to fill a tile would put a figure on the page that nobody reported under a
+ * label that says they did. Same rule as the statement rows; free cash flow remains the single
+ * sanctioned derivation, and here it does not even need deriving because `/metrics` serves it.
+ */
+const SNAPSHOT_TILES: {
+  label: string;
+  src: string;
+  /** A canonical concept from the condensed INCOME statement. */
+  concept?: string;
+  /** A metric key, read from `/metrics/{metric}/history`. */
+  metric?: string;
+  /** The metric key carrying this tile's year-over-year change, where the API computes one. */
+  growth?: string;
+  reason?: string;
+}[] = [
+  { label: "Revenue", src: "Income stmt", concept: "revenue", growth: "revenue_growth_yoy" },
+  { label: "Gross margin", src: "derived · IS", metric: "gross_margin" },
+  { label: "Operating margin", src: "derived · IS", metric: "operating_margin" },
+  { label: "Net income", src: "IS", concept: "net_income", growth: "earnings_growth_yoy" },
+  { label: "Free cash flow", src: "CFO − capex", metric: "fcf" },
+  {
+    label: "Cash & ST inv.", src: "Balance sheet",
+    reason: "Cash and short-term investments are filed as separate lines. Adding them here would put a total on the page that nobody reported.",
+  },
+  {
+    label: "Total debt", src: "Balance sheet",
+    reason: "No filer reports one total-debt line; it would mean adding long-term to current debt.",
+  },
+  { label: "Diluted shares", src: "Cover · 10-Q", concept: "shares_diluted" },
+];
+
+/** Tile value formatting, by unit. A ratio is a percentage; everything else keeps its magnitude. */
+function tileValue(v: number | null, unit: string): string {
+  if (v === null || v === undefined) return "N/A";
+  if (unit === "ratio") return `${(v * 100).toFixed(1)}%`;
+  if (unit === "shares") return compactNumber(v);
+  return usdCompact(v);
+}
+
+
+/**
+ * One tile per spec. A tile with no source renders N/A and says why, rather than vanishing.
+ *
+ * The YoY line is shown ONLY where the API computes a growth metric for it. Working the change
+ * out from the spark would be arithmetic on numbers we were given — the thing the adapter does
+ * not do — and an arrow is a claim about direction whether or not it looks like one.
+ */
+function buildSnapshot(
+  income: CondensedResponse,
+  metrics: MetricsResponse,
+  histories: MetricHistoryResponse[],
+): hub.SnapshotTile[] {
+  const byMetric = new Map(metrics.metrics.map((m) => [m.metric, m]));
+  const byHistory = new Map(histories.map((h) => [h.metric, h]));
+  const byConcept = new Map(income.rows.map((r) => [r.canonical_concept, r]));
+
+  return SNAPSHOT_TILES.map((t) => {
+    let value = "N/A";
+    let spark: number[] = [];
+    let unit = "USD";
+
+    if (t.metric) {
+      const h = byHistory.get(t.metric);
+      const m = byMetric.get(t.metric);
+      unit = h?.unit ?? m?.unit ?? "USD";
+      spark = (h?.points ?? []).slice(-8).map((p) => p.value).filter((v): v is number => v !== null);
+      value = tileValue(m?.value ?? spark[spark.length - 1] ?? null, unit);
+    } else if (t.concept) {
+      const row = byConcept.get(t.concept);
+      unit = row?.unit ?? "USD";
+      spark = (row?.values ?? []).filter((v): v is number => v !== null);
+      value = tileValue(row?.values[row.values.length - 1] ?? null, unit);
+    }
+
+    /*
+     * The BASIS, carried on the tile.
+     *
+     * Free cash flow reads $123B here and $51.6B in the statement two cards up — the tile is TTM,
+     * the statement row is one quarter. Both correct, and a reader seeing the same name twice with
+     * different numbers would reasonably conclude one is wrong. The design has no slot for a basis
+     * line, so it rides the value's title rather than changing the layout.
+     */
+    const basis = t.metric ? byMetric.get(t.metric)?.basis : null;
+    const note = t.reason ?? (basis ? `${basis} basis — ${t.src}.` : null);
+
+    const growth = t.growth ? byMetric.get(t.growth) : undefined;
+    const yoy =
+      growth && growth.value !== null && growth.status === "ok"
+        ? `${growth.value >= 0 ? "↑ +" : "↓ −"}${Math.abs(growth.value * 100).toFixed(1)}% YoY`
+        : "";
+
+    return { label: t.label, src: t.src, value, yoy, spark, reason: note ?? undefined } as hub.SnapshotTile;
+  });
+}
+
 /* ------------------------------------------------------------ §02 condensed statements */
 
 interface CondensedResponse {
@@ -352,7 +466,8 @@ function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "ca
       bold: !!spec.bold,
       derived: !!spec.derived,
       reason: row || spec.compute ? undefined : spec.reason,
-      vals: res.columns.map((_c, i) => {
+      vals: res.columns.slice(-4).map((_c, j) => {
+        const i = res.columns.length - 4 + j;
         if (spec.compute) return statementValue(spec.compute(valueAt(i)), "USD");
         return row ? statementValue(row.values[i], row.unit) : "N/A";
       }),
@@ -462,21 +577,28 @@ export const api = {
    * is for.
    */
   companyFinancials: async (symbol: string, _year: number, fiscalPeriod: string) => {
-    const q = `period=${encodeURIComponent(fiscalPeriod)}&limit=4`;
+    const q = `period=${encodeURIComponent(fiscalPeriod)}&limit=8`;
     const enc = encodeURIComponent(symbol);
-    const [income, balance, cash] = await Promise.all([
+    // `limit=8` so ONE read serves both the four-column table and the eight-point sparks. The
+    // table still shows four; asking twice for the same facts to render them two ways would be
+    // the aggregate-endpoint mistake in miniature.
+    const metricKeys = SNAPSHOT_TILES.map((t) => t.metric).filter(Boolean) as string[];
+    const [income, balance, cash, metrics, ...histories] = await Promise.all([
       getJson<CondensedResponse>(`/v1/companies/${enc}/statements/income/condensed?${q}`),
       getJson<CondensedResponse>(`/v1/companies/${enc}/statements/balance/condensed?${q}`),
       getJson<CondensedResponse>(`/v1/companies/${enc}/statements/cashflow/condensed?${q}`),
+      getJson<MetricsResponse>(`/v1/companies/${enc}/metrics?year=${_year}&period=${encodeURIComponent(fiscalPeriod)}`),
+      ...metricKeys.map((m) => getJson<MetricHistoryResponse>(`/v1/companies/${enc}/metrics/${m}/history`)),
     ]);
     return {
-      years: income.columns.map(columnLabel),
+      // The table shows the four most recent of the eight columns fetched.
+      years: income.columns.slice(-4).map(columnLabel),
       statements: {
         income: toStatementRows(income, "income"),
         balance: toStatementRows(balance, "balance"),
         cash: toStatementRows(cash, "cash"),
       },
-      snapshot: hub.hubSnapshot(symbol),
+      snapshot: buildSnapshot(income, metrics, histories),
     } as CompanyFinancials;
   },
 

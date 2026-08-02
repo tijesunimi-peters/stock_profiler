@@ -763,6 +763,8 @@ export interface SnapshotTile {
   src: string;
   value: string;
   yoy: string;
+  /** Why this tile has no number, when that is a fact about sourcing rather than about the filer. */
+  reason?: string;
   /** Eight points, the last one equal to the headline level. */
   spark: number[];
 }

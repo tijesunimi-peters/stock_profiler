@@ -1104,9 +1104,15 @@ function SnapTile({
       onClick={() => trackable && onOpen()}
     >
       <span className="hub-snap-label">{m.label}</span>
-      <span className={`hub-snap-value${trackable ? " hub-cue" : ""}`}>{m.value}</span>
+      <span className={`hub-snap-value${trackable ? " hub-cue" : ""}`} title={m.reason}>
+        {m.value === "N/A" ? <StatusChip status="na" /> : m.value}
+      </span>
+      {/* A one-point or empty series draws a flat line, which reads as "no change" rather than
+          "nothing to draw". Better to show no chart than a chart that says something false. */}
       <div className="hub-snap-spark">
-        <Sparkline points={m.spark.map((v, i) => ({ period: String(i), value: v }))} height={24} />
+        {m.spark.length > 1 ? (
+          <Sparkline points={m.spark.map((v, i) => ({ period: String(i), value: v }))} height={24} />
+        ) : null}
       </div>
       <span className="hub-snap-yoy">{m.yoy}</span>
       {trackable && (
