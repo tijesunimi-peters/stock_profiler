@@ -39,11 +39,11 @@ which one you are looking at:
 
 **Ported** — measured against the prototype's own markup, panel for panel and grid for grid:
 the shell, Sector altitude, Qualitative, Filings, Company hub → Overview, Financial history,
-Institutional 01–07.
+Institutional 01–07, Insider activity.
 
 **Built from the written specs** — an interpretation of `HANDOFF.md` / the upload spec, never
-reconciled against the prototype: Insider activity, Peer-relative, the six Manager views, and
-both Compare surfaces. These will differ from the prototype in panel set, column widths and
+reconciled against the prototype: Peer-relative, the six Manager views, and both Compare
+surfaces. These will differ from the prototype in panel set, column widths and
 affordances. Port them before treating them as reference.
 
 Two deliberate departures from the prototype, both on ported surfaces:
