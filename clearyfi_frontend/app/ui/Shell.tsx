@@ -17,9 +17,15 @@ import { navigate } from "../router";
 
 export type SubjectKey = "sectors" | "company" | "manager" | "compare" | "planned" | "home";
 
-/** The subject the current route belongs to — actions are scoped to it. */
+/**
+ * The subject the current route belongs to — actions are scoped to it.
+ *
+ * There is no "Compare" subject. Compare is an ACTION, and which subject it belongs to is what
+ * decides whether you are comparing two sectors or two companies — so a compare route declares
+ * its parent subject and highlights the action, exactly as the prototype does.
+ */
 function subjectLabelFor(subject: SubjectKey): string {
-  return subject === "sectors" || subject === "compare"
+  return subject === "sectors"
     ? "Sectors"
     : subject === "manager"
       ? "Managers"
@@ -66,7 +72,7 @@ function useSubjects(active: SubjectKey, plannedName?: string): ShellSubject[] {
 }
 
 /** Compare is the only live action; Screen and Coverage are named and inert. */
-function useActions(active: SubjectKey): ShellSubject[] {
+function useActions(active: SubjectKey, activeAction?: string): ShellSubject[] {
   const sel = useSelection();
   const subject = subjectLabelFor(active);
   const lower = subject.toLowerCase();
@@ -80,7 +86,7 @@ function useActions(active: SubjectKey): ShellSubject[] {
     {
       label: "Compare",
       href: compareHref,
-      current: active === "compare",
+      current: activeAction === "Compare",
       title:
         subject === "Sectors"
           ? "Two sectors side by side"
@@ -90,6 +96,7 @@ function useActions(active: SubjectKey): ShellSubject[] {
     },
     {
       label: "Screen",
+      current: activeAction === "Screen",
       title: `Filter the ${lower} universe on filing-derived criteria — not built in this prototype`,
     },
     {
@@ -101,6 +108,8 @@ function useActions(active: SubjectKey): ShellSubject[] {
 
 export interface PageShellProps {
   subject: SubjectKey;
+  /** Highlights a sidebar ACTION (e.g. "Compare") — the route is an action of `subject`. */
+  activeAction?: string;
   plannedName?: string;
   /** `Sector analytics` · `Company hub` · `Managers`. */
   title: string;
@@ -134,6 +143,7 @@ export interface PageShellProps {
 
 export function PageShell({
   subject,
+  activeAction,
   plannedName,
   title,
   subtitle,
@@ -152,7 +162,7 @@ export function PageShell({
   children,
 }: PageShellProps) {
   const subjects = useSubjects(subject, plannedName);
-  const actions = useActions(subject);
+  const actions = useActions(subject, activeAction);
 
   // Chrome around the content column: sidebar + page padding + rail + gaps + right rail.
   useEffect(() => {
@@ -182,10 +192,15 @@ export function PageShell({
       <SyntheticBanner />
       <Masthead title={title} subtitle={subtitle} meta={right ? [right] : undefined} />
       {controlBar}
-      {views && activeView ? (
+      {/*
+        Presence of the rail does not depend on one of its entries being active. A compare route
+        is an ACTION of the subject, not one of its views, so the rail renders with nothing lit —
+        which is the prototype's state and tells the reader where they are relative to the views.
+      */}
+      {views && views.length ? (
         <ViewRail
           views={views}
-          active={activeView}
+          active={activeView ?? ""}
           onChange={(v) => onView?.(v)}
           sections={sections}
           sectionsLabel={sectionsLabel}
