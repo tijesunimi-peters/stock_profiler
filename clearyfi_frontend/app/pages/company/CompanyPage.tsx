@@ -14,6 +14,7 @@ import { PageShell } from "../../ui/Shell";
 import { humanDate } from "../../lib/format";
 import { HubOverview, HubRail, HUB_SECTIONS } from "./HubOverview";
 import { INST_SECTIONS } from "../../data/hub";
+import { PX_GROUPS } from "../../data/peers";
 import { HistoryView } from "./HistoryView";
 import { InstitutionalView } from "./InstitutionalView";
 import { InsiderView } from "./InsiderView";
@@ -39,6 +40,19 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
   // Both long views carry a jump list; each addresses its own section ordinals.
   const railSections = view === "overview" ? HUB_SECTIONS : view === "institutional" ? INST_SECTIONS : [];
   const activeSection = useScrollSpy(railSections.map((s) => s.href.slice(1)));
+
+  /*
+   * Peer-relative's rail is a SWITCH, not a jump list: the view renders one "beyond the
+   * financials" group at a time, so the entries address content that is not on the page yet.
+   * `current` follows the selection rather than the scroll position for the same reason.
+   */
+  const pxSections = PX_GROUPS.map((g) => ({
+    n: g.n,
+    label: g.label,
+    href: `#${g.id}`,
+    current: sel.pxGroup === g.key,
+    onSelect: () => sel.set({ pxGroup: g.key }),
+  }));
 
   const active =
     view === "history" ? null : view === "institutional" ? inst : view === "insider" ? insider : view === "peers" ? peers : overview;
@@ -66,10 +80,13 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
       contentMax={1320}
       railNote="Sector · period · company preserved across views (§7). Selecting a sector keeps your current metric focus."
       sections={
-        railSections.length
-          ? railSections.map((s) => ({ ...s, current: s.href.slice(1) === activeSection }))
-          : undefined
+        view === "peers"
+          ? pxSections
+          : railSections.length
+            ? railSections.map((s) => ({ ...s, current: s.href.slice(1) === activeSection }))
+            : undefined
       }
+      sectionsLabel={view === "peers" ? "Beyond the financials" : undefined}
       /* The filing timeline rides EVERY hub view (the prototype gates it on `inHub`, which
          covers all five). It is the hub's standing answer to "how old is any of this?", so a
          view that drops it silently loses the page's freshness claim. */
@@ -107,7 +124,7 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
       {view === "history" && <HistoryView />}
       {view === "institutional" && inst.data && <InstitutionalView surface={inst.data} />}
       {view === "insider" && <InsiderView />}
-      {view === "peers" && peers.data && <PeersView surface={peers.data} />}
+      {view === "peers" && <PeersView />}
     </PageShell>
   );
 }

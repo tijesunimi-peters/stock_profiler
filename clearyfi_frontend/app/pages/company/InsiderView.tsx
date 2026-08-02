@@ -15,6 +15,7 @@ import { Histogram } from "../../charts/bars";
 import { DotCalendar } from "../../charts/misc";
 import { PeerStrip } from "../../charts/strips";
 import { useSelection } from "../../state";
+import { navigate } from "../../router";
 
 /** A link out to the form the panel reads. */
 function Src({ href, children }: { href: string; children: string }) {
@@ -105,6 +106,7 @@ export function InsiderView() {
             }}
             format={(v) => `${v.toFixed(2)}×`}
             axisLabels={false}
+            onPick={(id) => navigate(sel.href(`/company/${id}/insider`, { focal: id }))}
             label="Net-acquisition ratio across the peer set"
           />
           <div className="hub-note">{d.ratioNote}</div>

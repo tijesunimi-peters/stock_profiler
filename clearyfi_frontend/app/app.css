@@ -5652,3 +5652,620 @@
   color: var(--ink-body);
   line-height: 1.5;
 }
+
+/* ============================================================ peer-relative
+ *
+ * A percentile on this page is a POSITION, never a grade. Where a metric reads better low the
+ * row says so in words and the percentile is adjusted; where it has no agreed direction neither
+ * happens. Nothing here is tinted by favorability — the only accent is the focal mark, which
+ * says "this is the one you picked" and nothing about whether that is good.
+ */
+
+.px-split {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.px-body {
+  min-width: 0;
+}
+
+/* The rail follows the reader down a very long page: the percentile context is what every
+   panel below is read against, so it must not scroll away from them. */
+.px-rail {
+  position: sticky;
+  top: 74px;
+}
+
+.px-pct {
+  margin-bottom: 11px;
+}
+
+.px-pct-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.px-pct-name {
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.px-pct-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--mono-muted);
+}
+
+.px-pct-track {
+  height: 8px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.px-pct-track > div {
+  height: 100%;
+  background: var(--accent);
+}
+
+.px-rank {
+  background: var(--bg-tint);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+  margin-top: 14px;
+}
+
+/* Dashed underline: the rank is a composite we computed, so it opens. */
+.px-rank-v {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px 0 2px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--ink);
+  border-bottom: 1.5px dashed var(--mono-muted);
+}
+
+.px-rank-move {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------- distribution */
+
+.px-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.px-head-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.p-card.px-dist {
+  padding: 4px 16px;
+}
+
+.px-dist-row {
+  padding: 14px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.px-dist-head,
+.px-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 9px;
+}
+
+.px-dist-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Words, not a colour: the direction is stated so the reader does not have to infer it from
+   a hue that would also imply a verdict. */
+.px-dirtag {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 400;
+  color: var(--ink-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.px-row-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.px-spark {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* 58px fixed, as in the prototype. The sparkline measures its container, so leaving it to flex
+   let it report a width wider than the button and overflow every row. */
+.px-spark .spark {
+  width: 58px;
+  flex: none;
+}
+
+.px-trend-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+  flex: none;
+}
+
+.px-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-body);
+  white-space: nowrap;
+}
+
+.px-trend {
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+
+.px-trend-caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------- mix & filings */
+
+.px-mix {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.px-stackbar {
+  display: flex;
+  height: 22px;
+  border: 1px solid var(--border-tint);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.px-legend-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.px-legend-col span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-body);
+}
+
+.px-legend-col i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.px-legend-col b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.px-flags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.px-filing-row {
+  display: grid;
+  grid-template-columns: 64px 1fr 96px;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.px-filing-form {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.px-filing-desc {
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+/* ---------------------------------------------------------------- beyond the financials */
+
+.px-beyond {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 26px 0 0;
+  padding-top: 16px;
+  border-top: 2px solid var(--ink);
+}
+
+.px-beyond-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.px-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.px-group-n {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.px-row {
+  padding: 13px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.px-row-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.px-row-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.px-row-src {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+}
+
+.px-sub {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--mono-muted);
+  margin: 16px 0 8px;
+  padding-top: 13px;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------------------------------------------------------------- presence matrix */
+
+.px-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 2px 0 9px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--mono-muted);
+}
+
+.px-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.px-key {
+  width: 16px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+  flex: none;
+}
+
+.px-key.is-on {
+  background: var(--accent);
+  opacity: 0.6;
+  border-color: transparent;
+}
+
+.px-key.is-solid {
+  border: none;
+  width: 11px;
+  height: 9px;
+  border-radius: 2px;
+  opacity: 1;
+}
+
+.px-scrollcue {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--mono-muted);
+  margin-bottom: 5px;
+}
+
+.px-scroll {
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.px-matrix-head,
+.px-matrix-row {
+  display: grid;
+  gap: 4px;
+}
+
+.px-matrix-head {
+  align-items: end;
+  margin-bottom: 5px;
+}
+
+.px-matrix-head span {
+  font-family: var(--font-mono);
+  font-size: 8.8px;
+  color: var(--mono-muted);
+  text-align: center;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.px-matrix-row {
+  align-items: center;
+  padding: 3px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.px-matrix-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-body);
+}
+
+.px-matrix-row.is-focal .px-matrix-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.px-cell {
+  height: 14px;
+  border-radius: 3px;
+  background: var(--bg-tint);
+  border: 1px solid var(--border-tint);
+}
+
+.px-cell.is-on {
+  background: var(--accent);
+  border-color: transparent;
+  opacity: 0.45;
+}
+
+.px-matrix-row.is-focal .px-cell.is-on {
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------------- method mixes */
+
+.px-mix-row,
+.px-shared-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(40px, 1fr) 74px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+}
+
+.px-shared-row {
+  grid-template-columns: minmax(110px, 1.3fr) minmax(40px, 1fr) 54px;
+  padding: 5px 0;
+}
+
+.px-mix-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+.px-thisfiler {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  background: var(--accent-wash);
+  border-radius: 4px;
+  padding: 1px 5px;
+  flex: none;
+}
+
+.px-mix-track {
+  height: 7px;
+  min-width: 20px;
+  background: var(--bg-tint);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.px-mix-track > span {
+  display: block;
+  height: 7px;
+  background: var(--accent);
+  opacity: 0.45;
+}
+
+.px-mix-n {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--mono-muted);
+  text-align: right;
+}
+
+.px-shared-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.px-shared-pct {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.px-shared-name {
+  font-size: 12.5px;
+  color: var(--ink-body);
+}
+
+/* ---------------------------------------------------------------- ladders & jurisdictions */
+
+.px-ladders {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.px-ladder-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+}
+
+.px-ladder-tk {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-body);
+}
+
+.px-ladder-tk.is-focal {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+/* Weight, not hue, marks the focal filer: the buckets already own the four colours. */
+.px-ladder-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-tint);
+  opacity: 0.45;
+}
+
+.px-ladder-bar.is-focal {
+  height: 16px;
+  opacity: 0.85;
+}
+
+/* The name column takes minmax(0,…) so it WRAPS when the content column is tight. The
+   prototype's 110px floor plus two fixed columns overflows the row below ~330px of body
+   width, and a jurisdiction name on two lines beats a row that scrolls sideways. */
+.px-jur-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(50px, 0.9fr) 52px 62px;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 0;
+}
+
+.px-jur-name {
+  font-size: 12.5px;
+  color: var(--ink-body);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.px-jur-track {
+  position: relative;
+  display: block;
+  height: 7px;
+  min-width: 20px;
+  background: var(--bg-tint);
+  border-radius: 3px;
+}
+
+.px-jur-fill {
+  display: block;
+  height: 7px;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+/* The peer median as a tick on the filer's own bar — one reference mark, not a second bar. */
+.px-jur-med {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 11px;
+  background: var(--ink);
+  opacity: 0.5;
+}
