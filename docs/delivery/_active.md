@@ -4,7 +4,7 @@ task_slug: v3-p5a-institutional
 request: V3-P5a — Company: **Institutional**. Build the prototype's Institutional view. 13D/G folds
   in; Insider activity keeps its own view. (Peer-relative was split out as **V3-P5b**.)
 branch: v3-p5a-institutional @ `290c146` (clean off `master` 9d0d10f — **attempt 4**)
-next_stage: frontend    ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
+next_stage: manual      ← ✅ 🚦 FIDELITY GATE PASSED (operator, 2026-07-31): "Confirmed — the design
   is faithful". Phase 1 is ACCEPTED and its build is done. **PHASE 2 — data plumbing — is the work
   now**: replace every prototype literal with real filings data, keeping the ported design intact.
   ✅ **P2 BACKEND DONE** (2026-07-31) — mined from the attempt-3 archive, 609 pytest green, three
@@ -922,7 +922,18 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         anything else would be inventing a date.
         Also gone, as ruled: the index-inclusion **inference**, the confidential-treatment
         absence (a form family we do not index), and the Item 405 line (DEF 14A prose).
-  - [ ] **§06 QA + 4b** — the LAST gate for phase 2. §07 is reference copy and stays.
+  - [x] ✅ **§06 QA DONE** (2026-08-01) — `4-qa.md`, **PASS pending the manual gate**.
+        **⚠️ SIX QA pairs now sit in this folder**; `*-p2-s0405.md` is the previous one.
+        **The defect worth remembering: the acceptance-lag histogram measured the WRONG FILERS**
+        and looked entirely plausible doing it — AAPL's own filings gave a **2.0-day** median,
+        which is the **Form 4** rule, because a 13F-HR is filed by the MANAGER not the issuer.
+        Corrected to the register's managers: **45.0 days**, the real statutory deadline.
+        **No test would have failed; both versions returned a well-formed histogram.** It was
+        caught by looking at the number and asking whether it made sense.
+  - [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`** (12 rows, ~5 min). **The
+        judgement row is 4**: does *"Tender offers: none found"* read as scoped to the window
+        printed beneath it, or as "this never happened"? That is the whole of D-supply and the one
+        thing QA cannot settle. §07 is reference copy and stays.
         ⚠️ **Run the clipping sweep (webfont blocked) and the toggle-state assertions BEFORE
         shipping each one** — both caught real defects in §02 that a "did something happen" check
         would have passed.

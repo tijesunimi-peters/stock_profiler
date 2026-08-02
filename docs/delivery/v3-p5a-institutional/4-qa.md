@@ -1,17 +1,24 @@
-# 4 — QA · V3-P5a **phase 2** (§04 and §05 on real filings data)
+# 4 — QA · V3-P5a **phase 2** (§06 — and the end of the literals)
 
-**Branch:** `v3-p5a-institutional` @ `96850da`
-**Scope:** phase 2's data plumbing for **§04 Ownership & stewardship** and **§05 Holder behavior**.
+**Branch:** `v3-p5a-institutional` @ `5c286ff`
+**Scope:** §06 *Register limits & supply*, the last section to plumb. §07 is reference copy.
 
-⚠️ **Five QA pairs are now on disk and only the filenames distinguish them.**
-`*-phase1.md` = the **fidelity gate** (design only, no data) · `*-p2-s01.md` = **§01**, signed
-2026-08-01 · `*-p2-s0203.md` = **§02+§03**, signed 2026-08-01 · **this pair = §04+§05.**
-A green report in any of the others says nothing about these two.
+⚠️ **Six QA pairs are on disk and only the filenames distinguish them.**
+`*-phase1.md` = fidelity gate · `*-p2-s01.md` = §01 · `*-p2-s0203.md` = §02+§03 ·
+`*-p2-s0405.md` = §04+§05 · **this pair = §06.** A green report in any other says nothing here.
 
-**Verdict: ✅ PASS — operator CONFIRMED 2026-08-01** (`4b-manual-verification.md`, signed).
-All 12 operator rows passed on the first pass with no defect at the gate, and the three judgement
-rows landed: the empty states read as **different kinds of gap** rather than blurring into "no
-data" — the one thing QA could not settle for itself.
+**Verdict: PASS — pending manual UI verification.** → **`4b-manual-verification.md`**
+
+---
+
+## 🎉 The headline: D-literals is satisfied
+
+**`IP06` was the last literal block, and the NOT-REAL-DATA banner is now GONE** — not hidden,
+*absent*. `ipBanner()` names the sections still running on prototype values; there are none, so it
+renders nothing. Every figure in the ported Institutional view now comes from a filing.
+
+That was the phase's defining constraint (D-literals: *"phase 2 is not done until no literal
+remains"*), and it is met.
 
 ---
 
@@ -19,137 +26,121 @@ data" — the one thing QA could not settle for itself.
 
 | # | Criterion | Result | Evidence |
 |---|---|---|---|
-| AC-1 | §04 and §05 carry **no prototype literals** | ✅ | `IP04` and `IP05` both deleted; the banner now names **§06 only**. `p2-drive-05.js` sweeps for literals **with every derivation panel open** — see D-QA-5. |
-| AC-2 | Unsourceable blocks render honest empty states, not literals | ✅ | Three of them: voting (8-K Item 5.07), vote-weighted ownership (N-PX), fund-level positions (N-PORT). |
-| AC-3 | **No missing value rendered as `0`** | ✅ | `zeros: []` on AAPL and JPM. The "8+ quarters" cohort reads N/A with a chip; a reported 0.0% reads as an **exit**. |
-| AC-4 | Chips **iff** N/A or approximate (D-chips) | ✅ | `p2-chips.js` → `violations: []`. |
-| AC-5 | Every control does something (D-behaviour) | ✅ | `p2-drive-04.js` **5/5**, `p2-drive-05.js` **5/5**, `p2-inert.js` → `derivesWithNoPanel: []`. **One dropped control was caught pre-handoff** — see D-QA-4. |
-| AC-6 | D-voting: both voting blocks empty-stated, with reasons that **differ in kind** | ✅ | `p2-drive-04.js` asserts it: "narrative HTML" (scope) vs "not ingested yet" (coverage). |
-| AC-7 | D-purpose: the Item 4 prose column → cover-page reporting-person type | ✅ | Table renders "Investment adviser"; no Item 4 text anywhere. |
-| AC-8 | Retention is a **different measure** from tenure, and reads as one | ✅ | `test_register.py::TestRetention::test_it_answers_a_different_question_from_tenure`; both captions say so. |
-| AC-9 | No SVG/DOM text clips, **webfont blocked as well as loaded** | ✅ | `p2-clip-sweep.js`: `svgOverflow=0 domBleed=0` × 2 companies × 2 font states. |
-| AC-10 | `pytest` green | ✅ | **686 passed, 9 skipped** (677 + 9 retention tests). |
-| AC-11 | e2e headless render check | ✅ | 44 shots; institutional shots `errors=0`; only the two pre-existing `sectorapp-company` 502s. |
-| AC-12 | §01–§03 unregressed | ✅ | `p2-drive-03.js`, `p2-drive-controls.js`, `p2-noprior.js` all 0 failures. |
+| AC-1 | §06 carries no prototype literals, and **the banner is gone** | ✅ | `IP06` deleted; `p2-read-section.js` reports `banner: "(gone)"`. |
+| AC-2 | **Absence claims are CHECKED, not asserted** (D-supply) | ✅ | "Tender offers: none found", followed by *"counted over 1,000 indexed filings, 2015-06-01 to 2026-07-31"*. `p2-drive-06.js` asserts the scoping. |
+| AC-3 | The three removed claims stayed removed | ✅ | `p2-drive-06.js`: `inference: false`, `lockup: false`, `confidential: false`. |
+| AC-4 | Acceptance lag measures **acceptance**, over the right filers (D-acceptance) | ✅ | 45.0-day median over the register's managers — the real statutory deadline. See D-QA-8. |
+| AC-5 | Every control does something (D-behaviour) | ✅ | `p2-drive-06.js` **5/5**; `p2-inert.js` `derivesWithNoPanel: []`. |
+| AC-6 | **No missing value rendered as `0`** | ✅ | `zeros: []`. A count of `0` amendments is a measured zero and reads as one; "we have not looked" is `na`, never `0`. |
+| AC-7 | Chips **iff** N/A (D-chips) | ✅ | `p2-chips.js` → `violations: []`. |
+| AC-8 | No clipping, **webfont blocked as well as loaded** | ✅ | `p2-clip-sweep.js`: `svgOverflow=0 domBleed=0` × 2 companies × 2 font states. |
+| AC-9 | `pytest` green | ✅ | **703 passed, 9 skipped**. |
+| AC-10 | §01–§05 unregressed | ✅ | All five drivers + `p2-noprior.js`, 0 failures. |
+| AC-11 | e2e headless render check | ✅ | 44 shots; institutional `errors=0`; only the two pre-existing sectorapp 502s. |
 
 ---
 
 ## Defects found and fixed this cycle
 
-### D-QA-4 · §05's expander was dropped — a live control lost (D-behaviour)
+### D-QA-8 · the acceptance-lag histogram measured the **wrong filers** — FIXED
 
-**Severity: medium.** I flattened `ipSection05` to two sibling cards, which removed the
-`+ Also in this section` expander **and** its `.ip-grid1` wrapper. The wrapper is not cosmetic:
-the prototype gives the bar `grid-column: 1 / -1` and lets the grid's own 14px gap space it, so
-outside the grid the whole lower half of the section rides 14px high — a problem phase 1 had
-already paid for and written up in the log. Restored, and `p2-drive-05.js` now asserts it.
+**Severity: high had it shipped, and it looked entirely plausible.** The first version measured
+the **issuer's own** filings, giving AAPL a **2.0-day** median. That is the Form 4 rule, not the
+13F one — a 13F-HR is filed by the **manager**, not by the issuer whose page it appears on, so it
+was averaging Forms 4, 10-Qs and 8-Ks with different statutory deadlines.
 
-### D-QA-5 · a surviving prototype literal **inside a derivation panel**
+Corrected to read the register's managers via a bounded `filings_for_ciks()`: **45.0 days**, the
+actual 13F deadline. The card also now reports *"measured over 3 of the 7 managers holding this
+quarter's register"*, because a histogram over 3 of 1,600 filers is a statement about those 3.
 
-**Severity: medium, and the most interesting find of this cycle.**
-`IP_DERIVATIONS["05-tenure"]` claimed *"13F-HR filings back to 1Q22"* and *"managers holding
-since before 1Q22 are counted from 1Q22"* — a **fixed observation window baked in at design
-time**, false for every issuer, and a direct D-literals violation.
+**Caught only by looking at the number and asking whether it made sense.** No test would have
+failed; both versions returned a well-formed histogram.
 
-**Why it survived four sections of checking:** derivation panels are `hidden` until a badge is
-clicked. They never appear in a screenshot, so **no pixel diff, no clip sweep and no
-read-section probe could ever see them.** Every literal sweep to date had been reading only what
-was on screen.
+### D-QA-9 · three layout defects, one cause: invented class names — FIXED
 
-**Fix:** `IP_DERIVATIONS` values may now be functions, resolved through `ipText` exactly as
-`IP_LIGHTBOX`'s already are. The panel reads *"13F-HR filings across 4 ingested quarters, 2Q25 to
-1Q26"*. **`p2-drive-05.js` now opens every derivation panel before sweeping for literals**, and
-`1Q22` is confirmed absent from the page.
+`.ip-supply` does not exist — the ported class is `.ip-facts` — so the supply lines ran together
+into one paragraph, and the mechanics lines did the same. Worse, I wrapped the two revealed cards
+in a `.ip-grid2` of my own instead of the accepted `.ip-grid2--nested`, so they stacked
+full-width and **stretched 306-unit charts to 660, doubling every label**.
 
-⚠️ **Residual:** §01–§04's panels have only been swept for the §05 literal set. A dedicated pass
-over all five panels' copy is worth doing.
+**The accepted build's wrappers are load-bearing.** Phase 1's own §06 log entry says exactly this
+about the mirror-image mistake, which cost 689px then.
 
-### D-QA-6 · three defects real data surfaced in §04 — fixed pre-handoff
+### D-QA-10 · two shared chart builders deleted with the section — FIXED
 
-Recorded because they are the same class and will recur in §06: **"amendment 0"** (amendments
-numbered by array index, but a filer's earliest *ingested* filing is usually already an `/A`);
-**`SC 13Gamendment 1`** (the first event label ran under the lane's form label — real registrant
-names are wider than "Index manager B"); and **a 0.0% final amendment is an exit, not a holding
-of nothing**, which falsified three captions the prototype never had to handle.
+`ipTimeline` and `ipHistogram` sat between §06's blocks and the §07 banner, so replacing that
+range removed them. Caught immediately by a page error (`ipTimeline is not defined`); restored
+from HEAD. **A section replacement's range must be checked against what lives inside it**, not
+just its boundaries.
 
-### D-QA-7 · `IP_BO_LIMIT` would have forced a live SEC fetch on every page load — fixed
+### D-QA-11 · `IP_BO_LIMIT`-class issue recorded last cycle — still open, unchanged
 
-**Severity: high had it shipped.** `_beneficial_ownership_for_cik` serves from cache only when
-`cached_filing_count(cik) >= limit`. At `limit=60`, an issuer with 3 structured 13D/G filings can
-**never** satisfy it, so every request re-fetches from SEC forever. Set to 40 to share one cache
-state with §01's filed-since and §02's type join.
-
-🔶 **The cache rule itself is a pre-existing bug, recorded and NOT fixed.** `count >= limit`
-cannot distinguish "we hold 3 because that is all there is" from "we hold 3 because we only
-fetched 3". It affects insider trades and 13D/G alike. The honest fix is a "fetched up to N"
-marker in the store — a schema change across three form families.
+The filing-index store does **not** share the `cached_filing_count >= limit` bug (it is populated
+by an explicit backfill, not cache-aside). The pre-existing issue on insider trades and 13D/G
+remains recorded and unfixed.
 
 ---
 
 ## Review questionnaire
 
-**1. What shipped.** §04 now shows who has crossed 5% in this company and when, as a filing
-chain per holder — including a holder that has since filed its way back below the threshold. §05
-shows how long managers stay: turnover, median holding period, a cohort-retention grid, and the
-register split by tenure. Three blocks that no filing we ingest can answer say so, each in its
-own words.
+**1. What shipped.** §06 now says which share-supply filings a company actually has on file and
+when — and where it says "none", it says how far back it looked. It shows how late the register
+assembles, from EDGAR's own acceptance timestamps, and how much of it was later amended. And it
+reports how many insider trades were pre-arranged under a Rule 10b5-1 plan.
 
-**2. Surfaces touched.** `register.py` gained a pure `retention()`; `register-shape` returns it;
-`beneficial-ownership` expands the reporting-person type label. UI: `company.js` §04/§05 and the
-data layer.
+**2. Surfaces touched.** New: `sec/filing_index.py`, `normalize/supply.py`,
+`storage/filing_index_repository.py` + SQLite impl, `ingest/filing_index_backfill.py`,
+`/companies/{symbol}/filing-index`. Changed: `sec/insider.py` + schema + insider store
+(`rule_10b5_1`), `company.js` §06 and the data layer.
 
-**3. AC → evidence.** The table above; every row names a driven artifact.
+**3. AC → evidence.** The table above.
 
-**4. States exercised.** **Populated** — AAPL and JPM (JPM has 61 real 13D/G filings).
-**Empty** — three unsourceable blocks, plus "no structured 13D/G ingested". **Loading** — the
-pending sentinel, forced by aborting requests. **Error** — 400 on a malformed period (fixed last
-cycle), 404 on an unresolvable issuer.
+**4. States exercised.** **Populated** — AAPL (1,000 indexed filings) and JPM (25,529).
+**"We have not looked"** — the filing-index endpoint before any backfill: `status: "na"` with a
+reason, driven before indexing. **Empty** — a company with no insider rows. **Loading** — the
+pending sentinel. **Error** — 400 on a malformed period, 404 on an unresolvable issuer.
 
-**5. Edge cases probed.** A **0.0% final amendment** (a reported zero that means "exited");
-an amendment chain whose **earliest ingested filing is already an `/A`**; a **left-censored**
-oldest cohort; a quarter that brought **no new manager** (an empty cohort, not a dropped row); a
-manager that **leaves and returns** (not a new cohort — a gap can be our coverage, not a sale and
-repurchase).
+**5. Edge cases probed.** A **checked zero** ("Tender offers: none found" over a stated window)
+versus an **unchecked** one (`na`, "we have not looked"); a filer whose index window is one year
+(JPM) versus eleven (AAPL) — which is why "no registration statements" for JPM is *correct and
+scoped* rather than wrong; insider rows with **no plan marking at all** (pre-2022 Forms 4),
+reported as unknown rather than discretionary; a **negative lag** (impossible) dropped as a bad
+row rather than charted as speed.
 
-**6. Honesty contract.** Caveats on every payload; `status`/`reason`/`formula`/`cannot`/
-`population` on the new `retention` block; no missing value as `0`; the three empty states say
-**why** and distinguish scope from coverage; no Item 4 prose (Track 2) anywhere.
+**6. Honesty contract.** Caveats on the payload; `status`/`reason`/`formula`/`cannot`/`population`
+on both new blocks; no missing value as `0`; the terms boundary stated in `cannot` and asserted by
+a test; no inference presented as observation.
 
 **7. Deltas from the brief.**
-- **N-PORT applied the D-voting precedent without re-asking.** A structured-XML form we do not
-  ingest gets an empty state whose copy says "not ingested yet", not "cannot be reported" — the
-  identical question the operator ruled on for N-PX one section earlier. **Flagged for overrule.**
-- §05 **did** need backend work, contrary to my own estimate — retention was missing.
+- **The "10b5-1 cooling-off" timeline row is gone.** `aff10b5One` says a trade was made *under* a
+  plan; it does not carry the plan's **adoption date**, and a cooling-off window can only be drawn
+  from one. The flag feeds a count on the insider card instead. **Drawing the band from anything
+  else would be inventing a date.**
+- The confidential-treatment line and the Item 405 line are gone (a form family we do not index;
+  DEF 14A prose).
 
 **8. Residual risk.**
-1. **The N-PORT precedent.** If the operator reads N-PORT differently from N-PX, §05's empty
-   state is worded wrongly. It is one paragraph to change.
-2. **Derivation-panel copy across §01–§04** has not had a dedicated literal sweep (D-QA-5).
-3. **The retention grid is degenerate on the fixture** — every cell reads 100 because the seeded
-   managers all persist. Correct, but it means the grid's colour ramp is untested against a real
-   spread. Worth a look on the whole-market volume.
+1. **The index window is the whole honesty story, and it is easy to under-read.** JPM's index
+   covers one year, so "no registration statements" is true-over-a-window and could be misread as
+   true-over-history. The caption says so; whether it *lands* is a judgement call for the gate.
+2. **The lag histogram is thin on the fixture** (2 filings, one bar). Correct, but the shape is
+   untested against a real spread.
+3. **`rule_10b5_1` is now available to the Insider view**, which does not use it. Not a defect
+   here; worth doing.
 
 ---
 
-## Manual UI verification (script)
+## Manual UI verification
 
-See **`4b-manual-verification.md`** — 12 rows covering both sections.
-
-**Operator outcome:** ✅ **Confirmed 2026-08-01** — walked interactively in three batches, all 12 rows as expected.
+See **`4b-manual-verification.md`** — 12 rows. **Operator outcome:** ⏳ pending.
 
 ---
 
 ## Handoff
 
-**PASS — pending manual UI verification.** Four defects found and fixed this cycle (D-QA-4…7),
-one pre-existing item recorded and not fixed (the cache rule). 686 pytest, e2e clean, every
-driven check green across §01–§05.
+**PASS — pending manual UI verification.** Four defects found and fixed this cycle (D-QA-8…10 plus
+the recorded pre-existing one). 703 pytest, e2e clean, every driven check green across §01–§06.
 
-✅ **Operator CONFIRMED 2026-08-01.** §04 and §05 are accepted; **§01–§05 are now all accepted,
-leaving only §06.**
-
-**A precedent was widened at this gate, not merely applied.** The operator ruled *"Right call —
-the precedent applies"* on N-PORT, so **D-voting now covers the CLASS**: any structured-XML form
-family we do not ingest gets an honest empty state whose copy says *not ingested yet*, with no
-fresh ruling needed. 8-K Item 5.07's HTML exclusion remains a separate, permanent thing. §06 will
-not need to re-ask for that shape.
+**Blocked on:** the operator hand-running **`4b-manual-verification.md`**. The judgement row is
+**whether a scoped absence reads as scoped** — that is the whole of D-supply, and it is the one
+thing QA cannot settle for itself.
