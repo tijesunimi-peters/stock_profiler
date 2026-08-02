@@ -17,7 +17,9 @@ import { SectorControlBar } from "../../ui/SectorControlBar";
 import { SectorRail, SectorView } from "./SectorView";
 import { QualitativeView } from "./QualitativeView";
 import { FilingsView } from "./FilingsView";
-import { BASE_PEER_COUNT, SECTOR_NAMES, SUB_COUNTS, SUB_NAMES } from "../../data/prototype";
+import { SECTOR_NAMES, SUB_NAMES } from "../../data/sector-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
 
 const VIEWS = [
   { value: "sector", label: "Sector" },
@@ -27,7 +29,19 @@ const VIEWS = [
 export function SectorPage({ view }: { view: string }) {
   const sel = useSelection();
   const subActive = sel.subIdx >= 0;
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : BASE_PEER_COUNT;
+  /*
+   * The page needs the filer count for its control bar, which belongs to the PAGE and not to any
+   * one view. A filer count is a Track 1 fact from `/sectors`, so it comes through the seam like
+   * everything else — falling back to 0 while in flight rather than to a plausible-looking
+   * constant, because a wrong count is worse than a briefly blank one.
+   */
+  const overview = useApi(
+    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, "FY"),
+    [sel.sectorIdx, subActive, sel.subIdx],
+  );
+  const peerCount = overview.data
+    ? (subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount)
+    : 0;
   const narrative = view === "qualitative" || view === "filings";
 
   return (

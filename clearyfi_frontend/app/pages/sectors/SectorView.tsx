@@ -10,34 +10,34 @@
  * good or bad.
  */
 import { SectionHead } from "@ds";
-import {
-  BIGGEST_SHIFTS,
-  CONSTITUENTS,
-  EVENTS,
-  GEO_COLORS,
-  GEO_LABELS,
-  GEO_MIX,
-  INSIDER,
-  SECTOR_ABBR,
-  SECTOR_NAMES,
-  SECTOR_SCORES,
-  SEMI_DELTA,
-  SUB_COUNTS,
-  SUB_NAMES,
-  THEMES,
-  THEME_DRILL,
-  AS_OF,
-  ord,
-  rankOf,
-  statusDot,
-} from "../../data/prototype";
+import { GEO_COLORS, GEO_LABELS, SECTOR_ABBR, SECTOR_NAMES, SUB_NAMES, THEMES, ord, rankOf, statusDot } from "../../data/sector-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
 import { PeerStrip } from "../../charts/strips";
 import { useSelection } from "../../state";
+
+/* The sector altitude's fiscal key — same shape and same reason as the hub's. */
+const SECTOR_PERIOD = "FY";
 
 export function SectorView() {
   const sel = useSelection();
   const si = sel.sectorIdx;
   const subActive = sel.subIdx >= 0;
+
+  const read = useApi(
+    () => api.sectorOverview(String(si), subActive ? String(sel.subIdx) : null, SECTOR_PERIOD),
+    [si, subActive, sel.subIdx],
+  );
+  if (read.error) return <StateBlock variant="error" copy={read.error.message} />;
+  if (!read.data) return <StateBlock variant="loading" copy="Reading this sector's aggregates." />;
+
+  const {
+    scores: SECTOR_SCORES, shifts: BIGGEST_SHIFTS, constituents: CONSTITUENTS,
+    events: EVENTS, insider: INSIDER, themeDrill: THEME_DRILL, delta: SEMI_DELTA,
+    geographicMix: GEO_MIX, subCounts: SUB_COUNTS, asOf: AS_OF,
+  } = read.data;
+
   const n = SECTOR_NAMES.length;
   const rankSuffix = subActive
     ? `of ${SUB_COUNTS[sel.subIdx]} sub-industries`
@@ -323,9 +323,19 @@ export function SectorView() {
 /** The right rail for the sector altitude: snapshot · what's moving · how to read this. */
 export function SectorRail() {
   const sel = useSelection();
-  const et = THEMES.find((t) => t.id === sel.expanded) ?? THEMES[0];
   const subActive = sel.subIdx >= 0;
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : 62;
+  // Its own read: the rail rides every sector view, including the two this file does not render.
+  const read = useApi(
+    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, SECTOR_PERIOD),
+    [sel.sectorIdx, subActive, sel.subIdx],
+  );
+  const et = THEMES.find((t) => t.id === sel.expanded) ?? THEMES[0];
+
+  if (read.error) return <StateBlock variant="error" copy={read.error.message} />;
+  if (!read.data) return <StateBlock variant="loading" copy="Reading this sector's snapshot." />;
+  const { subCounts: SUB_COUNTS, asOf: AS_OF, events: EVENTS, basePeerCount } = read.data;
+
+  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : basePeerCount;
   const right = SECTOR_NAMES[sel.sectorIdx] + (subActive ? ` · ${SUB_NAMES[sel.subIdx]}` : "");
 
   const snapshot = [

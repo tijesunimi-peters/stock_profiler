@@ -10,7 +10,7 @@ import { ChartCard, Disclosure, StateBlock, StatTile, StatTileRow, STANDARD_DISC
 import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
-import { SECTOR_NAMES } from "../../data/prototype";
+import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { compact, humanDate } from "../../lib/format";
 import { CompositionStrip } from "@ds";

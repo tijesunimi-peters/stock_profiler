@@ -12,12 +12,11 @@
  *     the tickers behind it are the evidence, and they are one click away.
  */
 import { useState } from "react";
-import {
-  AUDITOR_CHANGES, AUDITOR_TENURE, AUDITORS, CAMS, CYBER, DEFICIENT, EMERGING,
-  GOING_CONCERN, HC_CLIMATE, LITIGATION, LITIGATION_TOTAL, NON_GAAP, QUAL_THEMES,
-  RF_VOLUME, SIGNAL_MATRIX, THEME_LANG, dirChip, pickFilers,
-} from "../../data/qualitative";
-import { BASE_PEER_COUNT, GEO_COLORS, SECTOR_NAMES, SUB_COUNTS } from "../../data/prototype";
+import { QUAL_THEMES, dirChip } from "../../data/sector-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
+import { GEO_COLORS, SECTOR_NAMES } from "../../data/sector-catalog";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
@@ -36,7 +35,17 @@ function CovBar({ pct }: { pct: number }) {
  * Inherits its parent's size and color so it reads as the number it replaces, not as a control
  * bolted beside one — the affordance is the caret, and it stays quiet until used.
  */
-function Reveal({ id, count }: { id: string; count: number }) {
+function Reveal({
+  id,
+  count,
+  pickFilers,
+}: {
+  id: string;
+  count: number;
+  /* Passed down rather than imported: the filer list is DATA, and a child reaching straight into
+     `qualitative.ts` would give this page a second source for one figure. */
+  pickFilers: (id: string, n: number) => readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <span className="qual-reveal">
@@ -79,12 +88,42 @@ function CovRow({ label, cov }: { label: string; cov: number }) {
   );
 }
 
+/* Same fiscal key as the sector overview. */
+const QUAL_PERIOD = "FY";
+
 export function QualitativeView() {
   const sel = useSelection();
   const [openTheme, setOpenTheme] = useState<string | null>(null);
-
   const subActive = sel.subIdx >= 0;
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : BASE_PEER_COUNT;
+
+  /*
+   * TWO reads, and they are different in KIND. `sectorOverview` supplies the peer counts (Track 1
+   * — filer counts come from `/sectors`); `sectorQualitative` supplies everything else on this
+   * page, almost all of which is Track 2 and will never have an endpoint behind it. Keeping them
+   * separate is what lets Phase A fill one and give the other honest empty states.
+   */
+  const overview = useApi(
+    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, QUAL_PERIOD),
+    [sel.sectorIdx, subActive, sel.subIdx],
+  );
+  const read = useApi(() => api.sectorQualitative(String(sel.sectorIdx), QUAL_PERIOD), [sel.sectorIdx]);
+
+  if (read.error || overview.error) {
+    return <StateBlock variant="error" copy={(read.error ?? overview.error)!.message} />;
+  }
+  if (!read.data || !overview.data) {
+    return <StateBlock variant="loading" copy="Reading this sector's disclosure record." />;
+  }
+
+  const {
+    themeLang: THEME_LANG, emerging: EMERGING, goingConcern: GOING_CONCERN,
+    litigation: LITIGATION, litigationTotal: LITIGATION_TOTAL, signalMatrix: SIGNAL_MATRIX,
+    cyber: CYBER, cams: CAMS, auditors: AUDITORS, auditorChanges: AUDITOR_CHANGES,
+    auditorTenure: AUDITOR_TENURE, rfVolume: RF_VOLUME, nonGaap: NON_GAAP,
+    deficient: DEFICIENT, hcClimate: HC_CLIMATE, pickFilers,
+  } = read.data;
+
+  const peerCount = subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount;
   const sector = SECTOR_NAMES[sel.sectorIdx];
 
   const filingsHref = (theme: string) => {
@@ -191,7 +230,7 @@ export function QualitativeView() {
               <div className="qual-emerging-row" key={e.title}>
                 <div className="qual-emerging-title">{e.title}</div>
                 <div className="qual-emerging-meta">
-                  <Reveal id={`emg-${e.title}`} count={e.count} />
+                  <Reveal id={`emg-${e.title}`} count={e.count} pickFilers={pickFilers} />
                   <span>filers · {e.note}</span>
                 </div>
               </div>
@@ -201,7 +240,7 @@ export function QualitativeView() {
           <div className="qual-card is-warn">
             <div className="qual-side-head">
               <span className="qual-side-title">Going-concern watch</span>
-              <span className="qual-side-count">2 / {BASE_PEER_COUNT}</span>
+              <span className="qual-side-count">2 / {overview.data.basePeerCount}</span>
             </div>
             {GOING_CONCERN.map((g) => (
               <div className="qual-gc-row" key={g.filer}>
@@ -215,13 +254,13 @@ export function QualitativeView() {
             <div className="qual-side-head">
               <span className="qual-side-title">Material litigation</span>
               <span className="qual-side-total">
-                <Reveal id="litall" count={LITIGATION_TOTAL} />
+                <Reveal id="litall" count={LITIGATION_TOTAL} pickFilers={pickFilers} />
               </span>
             </div>
             {LITIGATION.map((l) => (
               <div className="qual-lit-row" key={l.name}>
                 <span className="qual-lit-name">{l.name}</span>
-                <Reveal id={`lit-${l.name}`} count={l.count} />
+                <Reveal id={`lit-${l.name}`} count={l.count} pickFilers={pickFilers} />
               </div>
             ))}
           </div>
@@ -272,7 +311,7 @@ export function QualitativeView() {
           <CovRow label="Board oversight named" cov={CYBER.board} />
           <CovRow label="CISO / mgmt role named" cov={CYBER.ciso} />
           <div className="qual-incident">
-            <Reveal id="cyber8k" count={CYBER.incidents8k} />
+            <Reveal id="cyber8k" count={CYBER.incidents8k} pickFilers={pickFilers} />
             <span>filed 8-K Item 1.05 this year</span>
           </div>
         </div>
@@ -307,7 +346,7 @@ export function QualitativeView() {
           </div>
           <div className="qual-auditor-foot">
             <span className="qual-auditor-changes">
-              <Reveal id="auditchg" count={AUDITOR_CHANGES} />
+              <Reveal id="auditchg" count={AUDITOR_CHANGES} pickFilers={pickFilers} />
               <span>changes (8-K 4.01)</span>
             </span>
             <span>{AUDITOR_TENURE}</span>
@@ -359,7 +398,7 @@ export function QualitativeView() {
                 <div className="qual-hint-sm">{d.basis}</div>
               </div>
               <span className="qual-def-count">
-                <Reveal id={`def-${d.label}`} count={d.count} />
+                <Reveal id={`def-${d.label}`} count={d.count} pickFilers={pickFilers} />
               </span>
             </div>
           ))}

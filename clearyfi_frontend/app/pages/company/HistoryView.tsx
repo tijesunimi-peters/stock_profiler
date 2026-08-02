@@ -13,7 +13,7 @@ import { unitFmt } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
-import { SECTOR_NAMES } from "../../data/prototype";
+import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { SeriesChart } from "../../charts/series";
 import { useSelection } from "../../state";

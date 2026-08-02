@@ -78,6 +78,12 @@ const PORT = 5199;
 const TICKERS = ["NVDA", "AMD", "INTC"];
 const VIEWS = ["overview", "institutional", "history", "insider", "peers"];
 
+/*
+ * Sector routes are not per-ticker, so they are captured separately rather than crossed with the
+ * ticker list — a 3x cross would triple the run to prove the same thing three times.
+ */
+const EXTRA_ROUTES = ["sectors/sector", "sectors/qualitative", "sectors/filings"];
+
 const MIME = {
   ".html": "text/html", ".js": "text/javascript", ".css": "text/css",
   ".json": "application/json", ".svg": "image/svg+xml", ".woff2": "font/woff2",
@@ -120,9 +126,10 @@ function normalise(html) {
 }
 
 async function capture(page, ticker, view) {
-  await page.goto(`http://localhost:${PORT}/company/${ticker}/${view}?focal=${ticker}`, {
-    waitUntil: "networkidle0",
-  });
+  const url = ticker
+    ? `http://localhost:${PORT}/company/${ticker}/${view}?focal=${ticker}`
+    : `http://localhost:${PORT}/${view}`;
+  await page.goto(url, { waitUntil: "networkidle0" });
   // The resolved state, not the first paint. See the header note.
   await page.waitForFunction(
     () => {
@@ -184,6 +191,12 @@ try {
   // A console error is a defect in its own right; surface it rather than snapshotting over it.
   page.on("pageerror", (e) => { console.error(`  !! page error: ${e.message}`); failures++; });
   page.on("console", (m) => { if (m.type() === "error") { console.error(`  !! console: ${m.text()}`); failures++; } });
+
+  for (const route of EXTRA_ROUTES) {
+    const html = await capture(page, null, route);
+    await writeFile(join(outDir, `${route.replace("/", "-")}.html`), html + "\n");
+    console.log(`  captured ${route}  (${html.length.toLocaleString()} chars)`);
+  }
 
   for (const ticker of TICKERS) {
     for (const view of VIEWS) {

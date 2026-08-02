@@ -18,7 +18,7 @@ import {
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { SeriesChart, Sparkline } from "../../charts/series";
-import { SECTOR_NAMES, SUB_COUNTS } from "../../data/prototype";
+import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
@@ -118,7 +118,7 @@ export function HubOverview() {
    * `/metrics` and `/statements` both REQUIRE a year, and a `FiscalPeriod` carries none of its own.
    * Passing it now is what stops Phase A having to re-thread it through every call site.
    */
-  const identity = useApi(() => api.companyIdentity(T, subActive, SUB_COUNTS[sel.subIdx] ?? 0), [T, subActive, sel.subIdx]);
+  const identity = useApi(() => api.companyIdentity(T, sel.subIdx), [T, sel.subIdx]);
   const financials = useApi(() => api.companyFinancials(T, HUB_YEAR, HUB_PERIOD), [T]);
   const footnotes = useApi(() => api.companyFootnotes(T, HUB_YEAR, HUB_PERIOD), [T]);
   const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T]);

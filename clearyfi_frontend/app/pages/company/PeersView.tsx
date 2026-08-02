@@ -14,7 +14,7 @@
  * filer and the whole page recomputes.
  */
 import { useState } from "react";
-import { GEO_COLORS, GEO_LABELS, GEO_MIX, SECTOR_NAMES, SUB_COUNTS, THEMES } from "../../data/prototype";
+import { GEO_COLORS, GEO_LABELS, SECTOR_NAMES, THEMES } from "../../data/sector-catalog";
 import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
@@ -183,8 +183,8 @@ export function PeersView() {
    */
   const peerRead = useApi(() => api.companyPeerRelative(T, PX_YEAR, PX_PERIOD), [T]);
   const identity = useApi(
-    () => api.companyIdentity(T, subActive, SUB_COUNTS[sel.subIdx] ?? 0),
-    [T, subActive, sel.subIdx],
+    () => api.companyIdentity(T, sel.subIdx),
+    [T, sel.subIdx],
   );
 
   if (peerRead.error || identity.error) {
@@ -201,7 +201,7 @@ export function PeersView() {
   const flags = peerRead.data.flags;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
-  const geo = GEO_MIX[sel.sectorIdx] ?? GEO_MIX[0];
+  const geo = peerRead.data.geographicMix[sel.sectorIdx] ?? peerRead.data.geographicMix[0];
   const segs = identity.data.segmentChips;
   /*
    * Picking a peer NAVIGATES rather than setting state. The path names the registrant and the
@@ -250,7 +250,7 @@ export function PeersView() {
               onClick={() => sel.set({ decomp: sel.decomp === "prof" ? null : "prof", expanded: "prof" })}
               title="Open the decomposition"
             >
-              {subActive ? `4 / ${SUB_COUNTS[sel.subIdx]}` : "5 / 62"}
+              {subActive ? `4 / ${peerRead.data.subCounts[sel.subIdx]}` : "5 / 62"}
             </button>
             <div className="px-rank-move">↑ up 3 spots QoQ</div>
           </div>

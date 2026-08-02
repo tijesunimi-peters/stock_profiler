@@ -7,8 +7,11 @@
  * which is also what makes the match checkable.
  */
 import { useEffect, useState } from "react";
-import { FILINGS_PER_PAGE, FORM_TABS, QUAL_THEMES, themeFilings } from "../../data/qualitative";
-import { BASE_PEER_COUNT, SECTOR_NAMES, SUB_COUNTS } from "../../data/prototype";
+import { FILINGS_PER_PAGE, FORM_TABS, QUAL_THEMES } from "../../data/sector-catalog";
+import { SECTOR_NAMES } from "../../data/sector-catalog";
+import { api } from "../../data/api";
+import { useApi } from "../../lib/useApi";
+import { StateBlock } from "@ds";
 import { useLocation, navigate } from "../../router";
 import { useSelection } from "../../state";
 
@@ -24,8 +27,30 @@ export function FilingsView() {
   useEffect(() => setPage(0), [theme, form]);
 
   const subActive = sel.subIdx >= 0;
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : BASE_PEER_COUNT;
-  const d = themeFilings(theme, peerCount);
+  /*
+   * Two reads: the peer count is Track 1 (`/sectors`), the filings are the theme's own. Phase A
+   * can fill the filing METADATA from `/filing-index` — form, date, accession — but not the
+   * passage, which is filing text and stays Track 2.
+   */
+  const overview = useApi(
+    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, "FY"),
+    [sel.sectorIdx, subActive, sel.subIdx],
+  );
+  const peerCount = overview.data
+    ? (subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount)
+    : 0;
+  const read = useApi(
+    () => api.sectorFilings(String(sel.sectorIdx), theme, peerCount),
+    [sel.sectorIdx, theme, peerCount],
+  );
+
+  if (overview.error || read.error) {
+    return <StateBlock variant="error" copy={(overview.error ?? read.error)!.message} />;
+  }
+  if (!overview.data || !read.data) {
+    return <StateBlock variant="loading" copy="Reading filings for this theme." />;
+  }
+  const d = read.data.filings;
 
   if (!d) {
     return (

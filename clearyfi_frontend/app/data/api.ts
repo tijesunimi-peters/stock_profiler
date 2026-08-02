@@ -38,6 +38,8 @@ import * as surfaces from "./surfaces";
 import * as hub from "./hub";
 import * as insider from "./insider";
 import * as peers from "./peers";
+import * as proto from "./prototype";
+import * as qual from "./qualitative";
 
 const DELAY = () => (typeof location !== "undefined" && location.search.includes("slow") ? 900 : 0);
 /**
@@ -129,12 +131,14 @@ export const api = {
   // all consume the identical multi-quarter read -- splitting them would triple the work".
 
   /** §01 identity + the breadcrumb. Phase A: `/profile` + `/submissions` metadata + `/peers`. */
-  companyIdentity: (symbol: string, subActive: boolean, subCount: number) =>
+  companyIdentity: (symbol: string, subIdx: number) =>
     resolve<CompanyIdentity>({
       profile: hub.hubProfile(symbol),
       links: hub.hubLinks(symbol),
       segmentChips: hub.hubSegmentChips(symbol),
-      contextPill: hub.hubContextPill(subActive, subCount),
+      // The sub-industry filer count is a FIGURE (`/sectors` owns it in Phase A), so it is
+      // resolved here rather than looked up in the view and passed back in.
+      contextPill: hub.hubContextPill(subIdx >= 0, proto.SUB_COUNTS[subIdx] ?? 0),
       bizText: hub.HUB_BIZ_TEXT,
       structure: hub.hubData(symbol).structure,
     }),
@@ -259,7 +263,93 @@ export const api = {
       flags: peers.companyFlags(symbol),
       recentFilings: peers.RECENT_FILINGS,
       themePercentiles: peers.CO_THEME_PCT,
+      geographicMix: proto.GEO_MIX,
+      // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
+      subCounts: proto.SUB_COUNTS,
+      basePeerCount: proto.BASE_PEER_COUNT,
     }),
+
+  // ========================================================== Sector altitude
+
+  /**
+   * The sector overview. Phase A: `/sectors/{group}` + `/sectors/theme-scores` +
+   * `/sectors/{group}/spreads` + `/sectors/{group}/insider-flow` + `/sectors/{group}/geographic-mix`.
+   *
+   * One group because they share a peer set and a period, and because the page shows them
+   * together — a scorecard whose insider strip came from a different quarter than its spreads
+   * would be a page contradicting itself.
+   *
+   * NOTE what the real endpoints will and will not carry. `geographicMix` is ASC 280 (V5: the
+   * `Geographical` axis, ~52% of annual filers), so it arrives with a coverage figure and a real
+   * chance of being `N/A` for a sector. `insider` is OPEN-MARKET (P/S) only — grants and tax
+   * withholding are excluded on purpose, because folding them in is the commonest way this data
+   * is misread.
+   */
+  sectorOverview: (_sectorId: string, _sub: string | null, _fiscalPeriod: string) =>
+    resolve<SectorOverview>({
+      scores: proto.SECTOR_SCORES,
+      shifts: proto.BIGGEST_SHIFTS,
+      constituents: proto.CONSTITUENTS,
+      events: proto.EVENTS,
+      insider: proto.INSIDER,
+      themeDrill: proto.THEME_DRILL,
+      delta: proto.SEMI_DELTA,
+      geographicMix: proto.GEO_MIX,
+      subCounts: proto.SUB_COUNTS,
+      basePeerCount: proto.BASE_PEER_COUNT,
+      asOf: proto.AS_OF,
+    }),
+
+  /**
+   * The qualitative altitude. **Track 2 — no endpoint will ever back most of this.**
+   *
+   * Risk themes, going-concern language, CAMs, Item 1C and human-capital figures are counted from
+   * NARRATIVE text, which `CLAUDE.md` guardrail 1 puts out of scope. It goes through the seam
+   * anyway so the boundary is drawn in one place: when Phase A wires the sector views, this
+   * function is where the honest "not ingested" empty states live, rather than scattered through
+   * a 389-line view.
+   *
+   * The parts that ARE Track 1 and could be filled: auditor changes and late filings (8-K item
+   * codes and NT forms via `/filing-index`), and the cybersecurity flags (V3 found `cyd:` booleans
+   * in the 10-K instance). Everything else stays an empty state.
+   */
+  sectorQualitative: (_sectorId: string, _fiscalPeriod: string) =>
+    resolve<SectorQualitative>({
+      themes: qual.QUAL_THEMES,
+      themeLang: qual.THEME_LANG,
+      emerging: qual.EMERGING,
+      goingConcern: qual.GOING_CONCERN,
+      litigation: qual.LITIGATION,
+      litigationTotal: qual.LITIGATION_TOTAL,
+      signalMatrix: qual.SIGNAL_MATRIX,
+      cyber: qual.CYBER,
+      cams: qual.CAMS,
+      auditors: qual.AUDITORS,
+      auditorChanges: qual.AUDITOR_CHANGES,
+      auditorTenure: qual.AUDITOR_TENURE,
+      rfVolume: qual.RF_VOLUME,
+      nonGaap: qual.NON_GAAP,
+      deficient: qual.DEFICIENT,
+      hcClimate: qual.HC_CLIMATE,
+      /*
+       * Parameterised, so it rides the payload as a function rather than a value: the view asks
+       * for a theme's filers on demand, when a reveal is opened. Phase A turns this into its own
+       * call (`/sectors/{group}/{metric}/companies` is the nearest real shape), which is exactly
+       * why it must not be imported from `qualitative.ts` directly — the view would then have two
+       * sources for one page.
+       */
+      pickFilers: qual.pickFilers,
+    }),
+
+  /**
+   * One risk theme's filings. Phase A: `/filing-index` for the metadata — form, date, accession.
+   *
+   * The PASSAGE is Track 2 and stays one: a filing's text is not something we parse. What this can
+   * honestly become is the filing list with a link out, which is the hub's argument applied here —
+   * hand over the document rather than ask to be believed about it.
+   */
+  sectorFilings: (_sectorId: string, themeId: string, peerCount: number) =>
+    resolve<SectorFilings>({ filings: qual.themeFilings(themeId, peerCount) }),
 
   // ========================================================== Company Hub → Institutional
   // These map onto endpoints that ALREADY SHIP (V3-P5a, operator-accepted 2026-08-01), so the
@@ -351,6 +441,44 @@ export interface CompanyFilingEvents {
   timeline: hub.HubData["timeline"];
 }
 
+export interface SectorOverview {
+  scores: typeof proto.SECTOR_SCORES;
+  shifts: typeof proto.BIGGEST_SHIFTS;
+  constituents: typeof proto.CONSTITUENTS;
+  events: typeof proto.EVENTS;
+  insider: typeof proto.INSIDER;
+  themeDrill: typeof proto.THEME_DRILL;
+  delta: typeof proto.SEMI_DELTA;
+  geographicMix: typeof proto.GEO_MIX;
+  subCounts: typeof proto.SUB_COUNTS;
+  basePeerCount: number;
+  asOf: typeof proto.AS_OF;
+}
+
+export interface SectorQualitative {
+  themes: typeof qual.QUAL_THEMES;
+  themeLang: typeof qual.THEME_LANG;
+  emerging: typeof qual.EMERGING;
+  goingConcern: typeof qual.GOING_CONCERN;
+  litigation: typeof qual.LITIGATION;
+  litigationTotal: typeof qual.LITIGATION_TOTAL;
+  signalMatrix: typeof qual.SIGNAL_MATRIX;
+  cyber: typeof qual.CYBER;
+  cams: typeof qual.CAMS;
+  auditors: typeof qual.AUDITORS;
+  auditorChanges: typeof qual.AUDITOR_CHANGES;
+  auditorTenure: typeof qual.AUDITOR_TENURE;
+  rfVolume: typeof qual.RF_VOLUME;
+  nonGaap: typeof qual.NON_GAAP;
+  deficient: typeof qual.DEFICIENT;
+  hcClimate: typeof qual.HC_CLIMATE;
+  pickFilers: typeof qual.pickFilers;
+}
+
+export interface SectorFilings {
+  filings: ReturnType<typeof qual.themeFilings>;
+}
+
 export interface CompanyInsiderActivity {
   ledger: ReturnType<typeof insider.insiderData>;
   form144: ReturnType<typeof insider.f144Ledger>;
@@ -362,6 +490,9 @@ export interface CompanyPeerRelative {
   flags: ReturnType<typeof peers.companyFlags>;
   recentFilings: typeof peers.RECENT_FILINGS;
   themePercentiles: typeof peers.CO_THEME_PCT;
+  geographicMix: typeof proto.GEO_MIX;
+  subCounts: typeof proto.SUB_COUNTS;
+  basePeerCount: number;
 }
 
 export interface InstRegisterSnapshot {
