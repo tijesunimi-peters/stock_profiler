@@ -41,6 +41,7 @@ import * as peers from "./peers";
 import * as proto from "./prototype";
 import * as qual from "./qualitative";
 import * as mgr from "./manager";
+import { usdCompact } from "../lib/format";
 
 const DELAY = () => (typeof location !== "undefined" && location.search.includes("slow") ? 900 : 0);
 /**
@@ -209,6 +210,127 @@ function identitySentence(p: ProfileResponse): string {
   return `${head}${since} This is the registrant's own filing record, not a description of the business — Item 1 is narrative text we do not parse.`;
 }
 
+
+/* ------------------------------------------------------------ §02 condensed statements */
+
+interface CondensedResponse {
+  cik: number;
+  statement: string;
+  period_type: string;
+  columns: { fiscal_year: number; fiscal_period: string; period_end: string | null; form: string | null }[];
+  rows: { canonical_concept: string; label: string; unit: string; values: (number | null)[] }[];
+}
+
+/**
+ * The design's condensed row set, per statement.
+ *
+ * `/condensed` returns every canonical concept it could map — 23 for an income statement. The
+ * card is a CONDENSED statement, and which lines belong on one is a product decision the design
+ * already made; selecting and ordering them is reshaping, not deriving.
+ *
+ * **A row with no `concept` is kept, not dropped.** Some of the design's lines have no single
+ * canonical source — "Total debt" would need long-term plus current debt added together, and
+ * adding two reported numbers to make a third is exactly the arithmetic the adapter may not do.
+ * Those render N/A with the reason, because dropping them would silently redefine what the
+ * statement covers.
+ */
+const STATEMENT_ROWS: Record<
+  "income" | "balance" | "cash",
+  { label: string; concept: string | null; rule?: boolean; bold?: boolean; derived?: boolean; reason?: string }[]
+> = {
+  income: [
+    { label: "Revenue", concept: "revenue" },
+    { label: "Cost of revenue", concept: "cost_of_revenue" },
+    { label: "Gross profit", concept: "gross_profit", rule: true },
+    { label: "Research & development", concept: "research_and_development" },
+    { label: "Selling, general & admin.", concept: "sga_expense" },
+    { label: "Operating income", concept: "operating_income", rule: true },
+    { label: "Interest & other, net", concept: "nonoperating_income_expense" },
+    { label: "Income tax provision", concept: "income_tax_expense" },
+    { label: "Net income", concept: "net_income", rule: true, bold: true },
+    { label: "Diluted EPS", concept: "eps_diluted" },
+  ],
+  balance: [
+    { label: "Cash & short-term investments", concept: "cash_and_equivalents" },
+    { label: "Accounts receivable, net", concept: "accounts_receivable" },
+    { label: "Inventories", concept: "inventory" },
+    { label: "Property & equipment, net", concept: "ppe_net" },
+    { label: "Goodwill & intangibles", concept: "goodwill" },
+    { label: "Total assets", concept: "total_assets", rule: true },
+    {
+      label: "Total debt",
+      concept: null,
+      reason:
+        "No filer reports one “total debt” line. It would mean adding long-term to current debt, " +
+        "and a number we add together is not a number anyone filed.",
+    },
+    { label: "Deferred revenue", concept: "deferred_revenue_current" },
+    { label: "Total stockholders' equity", concept: "stockholders_equity", rule: true, bold: true },
+  ],
+  cash: [
+    { label: "Cash from operations", concept: "cash_from_operations" },
+    { label: "Capital expenditures", concept: "capital_expenditures" },
+    {
+      label: "Free cash flow (derived)",
+      concept: null,
+      derived: true,
+      reason:
+        "Cash from operations less capital expenditures — see the ƒ drawer. Not a filed line, and " +
+        "the adapter does not compute it: a figure we work out here would arrive without the " +
+        "status and provenance the API attaches to everything it reports.",
+    },
+    { label: "Acquisitions, net", concept: "payments_for_acquisitions" },
+    { label: "Share repurchases", concept: "share_repurchases" },
+    { label: "Dividends paid", concept: "dividends_paid" },
+    { label: "Debt issued (repaid), net", concept: null, reason: "Reported as separate issuance and repayment lines, never as a net one." },
+  ],
+};
+
+/** A reported value, or N/A. **Never 0** — `null` means the period did not report the line. */
+function statementValue(v: number | null | undefined, unit: string): string {
+  if (v === null || v === undefined) return "N/A";
+  if (unit === "USD/shares") return `$${v.toFixed(2)}`;
+  if (unit === "shares" || unit === "pure") return compactNumber(v);
+  return usdCompact(v);
+}
+
+function compactNumber(v: number): string {
+  const a = Math.abs(v);
+  const [n, s] = a >= 1e9 ? [v / 1e9, "B"] : a >= 1e6 ? [v / 1e6, "M"] : a >= 1e3 ? [v / 1e3, "K"] : [v, ""];
+  return `${Math.round(n * 100) / 100}${s}`;
+}
+
+/**
+ * A column header that says WHICH PERIOD it is, not just which year.
+ *
+ * The hub reads quarters, so a column of Q1 figures headed "FY23" reads as a full year — Apple's
+ * Q1 revenue is $117B against $394B for the year, and nothing on the card would have told a
+ * reader which one they were looking at. The period type belongs in the label whenever it is not
+ * the full year.
+ */
+const columnLabel = (c: CondensedResponse["columns"][number]) => {
+  const yy = `FY${String(c.fiscal_year).slice(2)}`;
+  return c.fiscal_period === "FY" ? yy : `${c.fiscal_period} ${yy}`;
+};
+
+function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "cash") {
+  const byConcept = new Map(res.rows.map((r) => [r.canonical_concept, r]));
+  return STATEMENT_ROWS[key].map((spec) => {
+    const row = spec.concept ? byConcept.get(spec.concept) : undefined;
+    return {
+      label: spec.label,
+      strongRule: !!spec.rule,
+      bold: !!spec.bold,
+      derived: !!spec.derived,
+      reason: row ? undefined : spec.reason,
+      vals: res.columns.map((_c, i) =>
+        row ? statementValue(row.values[i], row.unit) : "N/A",
+      ),
+    };
+  });
+}
+
+
 export const api = {
   sector: (sectorId: string, sub: string | null, period: string) =>
     resolve(surfaces.sectorSurface(sectorId, sub, period)),
@@ -298,12 +420,35 @@ export const api = {
    * RawFacts. `year` is separate because `/metrics` and `/statements` both require it -- a
    * `FiscalPeriod` is a period TYPE ("FY", "Q3") and carries no year of its own.
    */
-  companyFinancials: (symbol: string, _year: number, _fiscalPeriod: string) =>
-    resolve<CompanyFinancials>({
-      years: hub.hubData(symbol).years,
-      statements: hub.hubData(symbol).statements,
+  /**
+   * §02 condensed statements. **REAL — three `/statements/{s}/condensed` reads.**
+   *
+   * Fanned out rather than merged: the operator's ruling is that the frontend may make as many
+   * requests as it needs, and the alternative would be an aggregate endpoint bent to fit this one
+   * card. Each is the same cached facts read server-side, so the cost is round-trips, not work.
+   *
+   * The snapshot tiles are still a fixture — they need `/metrics` plus a per-metric history, which
+   * is the next slice. Half a section on real data and half on fixtures is exactly what the banner
+   * is for.
+   */
+  companyFinancials: async (symbol: string, _year: number, fiscalPeriod: string) => {
+    const q = `period=${encodeURIComponent(fiscalPeriod)}&limit=4`;
+    const enc = encodeURIComponent(symbol);
+    const [income, balance, cash] = await Promise.all([
+      getJson<CondensedResponse>(`/v1/companies/${enc}/statements/income/condensed?${q}`),
+      getJson<CondensedResponse>(`/v1/companies/${enc}/statements/balance/condensed?${q}`),
+      getJson<CondensedResponse>(`/v1/companies/${enc}/statements/cashflow/condensed?${q}`),
+    ]);
+    return {
+      years: income.columns.map(columnLabel),
+      statements: {
+        income: toStatementRows(income, "income"),
+        balance: toStatementRows(balance, "balance"),
+        cash: toStatementRows(cash, "cash"),
+      },
       snapshot: hub.hubSnapshot(symbol),
-    }),
+    } as CompanyFinancials;
+  },
 
   /**
    * One metric's series. Parameterised by the reader's range/basis choice and fetched ON
@@ -583,8 +728,12 @@ export interface CompanyIdentity {
 }
 
 export interface CompanyFinancials {
-  years: hub.HubData["years"];
-  statements: hub.HubData["statements"];
+  years: string[];
+  /** `reason` is set on a row we cannot source — never on one that is merely absent this period. */
+  statements: Record<"income" | "balance" | "cash", {
+    label: string; strongRule: boolean; bold: boolean; derived: boolean;
+    reason?: string; vals: string[];
+  }[]>;
   snapshot: hub.SnapshotTile[];
 }
 

@@ -349,9 +349,12 @@ export function HubOverview() {
                       </button>
                     )}
                   </span>
+                  {/* `reason` marks a line we cannot source at all — "Total debt" would mean
+                      adding two reported numbers together. A value that is merely absent for one
+                      period is a plain N/A: different facts, so they read differently. */}
                   {r.vals.map((v, i) => (
-                    <span className="hub-cell-mono ta-r" key={i}>
-                      {v}
+                    <span className="hub-cell-mono ta-r" key={i} title={r.reason}>
+                      {v === "N/A" ? <StatusChip status="na" /> : v}
                     </span>
                   ))}
                 </div>
