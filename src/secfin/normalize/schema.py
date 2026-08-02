@@ -495,6 +495,19 @@ class InsiderTransaction(BaseModel):
     # defaulting those to False would quietly readmit exactly the option rows this field exists
     # to keep out. A consumer summing ownership must drop `None` and report the coverage gap.
     is_derivative: bool | None = None
+    # The Form 4 cover box "Check this box to indicate that a transaction was made pursuant to a
+    # contract, instruction or written plan meeting the conditions of Rule 10b5-1(c)" -- the
+    # filer's own declaration that the trade was PRE-ARRANGED rather than discretionary. A
+    # structured element (`aff10b5One`) in the ownership XML we already download; it was simply
+    # being discarded on parse until 2026-08-01.
+    #
+    # It matters because a planned sale and a discretionary sale are different events, and
+    # showing them alike invites reading a scheduled disposal as a decision taken now.
+    #
+    # `None` means UNKNOWN, not "no": pre-2022 filings predate the box, and rows cached before
+    # this column existed carry no value. Defaulting those to False would report "discretionary"
+    # about trades nobody classified.
+    rule_10b5_1: bool | None = None
 
 
 class InsiderFilingMeta(NamedTuple):

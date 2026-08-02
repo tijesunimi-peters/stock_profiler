@@ -165,6 +165,13 @@ def parse_ownership_xml(
         if table is not None:
             tables.append((table, txn_tag, holding_tag, is_derivative))
 
+    # The Rule 10b5-1 box sits on the FILING, not on a row -- one declaration covering the
+    # transactions reported. `_text` handles it being absent (pre-2022 filings have no box).
+    plan_flag = _text(root, "aff10b5One")
+    rule_10b5_1 = (
+        None if plan_flag is None else plan_flag.strip().lower() in ("1", "true", "y", "yes")
+    )
+
     records: list[InsiderTransaction] = []
     for owner in root.findall("reportingOwner"):
         owner_id = owner.find("reportingOwnerId")
@@ -180,6 +187,7 @@ def parse_ownership_xml(
             "form_type": form_type,
             "filed": filed,
             "accession": accession,
+            "rule_10b5_1": rule_10b5_1,
         }
 
         for table, txn_tag, holding_tag, is_derivative in tables:

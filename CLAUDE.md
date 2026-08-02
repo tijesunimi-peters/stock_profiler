@@ -139,6 +139,10 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    supply.py                  # share-supply filings that EXIST + EDGAR acceptance lag, over the
+                               #   filing index. Existence and dates, NEVER terms -- lock-up
+                               #   length is an exhibit (prose/Track 2). An absence is scoped to
+                               #   the indexed window and says so; nothing indexed => status "na"
     geography.py               # US_STATE_CODES + classify_location: bucket a 13F filer's raw
                                #   stateOrCountry (state/other/unknown) for the holder choropleth
     segment_geography.py       # classify_geography_member: bucket an ASC 280 revenue geography
@@ -163,6 +167,8 @@ src/secfin/
     sqlite_beneficial_ownership_repository.py
     api_key_repository.py               # abstract API key store (M3 auth/tiers/quotas)
     sqlite_api_key_repository.py
+    filing_index_repository.py          # abstract filing-METADATA store (one row per cik+accession)
+    sqlite_filing_index_repository.py   # filing_index table; form/dates/acceptance/items
     company_profile_repository.py       # abstract cik->SIC profile store (Metrics Phase 2)
     sqlite_company_profile_repository.py
     metric_value_repository.py          # abstract materialized-metric store (Metrics Phase 2)
@@ -202,6 +208,9 @@ src/secfin/
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
     incremental.py              # daily incremental via SEC daily index + SECClient
     frames_backfill.py          # bulk-ingest frames data for cross-company screening (M4)
+    filing_index_backfill.py    # generic filing index from /submissions/ (form, dates,
+                               #   acceptanceDateTime, 8-K items). ONE walk, THREE consumers:
+                               #   §06 supply events, §06 acceptance lag, and V3-P3's 8-K codes
     institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
     insider_backfill.py        # bulk-seed the insider-trades cache (M3 ownership cache-warming)
     location_backfill.py       # backfill filing_manager_location onto cached 13F snapshots
@@ -312,6 +321,13 @@ python -m secfin.ingest.backfill
 
 # daily incremental (companies that filed 10-K/10-Q recently, via the throttled SECClient)
 python -m secfin.ingest.incremental
+
+# generic filing index from /submissions/ -- form, filing date, EDGAR acceptanceDateTime,
+# accession and 8-K item codes, per company. No documents fetched; metadata only.
+# ⚠️ It indexes EDGAR's ROLLING recent window, not a company's whole history -- which is why
+# every consumer reports the window it looked at. "None on file" over a window is not "none ever".
+python -m secfin.ingest.filing_index_backfill --symbol AAPL
+python -m secfin.ingest.filing_index_backfill --all-issuers --limit 500
 
 # bulk-ingest one quarter's 13F filings (offline candidate discovery from submissions.zip,
 # seeds the same HoldingsSnapshotRepository the manager endpoints read from)

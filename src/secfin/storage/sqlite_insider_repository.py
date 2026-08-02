@@ -43,7 +43,10 @@ CREATE TABLE IF NOT EXISTS insider_transactions (
     is_holding INTEGER NOT NULL DEFAULT 0,
     -- NULL is meaningful here: a row cached before this column existed has no flag, and a
     -- consumer must read that as UNKNOWN rather than 'not a derivative'.
-    is_derivative INTEGER
+    is_derivative INTEGER,
+    -- The Form 4 Rule 10b5-1 box. NULL is meaningful: pre-2022 filings predate it,
+    -- and a consumer must read that as UNKNOWN, never as "discretionary".
+    rule_10b5_1 INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_insider_transactions_issuer_accession
@@ -54,8 +57,9 @@ _INSERT_TXN_SQL = """
 INSERT INTO insider_transactions (
     issuer_cik, accession, issuer_name, owner_name, owner_relationship, form_type, filed,
     transaction_date, security_title, shares, price_per_share, acquired_disposed,
-    transaction_code, ownership_type, shares_owned_after, is_holding, is_derivative
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    transaction_code, ownership_type, shares_owned_after, is_holding, is_derivative,
+    rule_10b5_1
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _INSERT_FILING_SQL = """
@@ -83,7 +87,11 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         excluded from the open-market P/S sector rollup -- honest, covered by its coverage caveat).
         """
         have = {row[1] for row in self._conn.execute("PRAGMA table_info(insider_transactions)")}
-        for column, decl in (("transaction_code", "TEXT"), ("is_derivative", "INTEGER")):
+        for column, decl in (
+            ("transaction_code", "TEXT"),
+            ("is_derivative", "INTEGER"),
+            ("rule_10b5_1", "INTEGER"),
+        ):
             if column not in have:
                 self._conn.execute(
                     f"ALTER TABLE insider_transactions ADD COLUMN {column} {decl}"
@@ -182,6 +190,7 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             t.shares_owned_after,
             1 if t.is_holding else 0,
             None if t.is_derivative is None else (1 if t.is_derivative else 0),
+            None if t.rule_10b5_1 is None else (1 if t.rule_10b5_1 else 0),
         )
 
     @staticmethod
@@ -207,5 +216,9 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             # False would mean "confirmed common stock" and readmit option rows.
             is_derivative=(
                 None if row.get("is_derivative") is None else bool(row["is_derivative"])
+            ),
+            # Same rule as is_derivative: a legacy NULL stays None (unknown), never False.
+            rule_10b5_1=(
+                None if row.get("rule_10b5_1") is None else bool(row["rule_10b5_1"])
             ),
         )

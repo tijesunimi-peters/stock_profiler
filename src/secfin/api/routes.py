@@ -53,6 +53,7 @@ from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
 from secfin.normalize.manager_category import CATEGORY_LABELS, classify_manager_sic
 from secfin.normalize.attribution import share_attribution
 from secfin.normalize.overlap import peer_overlap
+from secfin.normalize.supply import acceptance_lag, supply_events
 from secfin.normalize.register import (
     ShareVector,
     composition,
@@ -138,6 +139,7 @@ from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
+from secfin.storage.filing_index_repository import FilingIndexRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.metric_distribution_repository import MetricDistributionRepository
@@ -339,6 +341,10 @@ def get_metric_value_repo(request: Request) -> MetricValueRepository:
 
 def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
     return request.app.state.company_profile_repo
+
+
+def get_filing_index_repo(request: Request) -> FilingIndexRepository:
+    return request.app.state.filing_index_repo
 
 
 def get_sector_dupont_repo(request: Request) -> SectorDupontRepository:
@@ -3103,6 +3109,111 @@ def _shares_outstanding(facts: list[RawFact]) -> tuple[float | None, str | None,
         return None, None, None
     best = max(usable, key=lambda f: (f.instant or "", f.filed or ""))
     return float(best.value), best.instant, best.gaap_tag
+
+
+
+
+# Supply-event caveats. The load-bearing one is the first: this is filing METADATA, and an
+# absence is only ever an absence over the window we indexed.
+_SUPPLY_CAVEATS = [
+    "This reports which filings EXIST and when -- never what they say. A registration statement "
+    "establishes which shares may be resold; it does not say a sale occurred, how many shares "
+    "it covers, or on what terms.",
+    "An absence is scoped to the indexed window, which is EDGAR's rolling recent-filings list "
+    "and not a company's whole history. 'None on file' means none among the filings we read.",
+    "Lock-up terms live in an underwriting-agreement exhibit -- free text this product does not "
+    "parse -- so no count here answers whether a lock-up is in force.",
+    "Acceptance lag measures when EDGAR accepted a filing relative to the period it reports on. "
+    "The statutory 13F deadline is 45 days, so a register is never complete before then.",
+]
+
+# How many indexed filings to read for the supply summary. The index is per-company metadata, so
+# this is a bounded read over one company's rows, not a scan.
+_SUPPLY_LOOKBACK = 400
+
+# The 13F form tokens the acceptance-lag histogram measures. Amendments count: a 13F-HR/A is a
+# filing that arrived when it arrived, and excluding it would flatter the lag.
+_13F_FORMS = ["13F-HR", "13F-HR/A"]
+
+
+@router.get(
+    "/companies/{symbol}/filing-index",
+    tags=["Institutional Ownership"],
+    summary="Supply-side filings that exist for a company, and EDGAR acceptance lag",
+)
+async def get_filing_index(
+    symbol: str,
+    period: str | None = Query(None, description="13F quarter-end to measure acceptance lag at"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    cusip_repo: CusipMapRepository = Depends(get_cusip_repo),
+    holdings_repo: HoldingsSnapshotRepository = Depends(get_holdings_repo),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> dict:
+    """Which share-supply filings a company has on file, and how late its filings are accepted.
+
+    Both halves come from the SAME indexed metadata -- form, filing date, acceptance timestamp,
+    accession -- read from `/submissions/` by `ingest/filing_index_backfill.py`. **No filing
+    document is fetched or parsed here.**
+
+    ## An absence is only honest once we have looked
+
+    The point of this endpoint is the difference between *"no tender offer on file"* and *"no
+    tender offer among the 400 filings we indexed, which run from X to Y"*. Only the second is
+    something we know. When nothing has been indexed for a company, `supply.status` is `"na"`
+    with a reason -- **never a confident zero**, because a count of nothing over nothing is not
+    a finding.
+
+    ## Existence and dates, never terms
+
+    A registration statement establishes which shares MAY be resold; it does not say a sale
+    occurred, how many shares it covers, or how long any lock-up runs. Lock-up length lives in an
+    underwriting-agreement exhibit -- free text, Track 2, deliberately not parsed. `cannot` says
+    so and a caller must not soften it.
+
+    A bounded read over one company's indexed rows. No DuckDB, no document fetch.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+    entries = filing_repo.get_filings(cik, None, _SUPPLY_LOOKBACK)
+    indexed = filing_repo.indexed_count(cik)
+    covered_from, covered_to = filing_repo.indexed_window(cik)
+
+    # ⚠ The acceptance-lag histogram is over the MANAGERS' 13F-HR filings, not the issuer's own.
+    # A 13F is filed by the manager; reading the issuer's index for it would measure Forms 4 and
+    # 10-Qs -- different statutory deadlines, so a different and meaningless distribution. (Caught
+    # on real data: AAPL's own filings gave a 2-day median, which is the Form 4 rule, not the 13F
+    # one.) Bounded to the filers of the quarter being described.
+    manager_ciks: list[int] = []
+    if period:
+        cusips = await _cusips_for_issuer(cusip_repo, cik)
+        manager_ciks = sorted({h.manager_cik for h in holdings_repo.holders_of(cusips, period)})
+    lag_entries = (
+        filing_repo.filings_for_ciks(manager_ciks, _13F_FORMS, period) if manager_ciks else []
+    )
+    indexed_managers = sum(1 for m in manager_ciks if filing_repo.indexed_count(m))
+
+    return {
+        "cik": cik,
+        "indexed_count": indexed,
+        "covered_from": covered_from,
+        "covered_to": covered_to,
+        "supply": asdict(
+            supply_events(
+                entries,
+                indexed_count=indexed,
+                covered_from=covered_from,
+                covered_to=covered_to,
+            )
+        ),
+        "acceptance_lag": asdict(acceptance_lag(lag_entries, period_end=period)),
+        # How much of the register we could actually measure. A histogram over 3 of 1,600 filers
+        # is a statement about those 3, and the caller has to be able to say so.
+        "lag_population": {
+            "manager_count": len(manager_ciks),
+            "indexed_manager_count": indexed_managers,
+        },
+        "caveats": _SUPPLY_CAVEATS,
+    }
 
 
 @router.get(

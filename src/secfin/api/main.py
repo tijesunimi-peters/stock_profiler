@@ -32,6 +32,7 @@ from secfin.storage.sqlite_beneficial_ownership_repository import (
     SQLiteBeneficialOwnershipRepository,
 )
 from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfileRepository
+from secfin.storage.sqlite_filing_index_repository import SQLiteFilingIndexRepository
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
@@ -154,6 +155,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # distribution applies to a company; ingest/sic_backfill.py is the sole writer. See
     # api.routes.get_company_profile_repo.
     app.state.company_profile_repo = SQLiteCompanyProfileRepository(settings.secfin_db_path)
+    # The generic filing index (form, dates, acceptance timestamp, 8-K items) read from
+    # /submissions/. Populated by ingest/filing_index_backfill.py; the live path only reads it.
+    # An EMPTY index is meaningful and is surfaced as such -- "we have not looked" is a different
+    # answer from "we looked and found none", which is the whole point of the store.
+    app.state.filing_index_repo = SQLiteFilingIndexRepository(settings.secfin_db_path)
     # Precomputed asset-weighted sector DuPont aggregates (Sector Analytics D1) -- sibling of
     # metric_rank_repo above, same read-only-on-the-serving-path shape; analytical/sector_dupont.py
     # is the sole writer, so the live API never touches DuckDB. See routes.get_sector_dupont_repo.
@@ -194,6 +200,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.metric_distribution_repo.close()
         app.state.metric_value_repo.close()
         app.state.company_profile_repo.close()
+        app.state.filing_index_repo.close()
         app.state.sector_dupont_repo.close()
         app.state.sector_lifecycle_repo.close()
         app.state.sector_theme_score_repo.close()
