@@ -807,11 +807,18 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         **⚠️ FIVE QA pairs now sit in this folder and ONLY the filenames tell them apart:**
         `*-phase1.md` = the fidelity gate · `*-p2-s01.md` = §01 · `*-p2-s0203.md` = §02+§03 ·
         `4-qa.md` / `4b-manual-verification.md` = **§04+§05, awaiting sign-off**.
-  - [ ] **🚦 OPERATOR GATE — hand-run `4b-manual-verification.md`** (12 rows, ~5 min, covers §04
-        AND §05). The judgement rows are **5/6/11**: three empty states that must read as
-        DIFFERENT KINDS of gap, not blur into "no data". 🔶 And **N-PORT was decided without
-        asking** — the D-voting precedent applied to an identical case; overrule if that reading
-        is wrong.
+  - [x] ✅ **🚦 OPERATOR GATE PASSED — §04 + §05 ACCEPTED** (2026-08-01). Walked interactively in
+        three batches; **all 12 rows as expected on the first pass, no defect at the gate** — the
+        second gate running that way in succession. Trail: **`4b-manual-verification.md`**.
+        **The three judgement rows landed:** the empty states read as *"a scope decision"* (Item
+        5.07), *"a coverage gap, distinct from row 5"* (N-PX) and *"all three read as distinct
+        kinds of gap"* (N-PORT). That distinction was the whole point of these two sections.
+        🔑 **A PRECEDENT WAS WIDENED, not just applied.** Operator: *"Right call — the precedent
+        applies."* **D-voting now covers the CLASS**: any structured-XML form family we do not
+        ingest gets an honest empty state saying *not ingested yet*, **with no fresh ruling
+        needed**. 8-K Item 5.07's HTML exclusion stays separate and permanent. **§06 does not need
+        to re-ask for that shape** — only for anything genuinely new.
+  - [x] ✅ **§01–§05 ARE ALL OPERATOR-ACCEPTED.** Only §06 remains.
   - [x] **§05 Holder behavior BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet
         operator-accepted**; it shares §04's open gate. `IP05` deleted. 686 pytest (+9),
         **5/5 §05 controls**, `svgOverflow=0` webfont-blocked, `zeros: []`, 0 page errors.

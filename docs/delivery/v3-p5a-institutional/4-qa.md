@@ -8,7 +8,10 @@
 2026-08-01 · `*-p2-s0203.md` = **§02+§03**, signed 2026-08-01 · **this pair = §04+§05.**
 A green report in any of the others says nothing about these two.
 
-**Verdict: PASS — pending manual UI verification.** → **`4b-manual-verification.md`**
+**Verdict: ✅ PASS — operator CONFIRMED 2026-08-01** (`4b-manual-verification.md`, signed).
+All 12 operator rows passed on the first pass with no defect at the gate, and the three judgement
+rows landed: the empty states read as **different kinds of gap** rather than blurring into "no
+data" — the one thing QA could not settle for itself.
 
 ---
 
@@ -132,7 +135,7 @@ repurchase).
 
 See **`4b-manual-verification.md`** — 12 rows covering both sections.
 
-**Operator outcome:** ⏳ pending.
+**Operator outcome:** ✅ **Confirmed 2026-08-01** — walked interactively in three batches, all 12 rows as expected.
 
 ---
 
@@ -142,6 +145,11 @@ See **`4b-manual-verification.md`** — 12 rows covering both sections.
 one pre-existing item recorded and not fixed (the cache rule). 686 pytest, e2e clean, every
 driven check green across §01–§05.
 
-**Blocked on:** the operator hand-running **`4b-manual-verification.md`**. Per D-manual-gate this
-is mandatory. The rows that need judgement rather than a tick are **the three empty states** —
-whether they read as *different kinds* of gap — and **the 0.0% exit row**.
+✅ **Operator CONFIRMED 2026-08-01.** §04 and §05 are accepted; **§01–§05 are now all accepted,
+leaving only §06.**
+
+**A precedent was widened at this gate, not merely applied.** The operator ruled *"Right call —
+the precedent applies"* on N-PORT, so **D-voting now covers the CLASS**: any structured-XML form
+family we do not ingest gets an honest empty state whose copy says *not ingested yet*, with no
+fresh ruling needed. 8-K Item 5.07's HTML exclusion remains a separate, permanent thing. §06 will
+not need to re-ask for that shape.
