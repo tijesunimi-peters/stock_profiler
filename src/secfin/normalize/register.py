@@ -802,3 +802,119 @@ def domicile(
         unlocated_shares=unlocated_shares,
         coverage=coverage,
     )
+
+
+@dataclass
+class RetentionCohort:
+    """One entry cohort, and how much of it is still reporting N quarters later."""
+
+    period: str  # the quarter this cohort first appears in
+    holder_count: int
+    # survival[n] is the share (0-1) of this cohort still in the register n quarters later.
+    # survival[0] is 1.0 by definition. Triangular: a cohort that entered two quarters ago has
+    # three points, not nine -- we cannot observe a future that has not happened.
+    survival: list[float] = field(default_factory=list)
+    # The OLDEST cohort is left-censored: everyone already holding in the first quarter we hold
+    # lands in it, however long they had actually held. It is "present at the start", not "entered
+    # then", and a caller must label it as such rather than reading it as a real entry cohort.
+    left_censored: bool = False
+
+
+@dataclass
+class RegisterRetention:
+    status: str  # "ok" | "na"
+    reason: str | None
+    formula: str
+    cannot: str
+    population: str
+    periods: list[str] = field(default_factory=list)  # oldest -> newest
+    cohorts: list[RetentionCohort] = field(default_factory=list)
+
+
+_RETENTION_CANNOT = (
+    "'Still reporting' means still in the register we have INGESTED. A manager that falls under "
+    "the $100M 13F threshold, stops filing, or simply has not been ingested for a quarter reads "
+    "as an exit -- none of which is evidence it sold. The first cohort is left-censored (everyone "
+    "already holding lands in it), and every cohort is bounded by the quarters we hold, so this is "
+    "a floor on persistence rather than a measurement of it."
+)
+_RETENTION_POPULATION = (
+    "managers appearing in the ingested register, grouped by the first quarter we observe them"
+)
+
+
+def retention(by_period: dict[str, list[IssuerHolder]]) -> RegisterRetention:
+    """Per entry cohort, the share still reporting N quarters later.
+
+    The companion to `tenure`, and a genuinely different question: `tenure` counts each CURRENT
+    holder's streak backwards from the newest quarter, whereas this follows each cohort FORWARDS
+    from the quarter it first appears. A register can have long median tenure and poor retention
+    at once -- the first is about who is here now, the second about who stayed.
+
+    Pure: no DB, no network, no clock.
+    """
+    formula = (
+        "cohort = managers first observed in that quarter; survival[n] = cohort members still in "
+        "the ingested register n quarters later / cohort size"
+    )
+    periods = sorted(by_period.keys())  # oldest -> newest
+    if len(periods) < 2:
+        return RegisterRetention(
+            status="na",
+            reason=(
+                f"only {len(periods)} ingested quarter(s) for this issuer, so no cohort can be "
+                "followed forward -- retention needs at least two quarters to observe"
+            ),
+            formula=formula,
+            cannot=_RETENTION_CANNOT,
+            population=_RETENTION_POPULATION,
+            periods=periods,
+        )
+
+    present = [{c for c, _, _ in _reported_shares(by_period.get(p, []))} for p in periods]
+    seen: set[int] = set()
+    cohorts: list[RetentionCohort] = []
+    for i, period in enumerate(periods):
+        members = present[i] - seen
+        seen |= present[i]
+        if not members:
+            # A quarter that brought no new manager is a real, empty cohort -- carried with a zero
+            # count and NO survival series, rather than dropped, so the axis keeps its shape.
+            cohorts.append(
+                RetentionCohort(period=period, holder_count=0, survival=[], left_censored=i == 0)
+            )
+            continue
+        cohorts.append(
+            RetentionCohort(
+                period=period,
+                holder_count=len(members),
+                survival=[len(members & present[j]) / len(members) for j in range(i, len(periods))],
+                left_censored=i == 0,
+            )
+        )
+
+    if not any(c.holder_count for c in cohorts):
+        return RegisterRetention(
+            status="na",
+            reason=(
+                "no filer reports a share count in any ingested quarter, so there is no cohort to "
+                "follow"
+            ),
+            formula=formula,
+            cannot=_RETENTION_CANNOT,
+            population=_RETENTION_POPULATION,
+            periods=periods,
+        )
+
+    return RegisterRetention(
+        status="ok",
+        reason=(
+            f"followed over the {len(periods)} ingested quarter(s) available, so the longest "
+            "cohort is observed for that many quarters and no further"
+        ),
+        formula=formula,
+        cannot=_RETENTION_CANNOT,
+        population=_RETENTION_POPULATION,
+        periods=periods,
+        cohorts=cohorts,
+    )

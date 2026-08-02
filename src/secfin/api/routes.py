@@ -58,6 +58,7 @@ from secfin.normalize.register import (
     composition,
     concentration,
     domicile,
+    retention,
     share_vector,
     stable_capital_share,
     tenure,
@@ -2764,6 +2765,7 @@ async def get_institutional_register_shape(
             )
         ),
         "tenure": asdict(tenure(by_period)),
+        "retention": asdict(retention(by_period)),
         "stable_capital": asdict(stable_capital_share(by_period)),
         "caveats": _ISSUER_CENTRIC_CAVEATS,
     }

@@ -762,7 +762,7 @@
    * when the last literal goes. Nothing here re-derives a number the API owns.
    * ======================================================================================== */
 
-  var IP_DONE = ["01", "02", "03", "04"]; // sections wired to real filings data
+  var IP_DONE = ["01", "02", "03", "04", "05"]; // sections wired to real filings data
 
   var IP_SERIES_QUARTERS = 5; // the prototype's own axis length for §02's over-time charts
   var IP_FLOW_QUARTERS = 6;   // §03's diverging-flow axis, the prototype's own length
@@ -985,6 +985,20 @@
       due = new Date(qEnd.getTime() + (deadlineDays || 45) * 86400000);
     }
     return due.toISOString().slice(0, 10);
+  }
+
+  /* The ingested window, in words -- for any copy that would otherwise name a fixed one. */
+  function ipObservedWindow() {
+    var qs = IP_DATA.periods || [];
+    if (!qs.length) return "the quarters ingested for this issuer";
+    if (qs.length === 1) return "the single quarter ingested (" + ipQuarter(qs[0]) + ")";
+    return qs.length + " ingested quarters, " + ipQuarter(qs[qs.length - 1]) + " to " +
+      ipQuarter(qs[0]);
+  }
+
+  function ipObservedEarliest() {
+    var qs = IP_DATA.periods || [];
+    return qs.length ? ipQuarter(qs[qs.length - 1]) : "the earliest quarter we hold";
   }
 
   function renderInstitutionalPort() {
@@ -3633,59 +3647,35 @@
   }
 
   /* ============================ §05 · Holder behavior ============================
-   * Prototype literals throughout. The cohort heatmap carries BOTH the printed retention and the
-   * capture's own fill-opacity per cell: the opacity is computed from the unrounded share, so it
-   * is not recoverable from the label (same as §03's peer matrix). */
-  var IP05 = {
-    stats: [
-      ["Register turnover", "26.1%", true, "05-turnover"],
-      ["Median holding period", "5.9 quarters", false, "05-tenure"],
-    ],
-    cohorts: ["1Q24", "2Q24", "3Q24", "4Q24", "1Q25", "2Q25", "3Q25", "4Q25", "1Q26"],
-    // Triangular: cohort r has 9-r observed quarters. [printed value, fill-opacity].
-    retention: [
-      [[100, 0.7], [97, 0.6796], [81, 0.5807], [71, 0.5172], [67, 0.494], [54, 0.4173], [46, 0.3677], [41, 0.3364], [40, 0.3273]],
-      [[100, 0.7], [83, 0.5962], [79, 0.5686], [72, 0.524], [64, 0.4744], [54, 0.4154], [52, 0.4035], [48, 0.3797]],
-      [[100, 0.7], [82, 0.5913], [73, 0.5302], [67, 0.4935], [63, 0.4682], [51, 0.3932], [44, 0.3502]],
-      [[100, 0.7], [88, 0.6255], [74, 0.5393], [60, 0.4492], [54, 0.4123], [46, 0.3665]],
-      [[100, 0.7], [84, 0.5999], [74, 0.5358], [67, 0.4969], [64, 0.4772]],
-      [[100, 0.7], [83, 0.5941], [78, 0.565], [71, 0.519]],
-      [[100, 0.7], [80, 0.5781], [69, 0.508]],
-      [[100, 0.7], [82, 0.589]],
-      [[100, 0.7]],
-    ],
-    retentionNote:
-      "Each row is the managers that first appeared in the register that quarter; each cell is the " +
-      "share of that cohort still reporting a position N quarters later. A manager dropping below " +
-      "the $100M reporting threshold reads as an exit.",
-    tenure: [
-      ["Held 8+ quarters", "27%"],
-      ["4–7 quarters", "34%"],
-      ["2–3 quarters", "26%"],
-      ["First quarter held", "13%"],
-    ],
-    tenureNote:
-      "Computed by matching manager CIKs across consecutive 13F-HR filings. Managers falling below " +
-      "the reporting threshold appear as exits.",
-    funds: [
-      { fund: "Balanced allocation fund", manager: "Index manager B", asOf: "2026-04-30", bar: "26%", ofFund: "0.98%", shares: "15.46M", delta: "↑ +2.1%" },
-      { fund: "Dividend appreciation fund", manager: "Active manager D", asOf: "2026-04-30", bar: "46%", ofFund: "1.74%", shares: "9.80M", delta: "↓ −6.9%" },
-      { fund: "Total market index fund", manager: "Insurance manager I", asOf: "2026-04-30", bar: "75%", ofFund: "2.86%", shares: "4.14M", delta: "↓ −15.8%" },
-      { fund: "Large-cap growth fund", manager: "Index manager A", asOf: "2026-04-30", bar: "95%", ofFund: "3.62%", shares: "23.78M", delta: "↑ +15.2%" },
-    ],
-    fundsNote:
-      "N-PORT reports monthly holdings at the individual fund level, more granular and more current " +
-      "than the manager-level 13F. Share counts shown; position values in N-PORT are market-derived " +
-      "and excluded here.",
-    fundsNote2:
-      "Share of fund is the position as a percentage of the fund\u2019s reported portfolio, from the " +
-      "same N-PORT filing.",
-  };
+   * PHASE 2. `IP05` is gone. Three blocks, two of them straight off `register-shape`:
+   *
+   *   turnover + median holding period  shape.turnover / shape.tenure
+   *   retention heatmap                 shape.retention  -- NEW, and a genuinely different
+   *                                     question from tenure (see below)
+   *   register today, by tenure         shape.tenure.cohorts
+   *   fund-level positions (N-PORT)     NOT INGESTED -> honest empty state
+   *
+   * ⚠️ RETENTION AND TENURE ARE NOT THE SAME MEASURE, and the card shows both.
+   *   * `tenure` counts each CURRENT holder's streak BACKWARDS from the newest quarter.
+   *   * `retention` follows each entry cohort FORWARDS from the quarter it first appears.
+   * A register can have long median tenure and poor retention at once — the first is about who
+   * is here now, the second about who stayed. The captions have to keep them apart.
+   *
+   * 🔶 N-PORT: the operator ruled the identical question one section ago (D-voting, on N-PX) —
+   * a structured-XML form we do not ingest gets an honest empty state, and its copy says
+   * "not ingested", NOT "cannot be reported". N-PORT is the same shape, so the same answer is
+   * applied here. Flagged rather than re-asked; overrule it if that reading is wrong.
+   * ==================================================================================== */
 
   function ipSection05() {
+    if (IP_DATA.status === "idle" || ipPending(IP_DATA.shape)) {
+      return P.states.loading({ title: "Loading holder persistence" });
+    }
     /* The expander bar and what it reveals are GRID ITEMS here, not siblings after the grid — the
      * prototype gives the bar `grid-column: 1 / -1` and lets the grid's own 14px gap space it.
-     * Outside the grid it loses that gap, and the whole lower half of the section rides 14px high. */
+     * Outside the grid it loses that gap and the whole lower half of the section rides 14px high.
+     * (Phase 1 paid for that once; flattening this in phase 2 would have paid for it again — and
+     * would have dropped a live control, which D-behaviour treats as a defect.) */
     return (
       '<div class="ip-grid1">' +
       ip05Persistence() +
@@ -3694,81 +3684,179 @@
     );
   }
 
+  /* The retention grid's spec, in `ipCohortGrid`'s own shape.
+   *
+   * `[printed value, fill-opacity]` per cell. The prototype's opacities were recovered from its
+   * capture because they were computed from the UNROUNDED share and so are not recoverable from
+   * the printed label; with real data we compute both from the same number, which is strictly
+   * better — the wash and the label can no longer disagree.
+   *
+   * Empty cohorts (a quarter that brought no new manager) are dropped from the GRID but counted
+   * in the note: a zero-height row would read as a cohort that vanished instantly. */
+  function ip05RetentionSpec() {
+    var shape = IP_DATA.shape;
+    if (ipPending(shape) || ipErr(shape)) return null;
+    var r = shape.retention;
+    if (!r || r.status !== "ok" || !r.cohorts) return null;
+    var live = r.cohorts.filter(function (c) { return c.holder_count > 0 && c.survival.length; });
+    if (!live.length) return null;
+    return {
+      block: r,
+      emptyCohorts: r.cohorts.length - live.length,
+      cohorts: live.map(function (c) {
+        return ipQuarter(c.period) + (c.left_censored ? " *" : "");
+      }),
+      retention: live.map(function (c) {
+        return c.survival.map(function (v) {
+          // The prototype's wash tops out at 0.7 for a full cohort; keep that ceiling so the
+          // grid reads the same, and derive the label from the same value.
+          return [Math.round(v * 100), +(v * 0.7).toFixed(4)];
+        });
+      }),
+      leftCensored: live.some(function (c) { return c.left_censored; }),
+    };
+  }
+
   function ip05Persistence() {
-    var stats = IP05.stats
+    var shape = IP_DATA.shape;
+    var pending = ipPending(shape);
+    var turnover = pending || ipErr(shape) ? null : shape.turnover;
+    var ten = pending || ipErr(shape) ? null : shape.tenure;
+    var grid = ip05RetentionSpec();
+
+    var stats = [
+      {
+        label: "Register turnover",
+        value: ipOk(turnover, "turnover_pct") ? turnover.turnover_pct.toFixed(1) + "%" : IP_NA,
+        block: turnover,
+        accent: true,
+        derive: "05-turnover",
+      },
+      {
+        label: "Median holding period",
+        value: ipOk(ten, "median_quarters_held")
+          ? ten.median_quarters_held.toFixed(1) + " quarters"
+          : IP_NA,
+        block: ten,
+        accent: false,
+        derive: "05-tenure",
+      },
+    ]
       .map(function (t) {
+        var chip = ipChipFor(t.block);
         return (
           '<div class="ip-stat">' +
-          '<span class="ip-micro">' + P.esc(t[0]) + "</span>" +
-          '<span class="ip-stat-val ip-stat-val--19' + (t[2] ? "" : " ip-stat-val--plain") +
-          '"><span>' + P.esc(t[1]) + "</span></span>" +
+          '<span class="ip-micro">' + P.esc(t.label) + "</span>" +
+          '<span class="ip-stat-val ip-stat-val--19' + (t.accent ? "" : " ip-stat-val--plain") +
+          '"><span>' + P.esc(t.value) + "</span>" + (chip ? ipStatusChip(chip) : "") + "</span>" +
           "</div>"
         );
       })
       .join("");
-    var tenure = IP05.tenure
-      .map(function (t) {
+
+    // "Register today, by tenure" — the SAME cohorts §03's stable-capital card weights, shown
+    // here unweighted. One source, two readings, so they can never disagree.
+    var observed = ten && ten.quarters_observed ? ten.quarters_observed : 0;
+    var tenureRows = ((ten && ten.status === "ok" && ten.cohorts) || [])
+      .map(function (c) {
+        var unreachable = c.min_quarters > observed;
+        var pct = unreachable || c.share_of_register === null || c.share_of_register === undefined
+          ? null
+          : ipPct(c.share_of_register, 0);
         return (
           '<div class="ip-coh-row ip-coh-row--3">' +
-          '<span class="ip-coh-label"><span>' + P.esc(t[0]) + "</span></span>" +
-          '<span class="ip-coh-bar"><span class="ip-coh-fill" style="width:' + P.esc(t[1]) + '"></span></span>' +
-          '<span class="ip-coh-share"><span>' + P.esc(t[1]) + "</span></span>" +
+          '<span class="ip-coh-label"><span>' + P.esc(c.label) + "</span></span>" +
+          '<span class="ip-coh-bar">' +
+          (pct ? '<span class="ip-coh-fill" style="width:' + P.esc(pct) + '"></span>' : "") +
+          "</span>" +
+          '<span class="ip-coh-share"><span>' + P.esc(pct || IP_NA) + "</span>" +
+          (pct ? "" : ipStatusChip("na")) + "</span>" +
           "</div>"
         );
       })
       .join("");
-    return (
+
+    var head =
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Holder persistence</h3>' +
       '<span class="ip-card-note">CIK matched across consecutive 13F-HR filings</span>' +
       ipBadge("05-turnover") + ipBadge("05-tenure") +
-      "</div>" +
+      "</div>";
+    if (pending) return head + ip03Loading() + "</div>";
+
+    return (
+      head +
       '<div class="ip-stat-row ip-stat-row--05">' + stats + "</div>" +
       '<div class="ip-subbar ip-subbar--tight">' +
       '<span class="ip-micro">Retention by entry cohort · % of cohort still reporting</span>' +
-      ipChip("05-cohorts") +
+      (grid ? ipChip("05-cohorts") : "") +
       "</div>" +
-      ipCohortGrid(IP05, 660, 274) +
-      '<div class="ip-caption"><span>' + P.esc(IP05.retentionNote) + "</span></div>" +
+      (grid
+        ? ipCohortGrid(grid, 660, ip05GridHeight(grid)) +
+          '<div class="ip-caption"><span>' + P.esc(ip05RetentionNote(grid)) + "</span></div>"
+        : ip03Empty(ipWhy(
+            ipErr(shape) ? shape : (shape || {}).retention,
+            "following a cohort forward needs at least two ingested quarters"
+          ))) +
       '<div class="ip-micro ip-micro--block">Register today, by tenure</div>' +
-      tenure +
-      '<div class="ip-caption"><span>' + P.esc(IP05.tenureNote) + "</span></div>" +
+      (tenureRows || ip03Empty(ipWhy(ten, "tenure needs more than one ingested quarter"))) +
+      '<div class="ip-caption"><span>' + P.esc(
+        "Computed by matching manager CIKs across consecutive 13F-HR filings. Managers falling " +
+        "below the $100M reporting threshold appear as exits. This counts each CURRENT holder's " +
+        "streak backwards from the newest quarter — a different measure from the retention grid " +
+        "above, which follows each cohort forwards." +
+        (ten && ten.reason ? " " + ten.reason + "." : "")
+      ) + "</span></div>" +
       ipDerivationPanel("05-turnover") +
       ipDerivationPanel("05-tenure") +
       "</div>"
     );
   }
 
+  function ip05GridHeight(grid) {
+    return Math.max(80, 31 + grid.retention.length * 26 + 12);
+  }
+
+  function ip05RetentionNote(grid) {
+    return (
+      "Each row is the managers first observed in the register that quarter; each cell is the " +
+      "share of that cohort still reporting a position N quarters later. A manager dropping " +
+      "below the $100M reporting threshold reads as an exit, and so does a quarter we have not " +
+      "ingested." +
+      (grid.leftCensored
+        ? " The starred row is left-censored: everyone already holding in the first quarter we " +
+          "hold lands in it, however long they had actually held, so it is 'present at the " +
+          "start' rather than a real entry cohort."
+        : "") +
+      (grid.emptyCohorts
+        ? " " + grid.emptyCohorts + " quarter(s) brought no new manager and so have no row."
+        : "")
+    );
+  }
+
+  /* ---------- fund-level positions: N-PORT, not ingested ---------- */
+
   function ip05Funds() {
-    var rows = IP05.funds
-      .map(function (f) {
-        return (
-          '<div class="ip-fund-row">' +
-          '<span class="ip-fund-id">' +
-          '<span class="ip-fund-name"><span>' + P.esc(f.fund) + "</span></span>" +
-          '<span class="ip-fund-meta"><span>' + P.esc(f.manager) + "</span> · as of <span>" +
-          P.esc(f.asOf) + "</span></span>" +
-          '<span class="ip-fund-weight">' +
-          '<span class="ip-fund-bar"><span class="ip-fund-fill" style="width:' + P.esc(f.bar) + '"></span></span>' +
-          '<span class="ip-fund-pct"><span>' + P.esc(f.ofFund) + "</span> of fund</span>" +
-          "</span></span>" +
-          '<span class="ip-fund-shares"><span>' + P.esc(f.shares) + "</span></span>" +
-          '<span class="ip-fund-delta"><span>' + P.esc(f.delta) + "</span></span>" +
-          "</div>"
-        );
-      })
-      .join("");
     return (
       '<div class="ip-card ip-card--flush">' +
       '<div class="ip-card-head ip-card-head--tight">' +
       '<h3 class="ip-card-title">Fund-level positions</h3>' +
       '<span class="ip-card-note">N-PORT · monthly, named funds</span>' +
-      ipLink("Read N-PORT ↗", IP_EDGAR_NPORT) +
+      ipStatusChip("na") +
+      ipLink("Read N-PORT ↗", ipEdgarFts("N-PORT")) +
       "</div>" +
-      rows +
-      '<div class="ip-caption"><span>' + P.esc(IP05.fundsNote) + "</span> <span>" +
-      P.esc(IP05.fundsNote2) + "</span></div>" +
+      ip03Empty(
+        "N-PORT reports monthly holdings at the individual fund level — more granular and more " +
+        "current than the manager-level 13F. It is a structured XML form, so it is something " +
+        "this product can ingest; it simply has not been ingested yet. Naming funds without it " +
+        "would mean attributing a manager's 13F position to particular funds, which no filing " +
+        "supports."
+      ) +
+      '<div class="ip-caption"><span>' + P.esc(
+        "Share counts would be shown; position values in N-PORT are market-derived and would be " +
+        "excluded. The link above goes to the filings themselves."
+      ) + "</span></div>" +
       "</div>"
     );
   }
@@ -4309,12 +4397,21 @@
         "A manager falling below the $100M reporting threshold appears as an exit even if it still " +
         "holds the shares.",
     },
+    /* ⚠ The prototype's copy here named a fixed window ("13F-HR filings back to 1Q22") — a
+     * LITERAL, and a false one: the window is however many quarters we have actually ingested
+     * for this issuer, which differs per company. Both lines now follow the data. */
     "05-tenure": {
       formula: "Median consecutive quarters a manager appears in the register",
-      inputs: [["Appearance history", "13F-HR filings back to 1Q22"]],
-      note:
-        "Truncated at the start of the observation window: managers holding since before 1Q22 are " +
-        "counted from 1Q22.",
+      inputs: function () {
+        return [["Appearance history", "13F-HR filings across " + ipObservedWindow()]];
+      },
+      note: function () {
+        return (
+          "Truncated at the start of the observation window: a manager holding since before " +
+          ipObservedEarliest() + " is counted from " + ipObservedEarliest() + ", so this is a " +
+          "floor on tenure and not a measurement of it."
+        );
+      },
     },
   };
 
@@ -4368,7 +4465,9 @@
   function ipDerivationPanel(key) {
     var d = IP_DERIVATIONS[key];
     if (!d) return "";
-    var rows = d.inputs
+    // `inputs`/`formula`/`note` may be functions, so a panel can describe the window this issuer
+    // actually has rather than a fixed one baked in at design time (see "05-tenure").
+    var rows = ipText(d.inputs)
       .map(function (r) {
         return (
           '<div class="ip-deriv-row"><span class="ip-deriv-key"><span>' + P.esc(r[0]) + "</span></span>" +
@@ -4379,9 +4478,9 @@
     return (
       '<div class="ip-deriv" data-ip-deriv-for="' + key + '" hidden>' +
       '<div class="ip-micro">How this is computed</div>' +
-      '<div class="ip-deriv-formula"><span>' + P.esc(d.formula) + "</span></div>" +
+      '<div class="ip-deriv-formula"><span>' + P.esc(ipText(d.formula)) + "</span></div>" +
       rows +
-      '<div class="ip-deriv-note"><span>' + P.esc(d.note) + "</span></div>" +
+      '<div class="ip-deriv-note"><span>' + P.esc(ipText(d.note)) + "</span></div>" +
       "</div>"
     );
   }
@@ -4461,7 +4560,10 @@
     "05-cohorts": {
       title: "Holder persistence by entry cohort",
       note: "share of each entry cohort still reporting N quarters later",
-      render: function (w) { return ipCohortGrid(IP05, w, 274); },
+      render: function (w) {
+        var g = ip05RetentionSpec();
+        return g ? ipCohortGrid(g, w, ip05GridHeight(g)) : "";
+      },
     },
     "04-lanes": {
       title: "Beneficial ownership filings",

@@ -14,6 +14,7 @@ from secfin.normalize.register import (
     STABLE_CAPITAL_WEIGHTS,
     concentration,
     domicile,
+    retention,
     share_vector,
     stable_capital_share,
     tenure,
@@ -423,3 +424,87 @@ class TestDomicile:
         cannot = domicile([_h(1, 100.0, location="PA")]).cannot
         assert "BUSINESS ADDRESS" in cannot
         assert "not where its capital originates" in cannot
+
+
+# --- retention (V3-P5a section 05) ---------------------------------------------------
+
+
+class TestRetention:
+    def _periods(self, spec: dict[str, list[int]]) -> dict[str, list]:
+        """quarter -> [manager cik] as holders, all with a usable share count."""
+        return {p: [_h(c, 100.0) for c in ciks] for p, ciks in spec.items()}
+
+    def test_cohorts_are_managers_first_observed_in_that_quarter(self):
+        r = retention(self._periods({
+            "2025-03-31": [1, 2],
+            "2025-06-30": [1, 2, 3],
+            "2025-09-30": [1, 3, 4],
+        }))
+        assert r.status == "ok"
+        assert [c.period for c in r.cohorts] == ["2025-03-31", "2025-06-30", "2025-09-30"]
+        assert [c.holder_count for c in r.cohorts] == [2, 1, 1]  # {1,2}, {3}, {4}
+
+    def test_survival_is_triangular_and_starts_at_one(self):
+        r = retention(self._periods({
+            "2025-03-31": [1, 2],
+            "2025-06-30": [1, 2, 3],
+            "2025-09-30": [1, 3, 4],
+        }))
+        assert [len(c.survival) for c in r.cohorts] == [3, 2, 1]
+        assert all(c.survival[0] == 1.0 for c in r.cohorts if c.holder_count)
+
+    def test_survival_follows_the_cohort_forward(self):
+        """Manager 2 leaves after the second quarter, so the first cohort halves."""
+        r = retention(self._periods({
+            "2025-03-31": [1, 2],
+            "2025-06-30": [1, 2],
+            "2025-09-30": [1],
+        }))
+        assert r.cohorts[0].survival == [1.0, 1.0, 0.5]
+
+    def test_a_manager_that_returns_is_not_a_new_cohort(self):
+        """Re-appearing is not entering -- a gap can be OUR coverage, not a sale and repurchase."""
+        r = retention(self._periods({
+            "2025-03-31": [1],
+            "2025-06-30": [],
+            "2025-09-30": [1],
+        }))
+        assert [c.holder_count for c in r.cohorts] == [1, 0, 0]
+        assert r.cohorts[0].survival == [1.0, 0.0, 1.0]
+
+    def test_the_oldest_cohort_is_flagged_left_censored(self):
+        """Everyone already holding lands in it, however long they had actually held."""
+        r = retention(self._periods({"2025-03-31": [1, 2], "2025-06-30": [1, 2]}))
+        assert r.cohorts[0].left_censored is True
+        assert all(c.left_censored is False for c in r.cohorts[1:])
+
+    def test_a_quarter_with_no_new_manager_is_an_empty_cohort_not_a_dropped_row(self):
+        r = retention(self._periods({"2025-03-31": [1], "2025-06-30": [1]}))
+        assert len(r.cohorts) == 2
+        assert r.cohorts[1].holder_count == 0
+        assert r.cohorts[1].survival == []
+
+    def test_one_quarter_is_na_with_a_reason(self):
+        r = retention(self._periods({"2025-03-31": [1, 2]}))
+        assert r.status == "na"
+        assert r.cohorts == []
+        assert "at least two quarters" in (r.reason or "")
+
+    def test_it_answers_a_different_question_from_tenure(self):
+        """tenure counts CURRENT holders backwards; retention follows cohorts forwards."""
+        by_period = self._periods({
+            "2025-03-31": [1, 2, 3],
+            "2025-06-30": [1],
+            "2025-09-30": [1],
+        })
+        assert tenure(by_period).cohorts  # current holders, streaks from newest
+        r = retention(by_period)
+        # Two of the three original managers are gone, which tenure's newest-quarter view cannot
+        # see at all -- it only knows about manager 1.
+        assert r.cohorts[0].survival == [1.0, 1 / 3, 1 / 3]
+
+    def test_the_exit_caveat_travels_with_the_numbers(self):
+        r = retention(self._periods({"2025-03-31": [1], "2025-06-30": [1]}))
+        assert "$100M" in r.cannot
+        assert "left-censored" in r.cannot
+        assert "floor" in r.cannot

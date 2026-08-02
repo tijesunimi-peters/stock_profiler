@@ -805,12 +805,32 @@ block caption boxes, and split text nodes. Don't chase them; they're listed in t
         rule itself is a pre-existing bug affecting §01/§02/§04 — recorded, not fixed.**
   - [ ] **§04 QA + 4b** — §04 has a rendered surface, so the operator gate is mandatory. Can be
         walked together with §05's if both land before the next gate.
-  - [ ] **§05 Holder behavior** — should be the EASIEST of the set and need no ruling:
-        `register-shape` already returns everything it wants (turnover, tenure cohorts, the
-        retention grid, median holding period), all of it already consumed by §03's stable-capital
-        card. ⚠️ Its `ipCohortGrid` is a triangular heatmap whose cells carry BOTH a printed value
-        and a recovered fill-opacity — the opacity was computed from the unrounded share, so it is
-        not recoverable from the label and must be computed, not adapted.
+  - [x] **§05 Holder behavior BUILT + self-verified** (2026-08-01) — ⚠️ **NOT yet
+        operator-accepted**; it shares §04's open gate. `IP05` deleted. 686 pytest (+9),
+        **5/5 §05 controls**, `svgOverflow=0` webfont-blocked, `zeros: []`, 0 page errors.
+        **I was wrong that it needed no backend.** The retention heatmap is **cohort survival**,
+        which `register-shape` did not compute — `tenure.quarters_by_manager` is a streak counted
+        BACKWARDS from the newest quarter, a genuinely different question. New pure
+        `register.retention()` follows each entry cohort FORWARDS. *A register can have long
+        median tenure and poor retention at once*, so the card now shows both and the captions
+        keep them apart. The oldest cohort is flagged **left-censored** (everyone already holding
+        lands in it) and a quarter that brought no new manager is an empty cohort, not a dropped
+        row.
+        ⚠️ **Two defects, and the second is the one worth remembering:**
+        1. I flattened `ipSection05` to two sibling cards, **dropping the expander** (a live
+           control → D-behaviour) along with its `.ip-grid1` wrapper — the exact 14px-gap problem
+           phase 1 had already paid for and written up. Restored.
+        2. **A surviving prototype literal inside a DERIVATION PANEL**: `05-tenure` claimed
+           "13F-HR filings back to 1Q22" — a fixed observation window baked in at design time and
+           false for every issuer. **Panels are hidden until a badge is clicked, so a stale
+           literal in one never appears in a screenshot and no pixel diff can see it.**
+           `IP_DERIVATIONS` values may now be functions (resolved through `ipText`, like
+           `IP_LIGHTBOX`), and the panel reads "4 ingested quarters, 2Q25 to 1Q26".
+           💡 **`p2-drive-05.js` now OPENS every derivation panel before sweeping for literals.**
+           Worth doing for §01–§04 too.
+        🔶 **N-PORT applied the D-voting precedent without re-asking**: a structured-XML form we do
+        not ingest gets an honest empty state whose copy says "not ingested yet", not "cannot be
+        reported". Same shape as N-PX, ruled one section earlier. Flagged for overrule.
   - [ ] **§06** — WILL need a ruling: supply events (S-1/S-3, SC TO, Form 25/15) and the
         acceptance-lag histogram are both unsourced. Acceptance timestamps are V3-P3.
         💡 Check prototype v4 first — §06's Form 144 card was already retired by the design.
