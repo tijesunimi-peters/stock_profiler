@@ -105,7 +105,19 @@ function stored(): Partial<Selection> {
 const Ctx = createContext<SelectionApi | null>(null);
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
-  const { query } = useLocation();
+  const { path, query } = useLocation();
+
+  /**
+   * `/company/:symbol/...` names the registrant in the PATH, and the path wins.
+   *
+   * Without this the path segment and `?focal=` could disagree — `/company/AAPL/hub` would
+   * render whatever the query string last remembered — and a page whose URL names one filer
+   * while its figures describe another is the one failure mode a data product cannot have.
+   */
+  const pathFocal = useMemo(() => {
+    const m = /^\/company\/([^/]+)/.exec(path);
+    return m ? decodeURIComponent(m[1]).toUpperCase() : null;
+  }, [path]);
 
   const selection = useMemo<Selection>(() => {
     const from = stored();
@@ -125,7 +137,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       expanded: get("expanded"),
       decomp: get("decomp"),
       drillScope: get("drillScope"),
-      focal: get("focal"),
+      focal: pathFocal ?? get("focal"),
       managerCik: get("managerCik"),
       compareA: get("compareA"),
       compareB: get("compareB"),
@@ -138,7 +150,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     if (!THEMES.some((t) => t.id === next.expanded)) next.expanded = DEFAULTS.expanded;
     if (next.decomp && !THEMES.some((t) => t.id === next.decomp)) next.decomp = null;
     return next;
-  }, [query]);
+  }, [query, pathFocal]);
 
   const set = useCallback(
     (patch: Partial<Selection>) => {
