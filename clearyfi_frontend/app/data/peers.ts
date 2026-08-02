@@ -404,7 +404,7 @@ export type PxGroup = (typeof PX_GROUPS)[number]["key"];
 /** Filing-history flags. Two are conditional; "timely filer" always closes the row. */
 export function companyFlags(T: string) {
   const flags: { label: string; color: string; bg: string; border: string }[] = [];
-  const ext = { color: "var(--ext)", bg: "var(--ext-bg)", border: "var(--ext-border)" };
+  const ext = { color: "var(--ext-color)", bg: "var(--ext-bg)", border: "var(--ext-border)" };
   if (seedN(`${T}rs`) > 0.9) flags.push({ label: "restatement", ...ext });
   if (seedN(`${T}mw`) > 0.82) flags.push({ label: "material weakness", ...ext });
   flags.push({ label: "timely filer", color: "var(--ink-soft)", bg: "transparent", border: "var(--border-strong)" });

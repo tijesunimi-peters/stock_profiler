@@ -72,9 +72,9 @@ export interface DirChip {
  */
 export function dirChip(dir: ThemeDirection): DirChip {
   if (dir === "new")
-    return { label: "new", color: "var(--gaap)", bg: "var(--gaap-bg)", border: "var(--gaap-border)" };
+    return { label: "new", color: "var(--gaap-color)", bg: "var(--gaap-bg)", border: "var(--gaap-border)" };
   if (dir === "rising")
-    return { label: "↑ rising", color: "var(--ext)", bg: "var(--ext-bg)", border: "var(--ext-border)" };
+    return { label: "↑ rising", color: "var(--ext-color)", bg: "var(--ext-bg)", border: "var(--ext-border)" };
   if (dir === "fading")
     return { label: "↓ fading", color: "var(--ink-soft)", bg: "transparent", border: "var(--border-strong)" };
   return { label: "— stable", color: "var(--mono-muted)", bg: "transparent", border: "var(--border-strong)" };
@@ -314,7 +314,7 @@ export function themeFilings(theme: string, peerCount: number): ThemeFilings | n
         name: FILER_NAMES[tk] ?? tk,
         form,
         formBg: form === "8-K" ? "var(--gaap-bg)" : "var(--accent-wash)",
-        formColor: form === "8-K" ? "var(--gaap)" : "var(--accent-ink)",
+        formColor: form === "8-K" ? "var(--gaap-color)" : "var(--accent-ink)",
         date: `2026-${String(mo).padStart(2, "0")}-${String(dy).padStart(2, "0")}`,
         acc: `000${1000000 + Math.floor(seedd(tk + theme) * 8999999)}-26-${String(100000 + Math.floor(seedd(`${tk}a`) * 899999))}`,
         section: form === "8-K" ? "Item 8.01" : "Item 1A · Risk Factors",

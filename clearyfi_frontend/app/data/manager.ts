@@ -291,7 +291,7 @@ export function managerData(cik: number | string): ManagerData {
       evs.push({ date: `${yr}-${String(m).padStart(2, "0")}-${String(ri(`cd${i}${k}`, 2, 26)).padStart(2, "0")}`, pct: p, tag: k === 0 ? "initial" : `amendment ${k}` });
     }
     evs[evs.length - 1].pct = Math.max(5.0, x.stake);
-    return { name: x.ticker, form: `${form} · ${x.name}`, formCode: form, color: form === "SC 13D" ? "var(--gaap)" : "var(--accent)", evs };
+    return { name: x.ticker, form: `${form} · ${x.name}`, formCode: form, color: form === "SC 13D" ? "var(--gaap-color)" : "var(--accent)", evs };
   });
 
   const steps = campaigns.length

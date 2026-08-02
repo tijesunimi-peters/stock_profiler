@@ -752,7 +752,7 @@ export function hubContextPill(subActive: boolean, subCount: number): string {
 /** The segment mix shown as chips on the identity card — the filer's own reportable split. */
 export function hubSegmentChips(T: string): { label: string; pct: string; color: string }[] {
   const names = ["Core products", "Services & licensing", "Other"];
-  const colors = ["var(--accent)", "var(--gaap)", "var(--border-strong)"];
+  const colors = ["var(--accent)", "var(--gaap-color)", "var(--border-strong)"];
   const s1 = 55 + Math.round(seedN(`${T}seg`) * 25);
   const s2 = Math.round((100 - s1) * 0.66);
   return [s1, s2, 100 - s1 - s2].map((v, i) => ({ label: names[i], pct: `${v}%`, color: colors[i] }));

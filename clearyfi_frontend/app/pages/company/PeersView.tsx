@@ -25,7 +25,7 @@ import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
 const Q_LABELS = ["−7", "−6", "−5", "−4", "−3", "−2", "−1", "now"];
-const LADDER_COLORS = ["var(--accent)", "var(--gaap)", "#A88C5F", "var(--border-strong)"];
+const LADDER_COLORS = ["var(--accent)", "var(--gaap-color)", "#A88C5F", "var(--border-strong)"];
 
 /**
  * The presence grid: which filers disclose which item.
