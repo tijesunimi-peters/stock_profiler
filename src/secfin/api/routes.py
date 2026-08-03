@@ -38,7 +38,12 @@ from secfin.normalize.flows import (
     summarize_activity,
 )
 from secfin.normalize.geography import classify_location
-from secfin.normalize.mapping import FOOTNOTE_GROUPS, candidate_tags
+from secfin.normalize.mapping import (
+    CAPITAL_GROUP_NOTES,
+    CAPITAL_GROUPS,
+    FOOTNOTE_GROUPS,
+    candidate_tags,
+)
 from secfin.normalize.metrics import (
     METRIC_DIRECTION,
     METRIC_KEYS,
@@ -118,6 +123,7 @@ from secfin.normalize.screening import (
 )
 from secfin.normalize.sic import sic2_label
 from secfin.normalize.statements import (
+    build_concept_group,
     build_footnote_group,
     available_periods,
     build_normalized_view,
@@ -662,6 +668,93 @@ async def get_footnotes(
             "choice rather than missing data. `coverage` is how often filers publish each one."
         ),
     }
+
+def _capital_group(
+    facts: list[RawFact], cik: int, group: str, year: int, period: FiscalPeriod
+) -> dict:
+    """One capital group, with an empty card's reason corrected where the default would misattribute.
+
+    `build_concept_group` explains an absence as the filer's choice, which is the right default for
+    an optional footnote disclosure. Several of these concepts have instead fallen out of use across
+    the whole market -- the unvested-award count's median filer last tagged it in 2018 -- and
+    telling a reader that *this* company withheld it blames the wrong party and invites them to read
+    a signal into an industry-wide taxonomy shift.
+    """
+    result = build_concept_group(facts, cik, group, year, period, CAPITAL_GROUPS)
+    note = CAPITAL_GROUP_NOTES.get(group)
+    if note:
+        result["note"] = note
+        if result["status"] != "ok":
+            result["reason"] = note
+    return result
+
+
+@public_router.get(
+    "/companies/{symbol}/capital",
+    tags=["Financials"],
+    summary="Capital-structure groups for one fiscal period (share roll-forward, dilution, buyback)",
+)
+async def get_capital(
+    symbol: str,
+    year: int | None = Query(
+        None, description="Fiscal year, e.g. 2025. Omit for the latest one on file."
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    groups: str | None = Query(
+        None, description="Comma-separated group keys; omit for all of them."
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """§04's capital-structure cards -- share roll-forward, dilution overhang, repurchase program.
+
+    Resolved by the same `build_concept_group` as the footnote groups, over the same facts and the
+    same restatement ranking, so a share count here cannot disagree with the statements about which
+    filing it came from.
+
+    **`coverage` means something different here than on `/footnotes`, and the difference matters.**
+    A footnote group is an OPTIONAL disclosure, so a blank card is usually the filer's choice. These
+    are not optional in the same way: a company that has a repurchase programme reports it. So an
+    empty buyback group much more often means *this filer ran no buyback* -- a fact about the
+    company -- than *this filer declined to say*. The payload says so rather than leaving a reader
+    to carry over the footnote intuition.
+
+    Two things this deliberately does NOT do:
+
+    * **No derived dilution percentage.** Options plus unvested awards over shares outstanding is
+      arithmetic the caller can do, and doing it here would bury the fact that the numerator is
+      often partial -- unvested-award COUNTS are tagged by under half of filers.
+    * **No share roll-forward that closes.** Opening + issued - repurchased = closing only if every
+      movement is tagged, and they are not. The rows that exist are returned; the identity is not
+      forced, and no plug row is invented to make it balance.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+
+    resolved_year = year
+    if resolved_year is None:
+        years = [y for y, p in available_periods(facts) if p == period]
+        if not years:
+            raise HTTPException(status_code=404, detail=f"No {period} period on file for {symbol}.")
+        resolved_year = max(years)
+
+    wanted = [g.strip() for g in groups.split(",")] if groups else list(CAPITAL_GROUPS)
+    return {
+        "cik": cik,
+        "fiscal_year": resolved_year,
+        "fiscal_period": period,
+        "groups": [_capital_group(facts, cik, g, resolved_year, period) for g in wanted if g in CAPITAL_GROUPS],
+        "cannot": (
+            "Share counts and repurchase figures are as reported for this period. An absent group "
+            "more often means the filer had none -- no repurchase programme, no options "
+            "outstanding -- than that it declined to disclose. Votes per share and beneficial "
+            "ownership are not tagged anywhere in XBRL and are not served here."
+        ),
+    }
+
 
 @public_router.get(
     "/companies/{symbol}/subsidiaries",

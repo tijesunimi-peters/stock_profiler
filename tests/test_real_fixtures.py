@@ -48,7 +48,11 @@ def test_aapl_income_statement_matches_real_filing():
     # inventory composition, the debt ladder, the tax reconciliation, deferred revenue,
     # credit losses and leases. Facts that were unmapped now map, which is the point of
     # adding them -- an intentional coverage improvement, per this file's own note above.
-    assert coverage_report(period_facts) == {"unmapped": 224, "mapped": 201}
+    # Moved again 2026-08-02 by the §04 CAPITAL concepts: 3 AAPL facts that were unmapped now map
+    # (CommonStockSharesIssued x2, StockRepurchasedAndRetiredDuringPeriodShares x1). The TOTAL is
+    # unchanged at 425 -- which is the check that matters, since a moving total would mean facts
+    # appeared or vanished rather than merely being classified.
+    assert coverage_report(period_facts) == {"unmapped": 221, "mapped": 204}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -159,7 +163,10 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 846, "mapped": 157}
+    # Moved 2026-08-02 by the §04 CAPITAL concepts: 4 facts, all CommonStockSharesIssued -- JPM
+    # tags it once per share class, which is why a single new concept moves the count by four.
+    # Total unchanged at 1003.
+    assert coverage_report(period_facts) == {"unmapped": 842, "mapped": 161}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"

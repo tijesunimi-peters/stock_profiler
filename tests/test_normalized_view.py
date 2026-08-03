@@ -144,10 +144,16 @@ def test_aapl_fixture_full_view():
     assert total_dr.canonical_concept == "deferred_revenue"
     # ...and a genuinely unmapped tag (a parenthetical share count -- single-tag
     # non-face elements stay tag-level by design) is served right alongside.
-    issued = by_tag["CommonStockSharesIssued"]
-    assert issued.value == 14773260000
-    assert issued.unit == "shares"
-    assert issued.canonical_concept is None
+    #
+    # This was `CommonStockSharesIssued` until 2026-08-02, when §04's capital-structure concepts
+    # mapped it. The exemplar moved rather than the assertion: what is being tested is that an
+    # UNMAPPED tag round-trips with `canonical_concept=None`, not that this particular tag stays
+    # unmapped forever. `CommonStockSharesAuthorized` is the same kind of element -- a balance-sheet
+    # parenthetical -- and is still unmapped.
+    authorized = by_tag["CommonStockSharesAuthorized"]
+    assert authorized.value == 50400000000
+    assert authorized.unit == "shares"
+    assert authorized.canonical_concept is None
     # Every non-dei row sits in the primary column -- no comparative leakage anywhere.
     assert all(
         (r.period_end or r.instant) == "2025-09-27"

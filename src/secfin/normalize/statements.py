@@ -35,8 +35,6 @@ from secfin.normalize.mapping import (
     FOOTNOTE_GROUPS,
     STATEMENT_CONCEPTS,
     candidate_tags,
-    footnote_concepts,
-    footnote_primary,
     label_for_concept,
 )
 from secfin.normalize.schema import (
@@ -182,14 +180,20 @@ def build_statement(
     )
 
 
-def build_footnote_group(
+def build_concept_group(
     facts: list[RawFact],
     cik: int,
     group: str,
     fiscal_year: int,
     fiscal_period: FiscalPeriod,
+    registry: dict[str, tuple[str, list[str], float, list[str]]] | None = None,
 ) -> dict:
-    """One footnote card's concepts for a period, resolved the same way a statement line is.
+    """One card's concepts for a period, resolved the same way a statement line is.
+
+    `registry` selects WHICH family of groups this is -- footnote disclosures (the default) or
+    capital-structure groups. The resolution is identical for both because the underlying facts
+    are identical: ordinary XBRL facts from the same filing. Only the coverage semantics differ,
+    and that difference lives in the caller's copy, not here.
 
     Footnote disclosures are ordinary facts in the same filing, so they need the same two passes
     `build_statement` does -- primary-column identification, then best-fact-per-tag with
@@ -205,9 +209,11 @@ def build_footnote_group(
     the filer's choice far more often than it is our gap, and `coverage` on the payload says how
     often filers publish this group at all.
     """
-    concepts = footnote_concepts(group)
-    if not concepts:
-        return {"group": group, "lines": [], "status": "na", "reason": f"Unknown footnote group '{group}'."}
+    reg = registry if registry is not None else FOOTNOTE_GROUPS
+    entry = reg.get(group)
+    if entry is None:
+        return {"group": group, "lines": [], "status": "na", "reason": f"Unknown group '{group}'."}
+    concepts = entry[1]
 
     period = (fiscal_year, fiscal_period)
     in_period = [f for f in facts if _period_key(f) == period]
@@ -246,11 +252,11 @@ def build_footnote_group(
                 )
                 break
 
-    label, _concepts, coverage, _primary = FOOTNOTE_GROUPS[group]
+    label, _concepts, coverage, primaries = entry
     # `ok` requires one of the concepts the card is NAMED for, not merely any line in the group.
     # "R&D capitalisation" resolving only the R&D EXPENSE is not R&D capitalisation, and reporting
     # it green implies a disclosure the filer never made.
-    primary = set(footnote_primary(group))
+    primary = set(primaries)
     resolved = {ln.canonical_concept for ln in lines}
     has_primary = bool(primary & resolved)
     return {
@@ -379,3 +385,14 @@ def coverage_report(facts: list[RawFact]) -> dict[str, int]:
     for f in facts:
         counts["mapped" if concept_for_tag(f.gaap_tag) else "unmapped"] += 1
     return dict(counts)
+
+
+def build_footnote_group(
+    facts: list[RawFact],
+    cik: int,
+    group: str,
+    fiscal_year: int,
+    fiscal_period: FiscalPeriod,
+) -> dict:
+    """`build_concept_group` over the FOOTNOTE registry. Kept as the name the route reads."""
+    return build_concept_group(facts, cik, group, fiscal_year, fiscal_period, FOOTNOTE_GROUPS)

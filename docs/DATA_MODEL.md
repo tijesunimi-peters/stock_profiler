@@ -94,6 +94,56 @@ ISO-8601 duration, and companyfacts carries no duration-typed facts at all — t
 zero filers across the whole volume. That is the same structural exclusion that keeps text facts
 out, and it is a property of the source rather than of our mapping.
 
+### Capital-structure groups (`CAPITAL_GROUPS`, added 2026-08-02)
+
+§04's cards — share count roll-forward, dilution overhang, repurchase programme — use the same
+`(label, concepts, coverage, primary)` shape and the same `build_concept_group` resolver as the
+footnote groups, served by `GET /v1/companies/{symbol}/capital`. A separate registry, for two
+reasons that are easy to get wrong.
+
+**1. ⚠️ `coverage` here means filers tagging it IN A RECENT PERIOD, not filers who ever tagged it.**
+
+This is the most expensive lesson in this file. The first measurement counted any filer that had
+ever tagged a concept, and produced numbers that were accurate and useless:
+
+| concept | ever | **FY≥2024** | median filer last tagged it |
+|---|---:|---:|---|
+| shares outstanding (`dei`) | 95.0% | **88.3%** | 2026 |
+| repurchase amount paid | 78.3% | **66.7%** | 2026 |
+| options outstanding (count) | 83.3% | **45.0%** | 2024 |
+| repurchase amount authorised | 48.3% | **13.3%** | 2023 |
+| unvested award **count** | 45.0% | **13.3%** | **2018** |
+| repurchase authorised (unsuffixed) | 28.3% | **0.0%** | **2013** |
+
+The route returned `na` for dilution on both Apple and Microsoft while the mapping advertised 83%
+coverage — Apple last tagged options outstanding in **FY2016**, Microsoft in **FY2013**. An "ever"
+figure describes the taxonomy's history; only a recent-period figure describes what a reader will
+see. **Measure coverage with a recency filter before adding a concept here.**
+
+**2. An absence is attributed to the right party.** `build_concept_group`'s default reason says the
+filer chose not to disclose — correct for an optional footnote, wrong when the whole market has
+retired a tag. `CAPITAL_GROUP_NOTES` replaces the reason for those groups, because telling a reader
+that *this* company withheld its option count invites them to read a signal into an industry-wide
+taxonomy shift.
+
+**Units are never traded for coverage.** For three concepts here, a *more common* sibling tag
+measures something else in another unit, and mapping it would raise coverage while making the card
+wrong — invisibly, since both are large positive numbers:
+
+| card wants | more common sibling | what the sibling actually is |
+|---|---|---|
+| `shares_repurchased_count` (shares) | `StockRepurchased…DuringPeriodValue` | dollars |
+| `options_outstanding` (shares) | `…OptionsOutstandingIntrinsicValue` | dollars |
+| `unvested_awards` (shares) | `…NonvestedAwardsTotalCompensationCostNotYetRecognized` | unrecognised expense |
+
+**The roll-forward is not forced to close.** Opening + issued − repurchased = closing only holds if
+every movement is tagged, and they are not. The rows that exist are returned; no plug row is
+invented to balance an identity nobody filed.
+
+**Two §04 cards are not served at all**, for reasons verified rather than assumed: class structure
+and voting needs the `ClassOfStock` dimensional axis (Phase C) and votes-per-share is charter prose;
+insider ownership % was V2-verified absent from the tagged DEF 14A.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

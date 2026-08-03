@@ -372,6 +372,73 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         # (who often report per-class us-gaap counts) may miss a clean total.
         ["CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"],
     ),
+    # --- §04 capital structure (2026-08-02) ---
+    # Coverage measured on the FULL 121M-fact volume, 60 fully-backfilled filers across 71 SIC
+    # groups (not the 45-filer V1 basket). Every figure below is measured, not predicted.
+    "shares_issued": (
+        "Shares Issued",
+        # INSTANT. 83.3% recent. Issued >= outstanding; the gap is treasury stock.
+        ["CommonStockSharesIssued"],
+    ),
+    "shares_issued_options_exercised": (
+        "Shares Issued on Option Exercise",
+        # DURATION. 31.7% recent (83.3% ever). A roll-forward ROW, not a total -- it is one of the ways the count moved.
+        ["StockIssuedDuringPeriodSharesStockOptionsExercised"],
+    ),
+    "shares_issued_new": (
+        "Shares Issued, New Issues",
+        # DURATION. 11.7% recent (51.7% ever); median last use 2019 -- largely retired.
+        ["StockIssuedDuringPeriodSharesNewIssues"],
+    ),
+    "shares_repurchased_count": (
+        "Shares Repurchased",
+        # DURATION, in SHARES. 23.3% + 13.3% recent (50.0% + 26.7% ever) for the retired variant -- both are mapped because
+        # filers split cleanly between them (AAPL tags only `AndRetired`, MSFT only the plain one).
+        #
+        # NOT the `…DuringPeriodValue` tags, which are more common (5/10 deep filers each) and
+        # are DOLLARS. A share roll-forward that put dollars in a share column would reconcile to
+        # nothing, and the error would be invisible because both are large positive numbers.
+        ["StockRepurchasedDuringPeriodShares", "StockRepurchasedAndRetiredDuringPeriodShares"],
+    ),
+    "options_outstanding": (
+        "Options Outstanding",
+        # INSTANT, in SHARES. 45.0% recent (83.3% ever) -- option grants have themselves declined,
+        # so a blank is often "this filer grants RSUs, not options". The `…IntrinsicValue` sibling is marginally more common
+        # (9/10 vs 8/10 deep) and is DOLLARS -- same trap as the repurchase count above.
+        ["ShareBasedCompensationArrangementByShareBasedPaymentAwardOptionsOutstandingNumber"],
+    ),
+    "unvested_awards": (
+        "Unvested Awards",
+        # INSTANT, in SHARES. 13.3% recent, and the median filer last tagged it in **2018** -- this
+        # is not thin, it is effectively RETIRED. The card that needs it says so rather than
+        # implying each individual filer chose not to disclose.
+        #
+        # `EmployeeServiceShareBasedCompensationNonvestedAwardsTotalCompensationCostNotYetRecognized`
+        # is far more common (7/10 deep filers vs 4/10) and is the obvious substitute. It is
+        # UNRECOGNISED COST IN DOLLARS, not a count of unvested shares. Dilution overhang asks how
+        # many shares could arrive; that tag answers what expense has yet to be booked. Filling a
+        # share column with it would raise coverage and make the card wrong.
+        [
+            "ShareBasedCompensationArrangementByShareBasedPaymentAwardEquityInstrumentsOther"
+            "ThanOptionsNonvestedNumber"
+        ],
+    ),
+    "buyback_authorized": (
+        "Repurchase Program Authorized",
+        # USD. 13.3% recent (48.3% ever) -- filers have largely stopped tagging the authorisation.
+        # The unsuffixed variant is at 0.0% since FY2023 (median last use 2013) and is kept ONLY so
+        # a query for an old fiscal year still resolves; it will never serve a current card.
+        ["StockRepurchaseProgramAuthorizedAmount1", "StockRepurchaseProgramAuthorizedAmount"],
+    ),
+    "buyback_remaining": (
+        "Repurchase Program Remaining",
+        # USD. 25.0% recent (41.7% ever); median last use 2025, so this one is still live -- unlike
+        # the authorisation above. The unsuffixed variant is 0.0% since FY2023 (median 2014).
+        [
+            "StockRepurchaseProgramRemainingAuthorizedRepurchaseAmount1",
+            "StockRepurchaseProgramRemainingAuthorizedRepurchaseAmount",
+        ],
+    ),
     "shares_basic": (
         "Weighted Avg Basic Shares",
         # DURATION (weighted average over the period), reported on the income statement near
@@ -778,6 +845,97 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
 # (scripts/v1_tag_coverage.py, 2026-08-02). It is on the payload deliberately: these are footnote
 # disclosures, so a card being empty for a filer is usually the filer's choice rather than our gap,
 # and a reader deserves to know which is likelier before concluding anything from a blank.
+# §04 capital structure -- the same (label, concepts, coverage, primary) shape as FOOTNOTE_GROUPS,
+# resolved by the same `build_concept_group`, but a SEPARATE registry because the coverage number
+# means something different here.
+#
+# A footnote group's coverage says how often filers CHOOSE to disclose it, so a blank card is
+# usually the filer's decision. These are not optional disclosures in the same way: share counts
+# and repurchase programs are reported by anyone who has them. A blank buyback card much more
+# often means the filer ran no buyback than that it declined to say -- which is a fact about the
+# company, not about our data. The distinction is in the route's copy, not in the resolution.
+#
+# ⚠️ Coverage here is **filers tagging the concept IN A RECENT PERIOD (FY>=2024)**, not filers who
+# ever tagged it. The distinction is not pedantic -- it is the difference between a card that works
+# and one that is permanently blank:
+#
+#   concept                     ever    FY>=2024   median last tagged
+#   options outstanding        83.3%      45.0%    2024
+#   buyback authorised         48.3%      13.3%    2023
+#   unvested award COUNT       45.0%      13.3%    2018
+#   buyback authorised (alt)   28.3%       0.0%    2013
+#
+# Measured first the wrong way, which is how this was found: the route returned `na` for dilution
+# on both Apple and Microsoft while the mapping claimed 83% coverage. Apple last tagged options
+# outstanding in FY2016 and Microsoft in FY2013. An "ever" figure describes the taxonomy's history;
+# only a recent-period figure describes what a reader will see. Same trap as reading an absence
+# over EDGAR's rolling window as an absence over history, in the opposite direction.
+#
+# Measured 2026-08-02 on the full 121M-fact volume (60 fully-backfilled filers, 71 SIC groups).
+CAPITAL_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
+    "share_rollforward": (
+        "Share count roll-forward",
+        [
+            "shares_issued",
+            "shares_outstanding",
+            "shares_issued_options_exercised",
+            "shares_issued_new",
+            "shares_repurchased_count",
+        ],
+        0.88,
+        ["shares_issued", "shares_outstanding"],
+    ),
+    "dilution": (
+        "Dilution overhang",
+        ["options_outstanding", "unvested_awards", "shares_outstanding"],
+        0.45,
+        # `shares_outstanding` is the DENOMINATOR, not the subject. A card reporting overhang
+        # because it found the share count would be reporting nothing at all.
+        ["options_outstanding", "unvested_awards"],
+    ),
+    "buyback": (
+        "Repurchase program",
+        ["buyback_authorized", "buyback_remaining", "share_repurchases", "shares_repurchased_count"],
+        0.67,
+        ["buyback_authorized", "buyback_remaining", "share_repurchases"],
+    ),
+}
+
+
+#: Why a capital group is empty, when the honest answer is NOT "this filer chose not to disclose".
+#:
+#: `build_concept_group`'s default reason assumes an absence is the filer's choice, which is right
+#: for optional footnote disclosures and wrong here. When a concept has fallen out of use across the
+#: whole market, telling a reader that *this* filer withheld it points the blame at the wrong party
+#: and invites them to read a signal into it. These notes replace that reason.
+CAPITAL_GROUP_NOTES: dict[str, str] = {
+    "dilution": (
+        "Filers have largely stopped tagging option and unvested-award COUNTS in XBRL: the option "
+        "count is on 45% of recent filers and the unvested-award count on 13%, whose median filer "
+        "last tagged it in 2018. An empty card here usually reflects that industry-wide shift, or "
+        "a filer that grants RSUs rather than options -- not a company hiding its overhang."
+    ),
+    "buyback": (
+        "Repurchase amounts PAID are tagged by 67% of recent filers, but the programme's "
+        "authorised size is down to 13% and is mostly disclosed in prose now. A missing "
+        "authorisation is usually untagged rather than undisclosed; a missing amount paid much "
+        "more often means the filer repurchased nothing."
+    ),
+}
+
+
+def capital_concepts(group: str) -> list[str]:
+    """The canonical concepts behind one §04 capital card."""
+    entry = CAPITAL_GROUPS.get(group)
+    return list(entry[1]) if entry else []
+
+
+def capital_primary(group: str) -> list[str]:
+    """The concepts the card is NAMED for -- it is only `ok` when one of these resolves."""
+    entry = CAPITAL_GROUPS.get(group)
+    return list(entry[3]) if entry else []
+
+
 FOOTNOTE_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
     "revenue_obligations": (
         "Remaining performance obligations",
