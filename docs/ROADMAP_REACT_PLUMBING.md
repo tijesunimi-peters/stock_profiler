@@ -923,16 +923,16 @@ it could reclassify three cards.
 
 | # | Card / field | Band | Source or plan |
 |---|---|---|---|
-| 6.1 | Auditor — firm | **X — resolved** | **V3-verified**: `dei:AuditorName` + `AuditorFirmId` + `AuditorLocation`. Build with §05.3 (same fetch path). |
-| 6.2 | Auditor — tenure | **X** | PCAOB Form AP carries it; SEC does not. **V3 supplies the join key** — `dei:AuditorFirmId` is the PCAOB firm ID (E&Y = 42, PwC = 238). |
-| 6.3 | Auditor — fees / non-audit % | **X** | **V2-verified absent** from the tagged DEF 14A. |
-| 6.4 | "Auditor changed · 8-K Item 4.01" | **P** | `/filing-index` `items` |
-| 6.5 | "Non-reliance restatement · 8-K Item 4.02" | **P** | `/filing-index` `items` |
-| 6.6 | "N Form 12b-25 filed in trailing 3 years" | **P** | `/filing-index` — form existence, **with the window stated** |
-| 6.7 | "ICFR effective / material weakness" | **T** | Item 9A conclusion is prose. **V3 caution:** `dei:IcfrAuditorAttestationFlag` exists and is `true` on both filers, but it means *subject to attestation* — **not** "effective", **not** "no material weakness". Do not substitute it. |
-| 6.8 | Critical audit matters | **T** | Auditor's report narrative. |
-| 6.9 | Non-GAAP adjustments — count / recurrence | **T** | The reconciliation is narrative. **But see below.** |
-| 6.10 | Critical accounting estimates | **T** | Item 7 narrative. |
+| 6.1 | Auditor — firm | ✅ **SHIPPED 2026-08-03** | `sec/cover.py` reads `dei:AuditorName` + `AuditorFirmId` + `AuditorLocation` from the 10-K's extracted instance, stored in `filing_cover_facts`. Also fills §01.9. |
+| 6.2 | Auditor — tenure | **X — renders N/A with the reason** | PCAOB Form AP carries it; SEC does not. The card shows the **PCAOB firm id** (the join key) and the auditor's location in that slot, labelled as neither. |
+| 6.3 | Auditor — fees / non-audit % | **X — renders N/A with the reason** | **V2-verified absent** from the tagged DEF 14A. |
+| 6.4 | "Auditor changed · 8-K Item 4.01" | ✅ **SHIPPED 2026-08-03** | `/filing-index` `items`, matched whole. Absence names the indexed window. |
+| 6.5 | "Non-reliance restatement · 8-K Item 4.02" | ✅ **SHIPPED 2026-08-03** | `/filing-index` `items` |
+| 6.6 | "N Form 12b-25 filed" | ✅ **SHIPPED 2026-08-03** | `/filing-index` — form existence, **with the window stated** (JPMorgan's is ONE YEAR; Apple's is 2015–2026) |
+| 6.7 | "ICFR effective / material weakness" | **T — the card says so** | Item 9A conclusion is prose. **V3 caution:** `dei:IcfrAuditorAttestationFlag` exists and is `true` on both filers, but it means *subject to attestation* — **not** "effective", **not** "no material weakness". Do not substitute it. |
+| 6.8 | Critical audit matters | **T — honest empty state shipped** | Auditor's report narrative. The fixture CAMs are gone; the card explains the absence and links to the report. |
+| 6.9 | Non-GAAP adjustments — count / recurrence | ✅ **SLOT RE-POINTED 2026-08-03** | Operator ruling: the slot now carries the **company extension-tag census**, retitled. See below. |
+| 6.10 | Critical accounting estimates | **T — honest empty state shipped** | Item 7 narrative. |
 
 **Three of this section's four cards are majority-Track 2.** That is a real finding about the
 section, not a gap in this roadmap — and the four audit *facts* (6.4–6.6) are the section's
@@ -949,6 +949,14 @@ card's two-stat layout exactly.
 **Recommendation:** offer it to the operator as a *replacement metric* for the slot, clearly
 titled for what it is. If rejected, the card takes its empty state. **Do not relabel an extension
 count as a non-GAAP count.**
+
+**✅ ACCEPTED (operator, 2026-08-03), and it turned out cheaper than described here.** The count
+does **not** come from `is_extension` on `raw_facts` — that column does not exist, and it could
+not: companyfacts exposes `us-gaap` and `dei` only, so the store holds **zero** extension facts by
+construction. It comes from the same instance fetch as 6.1, at no extra cost. Shipped as *Company
+extension tags* with "Not a non-GAAP adjustment count" in the card's own copy. It differentiates
+strongly: Apple 43 distinct / 7.3% of facts · NVIDIA 37 / 5.2% · Microsoft 59 / 7.2% · Coca-Cola
+87 / 8.3% · **JPMorgan 352 / 19.4%**.
 
 ---
 

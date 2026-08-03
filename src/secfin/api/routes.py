@@ -146,8 +146,10 @@ from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
+from secfin.sec.cover import find_extracted_instance, parse_cover_facts
 from secfin.sec.exhibits import find_ex21_filename, parse_ex21
 from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
+from secfin.storage.filing_cover_repository import FilingCoverRepository
 from secfin.storage.filing_index_repository import FilingIndexRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
@@ -354,6 +356,10 @@ def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
 
 def get_filing_index_repo(request: Request) -> FilingIndexRepository:
     return request.app.state.filing_index_repo
+
+
+def get_filing_cover_repo(request: Request) -> FilingCoverRepository:
+    return request.app.state.filing_cover_repo
 
 
 def get_sector_dupont_repo(request: Request) -> SectorDupontRepository:
@@ -849,6 +855,217 @@ async def get_pay_versus_performance(
             for y in result.years
         ],
         "filing": {"form": "DEF 14A", "filed": filed, "accession": accession},
+    }
+
+
+#: 8-K item codes §06 reports on. Both are events a reader would want to know happened; neither
+#: is read for its CONTENTS -- the 8-K's body is prose, and only the item code and date are used.
+_AUDIT_ITEM_CODES = {
+    "4.01": "auditor_change",
+    "4.02": "non_reliance_restatement",
+}
+
+#: Form 12b-25 -- the notification of late filing. Its existence and date are the fact; the reason
+#: a registrant gives for filing late is a narrative paragraph and is not read.
+_LATE_FILING_FORMS = ["NT 10-K", "NT 10-K/A", "NT 10-Q", "NT 10-Q/A", "NT 20-F"]
+
+_AUDIT_CANNOT = (
+    "Auditor TENURE is not in any SEC source -- PCAOB Form AP carries it, and `pcaob_firm_id` "
+    "here is the join key to it. Audit FEES and the non-audit share are not tagged in the DEF "
+    "14A; they were checked for and found absent, not assumed missing. The Item 9A conclusion "
+    "('internal control was effective', 'no material weakness'), the critical audit matters, the "
+    "critical accounting estimates and the non-GAAP reconciliation are all narrative prose and "
+    "are out of scope. Company extension tags are NOT a non-GAAP adjustment count -- they measure "
+    "how far a filer departs from the standard taxonomy, which is a different question."
+)
+
+
+def _audit_events(filing_repo: FilingIndexRepository, cik: int) -> dict:
+    """Auditor changes, non-reliance restatements and late filings, from the filing INDEX.
+
+    Every one of these is an ABSENCE claim when it comes back empty, so the indexed window travels
+    with it. `/submissions/` serves EDGAR's ROLLING recent window, not a filer's whole history:
+    "no auditor change" is true of the window we read and says nothing about the years before it.
+    An unindexed company returns `status="na"` rather than a confident empty list.
+    """
+    indexed = filing_repo.indexed_count(cik)
+    if not indexed:
+        return {
+            "status": "na",
+            "reason": (
+                "This company's filing index has not been built yet, so we have not looked. That "
+                "is not the same as finding nothing -- run the filing-index backfill for it."
+            ),
+            "events": [],
+            "late_filings": [],
+        }
+
+    covered_from, covered_to = filing_repo.indexed_window(cik)
+    events = []
+    for filing in filing_repo.get_filings(cik, ["8-K", "8-K/A"], 1000):
+        codes = {c.strip() for c in (filing.items or "").split(",") if c.strip()}
+        for code in sorted(codes & _AUDIT_ITEM_CODES.keys()):
+            events.append(
+                {
+                    "kind": _AUDIT_ITEM_CODES[code],
+                    "item": code,
+                    "form": filing.form,
+                    "filed": filing.filing_date,
+                    "accession": filing.accession,
+                }
+            )
+    late = [
+        {"form": f.form, "filed": f.filing_date, "accession": f.accession}
+        for f in filing_repo.get_filings(cik, _LATE_FILING_FORMS, 50)
+    ]
+    return {
+        "status": "ok",
+        "indexed_filings": indexed,
+        "covered_from": covered_from,
+        "covered_to": covered_to,
+        "events": events,
+        "late_filings": late,
+    }
+
+
+@public_router.get(
+    "/companies/{symbol}/audit",
+    tags=["Financials"],
+    summary="Auditor, audit events and company extension-tag census",
+)
+async def get_audit(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+    cover_repo: FilingCoverRepository = Depends(get_filing_cover_repo),
+) -> dict:
+    """Who audits this company, what audit events are on file, and how far it departs from US-GAAP.
+
+    Three separately-sourced blocks, each carrying its own status:
+
+    * **`auditor`** -- `dei:AuditorName`, `AuditorFirmId` and `AuditorLocation` from the latest
+      10-K's extracted XBRL instance. **Not a document parse** (see `sec/cover.py`); the
+      companyfacts API cannot serve these because they are text facts.
+    * **`events`** -- 8-K Item 4.01 (auditor changed) and 4.02 (previously-issued statements
+      should no longer be relied on), plus Form 12b-25 late-filing notifications, from the filing
+      index. Existence and dates only; an 8-K's body is prose and is never read.
+    * **`extension_tags`** -- how many elements the filing tags in the registrant's OWN taxonomy.
+
+    **The instance is 1.4-14.9 MB and there is no range shortcut**, so it is fetched once per
+    accession and stored. A repeat call for the same filer costs one SQLite read.
+
+    **`icfr_auditor_attestation` is not the Item 9A conclusion.** It means the control is subject
+    to auditor attestation -- not that it was effective, and not that no material weakness was
+    found. Both of those are prose. The payload says so, and no caller should substitute one.
+
+    **Extension tags are not non-GAAP adjustments.** They are a real, comparable measure of how
+    far a filer departs from the standard taxonomy, and they are labelled as exactly that.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        events = _audit_events(filing_repo, cik)
+
+        cover = cover_repo.get_cover(cik)
+        filing_note: str | None = None
+        if cover is None:
+            annual = filing_repo.get_filings(cik, ["10-K", "10-K/A", "20-F"], 1)
+            if not annual:
+                filing_note = (
+                    "No annual report is indexed for this company, so there is no instance to "
+                    "read the auditor from. Run the filing-index backfill for this filer."
+                )
+            else:
+                filing = annual[0]
+                base = (
+                    f"https://www.sec.gov/Archives/edgar/data/{cik}/"
+                    f"{(filing.accession or '').replace('-', '')}"
+                )
+                name = find_extracted_instance(await client.get_json(f"{base}/index.json"))
+                if not name:
+                    filing_note = (
+                        f"The {filing.form} filed {filing.filing_date} carries no extracted XBRL "
+                        "instance, which means it predates inline-XBRL tagging for annual reports."
+                    )
+                else:
+                    cover = parse_cover_facts(await client.get_text(f"{base}/{name}"))
+                    cover.accession = filing.accession
+                    cover.form = filing.form
+                    cover.filed = filing.filing_date
+                    cover_repo.upsert_cover(cik, cover)
+
+    if cover is None:
+        auditor = {"status": "na", "reason": filing_note}
+        extensions = {"status": "na", "reason": filing_note}
+        filing_ref = None
+    else:
+        auditor = {
+            "status": "ok" if cover.auditor_name else "na",
+            "reason": None
+            if cover.auditor_name
+            else (
+                f"The {cover.form or 'annual report'} filed {cover.filed} tags no auditor. The "
+                "requirement applies to annual reports filed after December 2021."
+            ),
+            "name": cover.auditor_name,
+            # The PCAOB's own firm identifier (E&Y = 42, PwC = 238) -- the join key to Form AP,
+            # which is where tenure lives. Kept as a string: it is an identifier, not a quantity.
+            "pcaob_firm_id": cover.auditor_firm_id,
+            # As the filer wrote it, which is not consistent between filers ("Atlanta, Georgia"
+            # vs "New York, NY 10017"). Normalising it would invent precision.
+            "location": cover.auditor_location,
+            "tenure": None,
+            "fees": None,
+            "icfr_auditor_attestation": cover.icfr_auditor_attestation,
+        }
+        extensions = {
+            "status": "ok" if cover.extensions.total_facts else "na",
+            "reason": None
+            if cover.extensions.total_facts
+            else "This filing's instance carried no tagged facts to count.",
+            "namespace": cover.extensions.namespace,
+            "distinct": cover.extensions.distinct,
+            "facts": cover.extensions.facts,
+            "total_facts": cover.extensions.total_facts,
+            "share": cover.extensions.share,
+            "top": [{"name": n, "count": c} for n, c in cover.extensions.top],
+        }
+        filing_ref = {
+            "form": cover.form,
+            "filed": cover.filed,
+            "accession": cover.accession,
+            "period_end": cover.period_end,
+            "instance_bytes": cover.instance_bytes,
+        }
+
+    return {
+        "cik": cik,
+        "auditor": auditor,
+        "audit_events": events,
+        "extension_tags": extensions,
+        "icfr": {
+            "status": "na",
+            "reason": (
+                "Whether internal control over financial reporting was effective is the Item 9A "
+                "conclusion, which is prose. `dei:IcfrAuditorAttestationFlag` is reported under "
+                "`auditor` and means only that the control is subject to auditor attestation."
+            ),
+        },
+        "critical_audit_matters": {
+            "status": "na",
+            "reason": (
+                "Critical audit matters are the auditor's own narrative in the audit report. "
+                "Nothing about them is tagged in any SEC structured source."
+            ),
+        },
+        "critical_accounting_estimates": {
+            "status": "na",
+            "reason": (
+                "Critical accounting estimates are an Item 7 narrative. Nothing about them is "
+                "tagged in any SEC structured source."
+            ),
+        },
+        "cannot": _AUDIT_CANNOT,
+        "filing": filing_ref,
     }
 
 

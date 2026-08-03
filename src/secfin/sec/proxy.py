@@ -43,6 +43,8 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
+from secfin.sec.cover import find_extracted_instance
+
 _XBRLI = "{http://www.xbrl.org/2003/instance}"
 _XBRLDI = "{http://xbrl.org/2006/xbrldi}"
 _ECD = re.compile(r"^\{http://xbrl\.sec\.gov/ecd/[\d-]+\}(.+)$")
@@ -112,16 +114,10 @@ class PvpResult:
 def find_def14a_instance(index_json: dict) -> str | None:
     """The extracted XBRL instance's filename in a DEF 14A's directory listing.
 
-    EDGAR names it `<something>_htm.xml`. The label and calculation linkbases (`_lab.xml`,
-    `_cal.xml`) sit beside it and are deliberately excluded -- they carry presentation metadata,
-    not facts.
+    EDGAR names the instance the same way in every filing directory, so this is
+    `sec/cover.find_extracted_instance` under a name that says which filing the caller means.
     """
-    items = ((index_json.get("directory") or {}).get("item")) or []
-    for item in items:
-        name = item.get("name") or ""
-        if name.endswith("_htm.xml"):
-            return name
-    return None
+    return find_extracted_instance(index_json)
 
 
 def _num(text: str | None) -> float | None:

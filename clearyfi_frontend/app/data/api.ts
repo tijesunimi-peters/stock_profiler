@@ -84,12 +84,11 @@ export const PROVENANCE = {
    */
   partialSurfaces: {
     "company overview": {
-      real: ["01 identity & structure", "02 financial detail"],
+      real: ["01 identity & structure", "02 financial detail", "06 audit & controls"],
       synthetic: [
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
         "05 governance (partly \u2014 CEO compensation actually paid is real)",
-        "06 audit & controls",
         "07 obligations",
         "08 risk & events",
       ],
@@ -172,18 +171,24 @@ function formatFiscalYearEnd(mmdd: string | null): string | null {
  *
  *   * NAICS — the SEC assigns SIC. There is no NAICS to fetch, from any source we hold.
  *   * Employees — a real XBRL tag that virtually no filer uses (1 in ~9,000 on our volume).
- *   * Auditor — tagged, but only inside the 10-K's inline-XBRL instance, which we do not fetch.
  *
- * `null` from the API is a fourth case again — EDGAR holds the field but did not state it for
+ * The auditor row used to be a third: "tagged, but only inside the 10-K's inline-XBRL instance,
+ * which we do not fetch." We fetch it now (§06), so the row carries the firm name.
+ *
+ * `null` from the API is a further case again — EDGAR holds the field but did not state it for
  * this filer — and reads as a plain N/A rather than one of the explanations above.
  */
 const NOT_SOURCED = {
   naics: "The SEC assigns SIC, not NAICS — there is no NAICS in the filing record.",
   employees: "A tagged fact almost no filer reports; nothing to show for this one.",
-  auditor: "Named in the 10-K's XBRL instance, which we do not yet fetch.",
+  auditor: "Not tagged in this filer's latest annual report.",
 } as const;
 
-function profileRows(p: ProfileResponse): { k: string; v: string; reason?: string }[] {
+function profileRows(
+  p: ProfileResponse,
+  audit?: AuditResponse | null,
+): { k: string; v: string; reason?: string }[] {
+  const auditor = audit?.auditor?.status === "ok" ? (audit.auditor.name ?? null) : null;
   const na = (v: string | null | undefined) => (v && v.trim() ? v : "N/A");
   const hq = [p.hq_city, p.hq_state].filter(Boolean).join(", ");
   return [
@@ -193,7 +198,11 @@ function profileRows(p: ProfileResponse): { k: string; v: string; reason?: strin
     { k: "State of incorp.", v: na(p.state_of_incorporation) },
     { k: "Headquarters", v: na(hq) },
     { k: "Fiscal year-end", v: na(formatFiscalYearEnd(p.fiscal_year_end)) },
-    { k: "Independent auditor", v: "N/A", reason: NOT_SOURCED.auditor },
+    {
+      k: "Independent auditor",
+      v: auditor ?? "N/A",
+      ...(auditor ? {} : { reason: audit?.auditor?.reason ?? NOT_SOURCED.auditor }),
+    },
     { k: "Employees", v: "N/A", reason: NOT_SOURCED.employees },
     { k: "Filer status", v: na(p.filer_category) },
     { k: "First filing", v: na(p.first_filing_date) },
@@ -504,6 +513,159 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ §06 accounting quality & audit */
+
+interface AuditResponse {
+  auditor: {
+    status: string;
+    reason: string | null;
+    name?: string | null;
+    pcaob_firm_id?: string | null;
+    location?: string | null;
+    icfr_auditor_attestation?: boolean | null;
+  };
+  audit_events: {
+    status: string;
+    reason?: string | null;
+    indexed_filings?: number;
+    covered_from?: string | null;
+    covered_to?: string | null;
+    events: { kind: string; item: string; filed: string | null; accession: string }[];
+    late_filings: { form: string; filed: string | null }[];
+  };
+  extension_tags: {
+    status: string;
+    reason: string | null;
+    distinct?: number;
+    facts?: number;
+    total_facts?: number;
+    share?: number | null;
+    top?: { name: string; count: number }[];
+  };
+  critical_audit_matters: { status: string; reason: string };
+  critical_accounting_estimates: { status: string; reason: string };
+  filing?: { form: string | null; filed: string | null; accession: string | null } | null;
+}
+
+/** `"2015-06-01" → "2015"`. Only the year, because a window is a range, not a date. */
+function windowYears(from?: string | null, to?: string | null): string {
+  if (!from || !to) return "the filings indexed";
+  const a = from.slice(0, 4);
+  const b = to.slice(0, 4);
+  return a === b ? a : `${a}–${b}`;
+}
+
+/**
+ * A camelCase-ish XBRL element name split into readable words.
+ *
+ * These are the registrant's OWN tag names, which is the whole point of showing them — they read
+ * like `OffBalanceSheetLendingRelatedFinancialInstrumentsContractualAmount`, and a filer that
+ * needed to invent that has departed from the standard taxonomy in a way worth seeing.
+ */
+function readableTag(name: string): string {
+  return name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+}
+
+/**
+ * §06, three separately-sourced answers and two honest refusals.
+ *
+ * **The auditor and the extension census are real** — both read from the 10-K's extracted XBRL
+ * instance (`sec/cover.py`), which is tagged facts in an XML file, not a parsed document.
+ *
+ * **Every absence here names its window.** "No auditor change" is only ever true of the filings
+ * we indexed, and those windows differ wildly between filers: Apple's index reaches back to 2015,
+ * Atlantic American's to 1995, and JPMorgan's covers ONE YEAR because it files thousands of 424B2s
+ * that fill EDGAR's rolling window. A card that said "no auditor change on file" without the years
+ * would be making a much bigger claim for JPMorgan than the data supports.
+ *
+ * **Two things this deliberately refuses to say.** Auditor TENURE is not in any SEC source (it is
+ * in PCAOB Form AP, and the PCAOB firm id shown beside the firm is the join key to it). And
+ * `IcfrAuditorAttestationFlag` is NOT the Item 9A conclusion — it says the control is subject to
+ * attestation, not that it was effective — so the ICFR line reports the boundary instead.
+ */
+function toAuditCards(res: AuditResponse | null) {
+  const ev = res?.audit_events;
+  const window = windowYears(ev?.covered_from, ev?.covered_to);
+  const indexed = ev?.status === "ok";
+
+  const changes = (ev?.events ?? []).filter((e) => e.kind === "auditor_change");
+  const restatements = (ev?.events ?? []).filter((e) => e.kind === "non_reliance_restatement");
+  const late = ev?.late_filings ?? [];
+
+  /** "none found" only when we actually looked; otherwise say we have not looked. */
+  const absence = (label: string) =>
+    indexed ? `No ${label} in filings indexed ${window}` : `${label}: not indexed for this filer`;
+
+  const a = res?.auditor;
+  const auditorOk = a?.status === "ok" && !!a.name;
+  const ext = res?.extension_tags;
+  const extOk = ext?.status === "ok" && !!ext.total_facts;
+  const sharePct = extOk && ext.share != null ? `${(ext.share * 100).toFixed(1)}%` : "N/A";
+
+  return {
+    firm: auditorOk ? (a?.name as string) : "N/A",
+    firmReason: auditorOk ? null : (a?.reason ?? "The auditor is not tagged in this filing."),
+    // The slot the fixture used for tenure. Tenure is NOT available from any SEC source, so it
+    // carries the two auditor facts that are — and names the PCAOB id as an id, not a duration.
+    tenure: auditorOk
+      ? [a?.pcaob_firm_id ? `PCAOB firm ${a.pcaob_firm_id}` : null, a?.location]
+          .filter(Boolean)
+          .join(" · ") || "N/A"
+      : "N/A",
+    tenureReason:
+      "Auditor tenure is not disclosed in any SEC filing — PCAOB Form AP carries it, and the " +
+      "PCAOB firm id shown here is the key that joins to it.",
+    fees: "N/A",
+    nonAudit: "non-audit share N/A",
+    feesReason:
+      "Audit fees and the non-audit share are not tagged in the DEF 14A. Checked and found " +
+      "absent, not assumed missing — they appear only in the proxy's fee table as prose.",
+    change: changes.length
+      ? `Auditor changed · 8-K Item 4.01 · ${changes[0].filed}` +
+        (changes.length > 1 ? ` (+${changes.length - 1} earlier)` : "")
+      : absence("auditor change"),
+    // Never "ICFR effective". That conclusion is Item 9A prose; the flag we hold says something
+    // narrower and is reported as what it is.
+    icfr:
+      a?.icfr_auditor_attestation === true
+        ? "ICFR subject to auditor attestation — the effectiveness conclusion is narrative"
+        : a?.icfr_auditor_attestation === false
+          ? "ICFR not subject to auditor attestation — the effectiveness conclusion is narrative"
+          : "ICFR effectiveness is narrative (Item 9A) — not tagged",
+    icfrReason:
+      "IcfrAuditorAttestationFlag means the control is SUBJECT TO attestation. It does not say " +
+      "internal control was effective and it does not say no material weakness was found — " +
+      "both of those are the Item 9A narrative conclusion.",
+    restate: restatements.length
+      ? `Non-reliance restatement · 8-K Item 4.02 · ${restatements[0].filed}`
+      : absence("non-reliance restatement"),
+    late: late.length
+      ? `${late.length} Form 12b-25 filed · latest ${late[0].filed}`
+      : absence("Form 12b-25"),
+    windowNote: indexed
+      ? `Absences above are over the ${ev?.indexed_filings ?? 0} filings EDGAR lists for this ` +
+        `filer (${ev?.covered_from} to ${ev?.covered_to}). That is a rolling window, not the ` +
+        "company's whole history."
+      : (ev?.reason ?? null),
+    // The non-GAAP slot, re-pointed (operator ruling 2026-08-03). NOT a non-GAAP count.
+    nonGaap: {
+      count: extOk ? (ext?.distinct as number) : 0,
+      recur: sharePct,
+      items: extOk
+        ? (ext?.top ?? [])
+            .slice(0, 3)
+            .map((t) => readableTag(t.name).toLowerCase())
+            .join("; ")
+        : "N/A",
+    },
+    extensionsOk: extOk,
+    extensionsReason: extOk ? null : (ext?.reason ?? "No annual report is indexed for this filer."),
+    camsReason: res?.critical_audit_matters?.reason ?? null,
+    estimatesReason: res?.critical_accounting_estimates?.reason ?? null,
+    filing: res?.filing ?? null,
   };
 }
 
@@ -942,12 +1104,15 @@ export const api = {
      * one endpoint that fetches filing documents, so it is the slowest and the likeliest to be
      * unavailable, and identity should not disappear because an exhibit could not be reached.
      */
-    const [p, subs] = await Promise.all([
+    const [p, subs, audit] = await Promise.all([
       getJson<ProfileResponse>(`/v1/companies/${enc}/profile`),
       getJson<SubsidiariesResponse>(`/v1/companies/${enc}/subsidiaries`).catch(() => null),
+      // §01.9. The same read §06 makes, and the server has it cached per accession after the
+      // first call for a filer — so this is one SQLite lookup, not a second 15 MB fetch.
+      getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
     ]);
     return {
-      profile: profileRows(p),
+      profile: profileRows(p, audit),
       links: edgarLinks(p.cik),
       segmentChips: [],
       contextPill: hub.hubContextPill(subIdx >= 0, proto.SUB_COUNTS[subIdx] ?? 0),
@@ -1100,12 +1265,19 @@ export const api = {
    * Track 2 for the rest (CAMs, ICFR conclusion, risk-factor diff, MD&A) -- which get honest empty
    * states, never a fabricated figure.
    */
-  companyDisclosure: (symbol: string) =>
-    resolve<CompanyDisclosure>({
-      audit: hub.hubData(symbol).audit,
+  companyDisclosure: async (symbol: string) => {
+    // The auditor read can cost a 15 MB instance fetch server-side on a filer's FIRST request
+    // (cached per accession after that), so a failure must not take §08 down with it. `null`
+    // flows into the adapter's honest-empty branch.
+    const audit = await getJson<AuditResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/audit`,
+    ).catch(() => null);
+    return {
+      audit: toAuditCards(audit),
       narrative: hub.hubData(symbol).narrative,
       changes: hub.hubData(symbol).changes,
-    }),
+    } as CompanyDisclosure;
+  },
 
   /** The filing-timeline rail. Phase A: `/filing-index` -- ONE walk, several consumers. */
   companyFilingEvents: (symbol: string) =>
@@ -1359,7 +1531,10 @@ export interface CompanyGovernance {
 }
 
 export interface CompanyDisclosure {
-  audit: hub.HubData["audit"];
+  // No longer `hub.HubData["audit"]`: `cams` and `estimates` are gone from the shape because
+  // neither exists in any SEC structured source, and a field that can only ever hold invented
+  // strings should not be typed as if it might hold real ones.
+  audit: ReturnType<typeof toAuditCards>;
   narrative: hub.HubData["narrative"];
   changes: hub.HubData["changes"];
 }

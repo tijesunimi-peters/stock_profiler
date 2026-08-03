@@ -140,6 +140,12 @@ src/secfin/
     ticker_cache.py            # in-memory ticker->CIK map (TickerCache), one per process
     insider.py                 # fetch + parse Forms 3/4/5 ownership XML (joint filers)
     institutional.py           # fetch + parse 13F info table + cover page, 13D/G
+    cover.py                   # 10-K cover-page dei facts (auditor name/PCAOB id/location, ICFR
+                               #   attestation flag) + company extension-tag census, from the
+                               #   filing's EXTRACTED XBRL INSTANCE (*_htm.xml). Tagged facts in
+                               #   XML -- NOT a document parse, so the EX-21 exception is untouched
+    proxy.py                   # DEF 14A pay-versus-performance from the same kind of instance;
+                               #   `ecd` facts only, never the HTML …TextBlock elements
     frames.py                  # fetch + parse SEC frames API (cross-company screening)
   normalize/
     schema.py                  # canonical Pydantic models
@@ -179,6 +185,11 @@ src/secfin/
     sqlite_api_key_repository.py
     filing_index_repository.py          # abstract filing-METADATA store (one row per cik+accession)
     sqlite_filing_index_repository.py   # filing_index table; form/dates/acceptance/items
+    filing_cover_repository.py          # abstract store for parsed 10-K cover facts (§06 audit)
+    sqlite_filing_cover_repository.py   # filing_cover_facts; keyed (cik, accession). A STORE, not
+                                        #   a convenience cache: the instance behind it is
+                                        #   1.4-14.9 MB and has no range shortcut, so a filing is
+                                        #   fetched ONCE per accession, ever
     company_profile_repository.py       # abstract cik->SIC profile store (Metrics Phase 2)
     sqlite_company_profile_repository.py
     metric_value_repository.py          # abstract materialized-metric store (Metrics Phase 2)
@@ -234,7 +245,10 @@ src/secfin/
                                #   activity, holdings-series, holder-geography), sector DuPont +
                                #   spreads + lifecycle + theme-scores (composite health) + insider
                                #   flow (P6a) + geographic-mix (ASC 280, P6b),
-                               #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3)
+                               #   cusip-resolution-stats, screening (M4), usage/tiers/admin (M3),
+                               #   footnotes + capital groups, subsidiaries (EX-21),
+                               #   pay-versus-performance (DEF 14A ecd), audit (§06: auditor +
+                               #   8-K 4.01/4.02 + 12b-25 + extension census)
     static/                    # server-rendered UI: index, company hub (absorbed the data
                                #   explorer, /explorer redirects there),
                                #   coverage/guide pages (see docs/ROADMAP_UI.md)

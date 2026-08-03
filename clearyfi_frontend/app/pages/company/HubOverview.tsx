@@ -280,6 +280,11 @@ export function HubOverview() {
           <span className="hub-hint">
             diffed against the prior annual report · change is described, not scored
           </span>
+          {/* The most prominent band on the page and entirely a fixture — including a row that
+              claims a critical audit matter is "unchanged", which §06 below correctly reports we
+              cannot read at all. Two claims that contradict each other need the false one
+              marked, not left to the banner four screens away. */}
+          <SynthCard why="Every row here is generated. Diffing a filing against the prior one needs the risk-factor, segment and CAM narratives — all Track 2 — so nothing in this band is read from a filing yet." />
         </div>
         <div className="hub-changed-rows">
           {d.changes.map((c) => (
@@ -1001,7 +1006,7 @@ export function HubOverview() {
 
       {/* ============================================================ 06 */}
       <section className="hub-sec">
-        <HubHead id="s6" n="06" title="Accounting quality & audit" src="auditor report · Item 9A · 8-K 4.01 / 4.02 · 12b-25" />
+        <HubHead id="s6" n="06" title="Accounting quality & audit" src="10-K XBRL cover page · 8-K 4.01 / 4.02 · Form 12b-25" />
         <div className="hub-grid">
           <div className="p-card">
             <div className="hub-panel-head">
@@ -1009,18 +1014,29 @@ export function HubOverview() {
               <Src href={L.tenK}>Read the auditor report ↗</Src>
             </div>
             <div className="hub-firm">
-              <span className="hub-firm-name">{d.audit.firm}</span>
-              <span className="hub-cell-mono is-soft">{d.audit.tenure}</span>
+              <span className="hub-firm-name">
+                <Fig v={d.audit.firm} reason={d.audit.firmReason} />
+              </span>
+              {/* The PCAOB firm id and the auditor's city, as the filer tagged them. NOT tenure —
+                  no SEC filing carries tenure, and the id is the key that joins to the PCAOB's
+                  Form AP, which does. */}
+              <span className="hub-cell-mono is-soft" title={d.audit.tenureReason}>
+                {d.audit.tenure}
+              </span>
             </div>
-            <div className="hub-cell-mono is-soft hub-mt-xs">
-              Fees {d.audit.fees} · {d.audit.nonAudit}
+            <div className="hub-cell-mono is-soft hub-mt-xs" title={d.audit.feesReason}>
+              Fees <Fig v={d.audit.fees} reason={d.audit.feesReason} /> · {d.audit.nonAudit}
             </div>
             <div className="hub-audit-facts">
               <span>{d.audit.change}</span>
-              <span>{d.audit.icfr}</span>
+              <span title={d.audit.icfrReason}>{d.audit.icfr}</span>
               <span>{d.audit.restate}</span>
               <span>{d.audit.late}</span>
             </div>
+            {/* An absence is only as big as the window it was checked over, and these windows
+                differ enormously between filers. Naming it is what makes the four lines above
+                claims about something we read rather than about the company's whole history. */}
+            {d.audit.windowNote && <div className="hub-note">{d.audit.windowNote}</div>}
           </div>
 
           <div className="p-card">
@@ -1028,29 +1044,39 @@ export function HubOverview() {
               <span className="hub-label no-mb">Critical audit matters</span>
               <Src href={L.tenK}>Read the CAMs ↗</Src>
             </div>
-            {d.audit.cams.map((c, i) => (
-              <div className="hub-cam" key={`${c.name}${i}`}>
-                <div className="hub-cam-name">{c.name}</div>
-                <div className="hub-note">{c.why}</div>
-              </div>
-            ))}
+            <FootnoteEmpty reason={d.audit.camsReason} />
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Non-GAAP adjustments</div>
+            {/* The non-GAAP slot, re-pointed (operator ruling 2026-08-03). A non-GAAP
+                reconciliation is prose; this is a different, structured measure, and the title
+                and the note both say which one it is. */}
+            <div className="hub-label">Company extension tags</div>
             <div className="hub-inline-stats">
               <div>
-                <span className="hub-hint">Distinct adjustments</span>
-                <div className="hub-big is-lg">{d.audit.nonGaap.count}</div>
+                <span className="hub-hint">Distinct tags defined</span>
+                <div className="hub-big is-lg">
+                  {d.audit.extensionsOk ? d.audit.nonGaap.count : <StatusChip status="na" />}
+                </div>
               </div>
               <div>
-                <span className="hub-hint">Recurrence</span>
-                <div className="hub-mid">{d.audit.nonGaap.recur}</div>
+                <span className="hub-hint">Share of tagged facts</span>
+                <div className="hub-mid">
+                  <Fig v={d.audit.nonGaap.recur} reason={d.audit.extensionsReason} />
+                </div>
               </div>
             </div>
             <div className="hub-note">
-              Most frequent: {d.audit.nonGaap.items}. Recurrence is reported, not judged — a
-              recurring adjustment is a fact about the reconciliation, not a verdict.
+              {d.audit.extensionsOk ? (
+                <>
+                  Most used: {d.audit.nonGaap.items}. These are elements the filer defined in its
+                  own taxonomy because US-GAAP had none it wanted — a measure of how far it
+                  departs from the standard vocabulary. <strong>Not a non-GAAP adjustment
+                  count</strong>: that reconciliation is narrative and is not tagged anywhere.
+                </>
+              ) : (
+                d.audit.extensionsReason
+              )}
             </div>
           </div>
 
@@ -1059,11 +1085,7 @@ export function HubOverview() {
               <span className="hub-label no-mb">Critical accounting estimates</span>
               <Src href={L.tenK}>Read Item 7 ↗</Src>
             </div>
-            <div className="hub-estimates">
-              {d.audit.estimates.map((e) => (
-                <span key={e}>{e}</span>
-              ))}
-            </div>
+            <FootnoteEmpty reason={d.audit.estimatesReason} />
           </div>
         </div>
       </section>

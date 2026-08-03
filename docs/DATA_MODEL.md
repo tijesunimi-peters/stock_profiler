@@ -1352,3 +1352,64 @@ included), the coverage figures, and the caveats. A group with no covered compan
 **Not a canonical concept.** This reuses the existing `revenue` mapping rather than adding a new
 canonical concept, so `mapping.py` is unchanged; the normalization that earns its keep here is the
 geography **bucketing** (`segment_geography.py`), documented above.
+
+---
+
+## Filing cover-page facts (auditor + extension census) — `filing_cover_facts`
+
+Backs §06 of the company hub (`GET /v1/companies/{symbol}/audit`) and §01's auditor row.
+
+**Source: the extracted XBRL instance, not a document.** EDGAR generates a `*_htm.xml` instance
+beside every inline-XBRL filing — plain XML holding tagged facts, the same kind of payload as
+companyfacts, delivered as a file in a filing directory rather than through an API. `sec/cover.py`
+reads it. **This is ingest, and it invokes no exception**: `sec/exhibits.py`'s EX-21 licence to
+parse HTML is untouched and is not widened by it.
+
+**Why companyfacts cannot serve these.**
+
+| Fact | Why it is absent from companyfacts |
+|---|---|
+| `dei:AuditorName` / `AuditorFirmId` / `AuditorLocation` | Text facts; the API serves numeric facts only. The only two `dei` tags that reach our volume are `EntityCommonStockSharesOutstanding` and `EntityPublicFloat`. |
+| Company extension tags (`aapl:`, `jpm:` …) | The API exposes `us-gaap` and `dei` and nothing else, so a registrant's own namespace is invisible to it **by construction**. `raw_facts` holds **zero** extension facts — not few. |
+
+**Cost, measured 2026-08-03 rather than estimated.** One instance per annual report, and the
+spread is wide: Apple 1.42 MB · NVIDIA 1.69 MB · Coca-Cola 4.32 MB · **JPMorgan 14.89 MB**. A
+byte-range fetch was considered and **ruled out**: `dei:AuditorName` sits at 99.9% of the way
+through Apple's instance and 9.4% through JPMorgan's, and Coca-Cola splits the pair (`AuditorFirmId`
+at 9.4%, `AuditorName` at 100%). No stable offset exists, so it is the whole file or nothing —
+hence a **store**, keyed `(cik, accession)`, fetched **once per accession, ever**. A 10-K/A carries
+its own accession and never overwrites the original; latest `filed` wins for "current".
+
+### `IcfrAuditorAttestationFlag` is NOT the Item 9A conclusion
+
+Stored, served, and **explicitly not** substituted for the effectiveness conclusion. The flag means
+the control is *subject to auditor attestation*. It does not say internal control was effective and
+it does not say no material weakness was found — both of those are prose (Track 2). `NULL` (the
+filer did not tag it) stays distinct from `false` (a smaller reporting company, exempt); collapsing
+them would report a disclosure that was never made.
+
+### The extension census is not a non-GAAP adjustment count
+
+`extension_distinct` / `extension_facts` / `total_facts` count **element names**, never their
+content. It is a real and comparable measure — how far a filer departs from the standard taxonomy —
+and it differentiates sharply (measured: Apple 43 distinct / 7.3% of facts · NVIDIA 37 / 5.2% ·
+Microsoft 59 / 7.2% · Coca-Cola 87 / 8.3% · **JPMorgan 352 / 19.4%**). It occupies the hub card
+that used to say "non-GAAP adjustments" (operator ruling 2026-08-03), **retitled**, because a
+non-GAAP reconciliation is narrative and is not tagged anywhere. The two must never be conflated.
+
+### Audit events come from `filing_index`, and every absence names its window
+
+8-K Item **4.01** (auditor changed) and **4.02** (previously-issued statements should no longer be
+relied on), plus **Form 12b-25** late-filing notices, are read from the filing index — existence,
+form and date only; an 8-K's body is prose and is never read. Item codes are matched **whole**
+against the comma-separated `items` list, not as substrings.
+
+**The window is load-bearing and differs enormously between filers.** `/submissions/` serves
+EDGAR's rolling recent window: Apple's index reaches 2015, Atlantic American's 1995, and
+**JPMorgan's covers one year** because it files thousands of 424B2s that fill the window. "No
+auditor change on file" without those years would be a far bigger claim for JPMorgan than the data
+supports, so the payload and the card both state the count and the range. A company with **no**
+index returns `status="na"` — "we have not looked" is never rendered as "we looked and found none".
+
+**Not a canonical concept.** No `mapping.py` change: these are `dei` facts and a document census,
+not US-GAAP financial concepts.
