@@ -2657,6 +2657,21 @@
  * differently from the rest of the page", which is exactly the instruction here. No new accent
  * for a marker that is scheduled to be deleted when Phase C lands.
  */
+.hub-synth-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
+  border: 1px solid var(--ext-border, var(--rule));
+  background: var(--ext-bg, transparent);
+  color: var(--ext-ink, var(--ink));
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .hub-head-synth {
   display: inline-flex;
   align-items: center;

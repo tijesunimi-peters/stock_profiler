@@ -87,7 +87,7 @@ export const PROVENANCE = {
       real: ["01 identity & structure", "02 financial detail"],
       synthetic: [
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
-        "04 capital structure",
+        "04 capital structure (partly — share counts and repurchases are real)",
         "05 governance",
         "06 audit & controls",
         "07 obligations",
@@ -438,6 +438,100 @@ function toFootnoteCards(res: FootnotesResponse) {
       rec: defrev.money("deferred_revenue_recognized"),
       close: defrev.money("deferred_revenue_balance"),
       reason: defrev.ok ? null : defrev.reason,
+    },
+  };
+}
+
+/* ------------------------------------------------------------ §04 capital structure */
+
+interface CapitalResponse {
+  fiscal_year: number;
+  groups: {
+    group: string;
+    label: string;
+    status: string;
+    reason: string | null;
+    note?: string;
+    coverage: number;
+    lines: { canonical_concept: string; label: string; value: number | null; unit: string }[];
+  }[];
+}
+
+/** Share counts read in millions/billions, not dollars — `usdCompact` would prefix a `$`. */
+function shareCount(v: number | null): string {
+  if (v === null) return "N/A";
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+  return v.toLocaleString();
+}
+
+/**
+ * §04's three cards from the capital groups.
+ *
+ * What this deliberately does NOT build:
+ *
+ * **The dilution percentage.** Options + unvested over shares outstanding is one division, and
+ * the adapter is allowed to derive (the FCF ruling). It is left underived because the NUMERATOR
+ * IS USUALLY PARTIAL: the unvested-award count is tagged by 13% of recent filers. A percentage
+ * computed from options alone would read as total overhang and understate it, and no chip can fix
+ * a number that is quietly measuring something narrower than its label.
+ *
+ * **A roll-forward that closes.** Opening + issued − repurchased = closing needs every movement
+ * tagged; they are not. The movements the filer reported are shown as rows, with no balancing
+ * plug and no total that implies arithmetic nobody filed.
+ *
+ * **Class structure and insider ownership** stay on their existing states: the `ClassOfStock`
+ * axis is dimensional (Phase C) and votes-per-share is charter prose, while the beneficial
+ * ownership table was verified absent from the tagged DEF 14A.
+ */
+function toCapitalCards(res: CapitalResponse) {
+  const g = (key: string) => {
+    const grp = res.groups.find((x) => x.group === key);
+    const by = new Map((grp?.lines ?? []).map((l) => [l.canonical_concept, l]));
+    return {
+      ok: grp?.status === "ok",
+      reason: grp?.reason ?? null,
+      coverage: grp?.coverage ?? 0,
+      num: (c: string) => by.get(c)?.value ?? null,
+    };
+  };
+  const roll = g("share_rollforward");
+  const dil = g("dilution");
+  const buy = g("buyback");
+
+  /* Only the movements that RESOLVED become rows. An absent movement is omitted rather than
+     shown as a zero — "no shares were repurchased" and "the filer did not tag repurchases" are
+     different statements, and a 0 makes the second look like the first. */
+  const rollRows: { k: string; v: string }[] = [];
+  const push = (k: string, concept: string) => {
+    const v = roll.num(concept);
+    if (v !== null) rollRows.push({ k, v: shareCount(v) });
+  };
+  push("Shares issued", "shares_issued");
+  push("Shares outstanding", "shares_outstanding");
+  push("Issued on option exercise", "shares_issued_options_exercised");
+  push("Issued, new issues", "shares_issued_new");
+  push("Repurchased", "shares_repurchased_count");
+
+  return {
+    roll: rollRows,
+    rollReason: roll.ok ? null : roll.reason,
+    overhang: {
+      opts: shareCount(dil.num("options_outstanding")),
+      rsu: shareCount(dil.num("unvested_awards")),
+      // Not derived — see the docstring. The numerator is partial for most filers.
+      pct: "N/A",
+      reason: dil.ok ? null : dil.reason,
+    },
+    buyback: {
+      auth: buy.num("buyback_authorized") === null ? "N/A" : usdCompact(buy.num("buyback_authorized")!),
+      remaining:
+        buy.num("buyback_remaining") === null ? "N/A" : usdCompact(buy.num("buyback_remaining")!),
+      qtr: buy.num("share_repurchases") === null ? "N/A" : usdCompact(buy.num("share_repurchases")!),
+      src: `FY${res.fiscal_year} · cash flow statement`,
+      shares: shareCount(buy.num("shares_repurchased_count")),
+      reason: buy.ok ? null : buy.reason,
     },
   };
 }
@@ -879,14 +973,23 @@ export const api = {
     // The page's period is deliberately dropped rather than adjusted here: only the facts know
     // which annual period a given filer actually has, so the route resolves the latest one and
     // tells us which it used. Subtracting one from the current year would be a guess.
-    const res = await getJson<FootnotesResponse>(
-      `/v1/companies/${encodeURIComponent(symbol)}/footnotes?period=FY`,
-    );
+    const enc = encodeURIComponent(symbol);
+    // Both are ANNUAL reads for the same reason (see the note above), so they go together.
+    const [res, cap] = await Promise.all([
+      getJson<FootnotesResponse>(`/v1/companies/${enc}/footnotes?period=FY`),
+      getJson<CapitalResponse>(`/v1/companies/${enc}/capital?period=FY`),
+    ]);
     return {
       footnotes: toFootnoteCards(res),
       /** Which annual period these came from — never assume it is the one the page is showing. */
       footnotePeriod: `FY${res.fiscal_year}`,
-      capital: hub.hubData(symbol).capital,
+      /*
+       * §04's three plumbed cards, merged over the fixture's shape. `classes`, `holders`,
+       * `insiderOwn`, `shelf` and `convert` stay on the fixture deliberately: class structure is
+       * dimensional (Phase C), beneficial ownership was verified absent from the tagged DEF 14A,
+       * and the shelf line is a filing-index read that belongs with §06's window handling.
+       */
+      capital: { ...hub.hubData(symbol).capital, ...toCapitalCards(cap) },
       obligations: hub.hubData(symbol).obligations,
       covenant: hub.hubData(symbol).covenant,
     } as CompanyFootnotes;
@@ -1161,7 +1264,8 @@ export interface CompanyFootnotes {
   footnotes: ReturnType<typeof toFootnoteCards>;
   /** e.g. "FY2025" — the annual period the footnotes came from, which the section must show. */
   footnotePeriod: string;
-  capital: hub.HubData["capital"];
+  /** §04: the fixture's shape with the three plumbed cards merged over it. */
+  capital: hub.HubData["capital"] & ReturnType<typeof toCapitalCards>;
   obligations: hub.HubData["obligations"];
   covenant: string;
 }

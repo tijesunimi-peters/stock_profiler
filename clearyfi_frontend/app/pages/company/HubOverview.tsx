@@ -146,6 +146,22 @@ function FootnoteEmpty({ reason }: { reason: string | null }) {
   );
 }
 
+/**
+ * A CARD-level synthetic marker, for a section that is part real and part fixture.
+ *
+ * §03 could be marked at the heading, because all of it is synthetic. §04 cannot: its share
+ * roll-forward and repurchase figures are read from filings while its class structure and
+ * blockholders are still generated. That mixture is the state most likely to mislead — the cards
+ * sit side by side and look identical — so the ones that are not real say so on themselves.
+ */
+function SynthCard({ why }: { why: string }) {
+  return (
+    <span className="hub-synth-card" title={why}>
+      <StatusChip status="na" /> synthetic
+    </span>
+  );
+}
+
 const HUB_YEAR = 2026;
 const HUB_PERIOD = "Q1";
 
@@ -753,17 +769,30 @@ export function HubOverview() {
               <span className="hub-label no-mb">Share count roll-forward</span>
               <Src href={L.tenQ}>Read the 10-Q ↗</Src>
             </div>
-            {d.capital.roll.map((r) => (
-              <div className="hub-kv-row" key={r.k}>
-                <span className="hub-cell">{r.k}</span>
-                <span className="hub-cell-mono">{r.v}</span>
-              </div>
-            ))}
+            {d.capital.roll.length ? (
+              d.capital.roll.map((r) => (
+                <div className="hub-kv-row" key={r.k}>
+                  <span className="hub-cell">{r.k}</span>
+                  <span className="hub-cell-mono">{r.v}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={d.capital.rollReason} />
+            )}
+            {/* No total and no closing balance: the roll-forward only closes if every movement is
+                tagged, and it is not. Rows the filer reported, nothing plugged. */}
             <div className="hub-label hub-mt-sm">Dilution overhang</div>
-            <div className="hub-cell-mono is-soft">
-              {d.capital.overhang.opts} options · {d.capital.overhang.rsu} unvested RSUs ·{" "}
-              <b>{d.capital.overhang.pct}</b> of shares out
-            </div>
+            {d.capital.overhang.opts === "N/A" && d.capital.overhang.rsu === "N/A" ? (
+              <FootnoteEmpty reason={d.capital.overhang.reason} />
+            ) : (
+              <div className="hub-cell-mono is-soft">
+                <Fig v={d.capital.overhang.opts} reason={d.capital.overhang.reason} /> options ·{" "}
+                <Fig v={d.capital.overhang.rsu} reason={d.capital.overhang.reason} /> unvested RSUs
+                {/* The PERCENTAGE is deliberately not derived: the numerator is partial for most
+                    filers (unvested counts are tagged by 13%), so a figure computed from options
+                    alone would read as total overhang and understate it. */}
+              </div>
+            )}
           </div>
 
           <div className="p-card">
@@ -774,15 +803,22 @@ export function HubOverview() {
             <div className="hub-quad">
               <div>
                 <span className="hub-hint">Authorized</span>
-                <div className="hub-big">{d.capital.buyback.auth}</div>
+                <div className="hub-big">
+                  <Fig v={d.capital.buyback.auth} reason={d.capital.buyback.reason} />
+                </div>
               </div>
               <div>
                 <span className="hub-hint">Remaining</span>
-                <div className="hub-big">{d.capital.buyback.remaining}</div>
+                <div className="hub-big">
+                  <Fig v={d.capital.buyback.remaining} reason={d.capital.buyback.reason} />
+                </div>
               </div>
               <div>
-                <span className="hub-hint">Repurchased, quarter</span>
-                <div className="hub-big">{d.capital.buyback.qtr}</div>
+                {/* The period is on the label because it is ANNUAL, not the quarter above it. */}
+                <span className="hub-hint">Repurchased, year</span>
+                <div className="hub-big">
+                  <Fig v={d.capital.buyback.qtr} reason={d.capital.buyback.reason} />
+                </div>
               </div>
               <div>
                 <span className="hub-hint">Source</span>
@@ -790,6 +826,9 @@ export function HubOverview() {
               </div>
             </div>
             <div className="hub-foot-rule">
+              {/* Shelf existence and date ARE reachable from the filing index; the principal
+                  amount and maturity are prose. Generated until that read lands. */}
+              <SynthCard why="Shelf and convertible-note terms are not tagged facts — the filing's existence is reachable, its principal and maturity are prose." />{" "}
               {d.capital.shelf} · {d.capital.convert}
             </div>
           </div>
@@ -797,6 +836,7 @@ export function HubOverview() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Class structure &amp; voting</span>
+              <SynthCard why="The per-class share counts need the ClassOfStock dimensional axis (Phase C), and votes per share is charter prose that is tagged nowhere." />
               <Src href={L.proxy}>Read the proxy ↗</Src>
             </div>
             {d.capital.classes.map((c) => (
@@ -807,6 +847,7 @@ export function HubOverview() {
               </div>
             ))}
             <div className="hub-note">
+              <SynthCard why="Verified absent: the DEF 14A beneficial-ownership table is not XBRL-tagged, so this figure has no structured source." />{" "}
               Insider ownership {d.capital.insiderOwn} of shares outstanding (DEF 14A beneficial
               ownership table)
             </div>
@@ -815,6 +856,7 @@ export function HubOverview() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Reported blockholders · 13D/G</span>
+              <SynthCard why="Schedule 13D/G is a shipped capability but this card is not plumbed onto it yet — these holder names and stakes are generated." />
               <Src href={L.all}>EDGAR filings ↗</Src>
             </div>
             {d.capital.holders.map((h) => (

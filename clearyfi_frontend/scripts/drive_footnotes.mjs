@@ -90,6 +90,32 @@ ck("no card claims we refuse to parse documents", !/rather than parsing document
 ck("the banner does not claim the whole page is synthetic", !/No figure on this page comes from an SEC filing/i.test(all));
 ck("the banner names which sections ARE real", /01 identity[\s\S]{0,60}02 financial detail/i.test(all));
 ck("\u00a703 is marked deferred and synthetic", /Segments & geography[\s\S]{0,160}figures below are synthetic/i.test(all));
+// ---- §04 capital structure
+const s4 = await p.$$eval(".p-card", els=>els
+  .filter(e=>/share count roll-forward|repurchase program/i.test(e.textContent||""))
+  .map(e=>({t:(e.querySelector(".hub-label,.hub-panel-title")?.textContent||"").trim(),
+            txt:(e.textContent||"").replace(/\s+/g," ").slice(0,150),
+            zeros:[...e.querySelectorAll(".hub-cell-mono,.hub-big")]
+              .map(n=>n.textContent.trim()).filter(t=>/^\$?0(\.0+)?$/.test(t))})));
+s4.forEach(c=>console.log(`   §04 ${c.t.padEnd(30)} ${c.txt.slice(c.t.length,120)}`));
+ck("share roll-forward shows real counts or explains itself",
+   /Shares issued[\s\S]{0,40}[\d.]+[BM]/i.test(all) || /roll-forward[\s\S]{0,200}did not|stopped tagging/i.test(all));
+ck("\u00a704 renders no missing value as 0", s4.every(c=>c.zeros.length===0),
+   s4.flatMap(c=>c.zeros).join(","));
+// Scoped to the roll-forward CARD: "of shares outstanding" also appears on the insider-ownership
+// line, which is a different card and a different claim.
+const dilPct = await p.$$eval(".p-card", els=>els
+  .filter(e=>/dilution overhang/i.test(e.textContent||""))
+  .filter(e=>/%\s*of shares out/i.test((e.textContent||"").replace(/\s+/g," "))).length);
+ck("dilution overhang invents no % of shares out", dilPct===0, `${dilPct} card(s) show one`);
+ck("repurchase label says year, not quarter", !/Repurchased, quarter/i.test(all));
+// A section that is PART real is the state most likely to mislead — the fixture cards sit beside
+// the plumbed ones and look identical. Each still-generated §04 card must say so on itself.
+const unmarked = await p.$$eval(".p-card", els=>els
+  .filter(e=>/class structure|reported blockholders/i.test(e.textContent||""))
+  .filter(e=>!e.querySelector(".hub-synth-card"))
+  .map(e=>(e.textContent||"").slice(0,50)));
+ck("every still-synthetic \u00a704 card is marked", unmarked.length===0, unmarked.join(" | "));
 ck("no page errors", errs.length===0, errs.slice(0,2).join(" | "));
 ck("no request was rate-limited", !http429, `${http429} responses were 429`);
 }
