@@ -234,6 +234,16 @@ function subsidiaryStructure(res: SubsidiariesResponse | null) {
       subCount: null,
       offshore: null,
       subs: [],
+      /*
+       * The API's OWN reason, carried to the empty state rather than restated in the view.
+       *
+       * The card used to hard-code "we ingest structured data rather than parsing documents",
+       * which stopped being true the day EX-21 parsing landed — so a filer we simply had not
+       * indexed yet was told a reason that described an old policy instead of its actual gap.
+       * A hard-coded explanation cannot go stale if there isn't one.
+       */
+      subReason:
+        res?.reason ?? "The subsidiary exhibit could not be read for this filer.",
       note:
         (res?.reason ??
           "The subsidiary exhibit could not be read for this filer.") + NOTE_TAIL,
@@ -244,6 +254,7 @@ function subsidiaryStructure(res: SubsidiariesResponse | null) {
   return {
     subCount: res.subsidiaries.length,
     offshore: `${Math.round((outside / res.subsidiaries.length) * 100)}%`,
+    subReason: null as string | null,
     /*
      * When the filer published NO ownership column, the cells are left blank and the panel note
      * says so once. Nineteen identical "N/A" chips down a column is one fact stated nineteen
@@ -260,6 +271,152 @@ function subsidiaryStructure(res: SubsidiariesResponse | null) {
       (res.has_ownership ? "" : "This filer publishes no ownership column in EX-21 — a blank is not 100%. ") +
       (res.cannot ?? "") +
       (res.filing ? ` From the ${res.filing.form} filed ${res.filing.filed}.` : ""),
+  };
+}
+
+
+/* ------------------------------------------------------------ §02 footnote cards */
+
+interface FootnotesResponse {
+  /** The period the route RESOLVED — not necessarily the one the page is showing. */
+  fiscal_year: number;
+  groups: {
+    group: string;
+    label: string;
+    status: string;
+    reason: string | null;
+    coverage: number;
+    lines: { canonical_concept: string; label: string; value: number; unit: string }[];
+  }[];
+}
+
+/** A group's concept values, keyed by concept. Empty when the filer did not disclose the group. */
+function groupValues(res: FootnotesResponse, key: string) {
+  const g = res.groups.find((x) => x.group === key);
+  const by = new Map((g?.lines ?? []).map((l) => [l.canonical_concept, l]));
+  return {
+    ok: g?.status === "ok",
+    /** Why the card is empty, in the filer's terms — with how many filers publish it at all. */
+    reason: g?.reason ?? null,
+    coverage: g?.coverage ?? 0,
+    num: (c: string) => by.get(c)?.value ?? null,
+    /**
+     * A ratio arrives as 0.21; the cards show percentage points.
+     *
+     * `?? null` rather than a check for `undefined`: a line CAN carry a null value, and
+     * `null * 100` is `0` in JavaScript. That is the one failure this product cannot ship — a
+     * value nobody reported rendering as a hard zero a reader would take for a disclosure.
+     */
+    pct: (c: string) => {
+      const v = by.get(c)?.value ?? null;
+      return v === null ? null : v * 100;
+    },
+    money: (c: string) => {
+      const v = by.get(c)?.value ?? null;
+      return v === null ? "N/A" : usdCompact(v);
+    },
+  };
+}
+
+/** Bar width for a value against the largest in its set. Presentation, not a figure. */
+const barWidth = (v: number | null, max: number) =>
+  v === null || !max ? "0%" : `${Math.max(2, Math.round((Math.abs(v) / max) * 100))}%`;
+
+/**
+ * The footnote cards, from the eight groups `/footnotes` serves.
+ *
+ * Several fields the design asks for have no concept behind them and stay N/A. They are NOT the
+ * same kind of gap, so they do not share a reason:
+ *
+ *   * **Revenue disaggregation, stock comp by line item, goodwill by reporting unit** need
+ *     DIMENSIONAL facts (ASC 280 / by-line axes). Phase C ingests those; today the honest state is
+ *     an empty card, not a plausible split.
+ *   * **The weighted-average lease TERM** is an ISO-8601 duration and companyfacts carries no
+ *     duration-typed facts at all — a property of the source, not of our mapping.
+ *   * **Covenants, and the deferred-revenue roll-forward's opening/billed legs**, are prose or
+ *     unreported movements. A roll-forward we cannot close is shown as the two ends we have,
+ *     never as a balanced four-box that implies arithmetic nobody filed.
+ */
+function toFootnoteCards(res: FootnotesResponse) {
+  const rpo = groupValues(res, "revenue_obligations");
+  const inv = groupValues(res, "inventory");
+  const debt = groupValues(res, "debt_maturities");
+  const tax = groupValues(res, "tax_reconciliation");
+  const defrev = groupValues(res, "deferred_revenue");
+  const credit = groupValues(res, "credit_losses");
+  const leases = groupValues(res, "leases");
+  const rd = groupValues(res, "capitalized_rd");
+
+  const ladder = [
+    ["Year 1", "debt_maturity_y1"], ["Year 2", "debt_maturity_y2"], ["Year 3", "debt_maturity_y3"],
+    ["Year 4", "debt_maturity_y4"], ["Year 5", "debt_maturity_y5"], ["Thereafter", "debt_maturity_thereafter"],
+  ] as const;
+  const ladderMax = Math.max(0, ...ladder.map(([, c]) => Math.abs(debt.num(c) ?? 0)));
+
+  const invRows = [
+    ["Raw materials", "inventory_raw_materials"], ["Work in process", "inventory_work_in_process"],
+    ["Finished goods", "inventory_finished_goods"],
+  ] as const;
+
+  const taxRows = [
+    ["U.S. federal statutory rate", "etr_statutory_rate"],
+    ["State & local income taxes", "etr_state_local"],
+    ["Foreign rate differential", "etr_foreign_differential"],
+    ["Valuation allowance change", "etr_valuation_allowance_change"],
+    ["Tax credits", "etr_tax_credits"],
+    ["Other adjustments", "etr_other"],
+  ] as const;
+
+  const pctPts = (v: number | null) => (v === null ? "N/A" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)} pts`);
+
+  return {
+    rpo: {
+      tot: rpo.money("rpo_total"),
+      within12: rpo.num("rpo_pct_next_12m") === null ? "N/A" : `${(rpo.pct("rpo_pct_next_12m") ?? 0).toFixed(0)}%`,
+      reason: rpo.ok ? null : rpo.reason,
+    },
+    // Dimensional (ASC 606 product/service axis) — Phase C.
+    disagg: [] as { label: string; amt: string; pct: string; w: string }[],
+    inv: invRows
+      .filter(([, c]) => inv.num(c) !== null)
+      .map(([label, c]) => ({ label, amt: inv.money(c), yoy: "N/A" })),
+    invReason: inv.ok ? null : inv.reason,
+    debtLadder: debt.ok
+      ? ladder.map(([y, c]) => ({ y, amt: debt.money(c), w: barWidth(debt.num(c), ladderMax), rate: "N/A" }))
+      : [],
+    debtReason: debt.ok ? null : debt.reason,
+    tax: {
+      rows: taxRows.filter(([, c]) => tax.num(c) !== null).map(([k, c]) => ({ k, v: pctPts(tax.pct(c)) })),
+      eff: tax.num("etr_effective_rate") === null ? "N/A" : `${(tax.pct("etr_effective_rate") ?? 0).toFixed(1)}%`,
+      va: tax.money("valuation_allowance"),
+      utb: tax.money("unrecognized_tax_benefits"),
+      reason: tax.ok ? null : tax.reason,
+    },
+    gwUnits: [] as { name: string; gw: string; head: string }[],
+    sbc: { tot: "N/A", lines: [] as { label: string; amt: string; w: string }[] },
+    leases: {
+      tot: leases.money("operating_lease_liabilities"),
+      wa: "N/A",
+      disc: leases.num("operating_lease_discount_rate") === null
+        ? "N/A"
+        : `${(leases.pct("operating_lease_discount_rate") ?? 0).toFixed(1)}%`,
+      reason: leases.ok ? null : leases.reason,
+    },
+    capR: { cap: rd.money("capitalized_software"), exp: rd.money("research_and_development") },
+    allow: {
+      open: "N/A",
+      prov: credit.money("allowance_provision"),
+      wo: credit.money("allowance_writeoffs"),
+      close: credit.money("allowance_credit_losses"),
+      reason: credit.ok ? null : credit.reason,
+    },
+    defrev: {
+      open: "N/A",
+      billed: "N/A",
+      rec: defrev.money("deferred_revenue_recognized"),
+      close: defrev.money("deferred_revenue_balance"),
+      reason: defrev.ok ? null : defrev.reason,
+    },
   };
 }
 
@@ -685,13 +842,33 @@ export const api = {
    * ingest. Coverage varies hard by filer (ETR reconciliation 95.6%, goodwill-by-unit 3.7%), so
    * most of these cards are `N/A` for most companies and that is the honest answer.
    */
-  companyFootnotes: (symbol: string, _year: number, _fiscalPeriod: string) =>
-    resolve<CompanyFootnotes>({
-      footnotes: hub.hubData(symbol).footnotes,
+  /**
+   * §02's footnote cards. **REAL — one `/footnotes` read serving all eight groups.**
+   *
+   * §04 capital and §07 obligations are still fixtures: their concepts are mapped but no card has
+   * been plumbed onto them yet, and half a section on real data is what the banner is for.
+   */
+  companyFootnotes: async (symbol: string, _year: number, _fiscalPeriod: string) => {
+    // ASKED FOR THE PAGE'S QUARTER, THESE CARDS ALL GO BLANK -- and dishonestly so.
+    //
+    // A debt maturity ladder, a tax rate reconciliation, a lease maturity table: these are 10-K
+    // disclosures a filer publishes once a year. Passing the hub's Q1 through returned "not
+    // disclosed" for every one of them, which is true of the quarter and false about the filer.
+    // The page's period is deliberately dropped rather than adjusted here: only the facts know
+    // which annual period a given filer actually has, so the route resolves the latest one and
+    // tells us which it used. Subtracting one from the current year would be a guess.
+    const res = await getJson<FootnotesResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/footnotes?period=FY`,
+    );
+    return {
+      footnotes: toFootnoteCards(res),
+      /** Which annual period these came from — never assume it is the one the page is showing. */
+      footnotePeriod: `FY${res.fiscal_year}`,
       capital: hub.hubData(symbol).capital,
       obligations: hub.hubData(symbol).obligations,
       covenant: hub.hubData(symbol).covenant,
-    }),
+    } as CompanyFootnotes;
+  },
 
   /**
    * §03 segments & geography, plus §02.7's ASC 606 split.
@@ -934,7 +1111,9 @@ export interface CompanyIdentity {
   contextPill: string;
   bizText: string;
   /** `subCount`/`offshore` are null when unknown — never 0, which would read as "none". */
+  /** The adapter's shape: `subReason` is the API's own account of why the list is empty. */
   structure: Omit<hub.HubData["structure"], "subCount" | "offshore"> & {
+    subReason: string | null;
     subCount: number | null;
     offshore: string | null;
   };
@@ -956,7 +1135,10 @@ export interface CompanyMetricSeries {
 }
 
 export interface CompanyFootnotes {
-  footnotes: hub.HubData["footnotes"];
+  /** The adapter's shape, not the fixture's: each card can now carry the REASON it is empty. */
+  footnotes: ReturnType<typeof toFootnoteCards>;
+  /** e.g. "FY2025" — the annual period the footnotes came from, which the section must show. */
+  footnotePeriod: string;
   capital: hub.HubData["capital"];
   obligations: hub.HubData["obligations"];
   covenant: string;

@@ -95,6 +95,30 @@ function CalcDrawer({ calc }: { calc: HubCalc }) {
  * place to thread the reader's actual selection through, and so the three-vocabulary problem
  * (fiscal pair vs 13F quarter-end vs lookback count) is visible at the call site.
  */
+/**
+ * A footnote figure. `N/A` renders as the status chip rather than the letters, and a `reason`
+ * rides the title — so "the filer did not disclose this" and "we cannot source it" stay legible
+ * as different things on a card that shows both.
+ */
+function Fig({ v, reason }: { v: string; reason?: string | null }) {
+  return <span title={reason ?? undefined}>{v === "N/A" ? <StatusChip status="na" /> : v}</span>;
+}
+
+/**
+ * What a footnote card shows when the filer disclosed nothing.
+ *
+ * Footnote disclosure is optional, so this is usually the filer's choice rather than our gap —
+ * and the two are indistinguishable from outside a card. The reason from the API carries how many
+ * filers publish the group at all, which is what lets a reader tell which they are looking at.
+ */
+function FootnoteEmpty({ reason }: { reason: string | null }) {
+  return (
+    <div className="hub-note">
+      {reason ?? "Not disclosed by this filer for this period."}
+    </div>
+  );
+}
+
 const HUB_YEAR = 2026;
 const HUB_PERIOD = "Q1";
 
@@ -181,6 +205,7 @@ export function HubOverview() {
     audit: disclosure.data.audit,
     obligations: footnotes.data.obligations,
     footnotes: footnotes.data.footnotes,
+    footnotePeriod: footnotes.data.footnotePeriod,
     narrative: disclosure.data.narrative,
     covenant: footnotes.data.covenant,
   };
@@ -289,12 +314,14 @@ export function HubOverview() {
               </div>
             ))
           ) : (
-            /* An empty TABLE would read as "this filer has no subsidiaries". It has some; we do
-               not parse the exhibit that lists them. The state has to say which. */
+            /* An empty TABLE would read as "this filer has no subsidiaries" — a claim about the
+               company, when the truth is a claim about us. The reason comes from the API so it
+               names THIS filer's actual gap (no annual report indexed / prose exhibit / no EX-21)
+               rather than one blanket explanation that fits none of them exactly. */
             <StateBlock
               variant="empty"
               title="Not ingested"
-              copy="EX-21 is an exhibit document. We ingest structured filing data rather than parsing documents, so the subsidiary list is unknown — not empty."
+              copy={d.structure.subReason ?? undefined}
             />
           )}
           <div className="hub-note">{d.structure.note}</div>
@@ -417,7 +444,12 @@ export function HubOverview() {
           )}
         </div>
 
-        <div className="hub-divider">Footnote detail — where the explanation usually lives</div>
+        {/* The PERIOD is on the divider on purpose. Footnotes are annual disclosures, so these
+            cards are FY figures sitting directly under quarterly statements — a reader comparing
+            the two without knowing that would draw a false conclusion from a real number. */}
+        <div className="hub-divider">
+          Footnote detail — where the explanation usually lives · {d.footnotePeriod}
+        </div>
 
         <div className="hub-grid">
           <div className="p-card">
@@ -425,25 +457,20 @@ export function HubOverview() {
               <span className="hub-label no-mb">Revenue disaggregation · ASC 606</span>
               <Src href={L.tenK}>Read the footnote ↗</Src>
             </div>
-            {d.footnotes.disagg.map((x) => (
-              <div className="hub-comp-row" key={x.label}>
-                <div className="hub-comp-head">
-                  <span className="hub-cell">{x.label}</span>
-                  <span className="hub-cell-mono">
-                    {x.amt} · {x.pct}
-                  </span>
-                </div>
-                <div className="hub-comp-track">
-                  <div style={{ width: x.w }} />
-                </div>
-              </div>
-            ))}
+            {/* The product/service split is DIMENSIONAL (ASC 606 axis) and lands in Phase C.
+                An empty card is the honest state; a plausible 72/16/12 attached to a real filer
+                would be a fabricated revenue mix. */}
+            <FootnoteEmpty reason="Revenue disaggregation is an ASC 606 dimensional disclosure, which we do not ingest yet — so no split is shown rather than an invented one." />
             <div className="hub-kv-row hub-mt-sm">
               <span className="hub-cell">Remaining performance obligations</span>
-              <span className="hub-cell-mono">{d.footnotes.rpo.tot}</span>
+              <span className="hub-cell-mono">
+                <Fig v={d.footnotes.rpo.tot} reason={d.footnotes.rpo.reason} />
+              </span>
             </div>
             <div className="hub-note">
-              {d.footnotes.rpo.within12} expected to be recognized within 12 months
+              {d.footnotes.rpo.within12 === "N/A"
+                ? (d.footnotes.rpo.reason ?? "Not disclosed for this period.")
+                : `${d.footnotes.rpo.within12} expected to be recognized within 12 months`}
             </div>
           </div>
 
@@ -452,13 +479,19 @@ export function HubOverview() {
               <span className="hub-label no-mb">Inventory composition</span>
               <Src href={L.tenK}>Read the footnote ↗</Src>
             </div>
-            {d.footnotes.inv.map((x) => (
-              <div className="hub-tri-row is-amt" key={x.label}>
-                <span className="hub-cell">{x.label}</span>
-                <span className="hub-cell-mono ta-r">{x.amt}</span>
-                <span className="hub-cell-mono ta-r is-soft">{x.yoy}</span>
-              </div>
-            ))}
+            {d.footnotes.inv.length ? (
+              d.footnotes.inv.map((x) => (
+                <div className="hub-tri-row is-amt" key={x.label}>
+                  <span className="hub-cell">{x.label}</span>
+                  <span className="hub-cell-mono ta-r">{x.amt}</span>
+                  {/* Year-over-year needs the prior period's footnote, which is a second read we
+                      do not make. Absent rather than computed from one column. */}
+                  <span className="hub-cell-mono ta-r is-soft"><Fig v={x.yoy} /></span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={d.footnotes.invReason} />
+            )}
             <div className="hub-note">
               Work-in-process and finished-goods build-ups are disclosed before any excess reserve
               is recorded — read alongside the excess-and-obsolescence estimate.
@@ -470,16 +503,22 @@ export function HubOverview() {
               <span className="hub-label no-mb">Debt maturity ladder</span>
               <Src href={L.tenK}>Read the debt footnote ↗</Src>
             </div>
-            {d.footnotes.debtLadder.map((x) => (
-              <div className="hub-ladder-row" key={x.y}>
-                <span className="hub-cell-mono is-soft">{x.y}</span>
-                <span className="hub-commit-track">
-                  <span style={{ width: x.w }} />
-                </span>
-                <span className="hub-cell-mono ta-r">{x.amt}</span>
-                <span className="hub-cell-mono ta-r is-soft">{x.rate}</span>
-              </div>
-            ))}
+            {d.footnotes.debtLadder.length ? (
+              d.footnotes.debtLadder.map((x) => (
+                <div className="hub-ladder-row" key={x.y}>
+                  <span className="hub-cell-mono is-soft">{x.y}</span>
+                  <span className="hub-commit-track">
+                    <span style={{ width: x.w }} />
+                  </span>
+                  <span className="hub-cell-mono ta-r">{x.amt}</span>
+                  {/* The per-bucket interest rate is not a tagged fact — it lives in the debt
+                      footnote's prose table. */}
+                  <span className="hub-cell-mono ta-r is-soft"><Fig v={x.rate} /></span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={d.footnotes.debtReason} />
+            )}
             <div className="hub-note">Covenants: {d.covenant}</div>
           </div>
 
@@ -488,15 +527,21 @@ export function HubOverview() {
               <span className="hub-label no-mb">Effective tax rate reconciliation</span>
               <CalcChip label={HUB_CALCS.etr.label} open={calc === "etr"} onToggle={() => toggleCalc("etr")} />
             </div>
-            {d.footnotes.tax.rows.map((x) => (
-              <div className="hub-kv-row" key={x.k}>
-                <span className="hub-cell">{x.k}</span>
-                <span className="hub-cell-mono">{x.v}</span>
-              </div>
-            ))}
+            {d.footnotes.tax.rows.length ? (
+              d.footnotes.tax.rows.map((x) => (
+                <div className="hub-kv-row" key={x.k}>
+                  <span className="hub-cell">{x.k}</span>
+                  <span className="hub-cell-mono">{x.v}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={d.footnotes.tax.reason} />
+            )}
             <div className="hub-kv-row is-total">
               <span className="hub-cell is-bold">Effective rate</span>
-              <span className="hub-cell-mono is-bold">{d.footnotes.tax.eff}</span>
+              <span className="hub-cell-mono is-bold">
+                <Fig v={d.footnotes.tax.eff} reason={d.footnotes.tax.reason} />
+              </span>
             </div>
             <div className="hub-note">
               Valuation allowance {d.footnotes.tax.va} · unrecognized tax benefits{" "}
@@ -537,17 +582,23 @@ export function HubOverview() {
               <span className="hub-label no-mb">Stock compensation by line item</span>
               <Src href={L.tenK}>Read the footnote ↗</Src>
             </div>
-            {d.footnotes.sbc.lines.map((x) => (
-              <div className="hub-comp-row" key={x.label}>
-                <div className="hub-comp-head">
-                  <span className="hub-cell">{x.label}</span>
-                  <span className="hub-cell-mono">{x.amt}</span>
+            {d.footnotes.sbc.lines.length ? (
+              d.footnotes.sbc.lines.map((x) => (
+                <div className="hub-comp-row" key={x.label}>
+                  <div className="hub-comp-head">
+                    <span className="hub-cell">{x.label}</span>
+                    <span className="hub-cell-mono">{x.amt}</span>
+                  </div>
+                  <div className="hub-comp-track">
+                    <div style={{ width: x.w }} />
+                  </div>
                 </div>
-                <div className="hub-comp-track">
-                  <div style={{ width: x.w }} />
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              /* Total SBC is a single tagged fact; the split ACROSS LINE ITEMS is dimensional.
+                 The total lives in the note below, so the card is not empty — only the split is. */
+              <FootnoteEmpty reason="Stock compensation by line item needs the by-line dimensional facts, which we do not ingest yet. The total is below." />
+            )}
             <div className="hub-note">
               Total {d.footnotes.sbc.tot} · R&amp;D capitalization: {d.footnotes.capR.cap}{" "}
               capitalized vs {d.footnotes.capR.exp} expensed
@@ -559,13 +610,20 @@ export function HubOverview() {
               <span className="hub-label no-mb">Goodwill by reporting unit</span>
               <CalcChip label={HUB_CALCS.gwhead.label} open={calc === "gwhead"} onToggle={() => toggleCalc("gwhead")} />
             </div>
-            {d.footnotes.gwUnits.map((g, i) => (
-              <div className="hub-tri-row is-amt" key={`${g.name}${i}`}>
-                <span className="hub-cell">{g.name}</span>
-                <span className="hub-cell-mono ta-r">{g.gw}</span>
-                <span className="hub-cell-mono ta-r is-soft">{g.head} headroom</span>
-              </div>
-            ))}
+            {d.footnotes.gwUnits.length ? (
+              d.footnotes.gwUnits.map((g, i) => (
+                <div className="hub-tri-row is-amt" key={`${g.name}${i}`}>
+                  <span className="hub-cell">{g.name}</span>
+                  <span className="hub-cell-mono ta-r">{g.gw}</span>
+                  <span className="hub-cell-mono ta-r is-soft">{g.head} headroom</span>
+                </div>
+              ))
+            ) : (
+              /* Without this the card renders its LEASES footer alone, under a heading about
+                 goodwill — a real number sitting under the wrong title. Reporting-unit goodwill
+                 is dimensional, and headroom is a prose disclosure we would have to invent. */
+              <FootnoteEmpty reason="Goodwill by reporting unit is a dimensional disclosure we do not ingest yet, and impairment headroom is not a tagged fact." />
+            )}
             {calc === "gwhead" && <CalcDrawer calc={HUB_CALCS.gwhead} />}
             <div className="hub-note">
               Leases: {d.footnotes.leases.tot} liability · {d.footnotes.leases.wa}{" "}

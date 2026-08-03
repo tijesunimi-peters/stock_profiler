@@ -596,7 +596,9 @@ async def get_company_profile(
 )
 async def get_footnotes(
     symbol: str,
-    year: int = Query(..., description="Fiscal year, e.g. 2025"),
+    year: int | None = Query(
+        None, description="Fiscal year, e.g. 2025. Omit for the latest one on file."
+    ),
     period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
     groups: str | None = Query(
         None, description="Comma-separated group keys; omit for all of them."
@@ -620,6 +622,14 @@ async def get_footnotes(
 
     A group with nothing for this period returns `status="na"` with that reason attached -- never
     an empty line list presented as zeros.
+
+    **`year` is optional, and that is load-bearing.** Nearly all of these are ANNUAL (10-K)
+    disclosures: a filer publishes its debt maturity ladder and its tax reconciliation once a year,
+    not every quarter. Asked for a QUARTER, the honest answer is "not disclosed in Q1" -- true of
+    the quarter and thoroughly misleading about the filer, who did disclose it. Omitting `year`
+    resolves to the latest period on file matching `period` (default `FY`), and the response says
+    which one it used. Only the facts can answer that, which is why it is resolved here rather
+    than guessed at by a caller subtracting one from the current year.
     """
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
@@ -627,13 +637,23 @@ async def get_footnotes(
     if not facts:
         raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
 
+    resolved_year = year
+    if resolved_year is None:
+        years = [y for y, p in available_periods(facts) if p == period]
+        if not years:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No {period} period on file for {symbol}.",
+            )
+        resolved_year = max(years)
+
     wanted = [g.strip() for g in groups.split(",")] if groups else list(FOOTNOTE_GROUPS)
     return {
         "cik": cik,
-        "fiscal_year": year,
+        "fiscal_year": resolved_year,
         "fiscal_period": period,
         "groups": [
-            build_footnote_group(facts, cik, g, year, period)
+            build_footnote_group(facts, cik, g, resolved_year, period)
             for g in wanted
             if g in FOOTNOTE_GROUPS
         ],
