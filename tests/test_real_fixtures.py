@@ -44,7 +44,11 @@ def test_aapl_income_statement_matches_real_filing():
     # (income + balance + cashflow), not just this statement's -- so these totals moved
     # when balance-sheet/cashflow concepts were added to mapping.py, even though this test
     # only exercises the income statement. See test_..._balance_and_cashflow below.
-    assert coverage_report(period_facts) == {"unmapped": 242, "mapped": 183}
+    # Moved 2026-08-02 by the §02 FOOTNOTE concepts (mapping.py): ~27 canonical concepts for
+    # inventory composition, the debt ladder, the tax reconciliation, deferred revenue,
+    # credit losses and leases. Facts that were unmapped now map, which is the point of
+    # adding them -- an intentional coverage improvement, per this file's own note above.
+    assert coverage_report(period_facts) == {"unmapped": 224, "mapped": 201}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -108,7 +112,7 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert latest_fy == (2026, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 315, "mapped": 203}
+    assert coverage_report(period_facts) == {"unmapped": 286, "mapped": 232}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -155,7 +159,7 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     assert latest_fy == (2025, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 872, "mapped": 131}
+    assert coverage_report(period_facts) == {"unmapped": 846, "mapped": 157}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"

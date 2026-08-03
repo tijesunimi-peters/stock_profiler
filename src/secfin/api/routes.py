@@ -38,7 +38,7 @@ from secfin.normalize.flows import (
     summarize_activity,
 )
 from secfin.normalize.geography import classify_location
-from secfin.normalize.mapping import candidate_tags
+from secfin.normalize.mapping import FOOTNOTE_GROUPS, candidate_tags
 from secfin.normalize.metrics import (
     METRIC_DIRECTION,
     METRIC_KEYS,
@@ -118,6 +118,7 @@ from secfin.normalize.screening import (
 )
 from secfin.normalize.sic import sic2_label
 from secfin.normalize.statements import (
+    build_footnote_group,
     available_periods,
     build_normalized_view,
     build_statement,
@@ -587,6 +588,60 @@ async def get_company_profile(
         first_filing_date=profile.first_filing_date,
     )
 
+
+@public_router.get(
+    "/companies/{symbol}/footnotes",
+    tags=["Financials"],
+    summary="Footnote detail groups for one fiscal period (inventory, tax, leases, ...)",
+)
+async def get_footnotes(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2025"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    groups: str | None = Query(
+        None, description="Comma-separated group keys; omit for all of them."
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """The footnote cards' figures -- eight named groups over the SAME facts the statements use.
+
+    Served as GROUPS rather than one concept at a time because a footnote card is a group: a
+    caller asks once per card, and the eight arrive on one read of the company's facts instead of
+    eight. Same resolution as a statement line (primary column, restatements ranked), so a
+    footnote and the statement above it cannot disagree about which filing they came from.
+
+    **These are optional disclosures.** A filer publishing no inventory composition is exercising
+    a choice, not revealing a gap in our ingest, and the two look identical from outside -- so
+    every group carries `coverage`: the share of surveyed filers who publish it at all
+    (`scripts/v1_tag_coverage.py`). The tax reconciliation is on 96% of filers; R&D capitalisation
+    is on 4%. A blank card means very different things at those two ends, and the number is what
+    lets a reader tell which.
+
+    A group with nothing for this period returns `status="na"` with that reason attached -- never
+    an empty line list presented as zeros.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+
+    wanted = [g.strip() for g in groups.split(",")] if groups else list(FOOTNOTE_GROUPS)
+    return {
+        "cik": cik,
+        "fiscal_year": year,
+        "fiscal_period": period,
+        "groups": [
+            build_footnote_group(facts, cik, g, year, period)
+            for g in wanted
+            if g in FOOTNOTE_GROUPS
+        ],
+        "cannot": (
+            "Footnote disclosure is optional and varies by filer -- an absent group is usually a "
+            "choice rather than missing data. `coverage` is how often filers publish each one."
+        ),
+    }
 
 @public_router.get(
     "/companies/{symbol}/subsidiaries",

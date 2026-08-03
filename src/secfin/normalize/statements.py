@@ -31,7 +31,14 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 
-from secfin.normalize.mapping import STATEMENT_CONCEPTS, candidate_tags, label_for_concept
+from secfin.normalize.mapping import (
+    FOOTNOTE_GROUPS,
+    STATEMENT_CONCEPTS,
+    candidate_tags,
+    footnote_concepts,
+    footnote_primary,
+    label_for_concept,
+)
 from secfin.normalize.schema import (
     FiscalPeriod,
     NormalizedFactLine,
@@ -173,6 +180,96 @@ def build_statement(
         accession=meta.accession if meta else None,
         lines=lines,
     )
+
+
+def build_footnote_group(
+    facts: list[RawFact],
+    cik: int,
+    group: str,
+    fiscal_year: int,
+    fiscal_period: FiscalPeriod,
+) -> dict:
+    """One footnote card's concepts for a period, resolved the same way a statement line is.
+
+    Footnote disclosures are ordinary facts in the same filing, so they need the same two passes
+    `build_statement` does -- primary-column identification, then best-fact-per-tag with
+    restatements ranked. Resolving them independently would put a footnote value on a comparative
+    column while the statement above it showed the primary one, and the two would quietly disagree
+    about the same filing.
+
+    The one difference is which tags anchor the primary column: this group's, not a statement's.
+    A filer can disclose a footnote in a period where the statement concepts it usually sits
+    beside are absent.
+
+    Absent concepts are simply not in `lines` -- footnote disclosure is optional, so an absence is
+    the filer's choice far more often than it is our gap, and `coverage` on the payload says how
+    often filers publish this group at all.
+    """
+    concepts = footnote_concepts(group)
+    if not concepts:
+        return {"group": group, "lines": [], "status": "na", "reason": f"Unknown footnote group '{group}'."}
+
+    period = (fiscal_year, fiscal_period)
+    in_period = [f for f in facts if _period_key(f) == period]
+    group_tags = {tag for concept in concepts for tag in candidate_tags(concept)}
+
+    primary_end = max(
+        (_column_end(f) for f in in_period if f.gaap_tag in group_tags and f.taxonomy != "dei"),
+        default="",
+    ) or max((_column_end(f) for f in in_period), default="")
+
+    best_by_tag: dict[str, RawFact] = {}
+    for f in in_period:
+        if f.taxonomy != "dei" and _column_end(f) != primary_end:
+            continue
+        existing = best_by_tag.get(f.gaap_tag)
+        if existing is None or _rank(f, fiscal_period) > _rank(existing, fiscal_period):
+            best_by_tag[f.gaap_tag] = f
+
+    lines: list[StatementLine] = []
+    meta: RawFact | None = None
+    for concept in concepts:
+        for tag in candidate_tags(concept):
+            fact = best_by_tag.get(tag)
+            if fact is not None and fact.value is not None:
+                if fact.taxonomy != "dei":
+                    meta = meta or fact
+                lines.append(
+                    StatementLine(
+                        canonical_concept=concept,
+                        label=label_for_concept(concept),
+                        value=fact.value,
+                        unit=fact.unit,
+                        source_tag=fact.gaap_tag,
+                        is_extension=fact.is_extension,
+                    )
+                )
+                break
+
+    label, _concepts, coverage, _primary = FOOTNOTE_GROUPS[group]
+    # `ok` requires one of the concepts the card is NAMED for, not merely any line in the group.
+    # "R&D capitalisation" resolving only the R&D EXPENSE is not R&D capitalisation, and reporting
+    # it green implies a disclosure the filer never made.
+    primary = set(footnote_primary(group))
+    resolved = {ln.canonical_concept for ln in lines}
+    has_primary = bool(primary & resolved)
+    return {
+        "group": group,
+        "label": label,
+        "lines": lines if has_primary else [],
+        "coverage": coverage,
+        "status": "ok" if has_primary else "na",
+        "reason": None
+        if has_primary
+        else (
+            f"This filer did not disclose {label.lower()} for this period. About "
+            f"{round(coverage * 100)}% of filers publish it, so an absence here is usually the "
+            "filer's choice rather than a gap in our data."
+        ),
+        "form": meta.form if meta else None,
+        "filed": meta.filed if meta else None,
+        "accession": meta.accession if meta else None,
+    }
 
 
 def build_normalized_view(

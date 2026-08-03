@@ -527,6 +527,134 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         "Change in Accounts Payable",
         ["IncreaseDecreaseInAccountsPayable"],
     ),
+    # ---------------------------------------------------------------- footnote detail (§02)
+    #
+    # These do not sit on a statement -- they are the footnote cards on the company Overview, and
+    # they reach the API through FOOTNOTE_GROUPS below rather than STATEMENT_CONCEPTS.
+    #
+    # Every tag here was taken from a COVERAGE SURVEY of the stored facts (scripts/v1_tag_coverage.py,
+    # 2026-08-02), not from the taxonomy docs. That matters: the survey's "what filers tag instead"
+    # pass showed the obvious candidate is often the less-used one. The plain inventory components
+    # beat the `NetOfReserves` variants; `StockRepurchasedDuringPeriodShares` beats the `AndRetired`
+    # spelling; the CECL-era allowance tags scored ZERO while the legacy ones carry the data.
+    # Coverage is noted per group -- these are footnote disclosures, so a concept absent for a given
+    # filer is normal and must read as N/A rather than as a gap.
+
+    # Remaining performance obligations (~29% of filers; 44% of the well-covered ones).
+    "rpo_total": (
+        "Remaining Performance Obligations",
+        ["RevenueRemainingPerformanceObligation"],
+    ),
+    "rpo_pct_next_12m": (
+        "RPO Expected Within 12 Months",
+        ["RevenueRemainingPerformanceObligationPercentage"],
+    ),
+
+    # Inventory composition (~27%). Plain components first -- they outscored `NetOfReserves` 27% to
+    # 18% in the survey, which is the reverse of what the taxonomy's naming suggests.
+    "inventory_raw_materials": (
+        "Raw Materials",
+        ["InventoryRawMaterials", "InventoryRawMaterialsNetOfReserves"],
+    ),
+    "inventory_work_in_process": (
+        "Work in Process",
+        ["InventoryWorkInProcess", "InventoryWorkInProcessNetOfReserves"],
+    ),
+    "inventory_finished_goods": (
+        "Finished Goods",
+        ["InventoryFinishedGoods", "InventoryFinishedGoodsNetOfReserves"],
+    ),
+
+    # Debt maturity ladder (~60%, 89% of the well-covered). Six buckets: filers use either
+    # "NextTwelveMonths" or "RemainderOfFiscalYear" for the near leg, never both.
+    "debt_maturity_y1": (
+        "Debt Maturing in Year 1",
+        [
+            "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths",
+            "LongTermDebtMaturitiesRepaymentsOfPrincipalRemainderOfFiscalYear",
+        ],
+    ),
+    "debt_maturity_y2": ("Year 2", ["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"]),
+    "debt_maturity_y3": ("Year 3", ["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearThree"]),
+    "debt_maturity_y4": ("Year 4", ["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFour"]),
+    "debt_maturity_y5": ("Year 5", ["LongTermDebtMaturitiesRepaymentsOfPrincipalInYearFive"]),
+    "debt_maturity_thereafter": (
+        "Thereafter",
+        ["LongTermDebtMaturitiesRepaymentsOfPrincipalAfterYearFive"],
+    ),
+
+    # Effective tax rate reconciliation (~96% for the statutory rate -- the best-covered footnote
+    # on the page). The line set below is the one filers ACTUALLY use, ordered by survey coverage.
+    "etr_statutory_rate": (
+        "U.S. Federal Statutory Rate",
+        ["EffectiveIncomeTaxRateReconciliationAtFederalStatutoryIncomeTaxRate"],
+    ),
+    "etr_state_local": (
+        "State & Local Income Taxes",
+        ["EffectiveIncomeTaxRateReconciliationStateAndLocalIncomeTaxes"],
+    ),
+    "etr_foreign_differential": (
+        "Foreign Rate Differential",
+        ["EffectiveIncomeTaxRateReconciliationForeignIncomeTaxRateDifferential"],
+    ),
+    "etr_valuation_allowance_change": (
+        "Valuation Allowance Change",
+        ["EffectiveIncomeTaxRateReconciliationChangeInDeferredTaxAssetsValuationAllowance"],
+    ),
+    "etr_tax_credits": (
+        "Tax Credits",
+        ["EffectiveIncomeTaxRateReconciliationTaxCredits"],
+    ),
+    "etr_other": (
+        "Other Adjustments",
+        ["EffectiveIncomeTaxRateReconciliationOtherAdjustments"],
+    ),
+    "etr_effective_rate": (
+        "Effective Rate",
+        ["EffectiveIncomeTaxRateContinuingOperations"],
+    ),
+    "unrecognized_tax_benefits": ("Unrecognized Tax Benefits", ["UnrecognizedTaxBenefits"]),
+    "valuation_allowance": (
+        "Valuation Allowance",
+        ["DeferredTaxAssetsValuationAllowance"],
+    ),
+
+    # Deferred revenue roll-forward (~53%). ASC 606 renamed the balance; both spellings persist.
+    "deferred_revenue_balance": (
+        "Deferred Revenue",
+        ["ContractWithCustomerLiability", "ContractWithCustomerLiabilityCurrent", "DeferredRevenueCurrent"],
+    ),
+    "deferred_revenue_recognized": (
+        "Recognized in Revenue",
+        ["ContractWithCustomerLiabilityRevenueRecognized"],
+    ),
+
+    # Allowance for credit losses (~56%). The CECL-era `AccountsReceivableAllowanceForCreditLoss*`
+    # tags scored ZERO in the survey; the legacy names carry the data.
+    "allowance_credit_losses": (
+        "Allowance for Credit Losses",
+        ["AllowanceForDoubtfulAccountsReceivableCurrent", "AllowanceForDoubtfulAccountsReceivable"],
+    ),
+    "allowance_provision": ("Provision", ["ProvisionForDoubtfulAccounts"]),
+    "allowance_writeoffs": (
+        "Write-offs",
+        ["AllowanceForDoubtfulAccountsReceivableWriteOffs"],
+    ),
+
+    # Leases (~82% liability, 73% discount rate). The weighted-average TERM is deliberately absent:
+    # it is an ISO-8601 duration, and companyfacts carries no duration-typed facts at all -- the
+    # survey found it on zero filers out of the whole volume.
+    "operating_lease_discount_rate": (
+        "Weighted-Average Discount Rate",
+        ["OperatingLeaseWeightedAverageDiscountRatePercent"],
+    ),
+
+    # R&D capitalisation (~4%). Kept because the card exists; it will be N/A for almost everyone,
+    # which is the honest answer rather than a missing row.
+    "capitalized_software": (
+        "Capitalized Software",
+        ["CapitalizedComputerSoftwareNet", "CapitalizedComputerSoftwareGross"],
+    ),
 }
 
 # Which canonical concepts belong on which statement, in display order.
@@ -633,6 +761,93 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "interest_paid",
     ],
 }
+
+# Footnote CARDS -> the concepts each one shows, in display order.
+#
+# Statements have `STATEMENT_CONCEPTS`; footnotes have this. They are separate because a footnote
+# card is not a statement: it is a small named group of disclosures that travel together, and the
+# API serves them as groups so a caller asks once per card rather than once per concept.
+#
+# The fourth element is the group's PRIMARY concepts -- the ones the card is actually named for.
+# A group is only `ok` when one of those resolves. Without that distinction "R&D capitalisation"
+# reported ok on Apple by resolving the R&D EXPENSE line, implying we had capitalisation data for a
+# filer that capitalises none; and "Inventory composition" reported ok on the inventory TOTAL,
+# which is not a composition. A card named for a thing must not go green on its supporting cast.
+#
+# `coverage` is the share of surveyed filers carrying the group's PRIMARY concept
+# (scripts/v1_tag_coverage.py, 2026-08-02). It is on the payload deliberately: these are footnote
+# disclosures, so a card being empty for a filer is usually the filer's choice rather than our gap,
+# and a reader deserves to know which is likelier before concluding anything from a blank.
+FOOTNOTE_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
+    "revenue_obligations": (
+        "Remaining performance obligations",
+        ["rpo_total", "rpo_pct_next_12m"],
+        0.29,
+        ["rpo_total"],
+    ),
+    "inventory": (
+        "Inventory composition",
+        ["inventory_raw_materials", "inventory_work_in_process", "inventory_finished_goods", "inventory"],
+        0.27,
+        ["inventory_raw_materials", "inventory_work_in_process", "inventory_finished_goods"],
+    ),
+    "debt_maturities": (
+        "Debt maturity ladder",
+        [
+            "debt_maturity_y1", "debt_maturity_y2", "debt_maturity_y3",
+            "debt_maturity_y4", "debt_maturity_y5", "debt_maturity_thereafter",
+        ],
+        0.60,
+        ["debt_maturity_y1", "debt_maturity_y2"],
+    ),
+    "tax_reconciliation": (
+        "Effective tax rate reconciliation",
+        [
+            "etr_statutory_rate", "etr_state_local", "etr_foreign_differential",
+            "etr_valuation_allowance_change", "etr_tax_credits", "etr_other",
+            "etr_effective_rate", "valuation_allowance", "unrecognized_tax_benefits",
+        ],
+        0.96,
+        ["etr_statutory_rate", "etr_effective_rate"],
+    ),
+    "deferred_revenue": (
+        "Deferred revenue",
+        ["deferred_revenue_balance", "deferred_revenue_recognized"],
+        0.53,
+        ["deferred_revenue_balance"],
+    ),
+    "credit_losses": (
+        "Allowance for credit losses",
+        ["allowance_credit_losses", "allowance_provision", "allowance_writeoffs"],
+        0.56,
+        ["allowance_credit_losses"],
+    ),
+    "leases": (
+        "Leases",
+        ["operating_lease_liabilities", "operating_lease_right_of_use_asset", "operating_lease_discount_rate"],
+        0.82,
+        ["operating_lease_liabilities"],
+    ),
+    "capitalized_rd": (
+        "R&D capitalisation",
+        ["capitalized_software", "research_and_development"],
+        0.04,
+        ["capitalized_software"],
+    ),
+}
+
+
+def footnote_concepts(group: str) -> list[str]:
+    """The concepts one footnote card shows, in display order. Empty for an unknown group."""
+    entry = FOOTNOTE_GROUPS.get(group)
+    return list(entry[1]) if entry else []
+
+
+def footnote_primary(group: str) -> list[str]:
+    """The concepts a footnote card is NAMED for. A card is only `ok` when one of these resolves."""
+    entry = FOOTNOTE_GROUPS.get(group)
+    return list(entry[3]) if entry else []
+
 
 # Reverse index: gaap_tag -> canonical_concept (first concept that claims the tag wins).
 _TAG_TO_CONCEPT: dict[str, str] = {}

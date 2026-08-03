@@ -56,6 +56,44 @@ revenue -> [
 When building a statement, for each concept we take the **first candidate that has a value**
 for that period. This is how we absorb tag inconsistency across companies and across years.
 
+### Footnote groups (`FOOTNOTE_GROUPS`, added 2026-08-02)
+
+Statements have `STATEMENT_CONCEPTS`; the company Overview's footnote cards have
+`FOOTNOTE_GROUPS`, served by `GET /v1/companies/{symbol}/footnotes`. Eight named groups —
+remaining performance obligations, inventory composition, the debt maturity ladder, the effective
+tax rate reconciliation, deferred revenue, allowance for credit losses, leases, R&D capitalisation.
+
+Three things about them differ from statement concepts and matter:
+
+**1. The candidate tags came from a coverage survey, not the taxonomy.**
+`scripts/v1_tag_coverage.py` measures which tags filers *actually* use, and its "what filers tag
+instead" pass repeatedly showed the obvious candidate is the less-used one:
+
+| what the taxonomy suggests | what filers use | |
+|---|---|---|
+| `InventoryRawMaterialsNetOfReserves` | `InventoryRawMaterials` | 18% vs **27%** |
+| `StockRepurchasedAndRetiredDuringPeriodShares` | `StockRepurchasedDuringPeriodShares` | 24% vs **47%** |
+| `AccountsReceivableAllowanceForCreditLoss*` (CECL) | `AllowanceForDoubtfulAccounts*` (legacy) | **0%** vs 56% |
+
+Re-run the survey before adding tags here. Guessing from the taxonomy is how a concept ends up
+mapped to a tag nobody files.
+
+**2. Every group carries `coverage`** — the share of surveyed filers who publish it at all.
+Footnote disclosure is optional, so an absent group is usually the filer's choice rather than a gap
+in our ingest, and the two are indistinguishable from outside. The tax reconciliation is on **96%**
+of filers; R&D capitalisation is on **4%**. A blank card means very different things at those ends.
+
+**3. A group is `ok` only when a PRIMARY concept resolves** — the concepts the card is named for,
+not any line in the group. Without that rule "R&D capitalisation" went green on Apple by resolving
+the R&D *expense* line, implying a disclosure Apple never made, and "Inventory composition" went
+green on the inventory *total*, which is not a composition. **A card named for a thing must not go
+green on its supporting cast.**
+
+One concept is deliberately absent: the weighted-average operating lease **term**. It is an
+ISO-8601 duration, and companyfacts carries no duration-typed facts at all — the survey found it on
+zero filers across the whole volume. That is the same structural exclusion that keeps text facts
+out, and it is a property of the source rather than of our mapping.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.
