@@ -245,6 +245,7 @@ export function HubOverview() {
     custConc: segments.data.custConc,
     capital: footnotes.data.capital,
     governance: governance.data.governance,
+    pvp: governance.data.pvp,
     audit: disclosure.data.audit,
     obligations: footnotes.data.obligations,
     footnotes: footnotes.data.footnotes,
@@ -877,6 +878,7 @@ export function HubOverview() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Officer &amp; director changes</span>
+              <SynthCard why="The ROLE is available from Form 3/4/5, but the event and its date need 8-K Item 5.02, which is indexed for only a handful of filers so far. The action verb is prose." />
               <Src href={L.eightK}>Read the 8-Ks ↗</Src>
             </div>
             {d.governance.turnover.map((t, i) => (
@@ -886,12 +888,13 @@ export function HubOverview() {
                 <span className="hub-cell-mono ta-r">{t.date}</span>
               </div>
             ))}
-            <div className="hub-note">Every row traces to an 8-K Item 5.02 filing.</div>
+            <div className="hub-note">Every row will trace to an 8-K Item 5.02 filing once this card is plumbed.</div>
           </div>
 
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Board composition</span>
+              <SynthCard why="Verified absent: board size, independence and tenure are not XBRL-tagged in the DEF 14A. No structured source carries them." />
               <Src href={L.proxy}>Read the proxy ↗</Src>
             </div>
             <div className="hub-quad">
@@ -919,23 +922,44 @@ export function HubOverview() {
 
           <div className="p-card">
             <div className="hub-panel-head">
-              <span className="hub-label no-mb">CEO pay mix · summary compensation table</span>
+              {/* RE-POINTED, not re-laid-out (operator ruling 2026-08-03). The summary
+                  compensation table's mix is tagged in no structured source; compensation
+                  actually paid is the disclosure the SEC made machine-readable. Same bar list. */}
+              <span className="hub-label no-mb">CEO compensation actually paid · DEF 14A</span>
               <Src href={L.proxy}>Read the proxy ↗</Src>
             </div>
-            {d.governance.comp.map((c) => (
-              <div className="hub-comp-row" key={c.k}>
-                <div className="hub-comp-head">
-                  <span className="hub-cell">{c.k}</span>
-                  <span className="hub-cell-mono">{c.pct}</span>
+            {d.pvp.rows.length ? (
+              d.pvp.rows.map((c) => (
+                <div className="hub-comp-row" key={c.k}>
+                  <div className="hub-comp-head">
+                    <span className="hub-cell">{c.k}</span>
+                    <span className="hub-cell-mono">{c.pct}</span>
+                  </div>
+                  <div className="hub-comp-track">
+                    {/* A negative year is a real disclosure, not a zero: unvested equity marked
+                        down below the grant value. The bar's WIDTH is magnitude; the class
+                        carries the sign, so a −$4.1M year reads as a bar, not as nothing. */}
+                    <div className={c.negative ? "is-negative" : undefined} style={{ width: c.w }} />
+                  </div>
                 </div>
-                <div className="hub-comp-track">
-                  <div style={{ width: c.w }} />
-                </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <FootnoteEmpty reason={d.pvp.reason} />
+            )}
             <div className="hub-note">
-              Total {d.governance.ceoPay} · CEO pay ratio {d.governance.ratio} · say-on-pay support{" "}
-              {d.governance.sayOnPay}
+              {d.pvp.rows.length ? (
+                <>
+                  Latest summary-table total <Fig v={d.pvp.latestTotal} /> · shareholder return{" "}
+                  <Fig v={d.pvp.tsr} /> vs peer group <Fig v={d.pvp.peerTsr} /> (value of $100
+                  invested, not a percentage)
+                  {d.pvp.measure ? ` · company-selected measure: ${d.pvp.measure}` : ""}
+                </>
+              ) : null}
+            </div>
+            <div className="hub-note">
+              Compensation actually paid marks unvested equity to market — it is not cash received,
+              and it moves with the share price. Pay mix, CEO pay ratio and say-on-pay support are
+              tagged in no SEC structured source.
             </div>
           </div>
 
@@ -947,6 +971,7 @@ export function HubOverview() {
           <div className="p-card">
             <div className="hub-panel-head is-split">
               <span className="hub-label no-mb">Insider transactions</span>
+              <SynthCard why="The insider store holds 163,189 real rows, but transaction codes were added to the parser after it was filled and sit on 0.03% of them. Plumbing this card before the re-parse finishes would show a code for almost nobody." />
               <span className="hub-hint">{insider.window}</span>
             </div>
             <div className="hub-ins-summary">

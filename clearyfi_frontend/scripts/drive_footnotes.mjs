@@ -116,6 +116,26 @@ const unmarked = await p.$$eval(".p-card", els=>els
   .filter(e=>!e.querySelector(".hub-synth-card"))
   .map(e=>(e.textContent||"").slice(0,50)));
 ck("every still-synthetic \u00a704 card is marked", unmarked.length===0, unmarked.join(" | "));
+const un5 = await p.$$eval(".p-card", els=>els
+  .filter(e=>/officer & director changes|board composition|insider transactions/i.test(e.textContent||""))
+  .filter(e=>!e.querySelector(".hub-synth-card"))
+  .map(e=>(e.textContent||"").slice(0,44)));
+ck("every still-synthetic \u00a705 card is marked", un5.length===0, un5.join(" | "));
+// A fixture card must not assert provenance it does not have.
+ck("no card claims rows trace to a filing they were not read from",
+   !/Every row traces to an 8-K/i.test(all));
+// ---- §05.3 pay versus performance
+const pvp = await p.$$eval(".p-card", els=>els
+  .filter(e=>/compensation actually paid/i.test(e.textContent||""))
+  .map(e=>({txt:(e.textContent||"").replace(/\s+/g," ").slice(0,220),
+            bars:e.querySelectorAll(".hub-comp-row").length,
+            neg:e.querySelectorAll(".hub-comp-track > .is-negative").length})));
+pvp.forEach(c=>console.log(`   §05.3 bars=${c.bars} neg=${c.neg} ${c.txt.slice(0,110)}`));
+ck("\u00a705.3 shows compensation actually paid, not a pay mix", pvp.length===1 && !/pay mix ·/i.test(all));
+ck("\u00a705.3 carries the mark-to-market caveat", /not cash received/i.test(all));
+ck("TSR is never shown as a percentage", !/shareholder return[^·]{0,24}%/i.test(all));
+ck("the untagged three are named, not silently absent",
+   /pay ratio and say-on-pay support are\s*tagged in no SEC structured source/i.test(all.replace(/\s+/g," ")));
 ck("no page errors", errs.length===0, errs.slice(0,2).join(" | "));
 ck("no request was rate-limited", !http429, `${http429} responses were 429`);
 }

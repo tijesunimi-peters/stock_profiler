@@ -88,7 +88,7 @@ export const PROVENANCE = {
       synthetic: [
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
-        "05 governance",
+        "05 governance (partly \u2014 CEO compensation actually paid is real)",
         "06 audit & controls",
         "07 obligations",
         "08 risk & events",
@@ -439,6 +439,71 @@ function toFootnoteCards(res: FootnotesResponse) {
       close: defrev.money("deferred_revenue_balance"),
       reason: defrev.ok ? null : defrev.reason,
     },
+  };
+}
+
+/* ------------------------------------------------------------ §05.3 pay versus performance */
+
+interface PvpResponse {
+  status: string;
+  reason: string | null;
+  company_measure_name: string | null;
+  governance: {
+    insider_trading_policy_adopted: boolean | null;
+    award_timing_considers_mnpi: boolean | null;
+    award_timing_predetermined: boolean | null;
+  };
+  years: {
+    period_end: string | null;
+    peo_total: number | null;
+    peo_actually_paid: number | null;
+    tsr: number | null;
+    peer_tsr: number | null;
+  }[];
+  filing?: { form: string; filed: string; accession: string } | null;
+}
+
+/**
+ * §05.3, re-pointed from pay MIX to pay VERSUS PERFORMANCE (operator ruling 2026-08-03).
+ *
+ * The card's layout is untouched — it was a labelled bar list and it stays one. Its subject
+ * changes, because the summary compensation table's mix is tagged in no structured source and
+ * the SEC deliberately made this disclosure machine-readable instead.
+ *
+ * **The bars are scaled against COMPENSATION ACTUALLY PAID, including negatives.** NVIDIA's
+ * FY2023 is −$4.1M: unvested equity fell, so the mark-to-market went below zero. A bar chart that
+ * clamps at zero would render that year as "nothing" when the filing says something much more
+ * interesting. The width uses absolute value and the sign stays in the number.
+ */
+function toPayVersusPerformance(res: PvpResponse | null) {
+  if (!res || res.status !== "ok" || !res.years.length) {
+    return {
+      rows: [] as { k: string; pct: string; w: string; negative: boolean }[],
+      reason:
+        res?.reason ??
+        "This filer's proxy carries no tagged pay-versus-performance table.",
+      measure: null as string | null,
+      latestTotal: "N/A",
+      tsr: "N/A",
+      peerTsr: "N/A",
+    };
+  }
+  const years = res.years;
+  const max = Math.max(...years.map((y) => Math.abs(y.peo_actually_paid ?? 0)), 1);
+  const latest = years[years.length - 1];
+  return {
+    rows: years.map((y) => ({
+      k: y.period_end ? `FY${y.period_end.slice(0, 4)}` : "—",
+      pct: y.peo_actually_paid === null ? "N/A" : usdCompact(y.peo_actually_paid),
+      w: `${Math.max(2, Math.round((Math.abs(y.peo_actually_paid ?? 0) / max) * 100))}%`,
+      negative: (y.peo_actually_paid ?? 0) < 0,
+    })),
+    reason: null as string | null,
+    measure: res.company_measure_name,
+    latestTotal: latest.peo_total === null ? "N/A" : usdCompact(latest.peo_total),
+    // TSR is the indexed value of $100 invested — never rendered with a % sign.
+    tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
+    peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
   };
 }
 
@@ -1012,11 +1077,20 @@ export const api = {
     }),
 
   /** §05 governance & people. Phase A: `/insider-trades` + 8-K Item 5.02; the board/pay half is DEF 14A. */
-  companyGovernance: (symbol: string) =>
-    resolve<CompanyGovernance>({
+  companyGovernance: async (symbol: string) => {
+    const enc = encodeURIComponent(symbol);
+    // A proxy read costs three SEC round-trips server-side (submissions, directory, instance), so
+    // a failure must not take the whole section down — the rest of §05 is fixture data that still
+    // renders. `null` flows into the adapter's honest-empty branch.
+    const pvp = await getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(
+      () => null,
+    );
+    return {
       governance: hub.hubData(symbol).governance,
       insider: hub.hubInsider(symbol),
-    }),
+      pvp: toPayVersusPerformance(pvp),
+    } as CompanyGovernance;
+  },
 
   /**
    * §06 audit quality and §08 disclosure change.
@@ -1279,6 +1353,8 @@ export interface CompanySegments {
 
 export interface CompanyGovernance {
   governance: hub.HubData["governance"];
+  /** §05.3 re-pointed: compensation actually paid, not the untagged pay mix. */
+  pvp: ReturnType<typeof toPayVersusPerformance>;
   insider: hub.HubInsider;
 }
 
