@@ -147,6 +147,7 @@ from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRe
 from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.sec.exhibits import find_ex21_filename, parse_ex21
+from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
 from secfin.storage.filing_index_repository import FilingIndexRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
@@ -753,6 +754,101 @@ async def get_capital(
             "outstanding -- than that it declined to disclose. Votes per share and beneficial "
             "ownership are not tagged anywhere in XBRL and are not served here."
         ),
+    }
+
+
+@public_router.get(
+    "/companies/{symbol}/pay-versus-performance",
+    tags=["Governance"],
+    summary="CEO pay versus performance from the DEF 14A's tagged ecd facts",
+)
+async def get_pay_versus_performance(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """Compensation actually paid vs summary-table total, with TSR, per fiscal year.
+
+    **Not a document parser.** EDGAR publishes an EXTRACTED XBRL INSTANCE (`*_htm.xml`) beside
+    every inline-XBRL filing, and a DEF 14A has been inline-XBRL since the pay-versus-performance
+    rule phased in. This reads that XML -- tagged facts, delivered as a file in a filing directory
+    rather than through an API. `sec/proxy.py` never touches the `…TextBlock` elements, which are
+    the HTML prose in the same instance.
+
+    **Why not companyfacts:** the `ecd` taxonomy does not reach it. Across the full 121M-fact
+    volume every `ecd` element appears zero times.
+
+    **What these numbers are.** *Compensation actually paid* is an SEC-defined recomputation that
+    marks unvested equity to market. It is not cash received, it swings with the share price, and
+    it CAN BE NEGATIVE -- NVIDIA's FY2023 is -$4.1M. Total shareholder return is the indexed value
+    of $100 invested, not a percentage. Both caveats travel on the payload.
+
+    **What is not here, and cannot be:** the summary compensation table's pay MIX, the CEO pay
+    ratio, and say-on-pay support. None is tagged in any SEC structured source; they were verified
+    absent rather than assumed so.
+
+    Three years to five, never more -- tagging began with FY2024 filings.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        payload = await client.get_json(client.submissions_url(cik))
+        recent = (payload.get("filings") or {}).get("recent") or {}
+        forms = recent.get("form") or []
+        idx = next((i for i, f in enumerate(forms) if f == "DEF 14A"), None)
+        if idx is None:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    "No DEF 14A in the filer's recent window. EDGAR's recent list is a ROLLING "
+                    "window, so this is an absence over that window, not over the company's "
+                    "history."
+                ),
+                "years": [],
+            }
+        accession = (recent.get("accessionNumber") or [])[idx]
+        filed = (recent.get("filingDate") or [])[idx]
+        base = f"https://www.sec.gov/Archives/edgar/data/{cik}/{accession.replace('-', '')}"
+
+        name = find_def14a_instance(await client.get_json(f"{base}/index.json"))
+        if not name:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    f"The DEF 14A filed {filed} carries no extracted XBRL instance, which means it "
+                    "predates inline-XBRL tagging for proxies."
+                ),
+                "years": [],
+                "filing": {"form": "DEF 14A", "filed": filed, "accession": accession},
+            }
+        result = parse_pay_versus_performance(await client.get_text(f"{base}/{name}"))
+
+    return {
+        "cik": cik,
+        "status": result.status,
+        "reason": result.reason,
+        "cannot": result.cannot,
+        "company_measure_name": result.company_measure_name,
+        "governance": {
+            "insider_trading_policy_adopted": result.insider_trading_policy_adopted,
+            "award_timing_considers_mnpi": result.award_timing_considers_mnpi,
+            "award_timing_predetermined": result.award_timing_predetermined,
+        },
+        "years": [
+            {
+                "period_start": y.period_start,
+                "period_end": y.period_end,
+                "peo_total": y.peo_total,
+                "peo_actually_paid": y.peo_actually_paid,
+                "neo_avg_total": y.neo_avg_total,
+                "neo_avg_actually_paid": y.neo_avg_actually_paid,
+                "tsr": y.tsr,
+                "peer_tsr": y.peer_tsr,
+                "company_measure_amount": y.company_measure_amount,
+            }
+            for y in result.years
+        ],
+        "filing": {"form": "DEF 14A", "filed": filed, "accession": accession},
     }
 
 
