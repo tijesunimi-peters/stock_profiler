@@ -102,14 +102,21 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         issuer_cik: int,
         filings: Sequence[InsiderFilingMeta],
         transactions: Iterable[InsiderTransaction],
+        refresh: bool = False,
     ) -> int:
         if not filings:
             return 0
-        cur = self._conn.execute(
-            "SELECT accession FROM insider_filings WHERE issuer_cik = ?", (issuer_cik,)
-        )
-        already_cached = {row[0] for row in cur.fetchall()}
-        new_filings = [f for f in filings if f.accession not in already_cached]
+        if refresh:
+            # Re-parse path: replace what is cached for THESE accessions. See the interface
+            # docstring for why replacement is safe for an immutable Form 3/4/5 and why it is
+            # not a precedent for raw_facts restatements.
+            new_filings = list(filings)
+        else:
+            cur = self._conn.execute(
+                "SELECT accession FROM insider_filings WHERE issuer_cik = ?", (issuer_cik,)
+            )
+            already_cached = {row[0] for row in cur.fetchall()}
+            new_filings = [f for f in filings if f.accession not in already_cached]
         if not new_filings:
             return 0
         new_accessions = {f.accession for f in new_filings}
@@ -119,6 +126,17 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
 
         self._conn.execute("BEGIN")
         try:
+            if refresh:
+                # Scoped to (issuer, accession) -- never a blanket wipe of the issuer, so a
+                # partial re-fetch cannot silently drop filings it did not ask for.
+                params = [(issuer_cik, a) for a in sorted(new_accessions)]
+                self._conn.executemany(
+                    "DELETE FROM insider_transactions WHERE issuer_cik = ? AND accession = ?",
+                    params,
+                )
+                self._conn.executemany(
+                    "DELETE FROM insider_filings WHERE issuer_cik = ? AND accession = ?", params
+                )
             self._conn.executemany(
                 _INSERT_FILING_SQL,
                 [(issuer_cik, f.accession, f.filed or "", f.form_type) for f in new_filings],

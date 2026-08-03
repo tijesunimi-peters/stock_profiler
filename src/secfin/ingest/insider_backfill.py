@@ -122,11 +122,18 @@ def known_issuer_ciks(fact_repo: RawFactRepository) -> set[int]:
 
 
 async def _process_candidate(
-    client: SECClient, repo: InsiderTransactionRepository, cik: int, limit: int
+    client: SECClient, repo: InsiderTransactionRepository, cik: int, limit: int,
+    refresh: bool = False,
 ) -> str:
     """Fetch + upsert one issuer's insider trades unless already warm. Returns
-    "fetched", "skipped", or "failed" for the caller's tally."""
-    if repo.cached_filing_count(cik) >= limit:
+    "fetched", "skipped", or "failed" for the caller's tally.
+
+    `refresh` re-fetches and REPLACES issuers that are already warm. Without it this job is a
+    no-op over a populated cache in two independent places -- the warm-skip here, and the
+    already-cached filter inside the repository -- which is how 163k rows sat with
+    `transaction_code` on 0.03% of them while a re-run reported "skipped (already warm)".
+    """
+    if not refresh and repo.cached_filing_count(cik) >= limit:
         return "skipped"
     try:
         filings, transactions = await fetch_insider_transactions_with_filings(
@@ -136,17 +143,19 @@ async def _process_candidate(
         logger.exception("failed to fetch insider transactions for CIK %d", cik)
         return "failed"
     if filings:
-        repo.upsert_insider_transactions(cik, filings, transactions)
+        repo.upsert_insider_transactions(cik, filings, transactions, refresh=refresh)
     return "fetched"
 
 
-async def run_insider_backfill(limit: int, db_path: str) -> None:
+async def run_insider_backfill(limit: int, db_path: str, refresh: bool = False) -> None:
     fact_repo = SQLiteRawFactRepository(db_path)
     try:
         ciks = sorted(known_issuer_ciks(fact_repo))
     finally:
         fact_repo.close()
-    logger.info("insider backfill: %d known issuer CIKs, limit=%d", len(ciks), limit)
+    logger.info(
+        "insider backfill: %d known issuer CIKs, limit=%d, refresh=%s", len(ciks), limit, refresh
+    )
     if not ciks:
         return
 
@@ -155,7 +164,7 @@ async def run_insider_backfill(limit: int, db_path: str) -> None:
     try:
         async with SECClient() as client:
             for i, cik in enumerate(ciks, start=1):
-                outcome = await _process_candidate(client, repo, cik, limit)
+                outcome = await _process_candidate(client, repo, cik, limit, refresh=refresh)
                 tally[outcome] += 1
                 if i % _PROGRESS_EVERY == 0:
                     logger.info(
@@ -189,6 +198,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=10,
         help="Filings to fetch per issuer, newest first (default: 10).",
     )
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "Re-fetch and REPLACE issuers already cached. Use after the parser learns a new "
+            "field -- without it this job skips every warm issuer and writes nothing."
+        ),
+    )
     p.add_argument("--db-path", default=settings.secfin_db_path)
     return p
 
@@ -196,7 +213,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_arg_parser().parse_args(argv)
-    asyncio.run(run_insider_backfill(args.limit, args.db_path))
+    asyncio.run(run_insider_backfill(args.limit, args.db_path, refresh=args.refresh))
 
 
 if __name__ == "__main__":

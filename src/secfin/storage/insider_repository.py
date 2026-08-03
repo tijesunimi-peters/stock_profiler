@@ -37,12 +37,25 @@ class InsiderTransactionRepository(ABC):
         issuer_cik: int,
         filings: Sequence[InsiderFilingMeta],
         transactions: Iterable[InsiderTransaction],
+        refresh: bool = False,
     ) -> int:
         """Idempotently store freshly-fetched filings and their parsed rows for one
         issuer, in the same transaction. Filings already cached are left untouched (and
         their rows are NOT re-inserted, even if passed in again) -- safe to call with a
         full re-fetch that includes previously-seen filings. Returns the number of
         transaction rows newly written (0 if every filing passed in was already cached).
+
+        `refresh=True` REPLACES the cached rows for the accessions passed in, instead of
+        skipping them. This exists for one specific situation: the parser learned to extract
+        fields the cached corpus predates. `sec/insider.py` gained `transaction_code`,
+        `is_derivative` and `rule_10b5_1`, and because the default path skips a known
+        accession outright, re-running the backfill over 163k rows wrote exactly nothing --
+        the columns sat at 0.03% populated while the job reported success.
+
+        A Form 3/4/5 is immutable once filed, so re-parsing the same accession yields the same
+        rows plus the newly-extracted columns. That is what makes replacement safe here and is
+        NOT a licence to replace elsewhere: `raw_facts` restatements are a different thing
+        entirely, where an old value must survive alongside the new one.
         """
 
     @abstractmethod

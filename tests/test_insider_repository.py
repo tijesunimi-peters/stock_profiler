@@ -224,3 +224,72 @@ def test_different_issuers_are_isolated():
     assert repo.cached_filing_count(other_cik) == 1
     assert [r.owner_name for r in repo.get_insider_transactions(CIK, limit=10)] == ["Apple Filer"]
     repo.close()
+
+
+class TestRefreshReplacesInsteadOfSkipping:
+    """The re-parse path, and the silent no-op it exists to fix.
+
+    `sec/insider.py` gained `transaction_code`, `is_derivative` and `rule_10b5_1` after the cache
+    had already been filled. Re-running the backfill wrote NOTHING and reported success, because
+    two independent layers skip a known accession: the backfill's warm-issuer check, and this
+    repository's already-cached filter. The columns sat at 0.03% populated across 163,189 rows
+    while every signal said the job had run.
+    """
+
+    def _repo(self):
+        repo = SQLiteInsiderTransactionRepository(":memory:")
+        repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta("acc-1", "2026-06-01", "4")],
+            [_txn("acc-1", "Old Parser", transaction_code=None, rule_10b5_1=None)],
+        )
+        return repo
+
+    def test_the_default_path_still_skips_a_cached_accession(self):
+        """Unchanged behaviour -- a plain re-fetch must stay cheap and idempotent."""
+        repo = self._repo()
+        written = repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta("acc-1", "2026-06-01", "4")],
+            [_txn("acc-1", "New Parser", transaction_code="S")],
+        )
+        assert written == 0
+        rows = repo.get_insider_transactions(CIK, limit=10)
+        assert [r.owner_name for r in rows] == ["Old Parser"]
+        assert rows[0].transaction_code is None
+        repo.close()
+
+    def test_refresh_replaces_the_row_and_fills_the_new_columns(self):
+        repo = self._repo()
+        written = repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta("acc-1", "2026-06-01", "4")],
+            [_txn("acc-1", "New Parser", transaction_code="S", rule_10b5_1=True)],
+            refresh=True,
+        )
+        assert written == 1
+        rows = repo.get_insider_transactions(CIK, limit=10)
+        # Replaced, not duplicated -- a second copy would double every count built on this table.
+        assert len(rows) == 1
+        assert rows[0].owner_name == "New Parser"
+        assert rows[0].transaction_code == "S"
+        repo.close()
+
+    def test_refresh_touches_only_the_accessions_passed_in(self):
+        """Scoped deletes: a partial re-fetch must not drop filings it never asked about."""
+        repo = self._repo()
+        repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta("acc-2", "2026-05-01", "4")],
+            [_txn("acc-2", "Untouched")],
+        )
+        repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta("acc-1", "2026-06-01", "4")],
+            [_txn("acc-1", "New Parser", transaction_code="S")],
+            refresh=True,
+        )
+        owners = {r.owner_name for r in repo.get_insider_transactions(CIK, limit=10)}
+        assert owners == {"New Parser", "Untouched"}
+        assert repo.cached_filing_count(CIK) == 2
+        repo.close()
