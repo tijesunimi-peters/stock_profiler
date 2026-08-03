@@ -32,20 +32,39 @@
  */
 import { PROVENANCE } from "../data/api";
 
-export function SyntheticBanner() {
+export function SyntheticBanner({ surface }: { surface?: string } = {}) {
   const surfaces = PROVENANCE.syntheticSurfaces;
   // The whole point: no surfaces left, no banner. Not hidden, not greyed — absent.
   if (!surfaces.length) return null;
 
+  /*
+   * "No figure on this page" was accurate while every surface was a fixture. It stopped being
+   * accurate the moment §01 was plumbed, and an over-broad disclosure is its own kind of
+   * dishonesty: a reader who is told everything is fake, and then finds a real number, has been
+   * given no reason to trust the next one either. A partly-plumbed surface says which is which.
+   */
+  const split = surface ? PROVENANCE.partialSurfaces[surface] : undefined;
+
   return (
     <div className="synth-banner" role="note">
-      <span className="synth-banner-eyebrow">Synthetic</span>
+      <span className="synth-banner-eyebrow">{split ? "Partly synthetic" : "Synthetic"}</span>
       <span className="synth-banner-copy">
-        No figure on this page comes from an SEC filing. Values are generated from the ticker and
-        are stable, plausible, and wrong.
+        {split ? (
+          <>
+            Sections {split.real.join(" and ")} are read from SEC filings. Every other figure on
+            this page is generated from the ticker and is stable, plausible, and wrong.
+          </>
+        ) : (
+          <>
+            No figure on this page comes from an SEC filing. Values are generated from the ticker
+            and are stable, plausible, and wrong.
+          </>
+        )}
       </span>
       <span className="synth-banner-list">
-        {surfaces.length} {surfaces.length === 1 ? "surface" : "surfaces"}: {surfaces.join(" · ")}
+        {split
+          ? `still synthetic: ${split.synthetic.join(" · ")}`
+          : `${surfaces.length} ${surfaces.length === 1 ? "surface" : "surfaces"}: ${surfaces.join(" · ")}`}
       </span>
     </div>
   );

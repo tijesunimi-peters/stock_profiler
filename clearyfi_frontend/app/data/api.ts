@@ -73,6 +73,28 @@ function resolve<T>(value: T): Promise<T> {
 export const PROVENANCE = {
   synthetic: true,
   note: "Deterministic-synthetic figures. No SEC endpoint is being called.",
+  /**
+   * Surfaces that are PARTLY plumbed, and which of their sections are still synthetic.
+   *
+   * The banner used to say "no figure on this page comes from an SEC filing" — true when every
+   * surface was a fixture, and false the moment §01 landed. A mixture is the most dangerous state
+   * this page can be in: the sections look identical, so a reader has no way to tell Apple's
+   * numbers from ones generated out of a hash of "AAPL". The banner now names the split, and
+   * `HubHead`'s `synthetic` prop marks the sections themselves.
+   */
+  partialSurfaces: {
+    "company overview": {
+      real: ["01 identity & structure", "02 financial detail"],
+      synthetic: [
+        "03 segments & geography (deferred — needs Phase C dimensional ingest)",
+        "04 capital structure",
+        "05 governance",
+        "06 audit & controls",
+        "07 obligations",
+        "08 risk & events",
+      ],
+    },
+  } as Record<string, { real: string[]; synthetic: string[] }>,
   syntheticSurfaces: [
     "company overview",
     "financial history",

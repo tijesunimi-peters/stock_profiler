@@ -189,7 +189,15 @@ export function PageShell({
       actionsSubject={subjectLabelFor(subject)}
       searchPlaceholder="Search ticker or CIK…"
     >
-      <SyntheticBanner />
+      {/*
+        The banner needs to know WHICH surface it is disclaiming, now that some are mixtures.
+        Derived here from props the shell already has rather than threaded through every caller —
+        a disclosure that depends on nine pages remembering to pass a string is a disclosure that
+        will be wrong on one of them.
+      */}
+      <SyntheticBanner
+        surface={subject === "company" && activeView === "overview" ? "company overview" : undefined}
+      />
       <Masthead title={title} subtitle={subtitle} meta={right ? [right] : undefined} />
       {controlBar}
       {/*

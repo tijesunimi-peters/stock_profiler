@@ -85,6 +85,11 @@ const explained = await p.$$eval(".p-card", els=>els
 ck("both dimensional cards explain their emptiness", explained===0, `${explained} silent`);
 // The stale-copy defect: this sentence stopped being true when EX-21 parsing landed.
 ck("no card claims we refuse to parse documents", !/rather than parsing documents/i.test(all));
+// The banner's claim must match the page. "No figure comes from an SEC filing" became false the
+// moment §01 landed, and an over-broad disclosure teaches a reader to discount the accurate ones.
+ck("the banner does not claim the whole page is synthetic", !/No figure on this page comes from an SEC filing/i.test(all));
+ck("the banner names which sections ARE real", /01 identity[\s\S]{0,60}02 financial detail/i.test(all));
+ck("\u00a703 is marked deferred and synthetic", /Segments & geography[\s\S]{0,160}figures below are synthetic/i.test(all));
 ck("no page errors", errs.length===0, errs.slice(0,2).join(" | "));
 ck("no request was rate-limited", !http429, `${http429} responses were 429`);
 }

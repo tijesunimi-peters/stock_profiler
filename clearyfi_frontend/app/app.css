@@ -2650,6 +2650,28 @@
   color: var(--ink);
 }
 
+/*
+ * The section-level synthetic marker (§03 today).
+ *
+ * Borrows --ext-* the way SyntheticBanner does: that palette already means "read this
+ * differently from the rest of the page", which is exactly the instruction here. No new accent
+ * for a marker that is scheduled to be deleted when Phase C lands.
+ */
+.hub-head-synth {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--ext-border, var(--rule));
+  background: var(--ext-bg, transparent);
+  color: var(--ext-ink, var(--ink));
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .hub-head-src,
 .hub-hint {
   font-family: var(--font-mono);

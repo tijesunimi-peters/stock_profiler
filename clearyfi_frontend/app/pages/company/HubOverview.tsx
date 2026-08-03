@@ -26,12 +26,39 @@ import { navigate } from "../../router";
  * The hub's section header: mono ordinal, Hanken 800 title, and the SOURCE FORM inline — all
  * on one rule. Narrower than the sector altitude's header because the hub stacks eight of them.
  */
-function HubHead({ n, title, src, id }: { n: string; title: string; src: string; id: string }) {
+function HubHead({
+  n,
+  title,
+  src,
+  id,
+  synthetic,
+}: {
+  n: string;
+  title: string;
+  src: string;
+  id: string;
+  /** Why this section's figures are NOT from filings. Marks the whole section, not one card. */
+  synthetic?: string;
+}) {
   return (
     <div className="hub-head" id={id}>
       <span className="hub-head-n">{n}</span>
       <span className="hub-head-title">{title}</span>
-      <span className="hub-head-src">{src}</span>
+      <span className="hub-head-src">{synthetic ? "not from filings" : src}</span>
+      {/*
+       * A SECTION-level marker, because the problem is section-level.
+       *
+       * As §01 and §02 went onto real filings, this page stopped being uniformly synthetic and
+       * started being a mixture — which is the most dangerous state it can be in, because the
+       * sections look identical and a reader has no way to tell which numbers are Apple's and
+       * which are generated from a hash of "AAPL". Per-card chips would not carry it: the claim
+       * is about every figure below this heading.
+       */}
+      {synthetic ? (
+        <span className="hub-head-synth" title={synthetic}>
+          <StatusChip status="na" /> Deferred — figures below are synthetic
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -635,7 +662,13 @@ export function HubOverview() {
 
       {/* ============================================================ 03 */}
       <section className="hub-sec">
-        <HubHead id="s3" n="03" title="Segments & geography" src="ASC 280 · 10-K segment footnote" />
+        <HubHead
+          id="s3"
+          n="03"
+          title="Segments & geography"
+          src="ASC 280 · 10-K segment footnote"
+          synthetic="Segment and geographic splits are DIMENSIONAL facts (ASC 280 axes), which live only in DERA's num.txt segments column — not in companyfacts. Phase C ingests them. Until then every figure in this section is generated from the ticker."
+        />
         <div className="p-card">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Reportable segments</span>
