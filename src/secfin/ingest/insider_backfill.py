@@ -76,7 +76,17 @@ needs a daily-index-driven incremental job (the `ingest/incremental.py` pattern,
 generalized to insider forms) -- left as later work; see the "Ownership cache-warming"
 item in docs/ROADMAP.md.
 
-Run: `python -m secfin.ingest.insider_backfill [--limit 10]`
+**Resuming an interrupted run (`--start-after`):** `--refresh` deliberately has no "already
+done" state -- its whole job is to stop skipping warm issuers -- so an interrupted refresh
+otherwise restarts from zero, which at whole-market scale is hours of SEC traffic spent redoing
+finished work. Because candidates are walked in ASCENDING CIK order, one CIK is enough to express
+"everything before this is done". **Read the resume point off the data, not off the last progress
+line, and not off `max(cik)` of the rows the new parser wrote:** the live cache-aside path uses
+the same parser, so a single page view can leave a coded issuer far past the real frontier. On the
+2026-08-03 run that stray sat 8,400 candidates ahead of it. What identifies the frontier is the
+end of the dense PREFIX -- the last coded CIK before a long run of uncoded ones.
+
+Run: `python -m secfin.ingest.insider_backfill [--limit 10] [--refresh] [--start-after CIK]`
 """
 
 from __future__ import annotations
@@ -147,12 +157,25 @@ async def _process_candidate(
     return "fetched"
 
 
-async def run_insider_backfill(limit: int, db_path: str, refresh: bool = False) -> None:
+async def run_insider_backfill(
+    limit: int, db_path: str, refresh: bool = False, start_after: int | None = None
+) -> None:
     fact_repo = SQLiteRawFactRepository(db_path)
     try:
         ciks = sorted(known_issuer_ciks(fact_repo))
     finally:
         fact_repo.close()
+    total = len(ciks)
+    if start_after is not None:
+        # The candidate list is SORTED, and this job walks it in that order -- which is the only
+        # reason a single CIK can stand in for "everything already done". See --start-after's help.
+        ciks = [c for c in ciks if c > start_after]
+        logger.info(
+            "insider backfill: resuming after CIK %d -- %d of %d candidates skipped",
+            start_after,
+            total - len(ciks),
+            total,
+        )
     logger.info(
         "insider backfill: %d known issuer CIKs, limit=%d, refresh=%s", len(ciks), limit, refresh
     )
@@ -206,6 +229,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "field -- without it this job skips every warm issuer and writes nothing."
         ),
     )
+    p.add_argument(
+        "--start-after",
+        type=int,
+        default=None,
+        metavar="CIK",
+        help=(
+            "Skip every candidate CIK <= this one. The candidate list is sorted and walked in "
+            "ascending order, so an interrupted --refresh run can resume from where it stopped "
+            "instead of re-fetching from zero -- which for a whole-market refresh is hours of "
+            "SEC traffic spent redoing finished work. Choose the value from the DATA, not from "
+            "the last progress line: the live cache-aside path writes rows with the same parser, "
+            "so the single highest CIK carrying new fields can sit thousands of candidates past "
+            "the real frontier. Erring low is free (--refresh replaces rather than duplicates); "
+            "erring high silently skips issuers."
+        ),
+    )
     p.add_argument("--db-path", default=settings.secfin_db_path)
     return p
 
@@ -213,7 +252,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_arg_parser().parse_args(argv)
-    asyncio.run(run_insider_backfill(args.limit, args.db_path, refresh=args.refresh))
+    asyncio.run(
+        run_insider_backfill(
+            args.limit, args.db_path, refresh=args.refresh, start_after=args.start_after
+        )
+    )
 
 
 if __name__ == "__main__":

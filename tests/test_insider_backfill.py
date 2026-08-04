@@ -171,3 +171,73 @@ async def test_process_candidate_reports_failed_on_fetch_error(monkeypatch):
     assert outcome == "failed"
     assert repo.cached_filing_count(AAPL_CIK) == 0
     repo.close()
+
+
+class TestStartAfterResumesAnInterruptedRefresh:
+    """`--refresh` has no "already done" state by design, so an interrupted whole-market run
+    restarts from zero -- hours of SEC traffic redoing finished work. `--start-after` is what
+    makes it resumable, and it is only sound because the candidate walk is SORTED.
+    """
+
+    def _repo_with(self, tmp_path, ciks):
+        repo = SQLiteRawFactRepository(tmp_path / "resume.db")
+        repo.upsert_raw_facts_and_checkpoint(
+            [], [(c, None, 0) for c in ciks], source=BULK_SOURCE
+        )
+        return repo
+
+    async def _visited(self, tmp_path, ciks, **kwargs):
+        """Run the job against a stubbed fetch and return the CIKs it actually walked."""
+        seen: list[int] = []
+
+        async def _fake_fetch(client, cik, limit):
+            seen.append(cik)
+            return [], []
+
+        import secfin.ingest.insider_backfill as mod
+
+        repo = self._repo_with(tmp_path, ciks)
+        repo.close()
+
+        orig = mod.fetch_insider_transactions_with_filings
+        orig_client = mod.SECClient
+        mod.fetch_insider_transactions_with_filings = _fake_fetch
+
+        class _NoopClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        mod.SECClient = _NoopClient
+        try:
+            await mod.run_insider_backfill(
+                limit=10, db_path=str(tmp_path / "resume.db"), refresh=True, **kwargs
+            )
+        finally:
+            mod.fetch_insider_transactions_with_filings = orig
+            mod.SECClient = orig_client
+        return seen
+
+    async def test_candidates_at_or_below_the_marker_are_skipped(self, tmp_path):
+        seen = await self._visited(tmp_path, [100, 200, 300, 400], start_after=200)
+        assert seen == [300, 400]
+
+    async def test_the_marker_itself_is_skipped_because_it_was_processed(self, tmp_path):
+        """`--start-after 300` means 300 is DONE. Including it would re-fetch a finished issuer
+        on every resume, which is the cost the flag exists to avoid."""
+        seen = await self._visited(tmp_path, [100, 200, 300, 400], start_after=300)
+        assert 300 not in seen
+
+    async def test_omitting_it_walks_everything(self, tmp_path):
+        assert await self._visited(tmp_path, [100, 200, 300]) == [100, 200, 300]
+
+    async def test_a_marker_past_the_end_walks_nothing_rather_than_wrapping(self, tmp_path):
+        assert await self._visited(tmp_path, [100, 200], start_after=999) == []
+
+    async def test_the_walk_is_ascending_which_is_what_makes_one_cik_sufficient(self, tmp_path):
+        """If the order were not sorted, "everything <= N is done" would be false and the flag
+        would silently skip unprocessed issuers."""
+        seen = await self._visited(tmp_path, [900, 100, 500, 300])
+        assert seen == sorted(seen)
