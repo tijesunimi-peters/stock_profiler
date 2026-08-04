@@ -52,7 +52,10 @@ def test_aapl_income_statement_matches_real_filing():
     # (CommonStockSharesIssued x2, StockRepurchasedAndRetiredDuringPeriodShares x1). The TOTAL is
     # unchanged at 425 -- which is the check that matters, since a moving total would mean facts
     # appeared or vanished rather than merely being classified.
-    assert coverage_report(period_facts) == {"unmapped": 221, "mapped": 204}
+    # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 2 more AAPL facts map --
+    # UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount ($13.3B) and its
+    # DueAfterFiveYears sibling ($773M). Total unchanged at 425.
+    assert coverage_report(period_facts) == {"unmapped": 219, "mapped": 206}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -116,7 +119,10 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     assert latest_fy == (2026, "FY")
 
     period_facts = [f for f in facts if (f.fiscal_year, f.fiscal_period) == latest_fy]
-    assert coverage_report(period_facts) == {"unmapped": 286, "mapped": 232}
+    # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 2 more WMT facts map, both
+    # LettersOfCreditOutstandingAmount -- one per balance-sheet date, since the filer tags the
+    # comparative prior year alongside the current one. Total unchanged at 518.
+    assert coverage_report(period_facts) == {"unmapped": 284, "mapped": 234}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -166,7 +172,9 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     # Moved 2026-08-02 by the §04 CAPITAL concepts: 4 facts, all CommonStockSharesIssued -- JPM
     # tags it once per share class, which is why a single new concept moves the count by four.
     # Total unchanged at 1003.
-    assert coverage_report(period_facts) == {"unmapped": 842, "mapped": 161}
+    # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 1 more JPM fact maps,
+    # UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount ($1.9B). Total unchanged at 1003.
+    assert coverage_report(period_facts) == {"unmapped": 841, "mapped": 162}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"

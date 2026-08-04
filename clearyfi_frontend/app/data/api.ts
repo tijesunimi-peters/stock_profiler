@@ -89,7 +89,7 @@ export const PROVENANCE = {
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
         "05 governance (partly \u2014 CEO compensation actually paid is real)",
-        "07 obligations",
+        "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
         "08 risk & events",
       ],
     },
@@ -349,9 +349,16 @@ function groupValues(res: FootnotesResponse, key: string) {
   };
 }
 
-/** Bar width for a value against the largest in its set. Presentation, not a figure. */
+/**
+ * Bar width for a value against the largest in its set. Presentation, not a figure.
+ *
+ * The 2% floor keeps a small-but-real value visible. **A reported zero is excluded from it** —
+ * AMD tags "due after five years" as exactly 0, and a visible bar beside a `$0` draws something
+ * where the filer reported nothing. The floor exists so tiny values are not invisible, not so
+ * that zero looks like a quantity.
+ */
 const barWidth = (v: number | null, max: number) =>
-  v === null || !max ? "0%" : `${Math.max(2, Math.round((Math.abs(v) / max) * 100))}%`;
+  v === null || !max || v === 0 ? "0%" : `${Math.max(2, Math.round((Math.abs(v) / max) * 100))}%`;
 
 /**
  * The footnote cards, from the eight groups `/footnotes` serves.
@@ -513,6 +520,97 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ §07 obligations & contingencies */
+
+/**
+ * §07's three buildable cards. The legal-proceedings table is NOT among them.
+ *
+ * **This is the lowest-coverage section on the page and it will usually be empty.** Measured over
+ * 485 filers with FY2023+ facts: purchase commitments 25%, restructuring 26%, guarantees 20%,
+ * environmental 8%. That is the honest state of the disclosure, not a gap in the mapping — most
+ * filers write these in the footnote's prose, which is permitted. Each card carries the reason.
+ *
+ * **A reported zero is not an absence.** AMD tags `PurchaseObligationDueAfterFifthYear` as exactly
+ * 0 and `RestructuringCharges` as exactly 0. Those are disclosures — the filer said "nothing due
+ * beyond five years" — and they must render as 0, not as N/A. `groupValues.num` returning `0` and
+ * returning `null` are different answers and are kept apart here for the same reason the reverse
+ * rule exists everywhere else on the page.
+ *
+ * **Letters of credit sit in the off-balance-sheet slot, not with guarantees** (operator ruling
+ * 2026-08-04). A standby letter of credit is a bank undertaking bought by the filer; a guarantee
+ * is a promise the filer made. Folding them together would quadruple the guarantee figure's
+ * apparent coverage by counting a different instrument.
+ */
+function toObligationCards(res: FootnotesResponse | null) {
+  const empty = { ok: false, reason: null as string | null, num: () => null, money: () => "N/A" };
+  const commit = res ? groupValues(res, "purchase_commitments") : empty;
+  const restr = res ? groupValues(res, "restructuring") : empty;
+  const guar = res ? groupValues(res, "guarantees") : empty;
+
+  const ladder = [
+    ["Year 1", "purchase_obligation_y1"], ["Year 2", "purchase_obligation_y2"],
+    ["Year 3", "purchase_obligation_y3"], ["Year 4", "purchase_obligation_y4"],
+    ["Year 5", "purchase_obligation_y5"], ["Thereafter", "purchase_obligation_thereafter"],
+  ] as const;
+  const rows = ladder.filter(([, c]) => commit.num(c) !== null);
+  const max = Math.max(0, ...rows.map(([, c]) => Math.abs(commit.num(c) ?? 0)));
+
+  // Whether the ladder accounts for the total. AMD's six rungs sum exactly to its $12.166B; most
+  // filers tag one or the other and never both. Stated, never silently assumed -- and never
+  // patched with a plug row to make it close.
+  const laddered = rows.reduce((sum, [, c]) => sum + (commit.num(c) ?? 0), 0);
+  const total = commit.num("purchase_obligation");
+  const reconciles =
+    rows.length > 0 && total !== null && Math.abs(laddered - total) <= Math.abs(total) * 0.01;
+
+  const positions = restr.num("restructuring_positions");
+
+  return {
+    commitments: rows.map(([y, c]) => ({
+      y,
+      amt: commit.money(c),
+      w: barWidth(commit.num(c), max),
+    })),
+    purchase: commit.money("purchase_obligation"),
+    purchaseNote: !commit.ok
+      ? (commit.reason ?? "Not disclosed in a tagged form by this filer.")
+      : rows.length === 0
+        ? "The filer tagged a total but not the year-by-year split; about one filer in twenty tags the ladder."
+        : reconciles
+          ? "The years above sum to the total."
+          : total === null
+            ? "The filer tagged the ladder but no total, so none is shown rather than summed for it."
+            : rows.length < ladder.length
+              ? // Apple tags the total and the "after five years" rung and nothing between them.
+                // That is a PARTIAL ladder, not a filing that disagrees with itself, and saying
+                // the rows "do not sum" would read as an inconsistency the filer did not make.
+                `The filer tagged ${rows.length} of the ${ladder.length} rungs, so the years above are part of the total rather than all of it.`
+              : "The years above do not sum to the total — the filer tagged the two separately, and we do not reconcile them.",
+    restructuring: restr.ok
+      ? {
+          active: true as const,
+          charge: restr.money("restructuring_charge"),
+          accrual: restr.money("restructuring_reserve"),
+          paid: restr.money("restructuring_paid"),
+          // A COUNT, never formatted as currency. "employee"-unit facts and USD ones share a card.
+          heads: positions === null ? "N/A" : `${positions.toLocaleString()} positions`,
+        }
+      : { active: false as const },
+    restructuringReason: restr.ok ? null : restr.reason,
+    guarantees: guar.money("guarantee_obligations"),
+    environmental: guar.money("environmental_accrual"),
+    offBS: guar.money("letters_of_credit"),
+    offBSLabel: "Letters of credit outstanding",
+    guaranteesReason: guar.ok ? null : guar.reason,
+    // §07.1 is not built: three of its four columns are Item 3 narrative. See the route docstring.
+    legalReason:
+      "What a legal matter is, what stage it has reached and how long it has run are Item 3 " +
+      "narrative, so this table is not sourced from filings. A recorded accrual is structured " +
+      "but is tagged by under a quarter of filers — and under ASC 450 it exists only when a loss " +
+      "is both probable and estimable, so its absence never means the exposure is zero.",
   };
 }
 
@@ -1191,8 +1289,10 @@ export const api = {
   /**
    * §02's footnote cards. **REAL — one `/footnotes` read serving all eight groups.**
    *
-   * §04 capital and §07 obligations are still fixtures: their concepts are mapped but no card has
-   * been plumbed onto them yet, and half a section on real data is what the banner is for.
+   * Three annual reads now, not one: `/footnotes`, `/capital` (§04) and `/obligations` (§07).
+   * They travel together because they are annual for the same reason — see the note below — and
+   * because they resolve through the same `build_concept_group`, so a share count or a commitment
+   * here cannot disagree with the statements about which filing it came from.
    */
   companyFootnotes: async (symbol: string, _year: number, _fiscalPeriod: string) => {
     // ASKED FOR THE PAGE'S QUARTER, THESE CARDS ALL GO BLANK -- and dishonestly so.
@@ -1205,9 +1305,12 @@ export const api = {
     // tells us which it used. Subtracting one from the current year would be a guess.
     const enc = encodeURIComponent(symbol);
     // Both are ANNUAL reads for the same reason (see the note above), so they go together.
-    const [res, cap] = await Promise.all([
+    const [res, cap, obl] = await Promise.all([
       getJson<FootnotesResponse>(`/v1/companies/${enc}/footnotes?period=FY`),
       getJson<CapitalResponse>(`/v1/companies/${enc}/capital?period=FY`),
+      // §07. Annual for the same reason, and allowed to fail alone: it is the thinnest section on
+      // the page and the rest of the footnote reads should not disappear with it.
+      getJson<FootnotesResponse>(`/v1/companies/${enc}/obligations?period=FY`).catch(() => null),
     ]);
     return {
       footnotes: toFootnoteCards(res),
@@ -1220,7 +1323,12 @@ export const api = {
        * and the shelf line is a filing-index read that belongs with §06's window handling.
        */
       capital: { ...hub.hubData(symbol).capital, ...toCapitalCards(cap) },
-      obligations: hub.hubData(symbol).obligations,
+      /*
+       * §07's three buildable cards over the fixture's shape. The legal-proceedings table stays a
+       * fixture BY RULING (2026-08-04): three of its four columns are Item 3 narrative, so it is
+       * marked synthetic rather than rebuilt around the one column that is structured.
+       */
+      obligations: { ...hub.hubData(symbol).obligations, ...toObligationCards(obl) },
       covenant: hub.hubData(symbol).covenant,
     } as CompanyFootnotes;
   },
@@ -1512,7 +1620,9 @@ export interface CompanyFootnotes {
   footnotePeriod: string;
   /** §04: the fixture's shape with the three plumbed cards merged over it. */
   capital: hub.HubData["capital"] & ReturnType<typeof toCapitalCards>;
-  obligations: hub.HubData["obligations"];
+  // The fixture's shape with §07's plumbed cards merged over it. `legal` and `rangeNote` still
+  // come from the fixture and are marked synthetic in the view; everything else is filings data.
+  obligations: hub.HubData["obligations"] & ReturnType<typeof toObligationCards>;
   covenant: string;
 }
 

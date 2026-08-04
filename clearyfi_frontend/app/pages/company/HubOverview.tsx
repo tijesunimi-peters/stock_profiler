@@ -1101,6 +1101,10 @@ export function HubOverview() {
               estimable" means the filer disclosed a matter without a recordable amount, not that
               the exposure is zero
             </span>
+            {/* Three of this table's four columns — the matter, its stage, its age — are Item 3
+                narrative. Operator ruling 2026-08-04: mark it rather than rebuild it around the
+                one structured column, which under a quarter of filers tag anyway. */}
+            <SynthCard why={d.obligations.legalReason} />
             <Src href={L.tenK}>Read Item 3 ↗</Src>
           </div>
           <div className="hub-table-head hub-legal-grid">
@@ -1133,12 +1137,15 @@ export function HubOverview() {
               </div>
             ))}
             <div className="hub-note">
-              Total {d.obligations.purchase} · {d.obligations.purchaseNote}
+              Total <Fig v={d.obligations.purchase} /> · {d.obligations.purchaseNote}
             </div>
           </div>
 
           <div className="p-card">
             <div className="hub-label">Restructuring & other obligations</div>
+            {!d.obligations.restructuring.active && (
+              <FootnoteEmpty reason={d.obligations.restructuringReason} />
+            )}
             {d.obligations.restructuring.active && (
               <div className="hub-quad">
                 <div>
@@ -1159,11 +1166,18 @@ export function HubOverview() {
                 </div>
               </div>
             )}
-            <div className="hub-foot-rule is-stack">
+            <div className="hub-foot-rule is-stack" title={d.obligations.guaranteesReason ?? undefined}>
               <span>
-                Guarantees {d.obligations.guarantees} · environmental {d.obligations.environmental}
+                Guarantees <Fig v={d.obligations.guarantees} reason={d.obligations.guaranteesReason} /> ·
+                environmental <Fig v={d.obligations.environmental} reason={d.obligations.guaranteesReason} />
               </span>
-              <span>Off-balance-sheet: {d.obligations.offBS}</span>
+              {/* Letters of credit, NOT guarantees — a bank undertaking the filer bought, which is
+                  the textbook off-balance-sheet commitment and is four times better covered than
+                  the guarantee tags. Named, never folded into the figure to its left. */}
+              <span>
+                {d.obligations.offBSLabel}:{" "}
+                <Fig v={d.obligations.offBS} reason={d.obligations.guaranteesReason} />
+              </span>
             </div>
           </div>
         </div>

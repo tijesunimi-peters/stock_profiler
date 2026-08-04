@@ -193,7 +193,8 @@ use them, at rates from 100% down to 5%. The work is mapping, exactly as Phase B
 **Two adjustments to the plan:**
 
 1. **The bulk backfill is now Phase 0.5's real content**, ahead of any mapping work.
-2. **§07 should be sequenced last within Phase B.** Its four cards land at 11–36% coverage on the
+2. **§07 should be sequenced last within Phase B.** *(Done 2026-08-04, and the prediction held:
+   three of four cards shipped, and most filers render `N/A`.)* Its four cards land at 11–36% coverage on the
    broad basket, so most filers will show `N/A` — which is *honest and correct*, but it is the
    lowest-yield part of the phase and should not lead it. §02's footnote cards (55–100%) should.
 
@@ -967,12 +968,22 @@ strongly: Apple 43 distinct / 7.3% of facts · NVIDIA 37 / 5.2% · Microsoft 59 
 
 | # | Card | Band | Status |
 |---|---|---|---|
-| 7.1 | Legal proceedings — matter / stage / accrual / since | **M** (thin) + **T** | **V1: accrual 24.4% / 38.9% deep.** The accrual is `M`; **matter and stage stay narrative: T.** |
-| 7.2 | Purchase & capacity commitments by year | **M** (fragmented) | **V1:** no single tag clears 18%; **eight exist**. Map the union — `PurchaseObligation`, `UnrecordedUnconditionalPurchaseObligation…`, `ContractualObligation` + five anniversary variants. |
-| 7.3 | Restructuring — charge / accrual / paid / scope | **M** | **V1: charges 35.6% / 55.6% deep**, reserve 31.1%, payments 20.0%. **The "Scope" tile is structured too** — `RestructuringAndRelatedCostNumberOfPositionsEliminated`. The card's `active: false` branch handles the rest. |
-| 7.4 | Guarantees / environmental / off-balance-sheet | **M** (very thin) | **V1: 11.1% / 33.3% deep.** Mostly `N/A`. |
+| 7.1 | Legal proceedings — matter / stage / accrual / since | **T — MARKED, not built** | Re-measured: accrual 23.7% / 37.2% deep. Three of four columns are Item 3 narrative, so the grid cannot render a row. **Operator ruling 2026-08-04: mark the card.** |
+| 7.2 | Purchase & capacity commitments by year | ✅ **SHIPPED 2026-08-04** | The union of three families = **25.4% / 31.9%**; no single tag clears 15%. The by-year ladder is ~1 filer in 20, so a total alone resolves the card and the payload says which case applies. |
+| 7.3 | Restructuring — charge / accrual / paid / scope | ✅ **SHIPPED 2026-08-04** | **25.6% / 48.7%** — the best-covered group in §07. Scope tile confirmed structured (`…NumberOfPositionsEliminated`, `employee` unit). `SeveranceCosts1` kept as a component, never a fallback. |
+| 7.4 | Guarantees / environmental / off-balance-sheet | ✅ **SHIPPED 2026-08-04** | Guarantees 4.1% / 7.1%, environmental 8.0% / 19.5%. **`LettersOfCreditOutstandingAmount` (16.9% / 29.2%) is the best-covered concept here and is NOT a guarantee** — operator ruling: it fills the off-balance-sheet line. |
 
-### The verification this section needs before it is scheduled
+### ✅ The verification this section needed — DONE 2026-08-04
+
+V1's numbers were measured **before the bulk backfill ran** (72 companies with 50+ tags, 45-filer
+basket) and V1 itself said to re-run them afterwards. Re-run over **485 filers in 70 SIC groups**
+on FY2023+ facts, plus the 113 with a full tag payload. Answer (1) of the three below is the right
+one for most of §07 — *the tags are rare in practice and `N/A` is the honest answer* — with one
+correction: V1 named `GuaranteeObligationsMaximumExposure` as §07.4's best tag, and it is not.
+`LettersOfCreditOutstandingAmount` has four times the coverage and is a **different instrument**,
+which is a mapping decision rather than a coverage one. Full results in `docs/DATA_MODEL.md`.
+
+### The verification this section needed (original text)
 
 **Two filers is not a basket.** `PurchaseObligation` and `LossContingencyAccrualAtCarryingValue`
 missing from both Apple and Intel means one of three things, and **the roadmap must not guess

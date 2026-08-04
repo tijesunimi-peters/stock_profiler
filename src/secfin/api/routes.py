@@ -42,6 +42,8 @@ from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
     FOOTNOTE_GROUPS,
+    OBLIGATION_GROUP_NOTES,
+    OBLIGATION_GROUPS,
     candidate_tags,
 )
 from secfin.normalize.metrics import (
@@ -759,6 +761,102 @@ async def get_capital(
             "more often means the filer had none -- no repurchase programme, no options "
             "outstanding -- than that it declined to disclose. Votes per share and beneficial "
             "ownership are not tagged anywhere in XBRL and are not served here."
+        ),
+    }
+
+
+def _obligation_group(
+    facts: list[RawFact], cik: int, group: str, year: int, period: FiscalPeriod
+) -> dict:
+    """One §07 group, with the absence explained by what the market does rather than by this filer.
+
+    Same substitution as `_capital_group`, for a stronger reason: these are the lowest-coverage
+    cards on the page (20-26% of filers), and the default "did not disclose" would read as an
+    accusation against three quarters of the market for writing a disclosure in prose, which is
+    entirely permissible.
+    """
+    result = build_concept_group(facts, cik, group, year, period, OBLIGATION_GROUPS)
+    note = OBLIGATION_GROUP_NOTES.get(group)
+    if note:
+        result["note"] = note
+        if result["status"] != "ok":
+            result["reason"] = note
+    return result
+
+
+@public_router.get(
+    "/companies/{symbol}/obligations",
+    tags=["Financials"],
+    summary="Purchase commitments, restructuring, guarantees and environmental accruals",
+)
+async def get_obligations(
+    symbol: str,
+    year: int | None = Query(
+        None, description="Fiscal year, e.g. 2025. Omit for the latest one on file."
+    ),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    groups: str | None = Query(
+        None, description="Comma-separated group keys; omit for all of them."
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> dict:
+    """§07's obligation cards, resolved by the same `build_concept_group` as §02 and §04.
+
+    **This is the lowest-coverage section of the company page, and that is a finding rather than a
+    gap.** Measured 2026-08-04 across 485 filers in 70 SIC groups on FY2023+ facts: purchase
+    commitments 25.4%, restructuring 25.6%, guarantees 20.2%, environmental accruals 8.0%. Among
+    the 113 filers with a full tag payload the same groups read 31.9%, 48.7%, 34.5% and 19.5%.
+    Most companies write these disclosures in prose, which is permitted -- so an empty group is
+    the normal case, and each one carries a `note` saying which kind of absence it is.
+
+    **Purchase commitments are the fragmentation case.** Three unrelated tag families say the same
+    thing and none reaches 15% on its own, so the group reads their union. `ContractualObligation`
+    is the broadest of the three and can include debt and leases counted elsewhere on this page,
+    so it resolves only when the two narrower families are absent.
+
+    **Letters of credit are reported, and are not guarantees.** A guarantee is a promise to perform
+    another party's obligation; a standby letter of credit is a bank undertaking this filer bought.
+    Merging them would quadruple the guarantee coverage number by counting a different instrument
+    (operator ruling 2026-08-04: letters of credit fill the off-balance-sheet line instead).
+
+    **Not served here, and not because it was hard.** §07.1's legal proceedings -- the matter, its
+    stage, its age -- are Item 3 narrative. Only the recorded accrual is structured, on 23.7% of
+    filers, and one column in four cannot make that table. An accrual is recorded only when a loss
+    is both probable and estimable (ASC 450), so its absence is never evidence that exposure is
+    zero, and nothing here should be read that way.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    if not facts:
+        raise HTTPException(status_code=404, detail=f"No data found for {symbol}.")
+
+    resolved_year = year
+    if resolved_year is None:
+        years = [y for y, p in available_periods(facts) if p == period]
+        if not years:
+            raise HTTPException(status_code=404, detail=f"No {period} period on file for {symbol}.")
+        resolved_year = max(years)
+
+    wanted = [g.strip() for g in groups.split(",")] if groups else list(OBLIGATION_GROUPS)
+    return {
+        "cik": cik,
+        "fiscal_year": resolved_year,
+        "fiscal_period": period,
+        "groups": [
+            _obligation_group(facts, cik, g, resolved_year, period)
+            for g in wanted
+            if g in OBLIGATION_GROUPS
+        ],
+        "cannot": (
+            "Legal proceedings -- what the matter is, what stage it has reached and how long it "
+            "has run -- are Item 3 narrative and are not served here; only a recorded accrual is "
+            "structured, and it is recorded only when a loss is probable AND estimable (ASC 450), "
+            "so its absence never means the exposure is zero. Purchase commitments are tagged by "
+            "about a quarter of filers and their year-by-year ladder by about one in twenty. "
+            "Letters of credit are reported separately from guarantees because they are a "
+            "different instrument."
         ),
     }
 

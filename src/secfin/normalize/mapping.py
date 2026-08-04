@@ -722,6 +722,133 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         "Capitalized Software",
         ["CapitalizedComputerSoftwareNet", "CapitalizedComputerSoftwareGross"],
     ),
+
+    # ---------------------------------------------------------------- §07 obligations
+    #
+    # Coverage re-measured 2026-08-04 over 485 filers in 70 SIC groups with FY2023+ facts (and the
+    # 113 of them carrying 300+ distinct tags), superseding V1's 45-filer pre-backfill basket.
+    # This is the LOWEST-COVERAGE section of the page and it is expected to render N/A often --
+    # that is the honest answer for a disclosure most filers write in prose.
+    #
+    # Purchase commitments are the FRAGMENTATION case: three unrelated tag families say the same
+    # thing and none clears 15%, so the union is what the card can render (25.4% broad / 31.9%
+    # deep). The by-year ladder is thinner again -- roughly 4-5% of filers tag the anniversary
+    # variants -- so the card shows a total far more often than a ladder.
+    "purchase_obligation": (
+        "Purchase & Capacity Commitments",
+        # `UnrecordedUnconditional…` leads on coverage (8.2% / 14.2%); `PurchaseObligation` and
+        # `ContractualObligation` follow at 7.4% each. `ContractualObligation` is the BROADEST of
+        # the three -- it can include debt and leases already counted elsewhere on the page -- so
+        # it sits last and only resolves when the narrower two are absent.
+        [
+            "UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount",
+            "PurchaseObligation",
+            "LongTermPurchaseCommitmentAmount",
+            "OtherCommitment",
+            "ContractualObligation",
+        ],
+    ),
+    "purchase_obligation_y1": (
+        "Due Within One Year",
+        [
+            "PurchaseObligationDueInNextTwelveMonths",
+            "UnrecordedUnconditionalPurchaseObligationDueWithinOneYear",
+            "ContractualObligationDueInNextTwelveMonths",
+            "OtherCommitmentDueInNextTwelveMonths",
+        ],
+    ),
+    "purchase_obligation_y2": (
+        "Due In Year Two",
+        [
+            "PurchaseObligationDueInSecondYear",
+            "UnrecordedUnconditionalPurchaseObligationDueWithinTwoYears",
+        ],
+    ),
+    "purchase_obligation_y3": (
+        "Due In Year Three",
+        [
+            "PurchaseObligationDueInThirdYear",
+            "UnrecordedUnconditionalPurchaseObligationDueWithinThreeYears",
+        ],
+    ),
+    "purchase_obligation_y4": (
+        "Due In Year Four",
+        [
+            "PurchaseObligationDueInFourthYear",
+            "UnrecordedUnconditionalPurchaseObligationDueWithinFourYears",
+        ],
+    ),
+    "purchase_obligation_y5": (
+        "Due In Year Five",
+        [
+            "PurchaseObligationDueInFifthYear",
+            "UnrecordedUnconditionalPurchaseObligationDueWithinFiveYears",
+        ],
+    ),
+    "purchase_obligation_thereafter": (
+        "Due After Five Years",
+        [
+            "PurchaseObligationDueAfterFifthYear",
+            "UnrecordedUnconditionalPurchaseObligationDueAfterFiveYears",
+            "ContractualObligationDueAfterFifthYear",
+        ],
+    ),
+
+    # Restructuring -- the best-covered group in §07 (25.6% broad / 48.7% deep).
+    "restructuring_charge": (
+        "Restructuring Charge",
+        # DURATION. 17.9% / 35.4%. `SeveranceCosts1` (8.5% / 15.9%) is a COMPONENT of a
+        # restructuring charge, not a synonym, so it is a separate concept below rather than a
+        # fallback that would silently under-report the total.
+        ["RestructuringCharges", "RestructuringAndRelatedCostIncurredCost"],
+    ),
+    "restructuring_reserve": (
+        "Restructuring Accrual Remaining",
+        # INSTANT. 12.8% / 27.4%.
+        ["RestructuringReserve"],
+    ),
+    "restructuring_paid": (
+        "Cash Paid Against The Accrual",
+        # DURATION. 10.9% / 23.9%.
+        ["PaymentsForRestructuring"],
+    ),
+    "restructuring_positions": (
+        "Positions Eliminated",
+        # A COUNT, not a dollar amount -- the card's "Scope" tile. Kept apart from every dollar
+        # concept above so a renderer cannot format headcount as currency.
+        ["RestructuringAndRelatedCostNumberOfPositionsEliminated"],
+    ),
+    "severance_costs": ("Severance Costs", ["SeveranceCosts1"]),
+
+    # Guarantees, environmental, off-balance-sheet -- the thinnest group on the page.
+    "guarantee_obligations": (
+        "Guarantee Obligations",
+        # 4.1% / 7.1%. Deliberately NOT unioned with letters of credit: a guarantee is a promise to
+        # perform another party's obligation, a standby letter of credit is a bank's undertaking
+        # bought by this filer. Merging them would quadruple the coverage number by reporting a
+        # different instrument under this heading.
+        [
+            "GuaranteeObligationsMaximumExposureUndiscounted",
+            "GuaranteeObligationsCurrentCarryingValue",
+        ],
+    ),
+    "letters_of_credit": (
+        "Letters of Credit Outstanding",
+        # 16.9% / 29.2% -- four times the guarantee tags, and the best-covered concept in §07.4.
+        # A standby letter of credit is the textbook OFF-BALANCE-SHEET commitment, which is the
+        # slot it fills (operator ruling 2026-08-04). It is never folded into `guarantee_obligations`.
+        ["LettersOfCreditOutstandingAmount", "StandbyLettersOfCreditAmountOutstanding"],
+    ),
+    "environmental_accrual": (
+        "Environmental Remediation Accrual",
+        # 6.2% / 16.8% for the headline tag. The current/noncurrent split is a different cut of the
+        # same liability, so it follows as a fallback rather than being summed with it.
+        [
+            "AccrualForEnvironmentalLossContingencies",
+            "AccruedEnvironmentalLossContingenciesNoncurrent",
+            "AccruedEnvironmentalLossContingenciesCurrent",
+        ],
+    ),
 }
 
 # Which canonical concepts belong on which statement, in display order.
@@ -922,6 +1049,95 @@ CAPITAL_GROUP_NOTES: dict[str, str] = {
         "more often means the filer repurchased nothing."
     ),
 }
+
+
+#: §07's obligation groups. Same `(label, concepts, coverage, primaries)` shape as the two
+#: registries above, resolved by the same `build_concept_group`.
+#:
+#: **Coverage here is low by nature, not by neglect.** Measured 2026-08-04 across 485 filers in 70
+#: SIC groups on FY2023+ facts: purchase commitments 25.4%, restructuring 25.6%, guarantees and
+#: environmental 20.2% / 8.0%. On the 113 deeply-ingested filers the same groups read 31.9%, 48.7%
+#: and 34.5% / 19.5%. Most filers write these disclosures in prose; an N/A is the correct answer
+#: and `OBLIGATION_GROUP_NOTES` is what tells a reader which kind of absence they are looking at.
+#:
+#: §07.1's legal-proceedings table is deliberately NOT here. Three of its four columns -- the
+#: matter, its stage and its age -- are Item 3 narrative, so the grid can never render a row as
+#: designed, and only the accrual is structured (23.7% / 37.2%). Operator ruling 2026-08-04: mark
+#: the card rather than build a version of it that fills one column in four.
+OBLIGATION_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
+    "purchase_commitments": (
+        "Purchase & capacity commitments",
+        [
+            "purchase_obligation",
+            "purchase_obligation_y1",
+            "purchase_obligation_y2",
+            "purchase_obligation_y3",
+            "purchase_obligation_y4",
+            "purchase_obligation_y5",
+            "purchase_obligation_thereafter",
+        ],
+        0.25,
+        # A total alone is a real answer to "what has this filer committed to buy". The ladder is
+        # a bonus roughly 1 filer in 20 provides, so requiring it would blank the card for the
+        # other 19 that DID disclose a number.
+        ["purchase_obligation", "purchase_obligation_y1"],
+    ),
+    "restructuring": (
+        "Restructuring & other obligations",
+        [
+            "restructuring_charge",
+            "restructuring_reserve",
+            "restructuring_paid",
+            "restructuring_positions",
+            "severance_costs",
+        ],
+        0.26,
+        # Positions eliminated is the card's "Scope" tile -- context for a restructuring, never
+        # evidence that one happened, so it cannot make the card `ok` on its own.
+        ["restructuring_charge", "restructuring_reserve", "restructuring_paid"],
+    ),
+    "guarantees": (
+        "Guarantees, environmental & off-balance-sheet",
+        ["guarantee_obligations", "letters_of_credit", "environmental_accrual"],
+        0.20,
+        ["guarantee_obligations", "letters_of_credit", "environmental_accrual"],
+    ),
+}
+
+
+#: Why an obligation group is empty, when "this filer chose not to disclose" would be misleading.
+OBLIGATION_GROUP_NOTES: dict[str, str] = {
+    "purchase_commitments": (
+        "Purchase commitments are split across three unrelated tag families and no single tag "
+        "reaches 15% of filers, so this card reads the union of all three. Even so only about a "
+        "quarter of filers tag a figure at all, and roughly one in twenty tags the year-by-year "
+        "ladder -- the rest disclose the same commitments in the footnote's prose. An empty card "
+        "usually means untagged, not uncommitted."
+    ),
+    "restructuring": (
+        "Restructuring figures are tagged by about a quarter of filers, rising to half among "
+        "fully-tagged large caps. An empty card here most often means the filer is not "
+        "restructuring -- unlike the other two groups in this section, absence and zero are close "
+        "to the same thing for this disclosure."
+    ),
+    "guarantees": (
+        "The thinnest disclosure on the page. Guarantee obligations are tagged by 4% of filers "
+        "and environmental accruals by 6%; letters of credit, at 17%, are the only line here most "
+        "filers report. A blank card is the normal case and says nothing about the filer."
+    ),
+}
+
+
+def obligation_concepts(group: str) -> list[str]:
+    """The canonical concepts behind one §07 obligations card."""
+    entry = OBLIGATION_GROUPS.get(group)
+    return list(entry[1]) if entry else []
+
+
+def obligation_primary(group: str) -> list[str]:
+    """The concepts the card is NAMED for -- it is only `ok` when one of these resolves."""
+    entry = OBLIGATION_GROUPS.get(group)
+    return list(entry[3]) if entry else []
 
 
 def capital_concepts(group: str) -> list[str]:

@@ -1413,3 +1413,75 @@ index returns `status="na"` — "we have not looked" is never rendered as "we lo
 
 **Not a canonical concept.** No `mapping.py` change: these are `dei` facts and a document census,
 not US-GAAP financial concepts.
+
+---
+
+## Obligation groups (`OBLIGATION_GROUPS`) — §07
+
+Same `(label, concepts, coverage, primaries)` registry shape as `FOOTNOTE_GROUPS` and
+`CAPITAL_GROUPS`, resolved by the same `build_concept_group`. Served by
+`GET /v1/companies/{symbol}/obligations`.
+
+### Coverage, re-measured after the bulk backfill
+
+V1 (2026-08-02) measured §07 on a 45-filer basket **before** `ingest/backfill.py` had run — only
+72 companies on the volume had 50+ distinct tags, and its own verdict said to re-run afterwards.
+Re-measured 2026-08-04 across **485 filers in 70 SIC groups with FY2023+ facts** (and the 113 of
+them carrying 300+ distinct tags). FY2023+ only, because "ever tagged" is what flattered
+`options_outstanding` to 83% in §04 while Apple last tagged it in FY2016.
+
+| group | union, N=485 | union, N=113 deep | best single tag |
+|---|---:|---:|---|
+| Purchase & capacity commitments | 25.4% | 31.9% | `UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount` 8.2% / 14.2% |
+| Restructuring | 25.6% | **48.7%** | `RestructuringCharges` 17.9% / 35.4% |
+| Guarantees | 20.2% | 34.5% | `LettersOfCreditOutstandingAmount` 16.9% / 29.2% |
+| Environmental | 8.0% | 19.5% | `AccrualForEnvironmentalLossContingencies` 6.2% / 16.8% |
+| Legal — accrual | 23.7% | 37.2% | `LossContingencyAccrualAtCarryingValue` 6.6% / 15.9% |
+| Off-balance-sheet arrangements | 2.9% | 4.4% | — nothing means this |
+
+**This is the lowest-coverage section of the company page, and that is a finding rather than a
+gap.** Most filers write these disclosures in the footnote's prose, which is permitted. Every
+group therefore carries an `OBLIGATION_GROUP_NOTES` entry, and the note distinguishes the kinds
+of absence: *untagged, not uncommitted* for purchase commitments; **the opposite for
+restructuring**, where an empty card usually does mean the company is not restructuring.
+
+### The fragmentation case
+
+No single purchase-commitment tag reaches 15% of filers, but three unrelated families say the
+same thing, so the group reads their **union** (25.4%). `ContractualObligation` is the broadest —
+it can include debt and leases already shown elsewhere on the page — so it is ordered **last** and
+resolves only when the two narrower families are absent.
+
+The **year-by-year ladder** is thinner again: roughly one filer in twenty tags the anniversary
+variants. A total alone therefore resolves the card, and the payload states which of the four
+cases applies — the rows sum to the total (AMD: 8,498 + 1,099 + 1,216 + 1,197 + 156 + 0 = 12,166),
+only *some* rungs were tagged (Apple tags the total and "after five years" and nothing between),
+a ladder with no total, or a genuine disagreement. **No plug row is invented to make it close.**
+
+### Two pairs that look mergeable and are not
+
+| kept apart | why |
+|---|---|
+| `letters_of_credit` vs `guarantee_obligations` | A guarantee is a promise to perform **another party's** obligation; a standby letter of credit is a bank undertaking **this filer bought**. Merging them would take guarantee coverage from 4% to 17% by reporting a different instrument under that heading. Operator ruling 2026-08-04: letters of credit fill the **off-balance-sheet** line instead, which is what they are. |
+| `severance_costs` vs `restructuring_charge` | `SeveranceCosts1` is on 8.5% of filers against 17.9% for the charge, and is a **component** of it. Used as a fallback it would report one component as the whole restructuring. |
+
+`restructuring_positions` is a **headcount** (`employee` unit) sharing a card with USD amounts, and
+is deliberately not a primary concept — it is the card's "Scope" tile, context for a restructuring
+rather than evidence one happened.
+
+### §07.1 legal proceedings is deliberately NOT served
+
+The card's four columns are Matter, Stage, Accrual and Since. **Three are Item 3 narrative**; only
+the accrual is structured, on 23.7% of filers. One column in four cannot make that table, so
+operator ruling 2026-08-04 marks the card rather than rebuilding it around the single structured
+column. **An accrual is recorded only when a loss is both probable AND estimable (ASC 450), so its
+absence is never evidence that the exposure is zero** — and no surface may imply otherwise.
+
+### A reported zero is not an absence
+
+AMD tags `PurchaseObligationDueAfterFifthYear` and `RestructuringCharges` as exactly **0**. Those
+are disclosures — the filer said "nothing" — and they render as `$0`, never `N/A`. The inverse rule
+(a missing value never renders as `0`) is the one this product rests on; both directions hold, and
+AMD's card shows a reported `$0` and a genuine `N/A` side by side. The bar-width helper excludes an
+exact zero from its 2% visibility floor for the same reason: the floor exists so small values stay
+visible, not so zero looks like a quantity.

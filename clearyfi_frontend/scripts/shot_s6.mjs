@@ -21,10 +21,10 @@ for (const w of [1440, 420]) {
   const p=await b.newPage(); await p.setViewport({width:w,height:1600});
   for (const TK of (process.env.TICKERS||"AAPL").split(",")) {
     await p.goto(`http://localhost:${PORT}/company/${TK}/overview?focal=${TK}`,{waitUntil:"networkidle0"});
-    await p.waitForFunction(()=>[...document.querySelectorAll(".p-card")].some(e=>/Company extension tags/i.test(e.textContent||"")),{timeout:40000});
+    await p.waitForFunction(()=>[...document.querySelectorAll(".p-card")].some(e=>/Purchase & capacity commitments/i.test(e.textContent||"")),{timeout:40000});
     await new Promise(r=>setTimeout(r,800));
-    const sec = await p.evaluateHandle(()=>document.querySelector("#s6")?.closest(".hub-sec"));
-    await sec.asElement().screenshot({path: join(OUT, `s6-${TK}-${w}.png`)});
+    const sec = await p.evaluateHandle(()=>document.querySelector("#s7")?.closest(".hub-sec"));
+    await sec.asElement().screenshot({path: join(OUT, `s7-${TK}-${w}.png`)});
     const band = await p.$(".hub-changed");
     if (band) await band.screenshot({path: join(OUT, `changed-${TK}-${w}.png`)});
   }
