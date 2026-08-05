@@ -1551,3 +1551,72 @@ time, which the SEC accepts. **1,838 rows across 188 issuers** in our store when
 so `sec/insider.py` drops it on parse and `insider_summary.py` drops it on read (covering rows
 cached before the fix, without migrating the store). Anything that is not a leading `YYYY-MM-DD`
 passes through untouched rather than being guessed at.
+
+---
+
+## Officer & director changes (`normalize/officer_changes.py`) — §05.1
+
+`GET /companies/{symbol}/officer-changes` interleaves two half-answers. Neither carries the whole
+event, and the gap between them is the point.
+
+| Source | Gives | Cannot give |
+|---|---|---|
+| **Form 3** (initial statement of beneficial ownership) | the person and the role, for **arrivals** | anything about departures — Section 16 requires no filing on ceasing to be an insider |
+| **8-K Item 5.02** | that a change was reported, and when | who, what role, or **which change** |
+
+### EDGAR's item code has no sub-item letter
+
+Item 5.02 covers (a) director resignation over a disagreement, (b) departure, (c) appointment of a
+principal officer, (d) director election and (e) compensatory arrangement. **Every one of the 129
+indexed 5.02 filings measured 2026-08-04 reads `5.02`** — never `5.02(b)` or `5.02(c)`. Which of
+the five it reports is the 8-K's narrative, and Track 2. So the design's action verb (appointed /
+resigned / retired) is **not recoverable from any source we hold**, and the card has no action
+column rather than a guessed one.
+
+### Interleaved, never joined (operator ruling 2026-08-04)
+
+Apple filed a Form 3 for Ben Borders and an Item 5.02 8-K on **2026-01-02**, and again for Sabih
+Khan on **2025-07-25**. Those are almost certainly the same appointments — but neither filing
+references the other, so the rows sit adjacent in date order and a reader draws the link.
+Correlating them in the payload would be our inference presented as their disclosure.
+
+### Only officers and directors (operator ruling 2026-08-04)
+
+Of 22,732 distinct Form 3 arrivals: **15,476 officers or directors**, 6,357 pure 10% owners
+(including NVIDIA Corp filing against itself), 665 `other`. A 10% owner crossing a threshold is an
+ownership event, not personnel turnover. The `other` box is excluded too — it is dominated by
+Trustee, Portfolio Manager, Investment Adviser and Shareholder, so admitting it to catch
+Coca-Cola's regional presidents (whom KO tags `other`, and who therefore do **not** appear) would
+admit far more fund-world roles than executives. **`arrivals_excluded` reports the count** so the
+exclusion is visible rather than silent.
+
+### The role filter is decidable from the display string; the title is not
+
+`InsiderTransaction` gained `officer_title`, `is_director`, `is_officer` and
+`is_ten_percent_owner` (2026-08-04) — the ownership XML's own boxes, unjoined. Same
+`None`-means-UNKNOWN rule as `is_derivative` and `rule_10b5_1`.
+
+But 438,628 rows were cached before those columns existed, so the filter falls back to
+`owner_relationship`. **V4 established that extracting the TITLE from that string is wrong on 35%
+of paren-bearing values** — a title contains the same `", "` used as the separator
+(`officer (CEO, Acting CFO, Chairman)`). The *filter* needs something strictly weaker, and it is
+exact: `_relationship_label` joins in a fixed order — director, officer(…), 10% owner, other(…) —
+so both boxes sit in the **left prefix**, before any free text can begin, and testing the prefix
+never enters a parenthesis.
+
+**Measured over every distinct value in the store (2026-08-04): 12,630 values, 0 violating the
+fixed order, 0 beginning with anything other than one of the four boxes.** This does not extend to
+reading the title back out, which stays impossible and is not attempted — the role cell renders
+the filer's **whole** relationship string instead.
+
+`"See Remarks"` (9,303 rows) is an EDGAR convention meaning the role is in the filing's remarks. It
+is rendered as that, never as a job title.
+
+### The 8-K index is built cache-aside (operator ruling 2026-08-04)
+
+`_ensure_filing_index` fetches `/submissions/` on the first view of a company and reads SQLite
+forever after — one throttled request when a filer is actually looked at, instead of a
+whole-market batch over 16,920 issuers that would pay for filers nobody opens. **A failed fetch is
+not fatal:** `index_built=False` says the event half was never looked at, which is a different
+answer from an empty event list. It does **not** refresh a stale index; consumers already report
+the window they read, which is what makes that safe.

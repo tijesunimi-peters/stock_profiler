@@ -122,17 +122,21 @@ async def test_limit_anonymous_traffic_blocks_after_the_configured_burst(monkeyp
     assert exc_info.value.status_code == 429
 
 
-async def test_limit_anonymous_traffic_keys_by_client_ip_independently():
+async def test_limit_anonymous_traffic_keys_by_client_ip_independently(monkeypatch):
     from secfin import config
 
+    # Pinned rather than read from the ambient setting, like the test above it. Draining a bucket
+    # sized by whatever `.env` happens to carry is a race: at 60/s the loop takes long enough for
+    # the bucket to refill mid-drain, and the expected 429 never fires. The subject here is the
+    # per-IP KEYING, not the burst size.
+    monkeypatch.setattr(config.settings, "secfin_anon_rate_limit_per_sec", 1.0)
     limiter = TokenBucketLimiter()
     r1 = MagicMock()
     r1.client.host = "1.1.1.1"
     r2 = MagicMock()
     r2.client.host = "2.2.2.2"
 
-    for _ in range(int(config.settings.secfin_anon_rate_limit_per_sec)):
-        await limit_anonymous_traffic(request=r1, limiter=limiter)
+    await limit_anonymous_traffic(request=r1, limiter=limiter)
     with pytest.raises(HTTPException):
         await limit_anonymous_traffic(request=r1, limiter=limiter)
     # A different IP is unaffected.

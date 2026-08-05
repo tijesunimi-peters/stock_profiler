@@ -155,6 +155,11 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    officer_changes.py         # §05.1: Form 3 arrivals (person + role) interleaved with 8-K Item
+                               #   5.02 events (date), NEVER joined -- neither filing references the
+                               #   other. NO action verb: EDGAR's item code has no sub-item letter,
+                               #   so departure/appointment is narrative. Officers + directors only;
+                               #   10% owners and `other` excluded, count reported
     insider_summary.py         # DERIVED Section 16 counts over Form 3/4/5 rows (§05.4). Excludes
                                #   holdings and DERIVATIVE rows (an option exercise files two rows;
                                #   counting both doubles it) and reports each exclusion. A/D counts

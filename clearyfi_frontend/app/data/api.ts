@@ -523,6 +523,89 @@ function toPayVersusPerformance(res: PvpResponse | null) {
   };
 }
 
+/* ------------------------------------------------------------ §05.1 officer & director changes */
+
+interface OfficerChangesResponse {
+  cik: number;
+  changes: {
+    kind: "arrival" | "event";
+    person: string | null;
+    role: string | null;
+    role_is_stated_title: boolean;
+    source: string | null;
+    date: string | null;
+    accession: string | null;
+    relationship: string | null;
+  }[];
+  arrival_count: number;
+  event_count: number;
+  index_built: boolean;
+  indexed_filings: number;
+  covered_from: string | null;
+  covered_to: string | null;
+  arrivals_excluded: number;
+  arrivals_unclassified: number;
+  status: string;
+  reason: string | null;
+}
+
+/**
+ * §05.1, from the two structured sources — interleaved by date, never joined.
+ *
+ * **There is no action verb, and this does not invent one.** "Appointed" / "resigned" / "retired"
+ * is Item 5.02 narrative, and EDGAR's item code carries no sub-item letter: every indexed 5.02
+ * filing reads `5.02`, never `5.02(b)` or `5.02(c)`. So departure, election, appointment and
+ * compensatory arrangement are indistinguishable in the index, and the card says which filing
+ * exists rather than what it decided.
+ *
+ * **A Form 3 marks an arrival, structurally** — Section 16 requires one within 10 days of becoming
+ * an officer or director. It requires nothing on departure, so a departing CFO files nothing and
+ * cannot appear here. The footer says so, because a list of arrivals read as a list of changes
+ * would imply a company that only ever hires.
+ *
+ * **Same-day rows stay two rows.** Apple filed a Form 3 for Ben Borders and an Item 5.02 on
+ * 2026-01-02; neither references the other, so they sit adjacent and the reader draws the link.
+ */
+function toOfficerChanges(res: OfficerChangesResponse | null) {
+  const rows = (res?.changes ?? []).map((c) => ({
+    kind: c.kind,
+    who: c.person ?? "—",
+    whoTitle:
+      c.kind === "event"
+        ? "The 8-K index carries the filing and its date. Who it concerns is in the 8-K's text."
+        : (c.relationship ?? ""),
+    what: c.kind === "arrival" ? `${c.source} · ${c.role ?? ""}`.trim() : (c.source ?? ""),
+    date: c.date ?? "date N/A",
+  }));
+
+  const window =
+    res?.covered_from && res?.covered_to
+      ? `${res.covered_from.slice(0, 4)}–${res.covered_to.slice(0, 4)}`
+      : "the filings indexed";
+
+  // Two different absences. "We read the 8-K index and found no Item 5.02" is a finding; "we have
+  // never indexed this company" is not, and the card must not let them read alike.
+  const coverage = !res?.index_built
+    ? "This company's 8-K index has not been built, so the event half has not been looked at."
+    : `${plural(res.arrival_count, "arrival")} from Form 3 · ` +
+      `${plural(res.event_count, "Item 5.02 filing")} among the ${res.indexed_filings} filings ` +
+      `EDGAR lists for this company, covering ${window}.`;
+
+  const excluded = res?.arrivals_excluded
+    ? ` ${plural(res.arrivals_excluded, "further Form 3 filer was", "further Form 3 filers were")} ` +
+      "a 10% owner or an “other” filer, not an officer or director."
+    : "";
+
+  return {
+    ok: (res?.status === "ok" && rows.length > 0) as boolean,
+    rows,
+    coverage: coverage + excluded,
+    reason:
+      res?.reason ??
+      "Officer and director changes could not be read for this company just now.",
+  };
+}
+
 /* ------------------------------------------------------------ §05.4 insider transactions */
 
 interface InsiderSummaryResponse {
@@ -1483,15 +1566,17 @@ export const api = {
     // round-trips server-side (submissions, directory, instance) and the insider read can cost
     // one ownership-XML fetch per uncached filing, so neither may take the section down with it
     // — `null` flows into each adapter's honest-empty branch.
-    const [pvp, insiderSummary] = await Promise.all([
+    const [pvp, insiderSummary, officers] = await Promise.all([
       getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(() => null),
       getJson<InsiderSummaryResponse>(`/v1/companies/${enc}/insider-summary?limit=10`).catch(
         () => null,
       ),
+      getJson<OfficerChangesResponse>(`/v1/companies/${enc}/officer-changes`).catch(() => null),
     ]);
     return {
       governance: hub.hubData(symbol).governance,
       insider: toInsiderSummary(insiderSummary),
+      officers: toOfficerChanges(officers),
       pvp: toPayVersusPerformance(pvp),
     } as CompanyGovernance;
   },
@@ -1770,6 +1855,8 @@ export interface CompanyGovernance {
   pvp: ReturnType<typeof toPayVersusPerformance>;
   /** §05.4 on real Form 3/4/5 rows — no longer `hub.HubInsider`. */
   insider: ReturnType<typeof toInsiderSummary>;
+  /** §05.1 on Form 3 arrivals + 8-K Item 5.02 events. */
+  officers: ReturnType<typeof toOfficerChanges>;
 }
 
 export interface CompanyDisclosure {

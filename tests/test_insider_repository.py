@@ -293,3 +293,72 @@ class TestRefreshReplacesInsteadOfSkipping:
         assert owners == {"New Parser", "Untouched"}
         assert repo.cached_filing_count(CIK) == 2
         repo.close()
+
+
+def test_role_fields_round_trip():
+    repo = SQLiteInsiderTransactionRepository(":memory:")
+    repo.upsert_insider_transactions(
+        CIK,
+        [InsiderFilingMeta("acc-3", "2026-01-02", "3")],
+        [
+            _txn(
+                "acc-3",
+                "Borders Ben",
+                officer_title="Principal Accounting Officer",
+                is_officer=True,
+                is_director=False,
+                is_ten_percent_owner=False,
+            )
+        ],
+    )
+    (got,) = repo.get_insider_transactions(CIK, limit=10)
+    assert got.officer_title == "Principal Accounting Officer"
+    assert (got.is_officer, got.is_director, got.is_ten_percent_owner) == (True, False, False)
+    repo.close()
+
+
+def test_legacy_rows_read_role_fields_as_unknown_not_false():
+    # The same rule as is_derivative and rule_10b5_1: a row cached before these columns existed
+    # was never classified, and False would assert "not an officer" about it. §05.1 FILTERS on
+    # these, so a wrong False silently drops a real arrival.
+    repo = SQLiteInsiderTransactionRepository(":memory:")
+    repo._conn.execute(
+        "INSERT INTO insider_filings (issuer_cik, accession, filed, form_type)"
+        " VALUES (?, 'legacy-3', '2020-01-01', '3')",
+        (CIK,),
+    )
+    repo._conn.execute(
+        "INSERT INTO insider_transactions (issuer_cik, accession, owner_name, form_type,"
+        " is_holding) VALUES (?, 'legacy-3', 'Legacy Person', '3', 1)",
+        (CIK,),
+    )
+    (got,) = repo.get_insider_transactions(CIK, limit=10)
+    assert got.is_officer is None
+    assert got.is_director is None
+    assert got.is_ten_percent_owner is None
+    assert got.officer_title is None
+    repo.close()
+
+
+def test_get_initial_statements_finds_form_3s_buried_under_newer_form_4s():
+    # Apple's newest ten filings are all Form 4s; its Form 3s are months older. A recency-bounded
+    # read returns no arrivals at all, which is why §05.1 asks by form instead.
+    repo = SQLiteInsiderTransactionRepository(":memory:")
+    repo.upsert_insider_transactions(
+        CIK,
+        [InsiderFilingMeta("f3", "2026-01-02", "3")],
+        [_txn("f3", "Borders Ben", form_type="3", is_officer=True)],
+    )
+    for i in range(10):
+        repo.upsert_insider_transactions(
+            CIK,
+            [InsiderFilingMeta(f"f4-{i}", f"2026-06-{i + 1:02d}", "4")],
+            [_txn(f"f4-{i}", "Newstead Jennifer", form_type="4")],
+        )
+
+    assert [t.owner_name for t in repo.get_insider_transactions(CIK, limit=10)] == [
+        "Newstead Jennifer"
+    ] * 10
+    (arrival,) = repo.get_initial_statements(CIK, limit=40)
+    assert arrival.owner_name == "Borders Ben"
+    repo.close()

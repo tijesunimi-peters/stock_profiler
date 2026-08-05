@@ -12,6 +12,7 @@ rather than per-company data.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import asdict
@@ -39,6 +40,7 @@ from secfin.normalize.flows import (
 )
 from secfin.normalize.geography import classify_location
 from secfin.normalize.insider_summary import summarize_insider_transactions
+from secfin.normalize.officer_changes import build_officer_changes
 from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
@@ -93,6 +95,7 @@ from secfin.normalize.schema import (
     InsiderFlowWindow,
     InsiderSummary,
     InsiderTransaction,
+    OfficerChanges,
     IssuerHolder,
     MetricFrequency,
     MetricHistory,
@@ -152,6 +155,7 @@ from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.sec.cover import find_extracted_instance, parse_cover_facts
 from secfin.sec.exhibits import find_ex21_filename, parse_ex21
+from secfin.sec.filing_index import fetch_filing_index
 from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
 from secfin.storage.filing_cover_repository import FilingCoverRepository
 from secfin.storage.filing_index_repository import FilingIndexRepository
@@ -186,6 +190,8 @@ from secfin.storage.sector_theme_score_repository import (
 # our own UI depends on just breaks that UI (see the insider-trades tab / metric-periods
 # 401s this exact mistake caused). `router` is for endpoints only an external, paying API
 # consumer hits directly. See api/auth.py.
+logger = logging.getLogger(__name__)
+
 public_router = APIRouter()
 router = APIRouter()
 # INTERNAL-ONLY endpoints (operator decision 2026-07-16, docs/ROADMAP_DATA_DEPTH.md
@@ -978,6 +984,38 @@ _AUDIT_CANNOT = (
     "are out of scope. Company extension tags are NOT a non-GAAP adjustment count -- they measure "
     "how far a filer departs from the standard taxonomy, which is a different question."
 )
+
+
+async def _ensure_filing_index(
+    repo: FilingIndexRepository, client: SECClient, cik: int
+) -> int:
+    """Cache-aside the filing index: build it on first view, then read SQLite forever after.
+
+    Operator ruling 2026-08-04. The alternative was a whole-market batch -- 16,920 issuers, one
+    `/submissions/` fetch each -- which pays for filers nobody opens. This pays one throttled
+    request the first time a company is actually looked at.
+
+    A read path that writes, deliberately, and on the same terms as `_insider_transactions_for_cik`
+    and the cover-facts store: one document, immutable enough to cache, expensive enough that
+    re-fetching per request would be wrong. **Failure is not fatal** -- the caller still gets the
+    half of its answer that doesn't need the index, with `index_built=False` saying so. Returning
+    0 must never be read as "no filings exist".
+
+    ⚠️ This does NOT refresh a stale index. EDGAR's rolling window moves, and a company indexed
+    months ago keeps that snapshot until the backfill re-runs. Consumers already report the
+    window they read, which is what makes that safe.
+    """
+    indexed = repo.indexed_count(cik)
+    if indexed:
+        return indexed
+    try:
+        entries = await fetch_filing_index(client, cik)
+    except Exception:  # noqa: BLE001 -- a missing index degrades the card, never breaks it
+        logger.warning("filing index fetch failed for CIK %d", cik, exc_info=True)
+        return 0
+    if entries:
+        repo.upsert_filings(cik, entries)
+    return repo.indexed_count(cik)
 
 
 def _audit_events(filing_repo: FilingIndexRepository, cik: int) -> dict:
@@ -2781,6 +2819,64 @@ async def get_insider_summary(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         rows = await _insider_transactions_for_cik(insider_repo, client, cik, limit)
         return summarize_insider_transactions(cik, rows)
+
+
+@public_router.get(
+    "/companies/{symbol}/officer-changes",
+    response_model=OfficerChanges,
+    tags=["Insider Trades"],
+    summary="Officer and director changes from Form 3 arrivals and 8-K Item 5.02",
+)
+async def get_officer_changes(
+    symbol: str,
+    limit: int = Query(8, ge=1, le=40, description="Max change rows to return, newest first"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> OfficerChanges:
+    """Two half-answers, interleaved by date and never joined into one.
+
+    **Form 3 supplies the person and the role, for arrivals only.** Section 16 requires an
+    initial statement within 10 days of becoming an officer or director, so an arrival is a
+    structural fact. Nothing is required on departure, so a departing officer files nothing.
+
+    **8-K Item 5.02 supplies the event and its date, and nothing else.** EDGAR's item code carries
+    **no sub-item letter**, so departure, election, appointment and compensatory arrangement are
+    indistinguishable in the index -- which one it was is the 8-K's narrative, and Track 2.
+
+    **There is no action verb**, in either source. This endpoint does not manufacture one.
+
+    **The two are never joined.** Apple filed a Form 3 for Ben Borders and an Item 5.02 on the
+    same day; neither filing references the other, so the rows sit adjacent and the reader draws
+    the link. Correlating them here would be our inference presented as their disclosure.
+
+    **10% owners and `other` filers are excluded** and the count is reported (`arrivals_excluded`):
+    an index fund crossing 10% files the same Form 3 as an incoming CFO and is not a personnel
+    change. `arrivals_unclassified` counts rows cached before the role columns existed -- UNKNOWN,
+    not "neither".
+
+    The 8-K index is built cache-aside on first view (one `/submissions/` request, then SQLite).
+    If that fetch fails, `index_built` is false and the card reports that the event half was not
+    looked at, rather than an empty list that would read as "no changes".
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        indexed = await _ensure_filing_index(filing_repo, client, cik)
+        covered_from, covered_to = (
+            filing_repo.indexed_window(cik) if indexed else (None, None)
+        )
+        return build_officer_changes(
+            cik,
+            # Form 3s are rare next to the Form 4 stream: Apple's newest 10 filings are all
+            # Form 4s, so a recency-bounded read would return no arrivals at all.
+            initial_statements=insider_repo.get_initial_statements(cik, 40),
+            filings=filing_repo.get_filings(cik, ["8-K", "8-K/A"], 1000) if indexed else [],
+            index_built=bool(indexed),
+            indexed_filings=indexed,
+            covered_from=covered_from,
+            covered_to=covered_to,
+            limit=limit,
+        )
 
 
 @router.get(

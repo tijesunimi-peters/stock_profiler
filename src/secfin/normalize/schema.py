@@ -495,7 +495,24 @@ class InsiderTransaction(BaseModel):
     issuer_cik: int
     issuer_name: str | None = None
     owner_name: str | None = None
+    # A DISPLAY string, joined with ", " from the four role elements below -- e.g.
+    # "director, officer (Chief Executive Officer), 10% owner". Do NOT parse it: a title is free
+    # text and frequently contains the same ", " used as the separator ("officer (CEO, Acting CFO,
+    # Chairman)"), which makes a split wrong on 35% of the paren-bearing values in our own store.
+    # The structured fields below carry what a caller should actually branch on.
     owner_relationship: str | None = None  # director / officer / 10% owner / other
+    # The role boxes from the ownership XML (`isDirector`, `isOfficer`, `officerTitle`,
+    # `isTenPercentOwner`), unjoined. Added 2026-08-04 for §05.1, which has to FILTER on role --
+    # a 10% owner crossing a threshold files the same Form 3 as an incoming CFO and is not a
+    # personnel change.
+    #
+    # `None` means UNKNOWN, not "no": rows cached before these columns existed carry no value,
+    # and defaulting them to False would assert "not an officer" about rows nobody classified.
+    # Same rule as `is_derivative` and `rule_10b5_1` below.
+    officer_title: str | None = None  # raw `officerTitle`; "See Remarks" is a convention, not a title
+    is_director: bool | None = None
+    is_officer: bool | None = None
+    is_ten_percent_owner: bool | None = None
     transaction_date: str | None = None
     security_title: str | None = None
     shares: float | None = None
@@ -634,6 +651,65 @@ class HoldingDelta(BaseModel):
     shares_change: float | None = None  # after - before (positive = added)
     # new | added | reduced | exited | unchanged
     action: Literal["new", "added", "reduced", "exited", "unchanged"]
+
+
+class OfficerChange(BaseModel):
+    """One officer-or-director change signal. See normalize/officer_changes.py.
+
+    Two kinds, from two sources, and neither is convertible into the other:
+
+    * `arrival` -- a Form 3, the initial statement of beneficial ownership, filed within 10 days
+      of becoming an officer or director. Carries the person and the role. Says nothing about
+      departures, which require no filing at all.
+    * `event` -- an 8-K carrying Item 5.02. Carries the date and nothing else: EDGAR's item code
+      has no sub-item letter, so departure, election, appointment and compensatory arrangement
+      are indistinguishable, and which one it was is in the narrative (Track 2).
+
+    There is deliberately no `action` field. "Appointed" / "resigned" / "retired" is prose in
+    every source we hold, and a guess dressed as a verb is the failure this whole card avoids.
+    """
+
+    kind: Literal["arrival", "event"]
+    person: str | None = None  # None on an `event` -- the 8-K index carries no names
+    role: str | None = None  # None on an `event`
+    # False when the filer ticked the officer box but stated no title (or wrote EDGAR's "See
+    # Remarks" convention). The role then names the box, and a caller must not present it as a
+    # job title.
+    role_is_stated_title: bool = True
+    source: str | None = None  # "Form 3" | "8-K Item 5.02"
+    date: str | None = None  # filing date
+    accession: str | None = None
+    relationship: str | None = None  # the full display string, for a tooltip
+
+
+class OfficerChanges(BaseModel):
+    """Form 3 arrivals and 8-K Item 5.02 events for one company, interleaved by date.
+
+    Interleaved, never joined: a Form 3 and an Item 5.02 filed the same day are almost certainly
+    the same appointment, but neither filing references the other, so the correspondence is left
+    for a reader to see rather than asserted here.
+    """
+
+    cik: int
+    changes: list[OfficerChange] = Field(default_factory=list)
+    arrival_count: int = 0  # arrivals found, before the display cap
+    event_count: int = 0
+
+    # Whether this company's 8-K index exists at all. Without it, "no Item 5.02" is not a
+    # finding -- it means the event half was never looked at.
+    index_built: bool = False
+    indexed_filings: int = 0
+    covered_from: str | None = None
+    covered_to: str | None = None
+
+    # Form 3 filers deliberately left out: 10% owners crossing a threshold, and the `other` box.
+    # Reported so the exclusion is visible rather than silent.
+    arrivals_excluded: int = 0
+    # Rows cached before the role columns existed -- UNKNOWN, not "neither".
+    arrivals_unclassified: int = 0
+
+    status: Literal["ok", "na"] = "ok"
+    reason: str | None = None
 
 
 class InsiderSummaryRow(BaseModel):

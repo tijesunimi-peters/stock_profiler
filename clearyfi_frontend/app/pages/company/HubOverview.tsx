@@ -224,6 +224,7 @@ export function HubOverview() {
   const L = identity.data.links;
   const snapshot = financials.data.snapshot;
   const insider = governance.data.insider;
+  const officers = governance.data.officers;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -880,20 +881,37 @@ export function HubOverview() {
       <section className="hub-sec">
         <HubHead id="s5" n="05" title="Governance & people" src="DEF 14A · 8-K Item 5.02 · Forms 3/4/5" />
         <div className="hub-grid">
+          {/*
+            Two half-answers, interleaved by date and never joined. Form 3 gives the person and
+            the role, for arrivals only; 8-K Item 5.02 gives the event and its date and nothing
+            else. There is deliberately NO action column: "appointed" / "resigned" is Item 5.02
+            narrative, and EDGAR's item code carries no sub-item letter, so the six changes it
+            covers are indistinguishable in the index.
+          */}
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Officer &amp; director changes</span>
-              <SynthCard why="The ROLE is available from Form 3/4/5, but the event and its date need 8-K Item 5.02, which is indexed for only a handful of filers so far. The action verb is prose." />
               <Src href={L.eightK}>Read the 8-Ks ↗</Src>
             </div>
-            {d.governance.turnover.map((t, i) => (
-              <div className="hub-tri-row" key={`${t.role}${i}`}>
-                <span className="hub-cell">{t.role}</span>
-                <span className="hub-cell-mono is-soft">{t.action}</span>
-                <span className="hub-cell-mono ta-r">{t.date}</span>
-              </div>
-            ))}
-            <div className="hub-note">Every row will trace to an 8-K Item 5.02 filing once this card is plumbed.</div>
+            {officers.ok ? (
+              officers.rows.map((t, i) => (
+                <div className="hub-tri-row" key={`${t.who}${t.date}${i}`}>
+                  <span className="hub-cell" title={t.whoTitle}>
+                    {t.who}
+                  </span>
+                  <span className="hub-cell-mono is-soft">{t.what}</span>
+                  <span className="hub-cell-mono ta-r">{t.date}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={officers.reason} />
+            )}
+            <div className="hub-note">{officers.coverage}</div>
+            <div className="hub-note">
+              A Form 3 is required within 10 days of becoming an insider, so it marks an arrival.
+              Nothing is filed on departure. Item 5.02 covers departure, election, appointment and
+              compensatory arrangements alike — EDGAR&rsquo;s code does not say which.
+            </div>
           </div>
 
           <div className="p-card">

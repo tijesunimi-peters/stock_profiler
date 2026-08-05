@@ -71,6 +71,22 @@ class InsiderTransactionRepository(ABC):
         """
 
     @abstractmethod
+    def get_initial_statements(self, issuer_cik: int, limit: int) -> list[InsiderTransaction]:
+        """Rows from the newest `limit` **Form 3 / 3-A** filings cached for this issuer.
+
+        Separate from `get_insider_transactions` because the two windows are different in kind.
+        A Form 3 is the *initial* statement of beneficial ownership, filed within 10 days of
+        becoming an officer, director or 10% owner -- so it marks an arrival, and arrivals are
+        rare next to the Form 4 stream they are buried in. Apple's newest 10 filings are all
+        Form 4s; its three most recent Form 3s are months older. A caller wanting arrivals has
+        to ask for them by form, not by recency.
+
+        Unlike `get_insider_transactions`, this does NOT need a `cached_filing_count` check: it
+        answers "what arrivals do we hold", and holding fewer is a coverage fact the caller
+        reports, not a stale answer to a different question.
+        """
+
+    @abstractmethod
     def transactions_since(self, issuer_cik: int, since: str) -> list[InsiderTransaction]:
         """Cached rows for this issuer FILED strictly after `since` (an ISO date), newest first.
 

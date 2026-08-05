@@ -173,3 +173,36 @@ def test_parse_ownership_xml_requires_issuer_cik():
             filed=None,
             accession=None,
         )
+
+
+def test_role_boxes_are_kept_unjoined_alongside_the_display_string():
+    """The display string cannot be split back apart; the boxes can be read directly.
+
+    §05.1 has to FILTER on role -- a 10% owner crossing a threshold files the same Form 3 as an
+    incoming CFO -- and regexing `officer \\((.*)\\)` out of `owner_relationship` is wrong on 35%
+    of the paren-bearing values in our store, because a title contains the same ", " separator.
+    """
+    records = parse_ownership_xml(
+        (FIXTURES_DIR / "aapl_form3_newstead.xml").read_bytes(),
+        form_type="3",
+        filed="2026-03-06",
+        accession="0001780525-26-000003",
+    )
+    row = records[0]
+    # The title travels whole, commas and all -- the exact case a ", " split would break.
+    assert row.officer_title == "SVP, GC and Secretary"
+    assert (row.is_officer, row.is_director, row.is_ten_percent_owner) == (True, False, False)
+    # And the display string is unchanged for existing consumers.
+    assert row.owner_relationship == "officer (SVP, GC and Secretary)"
+
+
+def test_a_director_with_no_officer_title_has_a_null_title_not_an_empty_one():
+    records = parse_ownership_xml(
+        (FIXTURES_DIR / "aapl_form5_wagner.xml").read_bytes(),
+        form_type="5",
+        filed="2024-10-01",
+        accession="0000320193-24-000102",
+    )
+    row = records[0]
+    assert row.officer_title is None
+    assert (row.is_director, row.is_officer) == (True, False)

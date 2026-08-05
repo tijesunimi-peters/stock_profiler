@@ -46,7 +46,13 @@ CREATE TABLE IF NOT EXISTS insider_transactions (
     is_derivative INTEGER,
     -- The Form 4 Rule 10b5-1 box. NULL is meaningful: pre-2022 filings predate it,
     -- and a consumer must read that as UNKNOWN, never as "discretionary".
-    rule_10b5_1 INTEGER
+    rule_10b5_1 INTEGER,
+    -- The role boxes, unjoined, for callers that must FILTER on role rather than print it
+    -- (§05.1). Same NULL-is-UNKNOWN rule as the two columns above.
+    officer_title TEXT,
+    is_director INTEGER,
+    is_officer INTEGER,
+    is_ten_percent_owner INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_insider_transactions_issuer_accession
@@ -58,8 +64,8 @@ INSERT INTO insider_transactions (
     issuer_cik, accession, issuer_name, owner_name, owner_relationship, form_type, filed,
     transaction_date, security_title, shares, price_per_share, acquired_disposed,
     transaction_code, ownership_type, shares_owned_after, is_holding, is_derivative,
-    rule_10b5_1
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    rule_10b5_1, officer_title, is_director, is_officer, is_ten_percent_owner
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
 
 _INSERT_FILING_SQL = """
@@ -91,6 +97,10 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             ("transaction_code", "TEXT"),
             ("is_derivative", "INTEGER"),
             ("rule_10b5_1", "INTEGER"),
+            ("officer_title", "TEXT"),
+            ("is_director", "INTEGER"),
+            ("is_officer", "INTEGER"),
+            ("is_ten_percent_owner", "INTEGER"),
         ):
             if column not in have:
                 self._conn.execute(
@@ -173,6 +183,24 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def get_initial_statements(self, issuer_cik: int, limit: int) -> list[InsiderTransaction]:
+        cur = self._conn.execute(
+            """
+            SELECT t.* FROM insider_transactions t
+            WHERE t.issuer_cik = ?
+              AND t.accession IN (
+                  SELECT accession FROM insider_filings
+                  WHERE issuer_cik = ? AND form_type IN ('3', '3/A')
+                  ORDER BY filed DESC, accession DESC
+                  LIMIT ?
+              )
+            ORDER BY t.filed DESC, t.accession DESC, t.id ASC
+            """,
+            (issuer_cik, issuer_cik, limit),
+        )
+        cols = [d[0] for d in cur.description]
+        return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
+
     def transactions_since(self, issuer_cik: int, since: str) -> list[InsiderTransaction]:
         cur = self._conn.execute(
             """
@@ -209,6 +237,10 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             1 if t.is_holding else 0,
             None if t.is_derivative is None else (1 if t.is_derivative else 0),
             None if t.rule_10b5_1 is None else (1 if t.rule_10b5_1 else 0),
+            t.officer_title,
+            None if t.is_director is None else (1 if t.is_director else 0),
+            None if t.is_officer is None else (1 if t.is_officer else 0),
+            None if t.is_ten_percent_owner is None else (1 if t.is_ten_percent_owner else 0),
         )
 
     @staticmethod
@@ -238,5 +270,15 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
             # Same rule as is_derivative: a legacy NULL stays None (unknown), never False.
             rule_10b5_1=(
                 None if row.get("rule_10b5_1") is None else bool(row["rule_10b5_1"])
+            ),
+            officer_title=row.get("officer_title"),
+            # Same rule again: a legacy NULL is "nobody classified this filer", not "not a
+            # director". §05.1 filters on these, so a False would silently drop real arrivals.
+            is_director=(None if row.get("is_director") is None else bool(row["is_director"])),
+            is_officer=(None if row.get("is_officer") is None else bool(row["is_officer"])),
+            is_ten_percent_owner=(
+                None
+                if row.get("is_ten_percent_owner") is None
+                else bool(row["is_ten_percent_owner"])
             ),
         )

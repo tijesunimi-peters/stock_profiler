@@ -112,6 +112,14 @@ def _to_float(s: str | None) -> float | None:
 
 
 def _relationship_label(rel: ET.Element | None) -> str | None:
+    """A display string joining every role the filer ticked.
+
+    Lossy by construction, and deliberately kept that way for existing consumers: a title is
+    free text that often contains the same ", " used as the separator ("officer (CEO, Acting
+    CFO, Chairman)"), so this string cannot be split back apart on 35% of the paren-bearing
+    values in our store. `_relationship_fields` below carries the unjoined elements for anything
+    that needs to branch on role rather than print it.
+    """
     if rel is None:
         return None
     roles = []
@@ -126,6 +134,27 @@ def _relationship_label(rel: ET.Element | None) -> str | None:
         other = _text(rel, "otherText")
         roles.append(f"other ({other})" if other else "other")
     return ", ".join(roles) or None
+
+
+def _relationship_fields(rel: ET.Element | None) -> dict:
+    """The role boxes, unjoined -- what a caller filtering on role should read.
+
+    Absent `reportingOwnerRelationship` leaves every field None (UNKNOWN). A box that IS present
+    but unticked is a real False: the filer answered the question.
+    """
+    if rel is None:
+        return {
+            "officer_title": None,
+            "is_director": None,
+            "is_officer": None,
+            "is_ten_percent_owner": None,
+        }
+    return {
+        "officer_title": _text(rel, "officerTitle"),
+        "is_director": _text(rel, "isDirector") in _TRUE,
+        "is_officer": _text(rel, "isOfficer") in _TRUE,
+        "is_ten_percent_owner": _text(rel, "isTenPercentOwner") in _TRUE,
+    }
 
 
 def _row_fields(row: ET.Element, *, is_holding: bool) -> dict:
@@ -200,6 +229,7 @@ def parse_ownership_xml(
             "issuer_name": issuer_name,
             "owner_name": owner_name,
             "owner_relationship": owner_relationship,
+            **_relationship_fields(relationship),
             "form_type": form_type,
             "filed": filed,
             "accession": accession,
