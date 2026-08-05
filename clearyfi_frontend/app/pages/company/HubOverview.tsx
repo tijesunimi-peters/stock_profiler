@@ -969,30 +969,44 @@ export function HubOverview() {
           </div>
 
           {/*
-            Section 16 activity, summarised. The counts are of FILINGS, not of conviction: an
-            officer disposing under a 10b5-1 plan adopted a year earlier files the same Form 4
-            as one selling on the day. `dir` names the direction and stops there.
+            Section 16 activity, summarised from real Form 3/4/5 rows.
+
+            The counts are of FILINGS, not of conviction: an officer disposing under a 10b5-1
+            plan adopted a year earlier files the same Form 4 as one selling on the day. `dir`
+            names the direction and stops there.
+
+            The hint states the span the filings turned out to cover rather than claiming a
+            trailing window — `limit=10` is six days at NVIDIA and eight months at Atlantic
+            American, whose newest Form 4 is from 2023 (operator ruling 2026-08-04).
           */}
           <div className="p-card">
             <div className="hub-panel-head is-split">
               <span className="hub-label no-mb">Insider transactions</span>
-              <SynthCard why="The insider store holds 163,189 real rows, but transaction codes were added to the parser after it was filled and sit on 0.03% of them. Plumbing this card before the re-parse finishes would show a code for almost nobody." />
               <span className="hub-hint">{insider.window}</span>
             </div>
-            <div className="hub-ins-summary">
-              {insider.buy} acquisitions · {insider.sell} dispositions · net {insider.net} (
-              {insider.dir})
-            </div>
-            {insider.rows.map((r, i) => (
-              <div className="hub-tri-row is-top" key={`${r.off}${i}`}>
-                <span className="hub-cell">{r.off}</span>
-                <span className="hub-cell-mono is-soft">
-                  {r.type} · {r.shares}
-                </span>
-                <span className="hub-cell-mono ta-r">{r.date}</span>
-              </div>
-            ))}
-            <div className="hub-note">{d.governance.plans}</div>
+            {insider.ok ? (
+              <>
+                <div className="hub-ins-summary">
+                  {insider.buy} acquisitions · {insider.sell} dispositions · net {insider.net} (
+                  {insider.dir})
+                </div>
+                {insider.rows.slice(0, 3).map((r, i) => (
+                  <div className="hub-tri-row is-top" key={`${r.off}${i}`}>
+                    <span className="hub-cell" title={r.role}>
+                      {r.off}
+                    </span>
+                    <span className="hub-cell-mono is-soft" title={r.typeFull}>
+                      {r.type} · {r.shares}
+                    </span>
+                    <span className="hub-cell-mono ta-r">{r.date}</span>
+                  </div>
+                ))}
+                <div className="hub-note">{insider.openMarket}</div>
+                <div className="hub-note">{insider.plans}</div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={insider.reason} />
+            )}
             <button
               type="button"
               className="hub-nav-link"

@@ -1485,3 +1485,69 @@ are disclosures — the filer said "nothing" — and they render as `$0`, never 
 AMD's card shows a reported `$0` and a genuine `N/A` side by side. The bar-width helper excludes an
 exact zero from its 2% visibility floor for the same reason: the floor exists so small values stay
 visible, not so zero looks like a quantity.
+
+---
+
+## Insider activity summary (`normalize/insider_summary.py`) — §05.4
+
+`GET /companies/{symbol}/insider-summary` returns an `InsiderSummary`: **derived** counts over the
+same Form 3/4/5 rows `/insider-trades` serves. The SEC publishes no such summary, and the tally is
+server-side rather than in a caller because three ways of getting it wrong are quiet and plausible.
+
+### The three exclusions, each reported rather than assumed
+
+| Excluded | Why | Field |
+|---|---|---|
+| Holdings | A Form 3, and a Form 4's "shares owned following", state a **balance**, not an event. They carry no code. | `holdings_excluded` |
+| Derivative rows | An option exercise files **two** rows — the RSU disposed and the underlying stock acquired. Counting both reports one event twice, and the derivative row's `shares` is the underlying count of an instrument that is not owned stock. | `derivative_excluded` |
+| `is_derivative is None` | UNKNOWN, not "no" — rows cached before the column existed. Defaulting them to `False` readmits exactly the option rows the exclusion exists to keep out. | `derivative_unknown` |
+
+Measured on Apple's newest 10 filings (2026-08-04): 39 rows → 3 holdings, 14 derivative,
+**22 counted**. A naive tally over all 39 reports 6 acquisitions and **30** dispositions; the
+correct figures are 6 and **16**.
+
+### `acquisitions` / `dispositions` are the A/D flag, not intent
+
+The flag marks direction of share movement. **RSU vesting is an acquisition and the shares withheld
+to pay its tax are a disposition** — real events, neither one a decision. The subset that records a
+decision to trade is codes **P and S**, carried separately as `open_market_purchases` /
+`open_market_sales`, using the same filter as `analytical/sector_insider_flow` so a company card
+and a sector strip cannot disagree about the word "open-market".
+
+Why both are needed: every one of Apple's 6 acquisitions in the window was an option exercise, and
+its open-market purchases are **0**. A card that stopped at the headline would read as buying.
+
+`TRANSACTION_CODES` is the Form 4 legend, carrying a `short` reading for a table cell and the
+legend's `full` meaning for a tooltip — both here so they cannot drift. **An unrecognised code is
+carried through with null labels, never dropped**: the code set is open-ended.
+
+### The window is FILINGS, not days (operator ruling 2026-08-04)
+
+`limit` bounds filings. Ten filings spans **six days** at NVIDIA, **2.5 months** at Apple and
+**sixteen months ending in 2008** at Groove Botanicals. `window_start` / `window_end` report what
+the filings actually covered, and every surface states it — a "trailing 90 days" label over a
+2007–2008 window would be false by nearly two decades.
+
+### `rule_10b5_1` carries a denominator
+
+`plan_flagged` out of `plan_known`. Pre-2022 filings predate the Form 4 cover box, so a bare
+"0 under a plan" would claim every trade was discretionary when **nobody classified any of them**
+(`plan_known == 0`). The flag reports that a trade was made **under** a plan — never the plan's
+adoption date, so no cooling-off window can be drawn from it (D-10b5-1).
+
+### An absence of Form 3/4/5 is not an absence of insider trading
+
+`status="na"` with a reason. **Foreign private issuers are exempt from Section 16 entirely**
+(Descartes Systems, `DSGX`, has none and never will), and a company whose ticker has just moved to
+a new registrant has none *yet* — SEC's own `company_tickers.json` now maps **XOM** to
+`ExxonMobil Holdings Corp` (CIK 2115436), while the history sits on CIK 34088, which no longer
+carries the ticker. Zeros in either case would be a claim about insider behaviour.
+
+### Date-only fields carrying a UTC offset
+
+Some filers tag `<transactionDate>` as `2019-11-04-07:00` — a date with a timezone offset and no
+time, which the SEC accepts. **1,838 rows across 188 issuers** in our store when measured
+2026-08-04. The offset is meaningless on a date and breaks both parsing and lexicographic ordering,
+so `sec/insider.py` drops it on parse and `insider_summary.py` drops it on read (covering rows
+cached before the fix, without migrating the store). Anything that is not a leading `YYYY-MM-DD`
+passes through untouched rather than being guessed at.

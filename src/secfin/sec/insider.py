@@ -25,6 +25,7 @@ filer" shape `institutional.py`'s `parse_schedule_13dg_xml` uses for 13D/G joint
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 
 from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
@@ -33,6 +34,7 @@ from secfin.sec.client import SECClient
 INSIDER_FORMS = {"3", "4", "5", "3/A", "4/A", "5/A"}
 
 _TRUE = {"1", "true"}
+_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
 def _raw_document_name(primary_document: str) -> str:
@@ -86,6 +88,20 @@ def _text(el: ET.Element | None, tag: str) -> str | None:
     return val.strip() if val and val.strip() else None
 
 
+def _date_only(s: str | None) -> str | None:
+    """Keep the calendar date from a filer's date field, dropping any trailing UTC offset.
+
+    Some filers tag `<transactionDate>` as `2019-11-04-07:00` -- a date with a timezone offset
+    but no time, which the SEC accepts. Measured 2026-08-04: 1,838 rows across 188 issuers in
+    our own store. The offset carries no information on a date-only field and it breaks both
+    date parsing and lexicographic ordering, so the date part is what we keep. Anything that
+    isn't a leading `YYYY-MM-DD` is passed through untouched rather than guessed at.
+    """
+    if s and len(s) > 10 and _DATE_PREFIX.match(s):
+        return s[:10]
+    return s
+
+
 def _to_float(s: str | None) -> float | None:
     if s is None:
         return None
@@ -124,7 +140,7 @@ def _row_fields(row: ET.Element, *, is_holding: bool) -> dict:
     ownership_raw = _wrapped(nature, "directOrIndirectOwnership")
     return {
         "security_title": _wrapped(row, "securityTitle"),
-        "transaction_date": _wrapped(row, "transactionDate"),
+        "transaction_date": _date_only(_wrapped(row, "transactionDate")),
         "shares": _to_float(_wrapped(amounts, "transactionShares")),
         "price_per_share": _to_float(_wrapped(amounts, "transactionPricePerShare")),
         "acquired_disposed": _wrapped(amounts, "transactionAcquiredDisposedCode"),

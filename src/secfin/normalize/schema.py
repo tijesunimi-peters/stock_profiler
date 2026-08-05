@@ -636,6 +636,82 @@ class HoldingDelta(BaseModel):
     action: Literal["new", "added", "reduced", "exited", "unchanged"]
 
 
+class InsiderSummaryRow(BaseModel):
+    """One counted transaction, flattened for display. See InsiderSummary."""
+
+    owner_name: str | None = None
+    owner_relationship: str | None = None
+    transaction_date: str | None = None
+    security_title: str | None = None
+    shares: float | None = None
+    acquired_disposed: Literal["A", "D"] | None = None
+    transaction_code: str | None = None
+    # Plain-language readings of `transaction_code` from the Form 4 legend (TRANSACTION_CODES
+    # in normalize/insider_summary.py): `code_short` fits a table cell, `code_label` is the
+    # legend's full meaning. Both are None for a code the SEC has not defined -- an unknown
+    # code is carried through, never dropped and never guessed at.
+    code_short: str | None = None
+    code_label: str | None = None
+    rule_10b5_1: bool | None = None
+    form_type: str | None = None
+    accession: str | None = None
+
+
+class InsiderSummary(BaseModel):
+    """DERIVED Section 16 activity summary over the Form 3/4/5 filings we read.
+
+    Every count here is computed by tallying rows -- the SEC reports no such summary. Three
+    exclusions make the tally mean what it says, and each is reported rather than assumed:
+
+    * **Holdings rows are not transactions.** A Form 3, and the "shares owned following" line
+      of a Form 4, state a balance. They carry no code and are excluded.
+    * **Derivative rows double-count.** An option exercise files two rows -- the derivative
+      disposed and the underlying stock acquired. Counting both reports one event twice, and
+      the derivative row's `shares` is the underlying count of an instrument that is not owned
+      stock. Excluded (`derivative_excluded`); rows whose flag is UNKNOWN are excluded too and
+      counted separately (`derivative_unknown`), because assuming "not a derivative" would
+      readmit exactly the rows the exclusion exists to keep out.
+    * **The window is filings, not days.** `filings` bounds what was read; `window_start` /
+      `window_end` report the span those filings actually cover. It is six days for one filer
+      and eight months for another -- so the span is stated, never assumed to be recent.
+
+    `acquisitions` / `dispositions` are the A/D flag and nothing more: they count option
+    exercises, vesting and tax withholding alongside decisions. `open_market_purchases` /
+    `open_market_sales` are the codes P and S -- the subset that is a decision to trade, and
+    the same filter analytical/sector_insider_flow uses.
+    """
+
+    cik: int
+    filings: int = 0  # Form 3/4/5 filings read
+    transactions: int = 0  # non-derivative transaction rows counted
+    window_start: str | None = None  # earliest counted transaction date
+    window_end: str | None = None  # latest counted transaction date
+
+    acquisitions: int = 0  # A flag, all codes
+    dispositions: int = 0  # D flag, all codes
+    net: int = 0  # acquisitions - dispositions
+    direction: Literal["net acquisitions", "net dispositions", "balanced"] = "balanced"
+
+    open_market_purchases: int = 0  # code P
+    open_market_sales: int = 0  # code S
+
+    # The Form 4 cover box, tallied. `plan_known` is the denominator: pre-2022 filings predate
+    # the box, so a bare "N under a plan" would imply the rest were discretionary when nobody
+    # classified them. It reports a trade was made UNDER a plan -- never the plan's adoption
+    # date, so no cooling-off window can be drawn from it.
+    plan_flagged: int = 0
+    plan_known: int = 0
+
+    holdings_excluded: int = 0
+    derivative_excluded: int = 0
+    derivative_unknown: int = 0
+
+    recent: list[InsiderSummaryRow] = Field(default_factory=list)
+
+    status: Literal["ok", "na"] = "ok"
+    reason: str | None = None
+
+
 class BeneficialOwnership(BaseModel):
     """A 13D/13G beneficial-ownership position (crossing the 5% threshold).
 

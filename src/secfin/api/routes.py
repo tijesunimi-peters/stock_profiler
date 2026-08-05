@@ -38,6 +38,7 @@ from secfin.normalize.flows import (
     summarize_activity,
 )
 from secfin.normalize.geography import classify_location
+from secfin.normalize.insider_summary import summarize_insider_transactions
 from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
@@ -90,6 +91,7 @@ from secfin.normalize.schema import (
     HoldingsSnapshot,
     IncomeStatementViz,
     InsiderFlowWindow,
+    InsiderSummary,
     InsiderTransaction,
     IssuerHolder,
     MetricFrequency,
@@ -2734,6 +2736,51 @@ async def get_insider_trades(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         return await _insider_transactions_for_cik(insider_repo, client, cik, limit)
+
+
+@public_router.get(
+    "/companies/{symbol}/insider-summary",
+    response_model=InsiderSummary,
+    tags=["Insider Trades"],
+    summary="Summarise Form 3/4/5 activity over the filings read",
+)
+async def get_insider_summary(
+    symbol: str,
+    limit: int = Query(
+        10,
+        ge=1,
+        le=200,
+        description=(
+            "Max number of Form 3/4/5 FILINGS to summarise, newest first -- not a number of "
+            "days. The response reports the date span those filings turned out to cover."
+        ),
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
+) -> InsiderSummary:
+    """DERIVED counts over the same rows `/insider-trades` returns -- the SEC reports no summary.
+
+    The tally is in `normalize/insider_summary.py` rather than in a caller because getting it
+    wrong is easy and quiet: an option exercise files a derivative row AND an underlying-stock
+    row, so counting both reports one event as two, and a Form 3's opening balance is a holding,
+    not a trade. Both exclusions are applied here and both are reported back.
+
+    **`acquisitions` / `dispositions` are the A/D flag, not intent.** Vesting is an acquisition
+    and the shares withheld for its tax are a disposition. `open_market_purchases` /
+    `open_market_sales` (codes P and S) are the subset that records a decision to trade.
+
+    **The window is filings, not days.** `limit=10` spans six days for one filer and eight
+    months for another, and a filer whose newest Form 4 is three years old still returns ten
+    filings. `window_start` / `window_end` state what was actually covered; nothing here should
+    be read as "recent" without checking them.
+
+    Cache-aside on the same terms as `/insider-trades`: served from SQLite when at least `limit`
+    filings are cached, otherwise re-fetched from SEC (one ownership-XML fetch per filing).
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        rows = await _insider_transactions_for_cik(insider_repo, client, cik, limit)
+        return summarize_insider_transactions(cik, rows)
 
 
 @router.get(

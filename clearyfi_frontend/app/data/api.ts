@@ -41,7 +41,7 @@ import * as peers from "./peers";
 import * as proto from "./prototype";
 import * as qual from "./qualitative";
 import * as mgr from "./manager";
-import { usdCompact } from "../lib/format";
+import { humanDate, plural, usdCompact } from "../lib/format";
 
 const DELAY = () => (typeof location !== "undefined" && location.search.includes("slow") ? 900 : 0);
 /**
@@ -88,7 +88,7 @@ export const PROVENANCE = {
       synthetic: [
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
-        "05 governance (partly \u2014 CEO compensation actually paid is real)",
+        "05 governance (partly \u2014 insider transactions and CEO compensation actually paid are real)",
         "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
         "08 risk & events",
       ],
@@ -520,6 +520,133 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ §05.4 insider transactions */
+
+interface InsiderSummaryResponse {
+  cik: number;
+  filings: number;
+  transactions: number;
+  window_start: string | null;
+  window_end: string | null;
+  acquisitions: number;
+  dispositions: number;
+  net: number;
+  direction: string;
+  open_market_purchases: number;
+  open_market_sales: number;
+  plan_flagged: number;
+  plan_known: number;
+  holdings_excluded: number;
+  derivative_excluded: number;
+  derivative_unknown: number;
+  recent: {
+    owner_name: string | null;
+    owner_relationship: string | null;
+    transaction_date: string | null;
+    shares: number | null;
+    acquired_disposed: string | null;
+    transaction_code: string | null;
+    code_short: string | null;
+    code_label: string | null;
+    rule_10b5_1: boolean | null;
+    form_type: string | null;
+  }[];
+  status: string;
+  reason: string | null;
+}
+
+/**
+ * §05.4, Section 16 activity over the filings we read.
+ *
+ * **The window is filings, not days** (operator ruling 2026-08-04). The design asked for
+ * "trailing 90 days"; the endpoint is bounded by filing count, and ten filings is six days at
+ * NVIDIA and eight months at Atlantic American — whose newest Form 4 was filed in February 2023.
+ * The hint states the span the filings turned out to cover, so a three-year-old window cannot
+ * read as a recent one.
+ *
+ * **The headline counts are the A/D flag and the note names what that includes** (operator
+ * ruling 2026-08-04). Vesting is an acquisition and the shares withheld to pay its tax are a
+ * disposition — real events, but not decisions. The open-market subset (codes P and S) sits in
+ * the footer, which is why Apple reads "6 acquisitions" above and "0 purchases" below: every one
+ * of those six was an option exercise.
+ *
+ * The tally itself lives server-side in `normalize/insider_summary.py`, because getting it wrong
+ * is quiet: an option exercise files two rows, and counting both turns one event into two.
+ */
+function toInsiderSummary(res: InsiderSummaryResponse | null) {
+  const ok = res?.status === "ok" && !!res.transactions;
+  if (!res || !ok) {
+    return {
+      ok: false as const,
+      window: "no Form 3/4/5 filings read",
+      reason:
+        res?.reason ??
+        "Section 16 filings could not be read for this company just now.",
+      buy: null as number | null,
+      sell: null as number | null,
+      net: "N/A",
+      dir: "",
+      rows: [] as {
+        off: string;
+        role: string;
+        type: string;
+        typeFull: string;
+        shares: string;
+        date: string;
+        plan: boolean | null;
+      }[],
+      openMarket: "",
+      plans: "",
+    };
+  }
+
+  const span =
+    res.window_start && res.window_end
+      ? res.window_start === res.window_end
+        ? humanDate(res.window_start)
+        : `${humanDate(res.window_start)} – ${humanDate(res.window_end)}`
+      : "dates not reported";
+
+  // "0 purchases" is a finding, not a gap — it says every acquisition in the window was a grant,
+  // an exercise or a gift. So it is stated as a number, never suppressed into an empty state.
+  const openMarket =
+    `Of these, ${plural(res.open_market_purchases, "purchase")} and ` +
+    `${plural(res.open_market_sales, "sale")} were open-market (codes P/S); the rest are ` +
+    "grants, option exercises, vesting and tax withholding.";
+
+  // The flag needs its denominator: pre-2022 filings predate the Form 4 box, so "0 under a plan"
+  // would claim every trade was discretionary when nobody classified any of them.
+  const plans = res.plan_known
+    ? `${res.plan_flagged} of ${res.plan_known} were flagged as made under a Rule 10b5-1 plan — ` +
+      "the flag reports a trade was pre-arranged, never when the plan was adopted."
+    : "None of these filings carry the Rule 10b5-1 box, which was added to Form 4 in 2022.";
+
+  return {
+    ok: true as const,
+    window: `${plural(res.filings, "filing")} · ${span}`,
+    reason: null as string | null,
+    buy: res.acquisitions,
+    sell: res.dispositions,
+    net: `${res.net > 0 ? "+" : res.net < 0 ? "−" : ""}${Math.abs(res.net)}`,
+    dir: res.direction,
+    rows: res.recent.map((r) => ({
+      off: r.owner_name ?? "Name not reported",
+      role: r.owner_relationship ?? "",
+      type: r.code_short
+        ? `${r.code_short} (${r.transaction_code})`
+        : r.transaction_code
+          ? `code ${r.transaction_code}`
+          : "code not reported",
+      typeFull: r.code_label ?? "This code is not in the Form 4 legend.",
+      shares: r.shares === null ? "shares N/A" : `${r.shares.toLocaleString()} sh`,
+      date: r.transaction_date ?? "date N/A",
+      plan: r.rule_10b5_1,
+    })),
+    openMarket,
+    plans,
   };
 }
 
@@ -1349,18 +1476,22 @@ export const api = {
       custConc: hub.hubData(symbol).custConc,
     }),
 
-  /** §05 governance & people. Phase A: `/insider-trades` + 8-K Item 5.02; the board/pay half is DEF 14A. */
+  /** §05 governance & people. Phase A: `/insider-summary` + 8-K Item 5.02; the board half is DEF 14A. */
   companyGovernance: async (symbol: string) => {
     const enc = encodeURIComponent(symbol);
-    // A proxy read costs three SEC round-trips server-side (submissions, directory, instance), so
-    // a failure must not take the whole section down — the rest of §05 is fixture data that still
-    // renders. `null` flows into the adapter's honest-empty branch.
-    const pvp = await getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(
-      () => null,
-    );
+    // Two independent reads, in parallel and each failing alone. A proxy read costs three SEC
+    // round-trips server-side (submissions, directory, instance) and the insider read can cost
+    // one ownership-XML fetch per uncached filing, so neither may take the section down with it
+    // — `null` flows into each adapter's honest-empty branch.
+    const [pvp, insiderSummary] = await Promise.all([
+      getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(() => null),
+      getJson<InsiderSummaryResponse>(`/v1/companies/${enc}/insider-summary?limit=10`).catch(
+        () => null,
+      ),
+    ]);
     return {
       governance: hub.hubData(symbol).governance,
-      insider: hub.hubInsider(symbol),
+      insider: toInsiderSummary(insiderSummary),
       pvp: toPayVersusPerformance(pvp),
     } as CompanyGovernance;
   },
@@ -1637,7 +1768,8 @@ export interface CompanyGovernance {
   governance: hub.HubData["governance"];
   /** §05.3 re-pointed: compensation actually paid, not the untagged pay mix. */
   pvp: ReturnType<typeof toPayVersusPerformance>;
-  insider: hub.HubInsider;
+  /** §05.4 on real Form 3/4/5 rows — no longer `hub.HubInsider`. */
+  insider: ReturnType<typeof toInsiderSummary>;
 }
 
 export interface CompanyDisclosure {

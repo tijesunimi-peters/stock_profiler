@@ -79,7 +79,12 @@ export interface HubData {
     sayOnPay: string;
     related: string;
     clawback: string;
-    /** How many insiders are trading under a pre-adopted plan — context for the Form 4 counts. */
+    /**
+     * How many insiders are trading under a pre-adopted plan — context for the Form 4 counts.
+     *
+     * @deprecated §05.4 reads the real `rule_10b5_1` tally from `/insider-summary` as of
+     * 2026-08-04, with the denominator the fixture never had. No longer read by the hub.
+     */
     plans: string;
   };
   audit: {
@@ -826,6 +831,10 @@ export interface HubInsider {
  *
  * `dir` names the direction categorically ("net acquisitions") rather than scoring it. An
  * officer selling into a 10b5-1 plan and one selling on impulse file the same form.
+ *
+ * @deprecated §05.4 reads `/companies/{symbol}/insider-summary` as of 2026-08-04. Kept because
+ * the full insider-activity view is still on fixtures and shares this vocabulary; it should go
+ * when that view is plumbed. NOT called by the company hub any more.
  */
 export function hubInsider(T: string): HubInsider {
   const { pick } = seeded(T);

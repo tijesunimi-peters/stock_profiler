@@ -155,6 +155,12 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    insider_summary.py         # DERIVED Section 16 counts over Form 3/4/5 rows (§05.4). Excludes
+                               #   holdings and DERIVATIVE rows (an option exercise files two rows;
+                               #   counting both doubles it) and reports each exclusion. A/D counts
+                               #   are direction, NOT intent -- the open-market (P/S) subset rides
+                               #   alongside, same filter as analytical/sector_insider_flow. The
+                               #   window is FILINGS, not days, and says which dates it covered
     supply.py                  # share-supply filings that EXIST + EDGAR acceptance lag, over the
                                #   filing index. Existence and dates, NEVER terms -- lock-up
                                #   length is an exhibit (prose/Track 2). An absence is scoped to
@@ -241,7 +247,7 @@ src/secfin/
   api/
     main.py                    # FastAPI app + wiring + upstream-SEC-error handlers
     routes.py                  # endpoints: statements, periods, metrics, metric history, peers,
-                               #   insider, 13D/G, 13F manager + issuer-centric (holders,
+                               #   insider (trades + summary), 13D/G, 13F manager + issuer-centric (holders,
                                #   activity, holdings-series, holder-geography), sector DuPont +
                                #   spreads + lifecycle + theme-scores (composite health) + insider
                                #   flow (P6a) + geographic-mix (ASC 280, P6b),
