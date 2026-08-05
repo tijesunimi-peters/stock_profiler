@@ -11,7 +11,13 @@ What is load-bearing here is not the extraction but the BOUNDARIES around it:
 
 from __future__ import annotations
 
-from secfin.sec.cover import find_extracted_instance, parse_cover_facts
+from secfin.sec.cover import (
+    COVER_SCHEMA_VERSION,
+    CoverFacts,
+    find_extracted_instance,
+    parse_cover_facts,
+)
+from secfin.storage.sqlite_filing_cover_repository import SQLiteFilingCoverRepository
 
 DEI = "http://xbrl.sec.gov/dei/2025"
 GAAP = "http://fasb.org/us-gaap/2025"
@@ -180,3 +186,66 @@ class TestDegradesHonestly:
     def test_the_measured_size_travels_so_the_next_estimate_is_not_a_guess(self):
         xml = _apple()
         assert parse_cover_facts(xml).instance_bytes == len(xml)
+
+
+class TestTheCacheHealsWhenTheFieldSetGrows:
+    """The trap this exists to close.
+
+    The cover store is cache-aside over a 1.4-14.9 MB instance, so a cached row is never re-read.
+    Add a field and every filer already cached silently returns NULL for it, while the code that
+    "worked" wrote nothing -- exactly how `transaction_code` sat at 0.03% populated in the insider
+    store. A version stamp turns that silent gap into one extra fetch.
+    """
+
+    def test_a_row_written_under_an_older_version_reads_as_a_miss(self, tmp_path):
+        repo = SQLiteFilingCoverRepository(tmp_path / "c.db")
+        try:
+            repo.upsert_cover(320193, CoverFacts(accession="a-1", filed="2025-10-31"))
+            assert repo.get_cover(320193) is not None
+
+            repo._conn.execute(
+                "UPDATE filing_cover_facts SET schema_version = ?",
+                (COVER_SCHEMA_VERSION - 1,),
+            )
+            assert repo.get_cover(320193) is None  # a miss, so the caller re-reads and heals it
+        finally:
+            repo.close()
+
+    def test_a_legacy_row_with_no_version_at_all_reads_as_a_miss(self, tmp_path):
+        repo = SQLiteFilingCoverRepository(tmp_path / "c.db")
+        try:
+            repo.upsert_cover(320193, CoverFacts(accession="a-1", filed="2025-10-31"))
+            repo._conn.execute("UPDATE filing_cover_facts SET schema_version = NULL")
+            assert repo.get_cover(320193) is None
+        finally:
+            repo.close()
+
+    def test_the_rule_10d1_flags_round_trip(self, tmp_path):
+        repo = SQLiteFilingCoverRepository(tmp_path / "c.db")
+        try:
+            repo.upsert_cover(
+                320193,
+                CoverFacts(
+                    accession="a-1",
+                    filed="2025-10-31",
+                    error_correction=True,
+                    clawback_recovery_analysis=False,
+                ),
+            )
+            got = repo.get_cover(320193)
+            assert got.error_correction is True
+            # False and None are different answers: False means the filer answered "no recovery
+            # analysis required", None means the question was never asked of them.
+            assert got.clawback_recovery_analysis is False
+        finally:
+            repo.close()
+
+    def test_an_untagged_flag_stays_none_not_false(self, tmp_path):
+        repo = SQLiteFilingCoverRepository(tmp_path / "c.db")
+        try:
+            repo.upsert_cover(320193, CoverFacts(accession="a-1", filed="2025-10-31"))
+            got = repo.get_cover(320193)
+            assert got.error_correction is None
+            assert got.clawback_recovery_analysis is None
+        finally:
+            repo.close()

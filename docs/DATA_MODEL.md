@@ -1691,3 +1691,57 @@ whole-market batch over 16,920 issuers that would pay for filers nobody opens. *
 not fatal:** `index_built=False` says the event half was never looked at, which is a different
 answer from an empty event list. It does **not** refresh a stale index; consumers already report
 the window they read, which is what makes that safe.
+
+---
+
+## Governance policies (§05.2) — repointed from board composition
+
+**Operator ruling 2026-08-04.** All four designed tiles — board size, independence, director
+tenure, CEO tenure — are tagged in no SEC source. V2 verified it against the DEF 14A; re-reading
+the 10-K's extracted instance on 2026-08-04 did not change it. Director tenure is doubly out of
+reach: a tenure derived from our filing window would put Apple's chair on the board since 2025.
+
+The same 2×2 now carries four **check marks a filer ticked**, which is what the disclosure regime
+actually made machine-readable. Same layout, real values, honest labels — the §06.9 precedent.
+
+| Tile | Element | Source |
+|---|---|---|
+| Insider trading policy | `ecd:InsiderTrdPoliciesProcAdoptedFlag` | DEF 14A instance |
+| Award timing vs MNPI | `ecd:AwardTmgMnpiCnsdrdFlag` | DEF 14A instance |
+| Award timing predetermined | `ecd:AwardTmgPredtrmndFlag` | DEF 14A instance |
+| Accounting-error correction | `dei:DocumentFinStmtErrorCorrectionFlag` | 10-K cover |
+
+The three `ecd` flags were **already parsed and served** in the pay-versus-performance payload
+(`sec/proxy.py`) and had simply never been displayed.
+
+### An untagged box is not a "no"
+
+`null` and `false` look alike on screen and mean opposite things — "the filer never answered"
+versus "the filer answered no". Measured 2026-08-04: `InsiderTrdPoliciesProcAdoptedFlag` is `true`
+for all six exemplars, while the two award-timing flags are tagged by Apple, Coca-Cola and
+Alphabet and **untagged** by NVIDIA, Microsoft and JPMorgan. An untagged one renders `N/A`.
+
+### The clawback tile says less than the word suggests
+
+Rule 10D-1 put two check marks on the 10-K cover in Dec 2023:
+
+* `DocumentFinStmtErrorCorrectionFlag` — do these statements correct an error in previously
+  issued ones? **Universally tagged**: present on all eight filers measured, all `false`.
+* `DocumentFinStmtRestatementRecoveryAnalysisFlag` — did that correction require a compensation
+  recovery analysis under §240.10D-1(b)? **Present on none of them**, because it is only asked
+  when the first is `true`. `None` on a clean filer means the question did not arise.
+
+**Whether a clawback POLICY exists is not either of these.** That is a listing-standard disclosure
+in the proxy's prose, and no surface may claim it from these flags.
+
+### `COVER_SCHEMA_VERSION` — the cache heals when the field set grows
+
+`filing_cover_facts` is cache-aside over a 1.4–14.9 MB instance, so a cached row is **never
+re-read**. Adding a field therefore returns `NULL` for every filer already cached, while the code
+that "worked" wrote nothing — exactly how `transaction_code` sat at 0.03% populated in the insider
+store while its backfill reported success. It happened again the moment these two flags landed.
+
+`sec/cover.py` now carries `COVER_SCHEMA_VERSION`, stamped on every row.
+`SQLiteFilingCoverRepository.get_cover` treats an older stamp as a **miss**, so the next request
+re-reads that filer's instance once and the cache heals itself. **Bump it when you add to
+`_WANTED_DEI` or `_WANTED_FLAGS`.**

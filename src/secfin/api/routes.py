@@ -1193,6 +1193,22 @@ async def get_audit(
         "auditor": auditor,
         "audit_events": events,
         "extension_tags": extensions,
+        # The two Rule 10D-1 check marks from the same cover page. Carried here because this is
+        # the endpoint that reads the instance -- §05.2 renders them, §06 reads the same block.
+        #
+        # `error_correction` is asked of every filer; `clawback_recovery_analysis` is asked only
+        # when it is true, so `None` on a clean filer means the question did not arise. Neither
+        # says whether a clawback POLICY exists: that is a listing-standard requirement disclosed
+        # in the proxy's prose, and it stays out of reach.
+        "clawback": {
+            "status": "ok" if cover is not None else "na",
+            "reason": None
+            if cover is not None
+            else "No annual-report cover page has been read for this company.",
+            "error_correction": None if cover is None else cover.error_correction,
+            "recovery_analysis": None if cover is None else cover.clawback_recovery_analysis,
+            "period_end": None if cover is None else cover.period_end,
+        },
         "icfr": {
             "status": "na",
             "reason": (

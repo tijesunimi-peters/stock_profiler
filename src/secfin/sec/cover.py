@@ -67,10 +67,32 @@ _WANTED_DEI: dict[str, str] = {
     "DocumentPeriodEndDate": "period_end",
 }
 
+#: What this module currently extracts, bumped whenever a field is ADDED.
+#:
+#: The cover store is cache-aside over a 1.4-14.9 MB instance, so a cached row is never
+#: re-read -- which means a newly-added field silently reads NULL for every filer already in
+#: the cache, and the job that "succeeded" wrote nothing. That is exactly how `transaction_code`
+#: sat at 0.03% populated in the insider store while the backfill reported success.
+#:
+#: `SQLiteFilingCoverRepository.get_cover` treats a row written under an older version as a MISS,
+#: so the next request for that filer re-reads the instance once and the cache heals itself.
+#: Bump this when you add to `_WANTED_DEI` or `_WANTED_FLAGS`.
+#:
+#: 1 -- auditor, ICFR attestation, extension census
+#: 2 -- Rule 10D-1 error-correction + clawback-recovery flags (2026-08-04)
+COVER_SCHEMA_VERSION = 2
+
 #: Booleans that ride along in the same fetch. Stored as `True`/`False`/`None` -- `None` and
 #: `False` are different answers, and collapsing them would invent a disclosure.
 _WANTED_FLAGS: dict[str, str] = {
     "IcfrAuditorAttestationFlag": "icfr_auditor_attestation",
+    # The two Rule 10D-1 check marks added to the 10-K cover in Dec 2023. The FIRST is asked of
+    # every filer and was tagged by all eight we measured (2026-08-04); the SECOND is only asked
+    # when the first is true, so `None` on a clean filer means "the question did not arise",
+    # never "no clawback policy". Both are check marks, not the policy itself -- whether a
+    # listing-standard clawback policy exists at all is proxy prose and stays out of reach.
+    "DocumentFinStmtErrorCorrectionFlag": "error_correction",
+    "DocumentFinStmtRestatementRecoveryAnalysisFlag": "clawback_recovery_analysis",
 }
 
 
@@ -114,6 +136,11 @@ class CoverFacts:
     period_end: str | None = None
     #: Subject to auditor attestation -- NOT "ICFR was effective". See the module docstring.
     icfr_auditor_attestation: bool | None = None
+    #: Do these statements correct an error in previously issued ones? Universally tagged.
+    error_correction: bool | None = None
+    #: Did that correction require a clawback recovery analysis under 240.10D-1(b)? Only asked
+    #: when `error_correction` is true, so None on a clean filer is "not applicable".
+    clawback_recovery_analysis: bool | None = None
     extensions: ExtensionCensus = field(default_factory=ExtensionCensus)
     instance_bytes: int | None = None
     status: str = "ok"  # "ok" | "na"

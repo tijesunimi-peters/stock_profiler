@@ -225,6 +225,7 @@ export function HubOverview() {
   const snapshot = financials.data.snapshot;
   const insider = governance.data.insider;
   const officers = governance.data.officers;
+  const policies = governance.data.policies;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -245,7 +246,6 @@ export function HubOverview() {
     geoAssets: segments.data.geoAssets,
     custConc: segments.data.custConc,
     capital: footnotes.data.capital,
-    governance: governance.data.governance,
     pvp: governance.data.pvp,
     audit: disclosure.data.audit,
     obligations: footnotes.data.obligations,
@@ -929,33 +929,31 @@ export function HubOverview() {
             </div>
           </div>
 
+          {/*
+            REPOINTED, not re-laid-out (operator ruling 2026-08-04). The four designed tiles —
+            board size, independence, director tenure, CEO tenure — are tagged in no SEC source
+            and V2's verdict survived re-testing the 10-K instance. The same 2×2 now carries the
+            governance boxes that ARE tagged: three `ecd` flags from the DEF 14A and one Rule
+            10D-1 check mark from the 10-K cover. Same shape, real values.
+          */}
           <div className="p-card">
             <div className="hub-panel-head">
-              <span className="hub-label no-mb">Board composition</span>
-              <SynthCard why="Verified absent: board size, independence and tenure are not XBRL-tagged in the DEF 14A. No structured source carries them." />
+              <span className="hub-label no-mb">Governance policies · DEF 14A + 10-K cover</span>
               <Src href={L.proxy}>Read the proxy ↗</Src>
             </div>
             <div className="hub-quad">
-              <div>
-                <span className="hub-hint">Board size</span>
-                <div className="hub-big is-lg">{d.governance.boardSize}</div>
-              </div>
-              <div>
-                <span className="hub-hint">Independent</span>
-                <div className="hub-big is-lg">{d.governance.indep}</div>
-              </div>
-              <div>
-                <span className="hub-hint">Director tenure</span>
-                <div className="hub-mid">{d.governance.tenure}</div>
-              </div>
-              <div>
-                <span className="hub-hint">CEO tenure</span>
-                <div className="hub-mid">{d.governance.ceoTenure}</div>
-              </div>
+              {policies.tiles.map((t) => (
+                <div key={t.k}>
+                  <span className="hub-hint">{t.k}</span>
+                  {/* A tile the filer left untagged is N/A, never "no" — an unticked box and an
+                      absent one are different disclosures. */}
+                  <div className="hub-mid" title={t.why}>
+                    <Fig v={t.v} reason={t.why} />
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="hub-foot-rule">
-              {d.governance.related} · {d.governance.clawback}
-            </div>
+            <div className="hub-foot-rule">{policies.note}</div>
           </div>
 
           <div className="p-card">

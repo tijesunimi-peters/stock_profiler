@@ -141,7 +141,8 @@ src/secfin/
     insider.py                 # fetch + parse Forms 3/4/5 ownership XML (joint filers)
     institutional.py           # fetch + parse 13F info table + cover page, 13D/G
     cover.py                   # 10-K cover-page dei facts (auditor name/PCAOB id/location, ICFR
-                               #   attestation flag) + company extension-tag census, from the
+                               #   attestation flag, Rule 10D-1 error-correction + clawback-recovery
+                               #   flags) + company extension-tag census, from the
                                #   filing's EXTRACTED XBRL INSTANCE (*_htm.xml). Tagged facts in
                                #   XML -- NOT a document parse, so the EX-21 exception is untouched
     proxy.py                   # DEF 14A pay-versus-performance from the same kind of instance;
@@ -200,7 +201,10 @@ src/secfin/
     sqlite_filing_cover_repository.py   # filing_cover_facts; keyed (cik, accession). A STORE, not
                                         #   a convenience cache: the instance behind it is
                                         #   1.4-14.9 MB and has no range shortcut, so a filing is
-                                        #   fetched ONCE per accession, ever
+                                        #   fetched ONCE per accession, ever. Stamped with
+                                        #   COVER_SCHEMA_VERSION -- an older stamp reads as a MISS,
+                                        #   so ADDING a cover field heals the cache instead of
+                                        #   silently serving NULL for every filer already in it
     company_profile_repository.py       # abstract cik->SIC profile store (Metrics Phase 2)
     sqlite_company_profile_repository.py
     metric_value_repository.py          # abstract materialized-metric store (Metrics Phase 2)

@@ -67,6 +67,12 @@ export interface HubData {
     holders: { name: string; pct: string; form: string }[];
     insiderOwn: string;
   };
+  /**
+   * @deprecated §05 is entirely on real filings as of 2026-08-04 — §05.1 `/officer-changes`,
+   * §05.2 `/audit`'s Rule 10D-1 flags + the DEF 14A `ecd` governance flags, §05.3
+   * `/pay-versus-performance`, §05.4 `/insider-summary`. No field of this block is read by the
+   * company hub any more. Kept because other surfaces still reference `HubData`.
+   */
   governance: {
     turnover: { role: string; action: string; date: string }[];
     boardSize: number;

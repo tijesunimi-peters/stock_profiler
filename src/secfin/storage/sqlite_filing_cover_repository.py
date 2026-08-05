@@ -9,7 +9,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from secfin.sec.cover import CoverFacts, ExtensionCensus
+from secfin.sec.cover import COVER_SCHEMA_VERSION, CoverFacts, ExtensionCensus
 from secfin.storage.filing_cover_repository import FilingCoverRepository
 
 _SCHEMA = """
@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS filing_cover_facts (
     -- both of those are the Item 9A prose conclusion and are Track 2. Stored as 1/0/NULL, and
     -- NULL means the filer did not tag it, which is a different answer from `false`.
     icfr_auditor_attestation INTEGER,
+    error_correction INTEGER,
+    clawback_recovery_analysis INTEGER,
+    -- Which version of sec/cover.py's field set wrote this row. An older one is
+    -- treated as a cache MISS, so adding a field heals the cache instead of
+    -- silently serving NULL for every filer already in it.
+    schema_version INTEGER,
     -- The registrant's OWN taxonomy: how many distinct elements, how many facts, out of how many.
     -- A census of element NAMES; no element's content is stored.
     extension_namespace TEXT,
@@ -50,13 +56,14 @@ CREATE INDEX IF NOT EXISTS idx_filing_cover_cik_filed
 _COLUMNS = (
     "cik, accession, form, filed, period_end, auditor_name, auditor_firm_id, auditor_location, "
     "registrant_name, incorporation_state, filer_category, fiscal_year_end, fiscal_year_focus, "
-    "icfr_auditor_attestation, extension_namespace, extension_distinct, extension_facts, "
-    "total_facts, extension_top, instance_bytes"
+    "icfr_auditor_attestation, error_correction, clawback_recovery_analysis, "
+    "extension_namespace, extension_distinct, extension_facts, "
+    "total_facts, extension_top, instance_bytes, schema_version"
 )
 
 _UPSERT_SQL = f"""
 INSERT INTO filing_cover_facts ({_COLUMNS})
-VALUES ({",".join("?" * 20)})
+VALUES ({",".join("?" * 23)})
 ON CONFLICT (cik, accession) DO UPDATE SET
     form = excluded.form,
     filed = excluded.filed,
@@ -70,12 +77,15 @@ ON CONFLICT (cik, accession) DO UPDATE SET
     fiscal_year_end = excluded.fiscal_year_end,
     fiscal_year_focus = excluded.fiscal_year_focus,
     icfr_auditor_attestation = excluded.icfr_auditor_attestation,
+    error_correction = excluded.error_correction,
+    clawback_recovery_analysis = excluded.clawback_recovery_analysis,
     extension_namespace = excluded.extension_namespace,
     extension_distinct = excluded.extension_distinct,
     extension_facts = excluded.extension_facts,
     total_facts = excluded.total_facts,
     extension_top = excluded.extension_top,
-    instance_bytes = excluded.instance_bytes
+    instance_bytes = excluded.instance_bytes,
+    schema_version = excluded.schema_version
 """
 
 
@@ -87,6 +97,21 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(_SCHEMA)
+        self._ensure_columns()
+
+    def _ensure_columns(self) -> None:
+        """Additive migration for a table created before a column existed.
+
+        Same shape as the insider store's: `CREATE TABLE IF NOT EXISTS` will not add a column,
+        and SQLite has no `ADD COLUMN IF NOT EXISTS`. Rows written before the Rule 10D-1 flags
+        were read keep NULL, which reads as "we have not looked", not as "false".
+        """
+        have = {row[1] for row in self._conn.execute("PRAGMA table_info(filing_cover_facts)")}
+        for column in ("error_correction", "clawback_recovery_analysis", "schema_version"):
+            if column not in have:
+                self._conn.execute(
+                    f"ALTER TABLE filing_cover_facts ADD COLUMN {column} INTEGER"
+                )
 
     def upsert_cover(self, cik: int, facts: CoverFacts) -> None:
         if not facts.accession:
@@ -111,12 +136,17 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
                 None
                 if facts.icfr_auditor_attestation is None
                 else int(facts.icfr_auditor_attestation),
+                None if facts.error_correction is None else int(facts.error_correction),
+                None
+                if facts.clawback_recovery_analysis is None
+                else int(facts.clawback_recovery_analysis),
                 ext.namespace,
                 ext.distinct,
                 ext.facts,
                 ext.total_facts,
                 json.dumps(ext.top),
                 facts.instance_bytes,
+                COVER_SCHEMA_VERSION,
             ),
         )
 
@@ -132,7 +162,13 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
             tuple(params),
         )
         row = cur.fetchone()
-        return self._row(row) if row else None
+        if not row:
+            return None
+        # A row written before the current field set is a miss, not an answer -- see
+        # COVER_SCHEMA_VERSION. The caller re-reads the instance once and upserts over it.
+        if (row[22] or 0) < COVER_SCHEMA_VERSION:
+            return None
+        return self._row(row)
 
     def close(self) -> None:
         self._conn.close()
@@ -140,7 +176,7 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
     @staticmethod
     def _row(r: tuple) -> CoverFacts:
         try:
-            top = [(str(name), int(count)) for name, count in json.loads(r[18] or "[]")]
+            top = [(str(name), int(count)) for name, count in json.loads(r[20] or "[]")]
         except (ValueError, TypeError):
             top = []
         return CoverFacts(
@@ -157,12 +193,14 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
             fiscal_year_end=r[11],
             fiscal_year_focus=r[12],
             icfr_auditor_attestation=None if r[13] is None else bool(r[13]),
+            error_correction=None if r[14] is None else bool(r[14]),
+            clawback_recovery_analysis=None if r[15] is None else bool(r[15]),
             extensions=ExtensionCensus(
-                namespace=r[14],
-                distinct=r[15] or 0,
-                facts=r[16] or 0,
-                total_facts=r[17] or 0,
+                namespace=r[16],
+                distinct=r[17] or 0,
+                facts=r[18] or 0,
+                total_facts=r[19] or 0,
                 top=top,
             ),
-            instance_bytes=r[19],
+            instance_bytes=r[21],
         )

@@ -528,6 +528,92 @@ function toPayVersusPerformance(res: PvpResponse | null) {
   };
 }
 
+/* ------------------------------------------------------------ §05.2 governance policies */
+
+/**
+ * §05.2, repointed from board COMPOSITION to the governance check marks that are tagged
+ * (operator ruling 2026-08-04). Same 2×2, real values, honest labels — the §06.9 precedent.
+ *
+ * **All four designed tiles are confirmed absent.** Board size, independence, director tenure and
+ * CEO tenure appear only in the proxy's prose; V2 verified it and re-testing the 10-K instance
+ * today did not change it. Director tenure is doubly out of reach — our filing window would put
+ * Apple's chair on the board since 2025.
+ *
+ * **What replaces them are four boxes a filer ticked**, three from the DEF 14A's `ecd` taxonomy
+ * (already riding in the pay-versus-performance payload, never displayed until now) and one from
+ * the 10-K cover. Every one is a declaration, not a judgment, and the card says so.
+ *
+ * **The clawback tile is narrower than the word suggests.** Rule 10D-1 put two check marks on the
+ * cover: whether the statements correct a prior error, and — only if so — whether that required a
+ * compensation recovery analysis. Whether a clawback POLICY exists at all is a listing-standard
+ * disclosure in the proxy's prose and stays out of reach, so the tile never claims it.
+ */
+function toGovernancePolicies(pvp: PvpResponse | null, audit: AuditResponse | null) {
+  const g = pvp?.governance;
+  const c = audit?.clawback;
+
+  /** A filer's tick, its cross, or the fact that they answered neither. */
+  const flag = (v: boolean | null | undefined, yes: string, no: string) =>
+    v === true ? yes : v === false ? no : "N/A";
+
+  const correction = c?.error_correction;
+  const fy = c?.period_end ? `FY${c.period_end.slice(0, 4)}` : "the latest 10-K";
+
+  return {
+    tiles: [
+      {
+        k: "Insider trading policy",
+        v: flag(g?.insider_trading_policy_adopted, "Adopted", "Not adopted"),
+        why:
+          "ecd:InsiderTrdPoliciesProcAdoptedFlag — the filer's own declaration that it has " +
+          "adopted insider trading policies and procedures. Not a view on their quality.",
+      },
+      {
+        k: "Award timing vs MNPI",
+        v: flag(g?.award_timing_considers_mnpi, "Considered", "Not considered"),
+        why:
+          "ecd:AwardTmgMnpiCnsdrdFlag — whether material non-public information is taken into " +
+          "account when determining the timing of option awards. Untagged by many filers, and " +
+          "an untagged box is not a 'no'.",
+      },
+      {
+        k: "Award timing predetermined",
+        v: flag(g?.award_timing_predetermined, "Predetermined", "Not predetermined"),
+        why:
+          "ecd:AwardTmgPredtrmndFlag — whether option award timing follows a predetermined " +
+          "schedule. Untagged by many filers, and an untagged box is not a 'no'.",
+      },
+      {
+        k: "Accounting-error correction",
+        v:
+          correction === false
+            ? `None in ${fy}`
+            : correction === true
+              ? `Yes, ${fy}`
+              : "N/A",
+        why:
+          correction === true
+            ? "dei:DocumentFinStmtErrorCorrectionFlag — these statements correct an error in " +
+              "previously issued ones. " +
+              (c?.recovery_analysis === true
+                ? "It required a compensation recovery analysis under Rule 10D-1(b)."
+                : c?.recovery_analysis === false
+                  ? "It did not require a compensation recovery analysis under Rule 10D-1(b)."
+                  : "Whether it required a recovery analysis is not tagged.")
+            : correction === false
+              ? "dei:DocumentFinStmtErrorCorrectionFlag — no correction of a previously issued " +
+                "statement, so the Rule 10D-1 compensation-recovery question does not arise."
+              : c?.reason ??
+                "No annual-report cover page has been read for this company yet.",
+      },
+    ],
+    note:
+      "Every value here is a box the filer ticked on a filing, not a judgment about governance. " +
+      "Board size, independence, director tenure and CEO tenure are tagged in no SEC source — " +
+      "they appear only in the proxy's prose. The directors themselves are listed above.",
+  };
+}
+
 /* ------------------------------------------------------------ §05.1 officer & director changes */
 
 interface OfficerChangesResponse {
@@ -912,6 +998,13 @@ interface AuditResponse {
     covered_to?: string | null;
     events: { kind: string; item: string; filed: string | null; accession: string }[];
     late_filings: { form: string; filed: string | null }[];
+  };
+  clawback?: {
+    status: string;
+    reason: string | null;
+    error_correction: boolean | null;
+    recovery_analysis: boolean | null;
+    period_end: string | null;
   };
   extension_tags: {
     status: string;
@@ -1628,24 +1721,34 @@ export const api = {
       custConc: hub.hubData(symbol).custConc,
     }),
 
-  /** §05 governance & people. Phase A: `/insider-summary` + 8-K Item 5.02; the board half is DEF 14A. */
+  /**
+   * §05 governance & people, now entirely on real filings.
+   *
+   * `/insider-summary` (§05.4), `/officer-changes` (§05.1), `/pay-versus-performance` (§05.3) and
+   * `/audit`'s Rule 10D-1 flags (§05.2). The fixture `governance` block that used to ride along
+   * is gone — every field of it had been replaced, and shipping a dead branch invites a future
+   * reader to plug it back in.
+   */
   companyGovernance: async (symbol: string) => {
     const enc = encodeURIComponent(symbol);
     // Two independent reads, in parallel and each failing alone. A proxy read costs three SEC
     // round-trips server-side (submissions, directory, instance) and the insider read can cost
     // one ownership-XML fetch per uncached filing, so neither may take the section down with it
     // — `null` flows into each adapter's honest-empty branch.
-    const [pvp, insiderSummary, officers] = await Promise.all([
+    // Four independent reads, in parallel and each failing alone. `/audit` is shared with §06 —
+    // it is cache-aside over the 10-K instance, so the second caller pays a SQLite read.
+    const [pvp, insiderSummary, officers, audit] = await Promise.all([
       getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(() => null),
       getJson<InsiderSummaryResponse>(`/v1/companies/${enc}/insider-summary?limit=10`).catch(
         () => null,
       ),
       getJson<OfficerChangesResponse>(`/v1/companies/${enc}/officer-changes`).catch(() => null),
+      getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
     ]);
     return {
-      governance: hub.hubData(symbol).governance,
       insider: toInsiderSummary(insiderSummary),
       officers: toOfficerChanges(officers),
+      policies: toGovernancePolicies(pvp, audit),
       pvp: toPayVersusPerformance(pvp),
     } as CompanyGovernance;
   },
@@ -1919,13 +2022,14 @@ export interface CompanySegments {
 }
 
 export interface CompanyGovernance {
-  governance: hub.HubData["governance"];
   /** §05.3 re-pointed: compensation actually paid, not the untagged pay mix. */
   pvp: ReturnType<typeof toPayVersusPerformance>;
   /** §05.4 on real Form 3/4/5 rows — no longer `hub.HubInsider`. */
   insider: ReturnType<typeof toInsiderSummary>;
   /** §05.1 on Form 3 arrivals + 8-K Item 5.02 events. */
   officers: ReturnType<typeof toOfficerChanges>;
+  /** §05.2 repointed: the governance check marks that ARE tagged. */
+  policies: ReturnType<typeof toGovernancePolicies>;
 }
 
 export interface CompanyDisclosure {
