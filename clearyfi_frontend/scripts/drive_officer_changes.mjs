@@ -43,12 +43,12 @@ await p.waitForFunction((tk)=>{
   const r=document.querySelector(".alt-content");
   if(!r||!r.childElementCount||r.querySelector(".state-loading")) return false;
   if(!document.body.innerText.includes(tk)) return false;
-  return [...document.querySelectorAll(".p-card")].some(e=>/Officer & director changes/i.test(e.textContent||""));
+  return [...document.querySelectorAll(".p-card")].some(e=>/Officers & directors/i.test(e.textContent||""));
 }, {timeout:60000}, TK);
 await new Promise(r=>setTimeout(r,600));
 
 const { text: card, roster } = await p.$$eval(".p-card", (els)=>{
-  const hit = els.find(e=>/Officer & director changes/i.test(e.querySelector(".hub-label")?.textContent||""));
+  const hit = els.find(e=>/Officers & directors/i.test(e.querySelector(".hub-label")?.textContent||""));
   const roster = [...(hit?.querySelectorAll(".hub-kv-row")||[])].map(el=>({
     who:(el.querySelector(".hub-cell")?.childNodes[0]?.textContent||"").trim(),
     role:(el.querySelector(".hub-cell-mono.is-soft")?.textContent||"").trim(),

@@ -890,7 +890,7 @@ export function HubOverview() {
           */}
           <div className="p-card">
             <div className="hub-panel-head">
-              <span className="hub-label no-mb">Officer &amp; director changes</span>
+              <span className="hub-label no-mb">Officers &amp; directors</span>
               <Src href={L.eightK}>Read the 8-Ks ↗</Src>
             </div>
             {officers.ok ? (

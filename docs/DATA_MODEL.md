@@ -1554,7 +1554,7 @@ passes through untouched rather than being guessed at.
 
 ---
 
-## Officer & director changes (`normalize/officer_changes.py`) — §05.1
+## Officers & directors (`normalize/officer_changes.py`) — §05.1
 
 `GET /companies/{symbol}/officer-changes` interleaves two half-answers. Neither carries the whole
 event, and the gap between them is the point.
