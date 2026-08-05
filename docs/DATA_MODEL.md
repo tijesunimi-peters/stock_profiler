@@ -1612,6 +1612,49 @@ the filer's **whole** relationship string instead.
 `"See Remarks"` (9,303 rows) is an EDGAR convention meaning the role is in the filing's remarks. It
 is rendered as that, never as a job title.
 
+### Role-box transitions, and why only additions
+
+A filer restates its own `isDirector` / `isOfficer` boxes on every form, so a box turning **on** is
+reported by the filing that carries it — an officer joining the board, a director taking an
+executive role. IRIDEX's Patrick Mercer filed twice as `officer (President and CEO)` and then as
+`director, officer (President and CEO)`: a board appointment, stated.
+
+**Only additions.** Measured 2026-08-04: of 1,559 orderable box transitions, **665 are pure
+additions** (reported), 854 are pure removals and 40 swap one box for another (both skipped).
+
+A box *disappearing* is indistinguishable from a filer leaving it unticked, and reporting it would
+be a serious false claim about a named person. Motorcar Parts of America settles it: Selwyn Joffe
+filed as `director, officer (President, CEO & Chairman)` and five weeks later as
+`officer (President, CEO & Chairman)` — **a person whose own title still reads Chairman has not
+left the board.** Fifteen removals contradict themselves that visibly; the other 839 are equally
+untrustworthy and merely quieter. This is also consistent with what the card already tells the
+reader: nothing is filed on departure.
+
+**Never the title text.** 2,340 people show a changed title string, and the bucket mixes
+`Senior Vice President` → `EVP & Chief Commercial Officer` (a promotion) with
+`Chief Operating Officer` → `Chief Operating Off.` and `VP and Chief Financial Officer` →
+`VP and CFO` (the same job, respelled). Separating them means judging abbreviations, so none are
+reported.
+
+**Same-day spans have no direction.** 102 transitions share a `first_filed` date, usually an
+amendment restating a role; picking an order would be a coin flip presented as a promotion. Skipped.
+
+**An arrival and its role change on the same day are one event.** Rocky Mountain Chocolate's Allen
+Harper filed a Form 3 as interim CEO on 2026-07-13 and his boxes changed from 10%-owner the same
+day. The arrival wins — it is the filing the SEC requires for exactly this.
+
+### The roster: who they ARE
+
+`roster` carries each officer and director under the role they **last reported for themselves**,
+which is the question the filings answer best — arrivals are rare and departures are unfilable.
+
+**Completeness tracks `roster_filings` and nothing else.** Apple's 16 people come from 60 cached
+ownership filings and cover its whole Section 16 population; JPMorgan's 9 come from 12 and do not.
+The two are indistinguishable without the count, so it travels with the list.
+
+**Nobody is inferred to have left.** Someone who has not filed inside the cached window is absent
+from the roster. That is coverage, not a departure, and the surface says so.
+
 ### The 8-K index is built cache-aside (operator ruling 2026-08-04)
 
 `_ensure_filing_index` fetches `/submissions/` on the first view of a company and reads SQLite

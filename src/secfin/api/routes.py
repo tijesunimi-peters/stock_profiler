@@ -2830,11 +2830,14 @@ async def get_insider_summary(
 async def get_officer_changes(
     symbol: str,
     limit: int = Query(8, ge=1, le=40, description="Max change rows to return, newest first"),
+    roster_limit: int = Query(
+        8, ge=1, le=100, description="Max roster members to return; `roster_total` is the full count"
+    ),
     ticker_cache: TickerCache = Depends(get_ticker_cache),
     insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
     filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
 ) -> OfficerChanges:
-    """Two half-answers, interleaved by date and never joined into one.
+    """Three change signals interleaved by date, plus the roster they happened to.
 
     **Form 3 supplies the person and the role, for arrivals only.** Section 16 requires an
     initial statement within 10 days of becoming an officer or director, so an arrival is a
@@ -2844,7 +2847,20 @@ async def get_officer_changes(
     **no sub-item letter**, so departure, election, appointment and compensatory arrangement are
     indistinguishable in the index -- which one it was is the 8-K's narrative, and Track 2.
 
-    **There is no action verb**, in either source. This endpoint does not manufacture one.
+    **Form 4 supplies role-box transitions.** A filer restates its own `isDirector` / `isOfficer`
+    boxes on every form, so an officer joining the board is reported, not inferred. Only the
+    boxes: 2,340 people in our store show a changed title STRING, and the bucket mixes real
+    promotions with the same job spelled differently ("Chief Operating Officer" -> "Chief
+    Operating Off."), which no rule can separate without judging abbreviations.
+
+    **There is no action verb**, in any source. This endpoint does not manufacture one.
+
+    **`roster` answers a different question** -- who the officers and directors ARE, per the role
+    each last reported. It is the question the filings answer best, since arrivals are rare and
+    departures are unfilable. Bounded by `roster_filings` (the cached window): Apple's 16 people
+    cover its whole Section 16 population, JPMorgan's 9 do not. **Nobody is inferred to have
+    left** -- someone who has not filed inside the window is absent, which is coverage, not a
+    departure.
 
     **The two are never joined.** Apple filed a Form 3 for Ben Borders and an Item 5.02 on the
     same day; neither filing references the other, so the rows sit adjacent and the reader draws
@@ -2872,10 +2888,16 @@ async def get_officer_changes(
             initial_statements=insider_repo.get_initial_statements(cik, 40),
             filings=filing_repo.get_filings(cik, ["8-K", "8-K/A"], 1000) if indexed else [],
             index_built=bool(indexed),
+            # The roster and the role-box transitions both read the WHOLE cached window, not a
+            # recency slice: "who are the officers" and "did anyone's boxes change" are questions
+            # about all of it.
+            role_spans=insider_repo.owner_role_history(cik),
+            cached_filings=insider_repo.cached_filing_count(cik),
             indexed_filings=indexed,
             covered_from=covered_from,
             covered_to=covered_to,
             limit=limit,
+            roster_limit=roster_limit,
         )
 
 

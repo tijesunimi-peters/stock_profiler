@@ -10,7 +10,11 @@ import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
+from secfin.normalize.schema import (
+    InsiderFilingMeta,
+    InsiderOwnerRole,
+    InsiderTransaction,
+)
 from secfin.storage.insider_repository import InsiderTransactionRepository
 
 _SCHEMA = """
@@ -200,6 +204,39 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         )
         cols = [d[0] for d in cur.description]
         return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
+
+    def owner_role_history(self, issuer_cik: int) -> list[InsiderOwnerRole]:
+        cur = self._conn.execute(
+            """
+            SELECT owner_name,
+                   owner_relationship,
+                   MAX(officer_title)        AS officer_title,
+                   MAX(is_officer)           AS is_officer,
+                   MAX(is_director)          AS is_director,
+                   MIN(filed)                AS first_filed,
+                   MAX(filed)                AS last_filed
+            FROM insider_transactions
+            WHERE issuer_cik = ? AND owner_name IS NOT NULL AND owner_name <> ''
+            GROUP BY owner_name, owner_relationship
+            ORDER BY first_filed ASC, owner_name ASC
+            """,
+            (issuer_cik,),
+        )
+        # MAX() over the flags is not a vote: within one (person, relationship) group every row
+        # carries the same boxes, and MAX simply skips the NULLs that legacy rows contribute. A
+        # group that is entirely legacy stays NULL, which the caller reads as UNKNOWN.
+        return [
+            InsiderOwnerRole(
+                owner_name=r[0],
+                relationship=r[1],
+                officer_title=r[2],
+                is_officer=None if r[3] is None else bool(r[3]),
+                is_director=None if r[4] is None else bool(r[4]),
+                first_filed=r[5],
+                last_filed=r[6],
+            )
+            for r in cur.fetchall()
+        ]
 
     def transactions_since(self, issuer_cik: int, since: str) -> list[InsiderTransaction]:
         cur = self._conn.execute(

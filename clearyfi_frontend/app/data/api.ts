@@ -511,7 +511,12 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     rows: years.map((y) => ({
       k: y.period_end ? `FY${y.period_end.slice(0, 4)}` : "—",
       pct: y.peo_actually_paid === null ? "N/A" : usdCompact(y.peo_actually_paid),
-      w: `${Math.max(2, Math.round((Math.abs(y.peo_actually_paid ?? 0) / max) * 100))}%`,
+      // A year the proxy did not tag gets NO bar. The 2% floor exists so a small value stays
+      // visible, not so an absent one looks like a quantity — same rule as `barWidth`.
+      w:
+        y.peo_actually_paid === null
+          ? "0%"
+          : `${Math.max(2, Math.round((Math.abs(y.peo_actually_paid) / max) * 100))}%`,
       negative: (y.peo_actually_paid ?? 0) < 0,
     })),
     reason: null as string | null,
@@ -528,9 +533,10 @@ function toPayVersusPerformance(res: PvpResponse | null) {
 interface OfficerChangesResponse {
   cik: number;
   changes: {
-    kind: "arrival" | "event";
+    kind: "arrival" | "role_change" | "event";
     person: string | null;
     role: string | null;
+    previous_role: string | null;
     role_is_stated_title: boolean;
     source: string | null;
     date: string | null;
@@ -538,7 +544,18 @@ interface OfficerChangesResponse {
     relationship: string | null;
   }[];
   arrival_count: number;
+  role_change_count: number;
   event_count: number;
+  roster: {
+    person: string;
+    role: string | null;
+    role_is_stated_title: boolean;
+    is_officer: boolean;
+    is_director: boolean;
+    last_filed: string | null;
+  }[];
+  roster_total: number;
+  roster_filings: number;
   index_built: boolean;
   indexed_filings: number;
   covered_from: string | null;
@@ -574,8 +591,23 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
       c.kind === "event"
         ? "The 8-K index carries the filing and its date. Who it concerns is in the 8-K's text."
         : (c.relationship ?? ""),
-    what: c.kind === "arrival" ? `${c.source} · ${c.role ?? ""}`.trim() : (c.source ?? ""),
+    what:
+      c.kind === "arrival"
+        ? `${c.source} · ${c.role ?? ""}`.trim()
+        : c.kind === "role_change"
+          ? // The arrow is the whole point: the filer restated its own boxes between two
+            // filings. Both sides are shown so the reader sees what actually changed.
+            `${c.previous_role ?? ""} → ${c.role ?? ""}`.trim()
+          : (c.source ?? ""),
     date: c.date ?? "date N/A",
+  }));
+
+  // Person and role, and nothing else. A separate board/officer column would repeat what the
+  // relationship string already says — "director, officer (Chief Executive Officer)" carries the
+  // seat in the filer's own words, and a third cell restating it just narrows the role column.
+  const roster = (res?.roster ?? []).map((m) => ({
+    person: m.person,
+    role: m.role ?? "role not stated",
   }));
 
   const window =
@@ -588,6 +620,7 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
   const coverage = !res?.index_built
     ? "This company's 8-K index has not been built, so the event half has not been looked at."
     : `${plural(res.arrival_count, "arrival")} from Form 3 · ` +
+      `${plural(res.role_change_count, "role change")} · ` +
       `${plural(res.event_count, "Item 5.02 filing")} among the ${res.indexed_filings} filings ` +
       `EDGAR lists for this company, covering ${window}.`;
 
@@ -599,6 +632,16 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
   return {
     ok: (res?.status === "ok" && rows.length > 0) as boolean,
     rows,
+    roster,
+    // The roster's completeness tracks how many filings we hold, and nothing else — Apple's 16
+    // people cover its whole Section 16 population from 60 filings, JPMorgan's 9 come from 12.
+    // Without this line the two look identical.
+    rosterNote: res?.roster_total
+      ? `${plural(res.roster_total, "person", "people")} across the ` +
+        `${plural(res.roster_filings, "ownership filing")} held for this company. Someone who ` +
+        "has not filed inside that window is missing — nobody here is shown as having left."
+      : "",
+    rosterMore: res && res.roster_total > res.roster.length ? res.roster_total - res.roster.length : 0,
     coverage: coverage + excluded,
     reason:
       res?.reason ??

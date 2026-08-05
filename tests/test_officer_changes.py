@@ -268,3 +268,175 @@ class TestUncheckedVersusEmpty:
             covered_to="2026-07-30",
         )
         assert (result.covered_from, result.covered_to) == ("2015-06-01", "2026-07-30")
+
+
+def _span(
+    owner="Mercer Patrick",
+    relationship="officer (President and CEO)",
+    *,
+    officer=True,
+    director=False,
+    title="President and CEO",
+    first="2026-05-26",
+    last=None,
+):
+    from secfin.normalize.schema import InsiderOwnerRole
+
+    return InsiderOwnerRole(
+        owner_name=owner,
+        relationship=relationship,
+        officer_title=title,
+        is_officer=officer,
+        is_director=director,
+        first_filed=first,
+        last_filed=last or first,
+    )
+
+
+class TestRoleBoxTransitions:
+    """A filer restates its own boxes on every form, so a box turning ON is reported, not
+    inferred. A box turning OFF is not reportable, and the reason is a real filing."""
+
+    def test_an_officer_joining_the_board_is_reported(self):
+        # IRIDEX: Patrick Mercer filed twice as officer, then as director and officer.
+        result = _build(
+            role_spans=[
+                _span(first="2026-05-26", last="2026-06-16"),
+                _span(
+                    relationship="director, officer (President and CEO)",
+                    director=True,
+                    first="2026-07-14",
+                ),
+            ]
+        )
+        assert result.role_change_count == 1
+        (change,) = [c for c in result.changes if c.kind == "role_change"]
+        assert change.person == "Mercer Patrick"
+        assert change.previous_role == "officer (President and CEO)"
+        assert change.role == "director, officer (President and CEO)"
+        assert change.date == "2026-07-14"
+
+    def test_a_box_disappearing_is_not_a_departure(self):
+        # Motorcar Parts of America: Selwyn Joffe filed as director+officer, then officer only --
+        # while his own title still read "Chairman". The box was omitted, not vacated, and 854
+        # removals in the store are indistinguishable from that one.
+        result = _build(
+            role_spans=[
+                _span(
+                    owner="SELWYN JOFFE",
+                    relationship="director, officer (President, CEO & Chairman)",
+                    director=True,
+                    title="President, CEO & Chairman",
+                    first="2026-06-23",
+                ),
+                _span(
+                    owner="SELWYN JOFFE",
+                    relationship="officer (President, CEO & Chairman)",
+                    director=False,
+                    title="President, CEO & Chairman",
+                    first="2026-07-24",
+                ),
+            ]
+        )
+        assert result.role_change_count == 0
+
+    def test_a_swap_of_one_box_for_another_is_not_reported(self):
+        result = _build(
+            role_spans=[
+                _span(first="2026-01-01"),
+                _span(relationship="director", officer=False, director=True, title=None,
+                      first="2026-06-01"),
+            ]
+        )
+        assert result.role_change_count == 0
+
+    def test_two_roles_first_filed_the_same_day_have_no_direction(self):
+        # 102 transitions in the store are same-day, usually an amendment restating a role.
+        # Picking a direction would be a coin flip presented as a promotion.
+        result = _build(
+            role_spans=[
+                _span(owner="Kaye Douglas", relationship="director, officer (CEO)",
+                      director=True, first="2026-06-08"),
+                _span(owner="Kaye Douglas", relationship="officer (CEO)", first="2026-06-08"),
+            ]
+        )
+        assert result.role_change_count == 0
+
+    def test_a_title_change_alone_is_never_a_promotion(self):
+        # "Chief Operating Officer" -> "Chief Operating Off." is the same job. 2,340 people show
+        # a changed title string and no rule separates the real ones without judging spelling.
+        result = _build(
+            role_spans=[
+                _span(relationship="officer (VP and Chief Financial Officer)", first="2013-04-12"),
+                _span(relationship="officer (VP and CFO)", first="2013-11-05"),
+            ]
+        )
+        assert result.role_change_count == 0
+
+    def test_an_arrival_and_its_role_change_on_the_same_day_are_one_row(self):
+        # Rocky Mountain Chocolate: Allen Harper's Form 3 as interim CEO and his boxes changing
+        # from 10%-owner are one appointment seen twice.
+        result = _build(
+            [_form3(owner="Harper Allen C", filed="2026-07-13", title="Interim CEO")],
+            role_spans=[
+                _span(owner="Harper Allen C", relationship="10% owner", officer=False,
+                      title=None, first="2025-01-02"),
+                _span(owner="Harper Allen C", relationship="officer (Interim CEO)",
+                      title="Interim CEO", first="2026-07-13"),
+            ],
+        )
+        assert result.arrival_count == 1
+        assert result.role_change_count == 0
+
+
+class TestRoster:
+    def test_the_roster_lists_each_person_once_under_their_latest_role(self):
+        result = _build(
+            role_spans=[
+                _span(first="2026-05-26", last="2026-06-16"),
+                _span(relationship="director, officer (President and CEO)", director=True,
+                      first="2026-07-14", last="2026-07-14"),
+            ]
+        )
+        assert result.roster_total == 1
+        assert result.roster[0].role == "director, officer (President and CEO)"
+        assert (result.roster[0].is_officer, result.roster[0].is_director) == (True, True)
+
+    def test_officers_sort_before_directors(self):
+        result = _build(
+            role_spans=[
+                _span(owner="A Director", relationship="director", officer=False, director=True,
+                      title=None, first="2026-07-30"),
+                _span(owner="A CFO", relationship="officer (CFO)", first="2026-01-01"),
+            ]
+        )
+        assert [m.person for m in result.roster] == ["A CFO", "A Director"]
+
+    def test_a_ten_percent_owner_is_not_on_the_roster(self):
+        result = _build(
+            role_spans=[
+                _span(owner="VANGUARD GROUP", relationship="10% owner", officer=False,
+                      title=None, first="2026-01-01"),
+                _span(first="2026-01-01"),
+            ]
+        )
+        assert [m.person for m in result.roster] == ["Mercer Patrick"]
+
+    def test_the_roster_is_capped_but_the_total_is_not(self):
+        spans = [_span(owner=f"Officer {i}", first=f"2026-01-{i:02d}") for i in range(1, 13)]
+        result = _build(role_spans=spans, roster_limit=5)
+        assert result.roster_total == 12
+        assert len(result.roster) == 5
+
+    def test_the_roster_reports_the_window_it_rests_on(self):
+        # Apple's 16 people come from a window covering its whole Section 16 population;
+        # JPMorgan's 9 do not. The card cannot tell them apart without this.
+        result = _build(role_spans=[_span()], cached_filings=12)
+        assert result.roster_filings == 12
+
+    def test_a_company_with_only_a_roster_still_renders(self):
+        # No arrivals, no Item 5.02 — but we do know who the officers are. That is not `na`.
+        result = _build(role_spans=[_span()], index_built=True)
+        assert result.status == "ok"
+        assert result.changes == []
+        assert result.roster_total == 1

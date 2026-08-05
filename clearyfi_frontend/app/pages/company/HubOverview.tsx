@@ -912,6 +912,29 @@ export function HubOverview() {
               Nothing is filed on departure. Item 5.02 covers departure, election, appointment and
               compensatory arrangements alike — EDGAR&rsquo;s code does not say which.
             </div>
+
+            {/*
+              Who they ARE, not only who arrived — the question the filings answer best, since
+              arrivals are rare and departures are unfilable. Each person under the role they
+              last reported for themselves.
+            */}
+            {officers.roster.length ? (
+              <>
+                <div className="hub-foot-rule">Current officers and directors</div>
+                {officers.roster.map((m) => (
+                  <div className="hub-kv-row" key={m.person}>
+                    <span className="hub-cell">{m.person}</span>
+                    <span className="hub-cell-mono is-soft ta-r">{m.role}</span>
+                  </div>
+                ))}
+                {officers.rosterMore ? (
+                  <div className="hub-note">
+                    +{officers.rosterMore} more in the full insider activity view.
+                  </div>
+                ) : null}
+                <div className="hub-note">{officers.rosterNote}</div>
+              </>
+            ) : null}
           </div>
 
           <div className="p-card">

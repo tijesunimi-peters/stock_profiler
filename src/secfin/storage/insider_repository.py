@@ -25,7 +25,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 
-from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
+from secfin.normalize.schema import (
+    InsiderFilingMeta,
+    InsiderOwnerRole,
+    InsiderTransaction,
+)
 
 
 class InsiderTransactionRepository(ABC):
@@ -84,6 +88,18 @@ class InsiderTransactionRepository(ABC):
         Unlike `get_insider_transactions`, this does NOT need a `cached_filing_count` check: it
         answers "what arrivals do we hold", and holding fewer is a coverage fact the caller
         reports, not a stale answer to a different question.
+        """
+
+    @abstractmethod
+    def owner_role_history(self, issuer_cik: int) -> list[InsiderOwnerRole]:
+        """Every (person, role) pairing this issuer's Section 16 filers reported, with its span.
+
+        Grouped in SQL rather than by pulling rows: a prolific filer's cached corpus is tens of
+        thousands of rows, and the question is about distinct roles, not transactions. Ordered by
+        `first_filed` so a caller can walk one person's spans in order and see a role change.
+
+        Bounded by whatever is cached -- this is the whole cached window, not a recency slice,
+        because "who are the officers" is a question about all of it.
         """
 
     @abstractmethod

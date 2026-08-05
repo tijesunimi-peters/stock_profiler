@@ -554,6 +554,24 @@ class InsiderTransaction(BaseModel):
     rule_10b5_1: bool | None = None
 
 
+class InsiderOwnerRole(NamedTuple):
+    """One (person, role) pairing an issuer's Section 16 filers reported, and when.
+
+    A read model over `insider_transactions`, grouped so a person who filed forty Form 4s under
+    the same title is one span rather than forty rows. Two spans for the same person means the
+    filer restated their own role between filings -- which is the only structured promotion or
+    board-appointment signal we have.
+    """
+
+    owner_name: str
+    relationship: str | None
+    officer_title: str | None
+    is_officer: bool | None
+    is_director: bool | None
+    first_filed: str | None
+    last_filed: str | None
+
+
 class InsiderFilingMeta(NamedTuple):
     """One Form 3/4/5 filing that's been fetched and parsed, independent of how many
     (if any) InsiderTransaction rows it produced -- a filing can legitimately yield zero
@@ -669,9 +687,14 @@ class OfficerChange(BaseModel):
     every source we hold, and a guess dressed as a verb is the failure this whole card avoids.
     """
 
-    kind: Literal["arrival", "event"]
+    kind: Literal["arrival", "role_change", "event"]
     person: str | None = None  # None on an `event` -- the 8-K index carries no names
     role: str | None = None  # None on an `event`
+    # `role_change` only: the role boxes the person reported BEFORE this filing. A checkbox
+    # transition (officer -> officer and director), never a re-reading of the title text --
+    # 2,340 people restate a title cosmetically ("Chief Operating Officer" -> "Chief Operating
+    # Off."), and calling that a promotion would be our guess about their abbreviation.
+    previous_role: str | None = None
     # False when the filer ticked the officer box but stated no title (or wrote EDGAR's "See
     # Remarks" convention). The role then names the box, and a caller must not present it as a
     # job title.
@@ -680,6 +703,22 @@ class OfficerChange(BaseModel):
     date: str | None = None  # filing date
     accession: str | None = None
     relationship: str | None = None  # the full display string, for a tooltip
+
+
+class RosterMember(BaseModel):
+    """One current Section 16 officer or director, with the role they LAST reported themselves.
+
+    Not a board list and not a management list -- it is who has filed an ownership form inside
+    the window we hold, which is a proxy for both and identical to neither. Someone who has not
+    traded recently is absent; a person is never inferred to have left.
+    """
+
+    person: str
+    role: str | None = None
+    role_is_stated_title: bool = True
+    is_officer: bool = False
+    is_director: bool = False
+    last_filed: str | None = None
 
 
 class OfficerChanges(BaseModel):
@@ -693,7 +732,17 @@ class OfficerChanges(BaseModel):
     cik: int
     changes: list[OfficerChange] = Field(default_factory=list)
     arrival_count: int = 0  # arrivals found, before the display cap
+    role_change_count: int = 0
     event_count: int = 0
+
+    # Who the officers and directors ARE, per their most recent filing -- a different question
+    # from who arrived, and the one the filings answer best. `roster_total` is the full count;
+    # `roster` is capped for display. `roster_filings` is how many filings that reading rests on,
+    # because completeness tracks it: Apple's 16 people come from a window that covers its whole
+    # Section 16 population, JPMorgan's 9 do not.
+    roster: list[RosterMember] = Field(default_factory=list)
+    roster_total: int = 0
+    roster_filings: int = 0
 
     # Whether this company's 8-K index exists at all. Without it, "no Item 5.02" is not a
     # finding -- it means the event half was never looked at.

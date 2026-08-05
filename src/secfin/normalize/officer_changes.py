@@ -33,9 +33,11 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 from secfin.normalize.schema import (
+    InsiderOwnerRole,
     InsiderTransaction,
     OfficerChange,
     OfficerChanges,
+    RosterMember,
 )
 from secfin.sec.filing_index import FilingIndexEntry
 
@@ -74,7 +76,7 @@ def _roles_from_label(relationship: str | None) -> tuple[bool, bool]:
     return (is_director, is_officer)
 
 
-def _roles(row: InsiderTransaction) -> tuple[bool, bool]:
+def _roles(row: InsiderTransaction | InsiderOwnerRole) -> tuple[bool, bool]:
     """`(is_director, is_officer)`, structured columns first, display-string prefix second.
 
     The columns are authoritative where they exist -- they come straight from the XML boxes. Rows
@@ -84,15 +86,19 @@ def _roles(row: InsiderTransaction) -> tuple[bool, bool]:
     """
     if row.is_officer is not None or row.is_director is not None:
         return (bool(row.is_director), bool(row.is_officer))
-    return _roles_from_label(row.owner_relationship)
+    return _roles_from_label(_relationship_of(row))
 
 
-def _is_personnel(row: InsiderTransaction) -> bool:
+def _relationship_of(row: InsiderTransaction | InsiderOwnerRole) -> str | None:
+    return getattr(row, "owner_relationship", None) or getattr(row, "relationship", None)
+
+
+def _is_personnel(row: InsiderTransaction | InsiderOwnerRole) -> bool:
     is_director, is_officer = _roles(row)
     return is_director or is_officer
 
 
-def _role_label(row: InsiderTransaction) -> tuple[str, bool]:
+def _role_label(row: InsiderTransaction | InsiderOwnerRole) -> tuple[str, bool]:
     """The role to show, and whether the filer actually stated a title.
 
     Shows the filer's OWN relationship string whole -- "director, officer (Chief Executive
@@ -101,7 +107,7 @@ def _role_label(row: InsiderTransaction) -> tuple[str, bool]:
     be split. `officer_title` is used only to confirm a title was stated, never to rebuild the
     label from parts.
     """
-    relationship = (row.owner_relationship or "").strip()
+    relationship = (_relationship_of(row) or "").strip()
     title = (row.officer_title or "").strip()
     is_director, is_officer = _roles(row)
 
@@ -144,6 +150,119 @@ def _arrivals(rows: Iterable[InsiderTransaction]) -> list[OfficerChange]:
     return out
 
 
+def _roster(spans: Iterable[InsiderOwnerRole]) -> list[RosterMember]:
+    """Who the officers and directors ARE, from the role each last reported for themselves.
+
+    A person appears under one role -- their most recent -- so someone promoted mid-window is not
+    listed twice. **Nobody is ever inferred to have left**: an officer who has not traded inside
+    the cached window is simply absent, which is a coverage fact, not a departure.
+    """
+    latest: dict[str, InsiderOwnerRole] = {}
+    for span in spans:
+        if not _is_personnel(span):
+            continue
+        seen = latest.get(span.owner_name)
+        if seen is None or (span.last_filed or "") >= (seen.last_filed or ""):
+            latest[span.owner_name] = span
+
+    members = []
+    for span in latest.values():
+        role, stated = _role_label(span)
+        is_director, is_officer = _roles(span)
+        members.append(
+            RosterMember(
+                person=span.owner_name,
+                role=role,
+                role_is_stated_title=stated,
+                is_officer=is_officer,
+                is_director=is_director,
+                last_filed=span.last_filed,
+            )
+        )
+    # Officers before directors, then most recently active first. An executive team reads first,
+    # and a board member who files twice a year does not push the CFO past the display cap.
+    return sorted(members, key=lambda m: (not m.is_officer, _descending(m.last_filed)))
+
+
+def _descending(date: str | None) -> str:
+    """A date key that sorts NEWEST first inside an otherwise ascending sort."""
+    return "".join(chr(0x7E - ord(ch)) for ch in (date or ""))
+
+
+def _gained_a_box(before: InsiderOwnerRole, after: InsiderOwnerRole) -> bool:
+    """Did a role box turn ON, with none turning off?
+
+    **Additions only, deliberately.** A box appearing is corroborated by the filing that carries
+    it: nobody ticks "director" by accident. A box DISAPPEARING is indistinguishable from a filer
+    who simply left it unticked -- and the difference matters, because reporting the second as a
+    board departure would be a serious false claim about a named person.
+
+    Motorcar Parts of America is the case that settled it. Selwyn Joffe filed as
+    `director, officer (President, CEO & Chairman)` and then, five weeks later, as
+    `officer (President, CEO & Chairman)`. **A person whose own title still reads Chairman has not
+    left the board** -- the second filing simply omitted the box. Fifteen removals in our store
+    contradict themselves that visibly; the other 839 are indistinguishable from real departures
+    and are equally untrustworthy.
+
+    Measured 2026-08-04: of 1,559 orderable box transitions, **665 are pure additions** (reported),
+    854 are pure removals and 40 swap one box for another (both skipped). This is also consistent
+    with what the card already tells the reader -- that nothing is filed on departure.
+    """
+    was_director, was_officer = _roles(before)
+    now_director, now_officer = _roles(after)
+    gained = (now_director and not was_director) or (now_officer and not was_officer)
+    lost = (was_director and not now_director) or (was_officer and not now_officer)
+    return gained and not lost
+
+
+def _role_transitions(spans: Iterable[InsiderOwnerRole]) -> list[OfficerChange]:
+    """A person whose director/officer BOXES changed between filings.
+
+    The filer restates its own boxes on every form, so a change is reported, not inferred -- an
+    officer joining the board, or a director taking an executive role.
+
+    **Only the boxes.** 2,340 people in our store show a changed title STRING, and the bucket is
+    mixed: "Senior Vice President" -> "EVP & Chief Commercial Officer" is a promotion, while
+    "Chief Operating Officer" -> "Chief Operating Off." and "VP and Chief Financial Officer" ->
+    "VP and CFO" are the same job spelled differently. Separating those needs a judgment about
+    abbreviations, so this reports none of them.
+    """
+    by_person: dict[str, list[InsiderOwnerRole]] = {}
+    for span in spans:
+        by_person.setdefault(span.owner_name, []).append(span)
+
+    out: list[OfficerChange] = []
+    for person, person_spans in by_person.items():
+        ordered = sorted(person_spans, key=lambda s: (s.first_filed or "", s.last_filed or ""))
+        previous: InsiderOwnerRole | None = None
+        for span in ordered:
+            # Two roles first filed on the SAME DAY have no reliable order, so the direction of
+            # the change between them is unknowable -- reporting one would be a coin flip
+            # presented as a promotion or a demotion. 102 of 1,661 box transitions in our store
+            # are same-day (an amendment restating a role, usually); they are skipped, not
+            # guessed. The other 1,559 have distinct dates and are reported.
+            same_day = previous is not None and span.first_filed == previous.first_filed
+            if previous is not None and not same_day and _gained_a_box(previous, span):
+                # Only report it if the person is still personnel afterwards -- an officer whose
+                # boxes drop to 10%-owner-only is not a personnel change we can characterise.
+                if _is_personnel(span):
+                    role, stated = _role_label(span)
+                    out.append(
+                        OfficerChange(
+                            kind="role_change",
+                            person=person,
+                            role=role,
+                            role_is_stated_title=stated,
+                            previous_role=(previous.relationship or "").strip() or None,
+                            source="Form 4",
+                            date=span.first_filed,
+                            relationship=span.relationship,
+                        )
+                    )
+            previous = span
+    return out
+
+
 def _events(filings: Iterable[FilingIndexEntry]) -> list[OfficerChange]:
     """One row per 8-K carrying Item 5.02. No person and no role -- the 8-K index has neither."""
     out: list[OfficerChange] = []
@@ -170,18 +289,35 @@ def build_officer_changes(
     initial_statements: Sequence[InsiderTransaction],
     filings: Sequence[FilingIndexEntry],
     index_built: bool,
+    role_spans: Sequence[InsiderOwnerRole] = (),
+    cached_filings: int = 0,
     indexed_filings: int = 0,
     covered_from: str | None = None,
     covered_to: str | None = None,
     limit: int = 8,
+    roster_limit: int = 8,
 ) -> OfficerChanges:
-    """Interleave Form 3 arrivals and 8-K Item 5.02 events into one date-ordered list.
+    """Three change signals date-ordered into one list, plus the roster they happened to.
 
     `index_built` distinguishes the two absences that look identical in a payload: "we read this
     company's 8-K index and found no Item 5.02" is a finding; "we have never indexed it" is not.
+
+    The roster answers a different question from the changes -- who the officers and directors
+    ARE, rather than who arrived -- and is the one the filings answer best, since arrivals are
+    rare and departures are unfilable. It is bounded by `cached_filings`, and says so.
     """
     arrivals = _arrivals(initial_statements)
     events = _events(filings) if index_built else []
+    roster = _roster(role_spans)
+
+    # A person's Form 3 and their first officer-boxed Form 4 describe ONE event from two angles:
+    # Rocky Mountain Chocolate's Allen Harper filed a Form 3 as interim CEO on 2026-07-13 and his
+    # role boxes changed from 10%-owner on the same day. Showing both would double-count the
+    # appointment, so the arrival wins -- it is the filing the SEC requires for exactly this.
+    arrived = {(c.person, c.date) for c in arrivals}
+    role_changes = [
+        c for c in _role_transitions(role_spans) if (c.person, c.date) not in arrived
+    ]
 
     excluded = len(
         {
@@ -202,8 +338,10 @@ def build_officer_changes(
         }
     )
 
-    rows = sorted(arrivals + events, key=lambda c: c.date or "", reverse=True)[:limit]
-    if not rows:
+    rows = sorted(
+        arrivals + role_changes + events, key=lambda c: c.date or "", reverse=True
+    )[:limit]
+    if not rows and not roster:
         return OfficerChanges(
             cik=cik,
             status="na",
@@ -220,6 +358,7 @@ def build_officer_changes(
             covered_to=covered_to,
             arrivals_excluded=excluded,
             arrivals_unclassified=unclassified,
+            roster_filings=cached_filings,
         )
 
     return OfficerChanges(
@@ -227,7 +366,11 @@ def build_officer_changes(
         status="ok",
         changes=rows,
         arrival_count=len(arrivals),
+        role_change_count=len(role_changes),
         event_count=len(events),
+        roster=roster[:roster_limit],
+        roster_total=len(roster),
+        roster_filings=cached_filings,
         index_built=index_built,
         indexed_filings=indexed_filings,
         covered_from=covered_from,

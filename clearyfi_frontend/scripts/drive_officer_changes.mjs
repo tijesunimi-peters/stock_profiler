@@ -45,18 +45,27 @@ await p.waitForFunction((tk)=>{
 }, {timeout:60000}, TK);
 await new Promise(r=>setTimeout(r,600));
 
+// The card holds TWO tri-row lists — the changes, then the roster after the "Current officers
+// and directors" rule. They are split on that divider so each is asserted against its own half
+// of the payload rather than a combined count.
 const pick = async () => p.$$eval(".p-card", (els)=>{
   const hit = els.find(e=>/Officer & director changes/i.test(e.querySelector(".hub-label")?.textContent||""));
-  return {
-    text: (hit?.innerText||"").replace(/\s+/g," ").trim(),
-    rows: [...(hit?.querySelectorAll(".hub-tri-row")||[])].map(r=>({
-      text:(r.innerText||"").replace(/\s+/g," ").trim(),
-      who:(r.querySelector(".hub-cell")?.textContent||"").trim(),
-      title:r.querySelector(".hub-cell")?.getAttribute("title")||"",
-    })),
-  };
+  const read = (r)=>({
+    text:(r.innerText||"").replace(/\s+/g," ").trim(),
+    who:(r.querySelector(".hub-cell")?.textContent||"").trim(),
+    mid:(r.querySelector(".hub-cell-mono.is-soft")?.textContent||"").trim(),
+    last:(r.querySelector(".ta-r")?.textContent||"").trim(),
+    title:r.querySelector(".hub-cell")?.getAttribute("title")||"",
+  });
+  const rows=[], roster=[]; let afterRule=false;
+  for (const el of hit?.children||[]) {
+    if (el.classList.contains("hub-foot-rule")) { afterRule=true; continue; }
+    if (el.classList.contains("hub-tri-row")) rows.push(read(el));
+    else if (afterRule && el.classList.contains("hub-kv-row")) roster.push(read(el));
+  }
+  return { text:(hit?.innerText||"").replace(/\s+/g," ").trim(), rows, roster };
 });
-const { text: card, rows } = await pick();
+const { text: card, rows, roster } = await pick();
 console.log("   card:", card.slice(0, 300));
 
 /* ---- the card is no longer fabricated ---------------------------------------------------- */
@@ -108,9 +117,49 @@ if (api.status === "ok") {
        `${rows.filter(r=>r.text.includes(date)).length} of ${collision[1].length}`);
   }
 
+  /* ---- role-box transitions -------------------------------------------------------------- */
+  const promotions = api.changes.filter(c=>c.kind==="role_change");
+  if (promotions.length) {
+    ck("a role change shows both sides of the transition",
+       rows.some(r=>r.mid.includes("→")), rows.map(r=>r.mid).join(" | ").slice(0,160));
+    ck("the role change names the person",
+       rows.some(r=>r.who===promotions[0].person), promotions[0].person);
+    // A box turning OFF is indistinguishable from a filer omitting it, so it is never reported.
+    ck("no reported transition removes a box",
+       promotions.every(c => {
+         const had = (s)=>({d:/(^|, )director/.test(s||""), o:/(^|, )officer/.test(s||"")});
+         const a = had(c.previous_role), b = had(c.role);
+         return !((a.d && !b.d) || (a.o && !b.o));
+       }), JSON.stringify(promotions[0]));
+  }
+
+  /* ---- the roster ------------------------------------------------------------------------ */
+  ck("the roster renders what the API returned",
+     roster.length === api.roster.length, `card=${roster.length} api=${api.roster.length}`);
+  if (api.roster.length) {
+    ck("every roster row names a person and a role",
+       roster.every(r=>r.who.length>1 && r.mid.length>1), JSON.stringify(roster[0]));
+    // The seat is already in the filer's own relationship string, so no extra column restates
+    // it -- but every roster row must still say which box the person sits in.
+    ck("each roster row names the box the person sits in",
+       roster.every(r=>/officer|director/.test(r.mid)), roster[0]?.mid);
+    ck("the roster states the window it rests on",
+       /ownership filings? held for this company/.test(card), card.slice(-320));
+    // The roster is who has FILED, not a board list. An officer who has not traded is absent,
+    // and absence must never read as a departure.
+    ck("the roster says nobody is shown as having left",
+       /nobody here is shown as having left/i.test(card), card.slice(-320));
+    ck("no roster row is a 10% owner",
+       !roster.some(r=>/10% owner/.test(r.mid)), roster.find(r=>/10%/.test(r.mid))?.mid);
+    if (api.roster_total > api.roster.length) {
+      ck("a truncated roster says how many more there are",
+         new RegExp(`\\+${api.roster_total - api.roster.length} more`).test(card), card.slice(-360));
+    }
+  }
+
   /* ---- coverage and the exclusion -------------------------------------------------------- */
   ck("the coverage line names the indexed window",
-     /covering \d{4}/.test(card), card.slice(-300));
+     /covering \d{4}/.test(card), card.slice(-400));
   if (api.arrivals_excluded) {
     ck("excluded Form 3 filers are named, not silently dropped",
        /10% owner|“other” filer|"other" filer/i.test(card), card.slice(-300));
