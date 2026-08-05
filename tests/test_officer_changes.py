@@ -440,3 +440,132 @@ class TestRoster:
         assert result.status == "ok"
         assert result.changes == []
         assert result.roster_total == 1
+
+
+class TestChangeMarks:
+    """The roster is the subject and the changes are marks on it. What a mark must never claim
+    matters more than what it does: there is no departure mark, because nothing is filed on
+    leaving, and a mark is meaningless without the date it is measured from."""
+
+    SINCE = "2026-06-30"
+
+    def test_an_arrival_after_the_baseline_marks_the_person_new(self):
+        result = _build(
+            [_form3(owner="Harper Allen C", filed="2026-07-13", title="Interim CEO")],
+            role_spans=[
+                _span(owner="Harper Allen C", relationship="officer (Interim CEO)",
+                      title="Interim CEO", first="2026-07-13"),
+            ],
+            since=self.SINCE,
+        )
+        (member,) = result.roster
+        assert member.change == "new"
+        assert member.change_date == "2026-07-13"
+        assert result.changed_count == 1
+
+    def test_an_arrival_before_the_baseline_is_not_marked(self):
+        result = _build(
+            [_form3(owner="Borders Ben", filed="2026-01-02")],
+            role_spans=[_span(owner="Borders Ben", first="2026-01-02")],
+            since=self.SINCE,
+        )
+        assert result.roster[0].change is None
+        assert result.changed_count == 0
+
+    def test_a_role_box_addition_after_the_baseline_marks_a_role_change(self):
+        result = _build(
+            role_spans=[
+                _span(first="2026-05-26", last="2026-06-16"),
+                _span(relationship="director, officer (President and CEO)", director=True,
+                      first="2026-07-14"),
+            ],
+            since=self.SINCE,
+        )
+        (member,) = result.roster
+        assert member.change == "role_change"
+        assert member.previous_role == "officer (President and CEO)"
+        assert member.change_date == "2026-07-14"
+
+    def test_an_arrival_outranks_a_role_change_for_the_same_person(self):
+        # Someone who joined this quarter is new, not promoted, even if their boxes also moved.
+        result = _build(
+            [_form3(owner="Harper Allen C", filed="2026-07-20", title="Interim CEO")],
+            role_spans=[
+                _span(owner="Harper Allen C", relationship="10% owner", officer=False,
+                      title=None, first="2025-01-02"),
+                _span(owner="Harper Allen C", relationship="officer (Interim CEO)",
+                      title="Interim CEO", first="2026-07-13"),
+            ],
+            since=self.SINCE,
+        )
+        assert result.roster[0].change == "new"
+        assert result.changed_count == 1
+
+    def test_changed_people_sort_to_the_front_so_a_mark_is_never_truncated(self):
+        spans = [_span(owner=f"Officer {i}", first=f"2026-01-{i:02d}") for i in range(1, 12)]
+        spans.append(_span(owner="Newcomer", first="2026-07-05"))
+        result = _build(
+            [_form3(owner="Newcomer", filed="2026-07-05")],
+            role_spans=spans,
+            since=self.SINCE,
+            roster_limit=3,
+        )
+        assert result.roster[0].person == "Newcomer"
+        assert result.roster[0].change == "new"
+
+    def test_no_member_is_ever_marked_as_having_left(self):
+        # There is no value for it, by construction — nothing is filed on departure.
+        result = _build(role_spans=[_span()], since=self.SINCE)
+        assert result.roster[0].change is None
+        assert "depart" not in str(result.roster[0].model_dump())
+
+    def test_the_baseline_date_travels_with_the_answer(self):
+        result = _build(role_spans=[_span()], since=self.SINCE)
+        assert result.since == self.SINCE
+
+    def test_without_a_baseline_nothing_is_marked(self):
+        result = _build([_form3(filed="2026-07-13")], role_spans=[_span()], since=None)
+        assert result.changed_count == 0
+        assert all(m.change is None for m in result.roster)
+
+    def test_item_502_filings_after_the_baseline_are_counted_not_attributed(self):
+        # An Item 5.02 names nobody, so it cannot become a mark. Dropping it would make the
+        # roster look more settled than the filings say.
+        result = _build(
+            filings=[_eightk("2026-07-06"), _eightk("2026-07-14", accession="b"),
+                     _eightk("2026-01-06", accession="c")],
+            role_spans=[_span()],
+            since=self.SINCE,
+        )
+        assert result.events_since == 2
+        assert all(m.change is None for m in result.roster)
+
+
+class TestPreviousQuarterEnd:
+    """The default comparison point. A quarter is the right grain for personnel: executive teams
+    do not turn over monthly, so "no change since 30 Jun" is a statement where "no change in 30
+    days" would be noise."""
+
+    def test_it_returns_the_most_recent_quarter_end_before_today(self):
+        import datetime as dt
+
+        from secfin.api.routes import previous_quarter_end
+
+        assert previous_quarter_end(dt.date(2026, 8, 4)) == "2026-06-30"
+        assert previous_quarter_end(dt.date(2026, 4, 1)) == "2026-03-31"
+        assert previous_quarter_end(dt.date(2026, 12, 31)) == "2026-09-30"
+
+    def test_january_falls_back_to_the_prior_year(self):
+        import datetime as dt
+
+        from secfin.api.routes import previous_quarter_end
+
+        assert previous_quarter_end(dt.date(2026, 1, 15)) == "2025-12-31"
+
+    def test_a_quarter_end_itself_is_not_its_own_baseline(self):
+        import datetime as dt
+
+        from secfin.api.routes import previous_quarter_end
+
+        # On 30 Jun the comparison point is 31 Mar -- a change filed that morning is still news.
+        assert previous_quarter_end(dt.date(2026, 6, 30)) == "2026-03-31"

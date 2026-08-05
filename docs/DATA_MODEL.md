@@ -1643,17 +1643,45 @@ amendment restating a role; picking an order would be a coin flip presented as a
 Harper filed a Form 3 as interim CEO on 2026-07-13 and his boxes changed from 10%-owner the same
 day. The arrival wins — it is the filing the SEC requires for exactly this.
 
-### The roster: who they ARE
+### The roster is the subject; the changes are marks on it
+
+**Restructured 2026-08-04 (operator direction): the card lists the current officers and directors
+and marks only who changed since the previous quarter.** That ordering is the point — arrivals are
+rare and departures are unfilable, so a card built from change events alone shows a list of dates
+for most companies and says nothing about who runs them.
 
 `roster` carries each officer and director under the role they **last reported for themselves**,
-which is the question the filings answer best — arrivals are rare and departures are unfilable.
+with `change` set to:
+
+| Mark | Means | Evidence |
+|---|---|---|
+| `new` | Filed a **Form 3** after `since` | Section 16 requires one within 10 days of becoming an insider, so it is the filer's own arrival signal — **not** "first time we saw them", which would be a fact about our cache. A director of ten years who only just traded must not be marked new. |
+| `role_change` | A role **box turned on** after `since` | The filer restated its own boxes between filings. Additions only; see above. |
+| *(none)* | Present, nothing changed | |
+
+**There is no `departed` mark, by construction.** Nothing is filed on leaving. A person dropping
+out of the cached window stopped filing, which is a different thing, and the card says so in
+words rather than leaving the reader to assume.
+
+**An arrival outranks a role change** for the same person: someone who joined this quarter is new,
+not promoted, even if their boxes also moved.
+
+**Changed people sort to the front**, so a mark can never be truncated away by the display cap. A
+hidden mark is worse than a shorter list.
+
+**`since` defaults to the previous calendar quarter end** (`previous_quarter_end` in
+`api/routes.py`) and is always reported. "Who changed" means nothing without the date it is
+measured from, and a quarter is the right grain for personnel — executive teams do not turn over
+monthly, so "no change since 30 Jun" is a statement where "no change in 30 days" would be noise.
+
+**`events_since` counts Item 5.02 filings after `since` that name nobody.** They cannot become a
+mark on a person, so they are counted alongside the roster rather than dropped — "a change was
+reported and we cannot say whose" is information, and losing it would make a roster look more
+settled than the filings say it is.
 
 **Completeness tracks `roster_filings` and nothing else.** Apple's 16 people come from 60 cached
 ownership filings and cover its whole Section 16 population; JPMorgan's 9 come from 12 and do not.
 The two are indistinguishable without the count, so it travels with the list.
-
-**Nobody is inferred to have left.** Someone who has not filed inside the cached window is absent
-from the roster. That is coverage, not a departure, and the surface says so.
 
 ### The 8-K index is built cache-aside (operator ruling 2026-08-04)
 

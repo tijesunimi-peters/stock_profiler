@@ -509,7 +509,8 @@ class InsiderTransaction(BaseModel):
     # `None` means UNKNOWN, not "no": rows cached before these columns existed carry no value,
     # and defaulting them to False would assert "not an officer" about rows nobody classified.
     # Same rule as `is_derivative` and `rule_10b5_1` below.
-    officer_title: str | None = None  # raw `officerTitle`; "See Remarks" is a convention, not a title
+    # Raw `officerTitle`. "See Remarks" is an EDGAR convention, not a job title.
+    officer_title: str | None = None
     is_director: bool | None = None
     is_officer: bool | None = None
     is_ten_percent_owner: bool | None = None
@@ -720,6 +721,21 @@ class RosterMember(BaseModel):
     is_director: bool = False
     last_filed: str | None = None
 
+    # What changed for this person since the comparison date, if anything.
+    #
+    # `new` -- they filed a Form 3, which Section 16 requires within 10 days of becoming an
+    # insider. That makes it the filer's own arrival signal rather than "first time we saw them",
+    # which would be a fact about our cache: someone who has been a director for a decade and
+    # only just traded would otherwise be marked new.
+    #
+    # `role_change` -- a role box turned ON. Never off; see `_gained_a_box`.
+    #
+    # There is no `departed`. Nothing is filed on leaving, so it cannot be marked, and a person
+    # dropping out of the window means they stopped filing, not that they stepped down.
+    change: Literal["new", "role_change"] | None = None
+    change_date: str | None = None
+    previous_role: str | None = None  # `role_change` only
+
 
 class OfficerChanges(BaseModel):
     """Form 3 arrivals and 8-K Item 5.02 events for one company, interleaved by date.
@@ -743,6 +759,14 @@ class OfficerChanges(BaseModel):
     roster: list[RosterMember] = Field(default_factory=list)
     roster_total: int = 0
     roster_filings: int = 0
+
+    # The comparison date the roster's change marks are measured against -- the previous calendar
+    # quarter end by default. Stated rather than implied: "who changed" is meaningless without it.
+    since: str | None = None
+    changed_count: int = 0
+    # 8-K Item 5.02 filings after `since`. They report a change but name nobody, so they cannot
+    # become a mark on a person -- they are counted alongside the roster instead of dropped.
+    events_since: int = 0
 
     # Whether this company's 8-K index exists at all. Without it, "no Item 5.02" is not a
     # finding -- it means the event half was never looked at.

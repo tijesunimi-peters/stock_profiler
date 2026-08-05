@@ -184,6 +184,35 @@ def _roster(spans: Iterable[InsiderOwnerRole]) -> list[RosterMember]:
     return sorted(members, key=lambda m: (not m.is_officer, _descending(m.last_filed)))
 
 
+def _mark_changes(
+    roster: list[RosterMember], changes: Iterable[OfficerChange], since: str | None
+) -> int:
+    """Mark each roster member with what changed for them after `since`. Returns the count.
+
+    Marks rather than a second list: a person is one row, and "who changed" is a property of that
+    row. A change with no person attached -- an 8-K Item 5.02, which names nobody -- cannot become
+    a mark and is counted separately by the caller.
+
+    An arrival outranks a role change for the same person: someone who joined this quarter is new,
+    not promoted, even if their boxes also moved.
+    """
+    if not since:
+        return 0
+    by_person = {m.person: m for m in roster}
+    marked: set[str] = set()
+    for change in sorted(changes, key=lambda c: c.kind != "arrival"):
+        if not change.person or (change.date or "") <= since:
+            continue
+        member = by_person.get(change.person)
+        if member is None or member.person in marked:
+            continue
+        marked.add(member.person)
+        member.change = "new" if change.kind == "arrival" else "role_change"
+        member.change_date = change.date
+        member.previous_role = change.previous_role
+    return len(marked)
+
+
 def _descending(date: str | None) -> str:
     """A date key that sorts NEWEST first inside an otherwise ascending sort."""
     return "".join(chr(0x7E - ord(ch)) for ch in (date or ""))
@@ -294,17 +323,21 @@ def build_officer_changes(
     indexed_filings: int = 0,
     covered_from: str | None = None,
     covered_to: str | None = None,
+    since: str | None = None,
     limit: int = 8,
-    roster_limit: int = 8,
+    roster_limit: int = 12,
 ) -> OfficerChanges:
-    """Three change signals date-ordered into one list, plus the roster they happened to.
+    """The current officers and directors, with what changed for each one since `since`.
+
+    The roster is the subject and the changes are marks on it. That ordering matters: arrivals
+    are rare and departures are unfilable, so a card built only from change events shows a list
+    of dates for most companies and says nothing about who runs it.
 
     `index_built` distinguishes the two absences that look identical in a payload: "we read this
     company's 8-K index and found no Item 5.02" is a finding; "we have never indexed it" is not.
 
-    The roster answers a different question from the changes -- who the officers and directors
-    ARE, rather than who arrived -- and is the one the filings answer best, since arrivals are
-    rare and departures are unfilable. It is bounded by `cached_filings`, and says so.
+    `changes` stays in the payload -- the full dated list, including 8-K Item 5.02 events, which
+    name nobody and so cannot be a mark on a person.
     """
     arrivals = _arrivals(initial_statements)
     events = _events(filings) if index_built else []
@@ -338,6 +371,12 @@ def build_officer_changes(
         }
     )
 
+    changed = _mark_changes(roster, arrivals + role_changes, since)
+    # Anyone who changed sorts to the front, so a mark can never be truncated away by the display
+    # cap -- the marks are the point of the card, and a hidden one is worse than a shorter list.
+    roster.sort(key=lambda m: (m.change is None, not m.is_officer, _descending(m.last_filed)))
+    events_since = sum(1 for c in events if since and (c.date or "") > since)
+
     rows = sorted(
         arrivals + role_changes + events, key=lambda c: c.date or "", reverse=True
     )[:limit]
@@ -359,6 +398,7 @@ def build_officer_changes(
             arrivals_excluded=excluded,
             arrivals_unclassified=unclassified,
             roster_filings=cached_filings,
+            since=since,
         )
 
     return OfficerChanges(
@@ -371,6 +411,9 @@ def build_officer_changes(
         roster=roster[:roster_limit],
         roster_total=len(roster),
         roster_filings=cached_filings,
+        since=since,
+        changed_count=changed,
+        events_since=events_since,
         index_built=index_built,
         indexed_filings=indexed_filings,
         covered_from=covered_from,

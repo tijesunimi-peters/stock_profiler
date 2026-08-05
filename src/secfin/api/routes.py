@@ -986,6 +986,19 @@ _AUDIT_CANNOT = (
 )
 
 
+def previous_quarter_end(today: dt.date | None = None) -> str:
+    """The most recent calendar quarter end strictly before `today`, as an ISO date.
+
+    The default comparison point for §05.1's roster marks. A quarter is the right grain for
+    personnel: executive teams do not turn over monthly, and "no change since 30 Jun" is a real
+    statement, where "no change in the last 30 days" would be noise.
+    """
+    day = today or dt.date.today()
+    ends = [dt.date(day.year, m, d) for m, d in ((3, 31), (6, 30), (9, 30), (12, 31))]
+    earlier = [e for e in ends if e < day]
+    return (earlier[-1] if earlier else dt.date(day.year - 1, 12, 31)).isoformat()
+
+
 async def _ensure_filing_index(
     repo: FilingIndexRepository, client: SECClient, cik: int
 ) -> int:
@@ -2831,7 +2844,14 @@ async def get_officer_changes(
     symbol: str,
     limit: int = Query(8, ge=1, le=40, description="Max change rows to return, newest first"),
     roster_limit: int = Query(
-        8, ge=1, le=100, description="Max roster members to return; `roster_total` is the full count"
+        12, ge=1, le=100, description="Max roster members; `roster_total` is the full count"
+    ),
+    since: str | None = Query(
+        None,
+        description=(
+            "ISO date the roster's change marks are measured against. Defaults to the previous "
+            "calendar quarter end."
+        ),
     ),
     ticker_cache: TickerCache = Depends(get_ticker_cache),
     insider_repo: InsiderTransactionRepository = Depends(get_insider_repo),
@@ -2855,12 +2875,21 @@ async def get_officer_changes(
 
     **There is no action verb**, in any source. This endpoint does not manufacture one.
 
-    **`roster` answers a different question** -- who the officers and directors ARE, per the role
-    each last reported. It is the question the filings answer best, since arrivals are rare and
-    departures are unfilable. Bounded by `roster_filings` (the cached window): Apple's 16 people
-    cover its whole Section 16 population, JPMorgan's 9 do not. **Nobody is inferred to have
-    left** -- someone who has not filed inside the window is absent, which is coverage, not a
-    departure.
+    **`roster` is the subject; the changes are marks on it.** It carries who the officers and
+    directors ARE, per the role each last reported, with `change` set to `new` (they filed a Form
+    3 after `since`) or `role_change` (a role box turned on after it). That ordering matters:
+    arrivals are rare and departures are unfilable, so a list built only from change events shows
+    dates for most companies and says nothing about who runs them.
+
+    **There is no `departed` mark.** Nothing is filed on leaving. A person who drops out of the
+    window stopped filing, which is not the same thing, and is never rendered as a departure.
+
+    **`since` defaults to the previous calendar quarter end** and is always reported -- "who
+    changed" means nothing without the date it is measured from. `events_since` counts Item 5.02
+    filings after it that name nobody, so they are counted rather than dropped.
+
+    Bounded by `roster_filings` (the cached window): Apple's 16 people cover its whole Section 16
+    population, JPMorgan's 9 do not.
 
     **The two are never joined.** Apple filed a Form 3 for Ben Borders and an Item 5.02 on the
     same day; neither filing references the other, so the rows sit adjacent and the reader draws
@@ -2896,6 +2925,7 @@ async def get_officer_changes(
             indexed_filings=indexed,
             covered_from=covered_from,
             covered_to=covered_to,
+            since=since or previous_quarter_end(),
             limit=limit,
             roster_limit=roster_limit,
         )

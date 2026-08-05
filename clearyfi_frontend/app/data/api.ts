@@ -553,9 +553,15 @@ interface OfficerChangesResponse {
     is_officer: boolean;
     is_director: boolean;
     last_filed: string | null;
+    change: "new" | "role_change" | null;
+    change_date: string | null;
+    previous_role: string | null;
   }[];
   roster_total: number;
   roster_filings: number;
+  since: string | null;
+  changed_count: number;
+  events_since: number;
   index_built: boolean;
   indexed_filings: number;
   covered_from: string | null;
@@ -602,12 +608,21 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
     date: c.date ?? "date N/A",
   }));
 
-  // Person and role, and nothing else. A separate board/officer column would repeat what the
-  // relationship string already says — "director, officer (Chief Executive Officer)" carries the
-  // seat in the filer's own words, and a third cell restating it just narrows the role column.
+  // Person, role, and a mark only where something changed. No board/officer column: the
+  // relationship string already says it — "director, officer (Chief Executive Officer)" carries
+  // the seat in the filer's own words, and a cell restating it just narrows the role.
   const roster = (res?.roster ?? []).map((m) => ({
     person: m.person,
     role: m.role ?? "role not stated",
+    mark: m.change === "new" ? "new" : m.change === "role_change" ? "role changed" : "",
+    markTitle:
+      m.change === "new"
+        ? `Filed a Form 3 on ${m.change_date} — Section 16 requires one within 10 days of ` +
+          "becoming an insider, so this is the filer's own arrival signal."
+        : m.change === "role_change"
+          ? `Reported as “${m.previous_role}” before ${m.change_date}. The filer restated its ` +
+            "own role boxes between filings."
+          : "",
   }));
 
   const window =
@@ -617,32 +632,43 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
 
   // Two different absences. "We read the 8-K index and found no Item 5.02" is a finding; "we have
   // never indexed this company" is not, and the card must not let them read alike.
-  const coverage = !res?.index_built
-    ? "This company's 8-K index has not been built, so the event half has not been looked at."
-    : `${plural(res.arrival_count, "arrival")} from Form 3 · ` +
-      `${plural(res.role_change_count, "role change")} · ` +
-      `${plural(res.event_count, "Item 5.02 filing")} among the ${res.indexed_filings} filings ` +
-      `EDGAR lists for this company, covering ${window}.`;
+  const since = res?.since ? humanDate(res.since) : "the previous quarter";
+
+  // "Who changed" is meaningless without the date it is measured from, so the baseline leads —
+  // and a company where nothing changed says so, rather than showing an unexplained plain list.
+  const changeLine = res?.changed_count
+    ? `${plural(res.changed_count, "change")} since ${since}: marked below.`
+    : `No officer or director change since ${since}.`;
+
+  // An Item 5.02 names nobody, so it cannot become a mark. Counted here instead of dropped —
+  // "a change was reported and we cannot say whose" is information, and losing it would make
+  // the roster look more settled than the filings say it is.
+  const eventLine = !res?.index_built
+    ? " This company's 8-K index has not been built, so Item 5.02 filings have not been read."
+    : res.events_since
+      ? ` ${plural(res.events_since, "8-K Item 5.02 filing")} in the same window ` +
+        "reports a change this card cannot attribute to a person."
+      : "";
 
   const excluded = res?.arrivals_excluded
-    ? ` ${plural(res.arrivals_excluded, "further Form 3 filer was", "further Form 3 filers were")} ` +
+    ? ` ${plural(res.arrivals_excluded, "Form 3 filer was", "Form 3 filers were")} ` +
       "a 10% owner or an “other” filer, not an officer or director."
     : "";
 
   return {
-    ok: (res?.status === "ok" && rows.length > 0) as boolean,
+    ok: (res?.status === "ok" && (res?.roster?.length ?? 0) > 0) as boolean,
     rows,
     roster,
-    // The roster's completeness tracks how many filings we hold, and nothing else — Apple's 16
-    // people cover its whole Section 16 population from 60 filings, JPMorgan's 9 come from 12.
-    // Without this line the two look identical.
+    changeLine: changeLine + eventLine + excluded,
+    // Completeness tracks how many filings we hold, and nothing else — Apple's 16 people cover
+    // its whole Section 16 population from 60 filings, JPMorgan's 9 come from 12. Without this
+    // line the two look identical.
     rosterNote: res?.roster_total
       ? `${plural(res.roster_total, "person", "people")} across the ` +
-        `${plural(res.roster_filings, "ownership filing")} held for this company. Someone who ` +
-        "has not filed inside that window is missing — nobody here is shown as having left."
+        `${plural(res.roster_filings, "ownership filing")} held for this company, each under the ` +
+        `role they last reported. Indexed filings cover ${window}.`
       : "",
     rosterMore: res && res.roster_total > res.roster.length ? res.roster_total - res.roster.length : 0,
-    coverage: coverage + excluded,
     reason:
       res?.reason ??
       "Officer and director changes could not be read for this company just now.",

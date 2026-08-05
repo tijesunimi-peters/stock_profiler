@@ -894,47 +894,39 @@ export function HubOverview() {
               <Src href={L.eightK}>Read the 8-Ks ↗</Src>
             </div>
             {officers.ok ? (
-              officers.rows.map((t, i) => (
-                <div className="hub-tri-row" key={`${t.who}${t.date}${i}`}>
-                  <span className="hub-cell" title={t.whoTitle}>
-                    {t.who}
-                  </span>
-                  <span className="hub-cell-mono is-soft">{t.what}</span>
-                  <span className="hub-cell-mono ta-r">{t.date}</span>
-                </div>
-              ))
-            ) : (
-              <FootnoteEmpty reason={officers.reason} />
-            )}
-            <div className="hub-note">{officers.coverage}</div>
-            <div className="hub-note">
-              A Form 3 is required within 10 days of becoming an insider, so it marks an arrival.
-              Nothing is filed on departure. Item 5.02 covers departure, election, appointment and
-              compensatory arrangements alike — EDGAR&rsquo;s code does not say which.
-            </div>
-
-            {/*
-              Who they ARE, not only who arrived — the question the filings answer best, since
-              arrivals are rare and departures are unfilable. Each person under the role they
-              last reported for themselves.
-            */}
-            {officers.roster.length ? (
               <>
-                <div className="hub-foot-rule">Current officers and directors</div>
                 {officers.roster.map((m) => (
                   <div className="hub-kv-row" key={m.person}>
-                    <span className="hub-cell">{m.person}</span>
+                    <span className="hub-cell">
+                      {m.person}
+                      {m.mark ? (
+                        <span className="hub-hint hub-changed-mark" title={m.markTitle}>
+                          {m.mark}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="hub-cell-mono is-soft ta-r">{m.role}</span>
                   </div>
                 ))}
                 {officers.rosterMore ? (
                   <div className="hub-note">
-                    +{officers.rosterMore} more in the full insider activity view.
+                    +{officers.rosterMore} more in the full insider activity view. Anyone who
+                    changed is listed above regardless.
                   </div>
                 ) : null}
+                <div className="hub-note">{officers.changeLine}</div>
                 <div className="hub-note">{officers.rosterNote}</div>
               </>
-            ) : null}
+            ) : (
+              <FootnoteEmpty reason={officers.reason} />
+            )}
+            <div className="hub-note">
+              A Form 3 is required within 10 days of becoming an insider, so a new mark is the
+              filer&rsquo;s own signal. <strong>Nothing is filed on departure</strong> — someone
+              who stops filing leaves this list without being shown as having left. Item 5.02
+              covers departure, election, appointment and compensatory arrangements alike, and
+              EDGAR&rsquo;s code does not say which.
+            </div>
           </div>
 
           <div className="p-card">

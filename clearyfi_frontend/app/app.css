@@ -2738,6 +2738,16 @@
   margin-top: 5px;
 }
 
+/* §05.1: the "new" / "role changed" mark beside a roster name. Deliberately quiet — most people
+   on a roster did not change, so the mark has to read as an annotation on a list rather than
+   turning the list into a status board. Accent ink, no fill, no border. */
+.hub-changed-mark {
+  margin-left: 7px;
+  color: var(--accent-ink);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 .p-card.is-tint {
   background: var(--bg-tint);
   box-shadow: none;
