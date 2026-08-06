@@ -34,9 +34,13 @@ async def _fake_fetch_beneficial_ownership(client, cik, limit):
     return [], []
 
 
+# The exemplar of a GATED endpoint. It was `/beneficial-ownership` until 2026-08-06, when that
+# moved to `public_router` because §04's blockholder card calls it client-side -- CLAUDE.md is
+# explicit that an endpoint our own UI depends on must not be key-gated. Any endpoint on `router`
+# works here; these tests are about the auth wiring, not about this particular route.
 def test_gated_endpoint_requires_an_api_key(tmp_path, monkeypatch):
     with _client(tmp_path, monkeypatch) as client:
-        resp = client.get("/v1/companies/AAPL/beneficial-ownership")
+        resp = client.get("/v1/companies/AAPL/institutional-holders")
     assert resp.status_code == 401
 
 
@@ -51,7 +55,7 @@ def test_first_party_browser_request_bypasses_the_gate(tmp_path, monkeypatch):
     # Our own web pages fetch same-origin -- ungated for now, no key needed.
     with _client(tmp_path, monkeypatch) as client:
         resp = client.get(
-            "/v1/companies/AAPL/beneficial-ownership",
+            "/v1/companies/AAPL/institutional-holders",
             headers={"Sec-Fetch-Site": "same-origin"},
         )
     assert resp.status_code != 401
@@ -72,7 +76,7 @@ def test_signup_then_use_key_on_a_gated_endpoint(tmp_path, monkeypatch):
         api_key = signup_resp.json()["api_key"]
 
         resp = client.get(
-            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key}
         )
         # No longer 401 -- the key is valid. (May still hit real logic downstream; the
         # point here is only that auth itself let the request through.)
@@ -125,7 +129,7 @@ def test_admin_tier_change_end_to_end(tmp_path, monkeypatch):
 
         # The upgraded key's higher rate limit is now live on a gated endpoint.
         gated = client.get(
-            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key}
         )
         assert gated.status_code != 401
 
@@ -149,7 +153,7 @@ def test_admin_revoke_end_to_end_key_fails_auth_immediately(tmp_path, monkeypatc
 
         # The key works before revocation.
         pre = client.get(
-            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key}
         )
         assert pre.status_code != 401
 
@@ -160,7 +164,7 @@ def test_admin_revoke_end_to_end_key_fails_auth_immediately(tmp_path, monkeypatc
         )
         assert wrong.status_code == 401
         still_active = client.get(
-            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key}
         )
         assert still_active.status_code != 401
 
@@ -175,7 +179,7 @@ def test_admin_revoke_end_to_end_key_fails_auth_immediately(tmp_path, monkeypatc
         # The very next request with the same key -- no restart, no cache to expire --
         # fails auth with a clear 401 body.
         post = client.get(
-            "/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key}
+            "/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key}
         )
         assert post.status_code == 401
         assert "revoked" in post.json()["detail"].lower()
@@ -201,7 +205,7 @@ def test_usage_endpoint_requires_a_key_and_reflects_recorded_requests(tmp_path, 
 
         # Signup itself doesn't count against usage -- it's on signup_router, not the
         # require_api_key-gated router. One gated call should show exactly 1 request today.
-        client.get("/v1/companies/320193/beneficial-ownership", headers={"X-API-Key": api_key})
+        client.get("/v1/companies/320193/institutional-holders", headers={"X-API-Key": api_key})
 
         usage_resp = client.get("/v1/usage", headers={"X-API-Key": api_key})
         assert usage_resp.status_code == 200

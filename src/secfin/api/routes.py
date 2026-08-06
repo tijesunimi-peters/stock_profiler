@@ -507,9 +507,14 @@ async def _beneficial_ownership_for_cik(
     if repo.cached_filing_count(cik) >= limit:
         return repo.get_beneficial_ownership(cik, limit)
     filings, owners = await fetch_beneficial_ownership_with_filings(client, cik, limit=limit)
-    if filings:
-        repo.upsert_beneficial_ownership(cik, filings, owners)
-    return owners
+    if not filings:
+        return []
+    repo.upsert_beneficial_ownership(cik, filings, owners)
+    # Read BACK rather than returning `owners`: the fetched list is everything in this company's
+    # filing feed, including 13G/13Ds it filed about OTHER issuers -- NVIDIA's feed carries its
+    # 9.3% of Nebius and 11.5% of CoreWeave. The repository filters on the filing's SUBJECT, and
+    # returning the raw list skipped that filter on exactly the first request for every company.
+    return repo.get_beneficial_ownership(cik, limit)
 
 
 async def _manager_snapshot(
@@ -3344,7 +3349,10 @@ async def get_filing_activity(
     }
 
 
-@router.get(
+# On public_router, not `router`: §04's blockholder card calls this client-side, and CLAUDE.md is
+# explicit that gating an endpoint our own UI depends on just breaks that UI -- the same mistake
+# that produced the insider-trades and metric-periods 401s.
+@public_router.get(
     "/companies/{symbol}/beneficial-ownership",
     tags=["Institutional Ownership"],
     summary="List Schedule 13D/13G beneficial-ownership (5%+) filings for a company",

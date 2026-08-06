@@ -94,6 +94,11 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
         if not new_filings:
             return 0
         new_accessions = {f.accession for f in new_filings}
+        # `issuer_cik` here is the CIK whose /submissions/ we walked -- NOT necessarily the
+        # subject of the filing. A company files 13G/13D about companies IT invests in, and those
+        # appear in its own feed: NVIDIA's list carries its 9.3% of Nebius and 11.5% of CoreWeave.
+        # Writing the walked CIK onto those rows made them read as holders OF NVIDIA. The parser
+        # already captures the true subject from the XML's `issuerCik`, so use it.
         rows = [self._owner_to_row(issuer_cik, o) for o in owners if o.accession in new_accessions]
 
         self._conn.execute("BEGIN")
@@ -120,6 +125,9 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
     def get_beneficial_ownership(self, issuer_cik: int, limit: int) -> list[BeneficialOwnership]:
         cur = self._conn.execute(
             """
+            -- `o.issuer_cik` is the SUBJECT of the filing; the inner query's is the feed we
+            -- walked. They differ whenever a company files a 13G about someone else, and the
+            -- outer filter is what keeps those off the subject company's own card.
             SELECT o.* FROM beneficial_ownership o
             WHERE o.issuer_cik = ?
               AND o.accession IN (
@@ -151,9 +159,11 @@ class SQLiteBeneficialOwnershipRepository(BeneficialOwnershipRepository):
         self._conn.close()
 
     @staticmethod
-    def _owner_to_row(issuer_cik: int, o: BeneficialOwnership) -> tuple:
+    def _owner_to_row(walked_cik: int, o: BeneficialOwnership) -> tuple:
+        # The SUBJECT of the filing, from the XML, falling back to the walked CIK only when the
+        # filing did not carry one. See upsert_beneficial_ownership for why these differ.
         return (
-            issuer_cik,
+            o.issuer_cik or walked_cik,
             o.accession or "",
             o.issuer_name,
             o.owner_name,

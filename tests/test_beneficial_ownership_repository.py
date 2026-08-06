@@ -150,3 +150,62 @@ def test_different_issuers_are_isolated():
     assert repo.cached_filing_count(other_cik) == 1
     assert [r.owner_name for r in repo.get_beneficial_ownership(CIK, limit=10)] == ["Apple Owner"]
     repo.close()
+
+
+class TestTheFilingsSUBJECTOwnsTheRow:
+    """The CIK whose /submissions/ we walked is not always the filing's subject.
+
+    A company files 13G/13D about companies IT invests in, and those land in its own feed:
+    NVIDIA's carries its 9.3% of Nebius Group and 11.5% of CoreWeave. Keying those rows on the
+    walked CIK made them read as holders OF NVIDIA on NVIDIA's own blockholder card -- a confident
+    wrong statement about who owns the company. Found 2026-08-06 while wiring §04.
+    """
+
+    NVDA, NEBIUS = 1045810, 1861449
+
+    def test_a_filing_about_another_issuer_is_stored_under_that_issuer(self):
+        repo = SQLiteBeneficialOwnershipRepository(":memory:")
+        try:
+            repo.upsert_beneficial_ownership(
+                self.NVDA,
+                [BeneficialOwnershipFilingMeta("acc-1", "2026-07-20", "SCHEDULE 13G")],
+                [
+                    _owner("acc-1", "NVIDIA Corporation", issuer_cik=self.NEBIUS,
+                           issuer_name="Nebius Group N.V.", percent_of_class=9.3),
+                ],
+            )
+            # Walked NVIDIA's feed, but the subject is Nebius -- so it is NOT an NVIDIA holder.
+            assert repo.get_beneficial_ownership(self.NVDA, 10) == []
+        finally:
+            repo.close()
+
+    def test_a_filing_about_this_issuer_is_kept(self):
+        repo = SQLiteBeneficialOwnershipRepository(":memory:")
+        try:
+            repo.upsert_beneficial_ownership(
+                self.NVDA,
+                [BeneficialOwnershipFilingMeta("acc-2", "2026-04-28", "SCHEDULE 13G")],
+                [
+                    _owner("acc-2", "Vanguard Capital Management", issuer_cik=self.NVDA,
+                           issuer_name="NVIDIA Corp", percent_of_class=7.31),
+                ],
+            )
+            (row,) = repo.get_beneficial_ownership(self.NVDA, 10)
+            assert row.owner_name == "Vanguard Capital Management"
+            assert row.percent_of_class == 7.31
+        finally:
+            repo.close()
+
+    def test_a_filing_with_no_subject_cik_falls_back_to_the_walked_one(self):
+        # Older or malformed filings may not carry `issuerCik`. Dropping those would lose real
+        # holders, so the walked CIK is the fallback -- the best available answer, not a guess.
+        repo = SQLiteBeneficialOwnershipRepository(":memory:")
+        try:
+            repo.upsert_beneficial_ownership(
+                self.NVDA,
+                [BeneficialOwnershipFilingMeta("acc-3", "2025-01-30", "SCHEDULE 13G")],
+                [_owner("acc-3", "Some Holder", issuer_cik=None)],
+            )
+            assert len(repo.get_beneficial_ownership(self.NVDA, 10)) == 1
+        finally:
+            repo.close()
