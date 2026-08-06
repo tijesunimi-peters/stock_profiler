@@ -38,6 +38,7 @@ import {
   SECTORS,
   SECTOR_BY_ID,
   THEMES,
+  type FilerDef,
   type ThemeKey,
   filersOfSector,
   metricsOfTheme,
@@ -529,9 +530,38 @@ function latestFilingFor(symbol: string, period: string) {
   };
 }
 
+/**
+ * The filer a symbol names — never a DIFFERENT company.
+ *
+ * `FILER_BY_SYMBOL[symbol] ?? FILERS[0]` silently returned `FILERS[0]`, which is NVIDIA, for any
+ * ticker outside the fourteen-name semiconductor demo universe. So Apple's own control bar read
+ * "Company NVDA · Peer set Semiconductors & related devices" while every section beneath it showed
+ * Apple's real filings. A page asserting the wrong company's identity next to the right company's
+ * data is the worst failure this product has: not a missing value, a confident wrong one.
+ *
+ * An unknown symbol now resolves to ITSELF. The peer machinery still runs against the fixture
+ * universe — that half is synthetic and labelled as such — but `label` says so instead of naming a
+ * sector the company is not in.
+ */
+function resolveFiler(symbol: string): { filer: FilerDef; known: boolean } {
+  const known = FILER_BY_SYMBOL[symbol];
+  if (known) return { filer: known, known: true };
+  return {
+    filer: { symbol, name: symbol, cik: 0, sector: FILERS[0].sector, subIndustry: "" },
+    known: false,
+  };
+}
+
+/** The peer set, or an honest statement that this company is not in the demo universe. */
+function resolveSector(filer: FilerDef, known: boolean) {
+  const base = SECTOR_BY_ID[filer.sector];
+  return known ? base : { ...base, label: "Peer set not available for this company" };
+}
+
+
 export function companySurface(symbol: string, period: string, sub: string | null): CompanySurface {
-  const filer = FILER_BY_SYMBOL[symbol] ?? FILERS[0];
-  const sector = SECTOR_BY_ID[filer.sector];
+  const { filer, known } = resolveFiler(symbol);
+  const sector = resolveSector(filer, known);
   const peers = filersOfSector(filer.sector, sub);
 
   const themeRail = THEMES.map((t) => {
@@ -677,7 +707,7 @@ export interface CompanyHistorySurface {
 }
 
 export function companyHistory(symbol: string, period: string): CompanyHistorySurface {
-  const filer = FILER_BY_SYMBOL[symbol] ?? FILERS[0];
+  const { filer } = resolveFiler(symbol);
   const rev = sd(`rev:${symbol}`, 2.4e9, 4.1e10, 0);
   const gm = filerMetric(symbol, "gross_margin", period).value ?? 45;
   const om = filerMetric(symbol, "operating_margin", period).value ?? 20;
@@ -735,7 +765,7 @@ export interface CompanyInstitutionalSurface {
 }
 
 export function companyInstitutional(symbol: string, period: string): CompanyInstitutionalSurface {
-  const filer = FILER_BY_SYMBOL[symbol] ?? FILERS[0];
+  const { filer } = resolveFiler(symbol);
   const sharesOut = Math.round(sd(`so:${symbol}`, 2.2e8, 2.4e10, 0));
   const holders = MANAGERS.map((m) => {
     const shares = Math.round(sharesOut * sd(`hold:${symbol}:${m.cik}`, 0.001, 0.085, 5));
@@ -835,7 +865,7 @@ const CODE_MEANING: Record<InsiderTxn["code"], string> = {
 export const INSIDER_CODES = CODE_MEANING;
 
 export function companyInsider(symbol: string, period: string): CompanyInsiderSurface {
-  const filer = FILER_BY_SYMBOL[symbol] ?? FILERS[0];
+  const { filer } = resolveFiler(symbol);
   const end = periodEnd(period);
   const people: [string, string][] = [
     ["Chen, Wei", "Chief Executive Officer"],
@@ -912,7 +942,7 @@ export interface CompanyPeersSurface {
 }
 
 export function companyPeers(symbol: string, period: string, sub: string | null): CompanyPeersSurface {
-  const filer = FILER_BY_SYMBOL[symbol] ?? FILERS[0];
+  const { filer } = resolveFiler(symbol);
   const rows = ["gross_margin", "operating_margin", "rev_growth_yoy", "fcf_margin", "roic", "dso"].map((k) =>
     metricRow(filer.sector, k, period, sub),
   );
@@ -963,8 +993,8 @@ export interface CompareCompaniesSurface {
 }
 
 export function compareCompanies(xSym: string, ySym: string, period: string): CompareCompaniesSurface {
-  const x = FILER_BY_SYMBOL[xSym] ?? FILERS[0];
-  const y = FILER_BY_SYMBOL[ySym] ?? FILERS[1];
+  const x = resolveFiler(xSym).filer;
+  const y = resolveFiler(ySym).filer;
   const keys = ["gross_margin", "operating_margin", "rev_growth_yoy", "fcf_margin", "roic", "dso", "inventory_turnover", "rd_intensity", "net_debt_ebitda"];
   const rows = keys.map((k) => {
     const a = filerMetric(x.symbol, k, period);
