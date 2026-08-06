@@ -948,6 +948,9 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 }
 
 .shell-search {
+  /* The suggestion menu is absolutely positioned against this box, so it must be the
+     containing block — without it the menu escapes to the viewport and floats off the topbar. */
+  position: relative;
   flex: 1;
   max-width: 440px;
   display: flex;
@@ -972,6 +975,57 @@ a.shell-nav-item:hover { background: var(--bg-badge); color: var(--ink); }
 }
 .shell-search-input::placeholder { color: var(--mono-muted); }
 .shell-search-input:focus { outline: none; }
+
+/* ---- company autocomplete ----------------------------------------------
+   Ported from the static UI's `suggest.js` styles (api/static/style.css). Kept visually
+   identical so the two front ends do not drift into two different-looking typeaheads. */
+.suggest-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-width: min(480px, 92vw);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(28, 26, 22, 0.12);
+  overflow: hidden;
+}
+.suggest-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-top: 1px solid var(--border);
+}
+.suggest-item:first-child { border-top: none; }
+.suggest-item.active { background: var(--bg-tint); }
+.suggest-ticker {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  min-width: 56px;
+}
+/* The name is the part that has to give: a ticker and a CIK are identifiers and must stay whole,
+   so the ellipsis belongs here. */
+.suggest-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink-body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggest-cik {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--mono-muted);
+  white-space: nowrap;
+}
 .shell-kbd {
   font-family: var(--font-mono);
   font-size: 10px;

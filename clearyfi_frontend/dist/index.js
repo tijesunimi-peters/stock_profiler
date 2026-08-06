@@ -43,3 +43,5 @@ export { SectorScoreTile } from "./components/SectorScoreTile.js";
 export { FavorabilityDelta } from "./components/FavorabilityDelta.js";
 export { CompositionStrip } from "./components/CompositionStrip.js";
 export { DistributionStrip } from "./components/DistributionStrip.js";
+// global search
+export { SearchSuggest } from "./components/SearchSuggest.js";

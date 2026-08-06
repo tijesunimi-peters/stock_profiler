@@ -124,4 +124,15 @@ them to d3 would be a regression.
 - Chart **expand** overlays (large-format re-author at overlay width).
 - `upsetChart` and the peer adjacency `matrixChart`.
 - Small-multiple sparkline grid on the manager views.
-- The global search (⌘K) is the design system's placeholder — it is inert on purpose.
+
+## The global search is live — and it is the only thing on these pages that is
+
+The topbar typeahead (⌘K) is ported from the static UI's `suggest.js` and reads
+`/v1/companies/suggest`, so it resolves against the **real** ticker→CIK map. Everything else on
+these surfaces is synthetic. A ticker the search offers is therefore one the API genuinely knows
+about, while the figures you land on for it are generated — worth remembering when the two seem
+to disagree.
+
+`SearchSuggest` never fetches. It takes `onSearch`/`onPick`, and `AppShell` renders the input
+**disabled** when a caller supplies neither — a box that accepts typing and never answers is a
+worse failure than a visibly dead one.

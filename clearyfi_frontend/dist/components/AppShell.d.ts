@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { type Suggestion } from "./SearchSuggest.js";
 export interface ShellSubject {
     /** Subject name, e.g. `Companies`. */
     label: string;
@@ -32,6 +33,16 @@ export interface AppShellProps {
     reference?: ShellSubject[];
     /** Placeholder for the global ticker/CIK search. */
     searchPlaceholder?: string;
+    /**
+     * Resolves a query to suggestions for the topbar search. Supply this WITH `onPick` to make the
+     * search live; supply neither and the input renders disabled.
+     *
+     * The shell does not fetch — the app owns the seam. That is what keeps this package
+     * presentational and testable without a server.
+     */
+    onSearch?: (query: string) => Promise<Suggestion[]>;
+    /** A suggestion was chosen. Required alongside `onSearch`. */
+    onPick?: (s: Suggestion) => void;
     className?: string;
 }
 /**
@@ -42,4 +53,4 @@ export interface AppShellProps {
  * entity-centric rather than report-centric. There is exactly one shell; do not build a second
  * nav for a new page.
  */
-export declare function AppShell({ children, subjects, actions, actionsSubject, reference, searchPlaceholder, className, }: AppShellProps): import("react").JSX.Element;
+export declare function AppShell({ children, subjects, actions, actionsSubject, reference, searchPlaceholder, onSearch, onPick, className, }: AppShellProps): import("react").JSX.Element;

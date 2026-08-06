@@ -14,6 +14,7 @@ import { SyntheticBanner } from "./SyntheticBanner";
 import type { ShellSubject, ViewRailItem, ViewRailSection } from "@ds";
 import { useSelection } from "../state";
 import { navigate } from "../router";
+import { api } from "../data/api";
 
 export type SubjectKey = "sectors" | "company" | "manager" | "compare" | "planned" | "home";
 
@@ -163,6 +164,7 @@ export function PageShell({
 }: PageShellProps) {
   const subjects = useSubjects(subject, plannedName);
   const actions = useActions(subject, activeAction);
+  const sel = useSelection();
 
   // Chrome around the content column: sidebar + page padding + rail + gaps + right rail.
   useEffect(() => {
@@ -188,6 +190,11 @@ export function PageShell({
       actions={actions}
       actionsSubject={subjectLabelFor(subject)}
       searchPlaceholder="Search ticker or CIK…"
+      onSearch={(q) => api.suggest(q)}
+      /* A pick is a NAVIGATION: the path names the registrant, so choosing one has to change the
+         path. Carrying the selection through `sel.href` keeps the reader's sector, period and
+         focused theme rather than dropping them at the door. */
+      onPick={(s) => navigate(sel.href(`/company/${s.ticker}/overview`, { focal: s.ticker }))}
     >
       {/*
         The banner needs to know WHICH surface it is disclaiming, now that some are mixtures.

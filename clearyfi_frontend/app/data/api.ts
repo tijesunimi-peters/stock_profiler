@@ -120,6 +120,13 @@ export const PROVENANCE = {
  * be drivable in the same states as a whole one.
  */
 
+/** One row from `/v1/companies/suggest` — the shape the topbar typeahead renders. */
+export interface CompanySuggestion {
+  ticker: string;
+  cik: number;
+  name?: string | null;
+}
+
 /** One canonical `/v1` read. Errors carry what failed, so the view's `StateBlock` can say it. */
 async function getJson<T>(path: string): Promise<T> {
   if (SHOULD_FAIL()) {
@@ -1866,6 +1873,27 @@ function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "ca
 
 
 export const api = {
+  /**
+   * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
+   * other figures are synthetic. Suggestions come from the live ticker→CIK map, so what the
+   * search offers is genuinely what the API knows about.
+   *
+   * Failures resolve to an empty list rather than rejecting: a typeahead that throws turns a
+   * keystroke into an error state, and having nothing to suggest is not an error.
+   */
+  suggest: async (q: string, limit = 8): Promise<CompanySuggestion[]> => {
+    const query = q.trim();
+    if (!query) return [];
+    try {
+      const d = await getJson<{ suggestions: CompanySuggestion[] }>(
+        `/v1/companies/suggest?q=${encodeURIComponent(query)}&limit=${limit}`,
+      );
+      return d.suggestions ?? [];
+    } catch {
+      return [];
+    }
+  },
+
   sector: (sectorId: string, sub: string | null, period: string) =>
     resolve(surfaces.sectorSurface(sectorId, sub, period)),
 

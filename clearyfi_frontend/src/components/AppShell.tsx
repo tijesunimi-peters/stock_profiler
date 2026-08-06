@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SearchSuggest, type Suggestion } from "./SearchSuggest.js";
 
 export interface ShellSubject {
   /** Subject name, e.g. `Companies`. */
@@ -34,6 +35,16 @@ export interface AppShellProps {
   reference?: ShellSubject[];
   /** Placeholder for the global ticker/CIK search. */
   searchPlaceholder?: string;
+  /**
+   * Resolves a query to suggestions for the topbar search. Supply this WITH `onPick` to make the
+   * search live; supply neither and the input renders disabled.
+   *
+   * The shell does not fetch — the app owns the seam. That is what keeps this package
+   * presentational and testable without a server.
+   */
+  onSearch?: (query: string) => Promise<Suggestion[]>;
+  /** A suggestion was chosen. Required alongside `onSearch`. */
+  onPick?: (s: Suggestion) => void;
   className?: string;
 }
 
@@ -104,6 +115,8 @@ export function AppShell({
   actionsSubject,
   reference = DEFAULT_REFERENCE,
   searchPlaceholder = "Ticker or CIK…",
+  onSearch,
+  onPick,
   className,
 }: AppShellProps) {
   return (
@@ -144,11 +157,28 @@ export function AppShell({
 
       <div className="app-main">
         <header className="app-topbar">
-          <div className="shell-search">
-            <span className="shell-search-ic">⌕</span>
-            <input className="shell-search-input" placeholder={searchPlaceholder} />
-            <span className="shell-kbd">⌘K</span>
-          </div>
+          {onSearch && onPick ? (
+            <SearchSuggest placeholder={searchPlaceholder} onSearch={onSearch} onPick={onPick} />
+          ) : (
+            /* No handler means nothing can be searched. Render the input INERT rather than
+               pretending it works — a box that accepts typing and never answers is a worse
+               failure than a visibly disabled one. */
+            <div className="shell-search">
+              <span className="shell-search-ic" aria-hidden="true">
+                ⌕
+              </span>
+              <input
+                className="shell-search-input"
+                type="text"
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                autoComplete="off"
+                spellCheck={false}
+                disabled
+              />
+              <span className="shell-kbd">⌘K</span>
+            </div>
+          )}
           <a className="shell-apiref" href="/docs">
             API reference ↗
           </a>

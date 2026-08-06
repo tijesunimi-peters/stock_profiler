@@ -89,3 +89,7 @@ export { CompositionStrip } from "./components/CompositionStrip.js";
 export type { CompositionStripProps, CompositionSegment } from "./components/CompositionStrip.js";
 export { DistributionStrip } from "./components/DistributionStrip.js";
 export type { DistributionStripProps, DistributionPeer } from "./components/DistributionStrip.js";
+
+// global search
+export { SearchSuggest } from "./components/SearchSuggest.js";
+export type { SearchSuggestProps, Suggestion } from "./components/SearchSuggest.js";
