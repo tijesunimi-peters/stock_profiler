@@ -821,7 +821,14 @@ These facts are on the volume now.
 ## §03 — Segments & geography
 *Header source: ASC 280 · 10-K segment footnote*
 
-**Entirely `D`, and this is the section that extends an existing pipeline rather than starting one.**
+✅ **BUILT 2026-08-06** (operator ruling: geography + segments, revenue-led; 3.3 dropped).
+`GET /segments` over a new `dimensional_facts` table — separate from `dimensional_geo_facts`,
+whose contract the P6b sector batch depends on. **Two of V5's coverage figures were wrong** and
+are corrected in `docs/DATA_MODEL.md`: `BusinessSegments` is 52.1% not 66.5% (and only **34.0%**
+have nameable segments), `MajorCustomers` is 4.1% not 12.1% — and its members are mostly customer
+CATEGORIES, so **3.3 is not built**.
+
+~~**Entirely `D`, and this is the section that extends an existing pipeline rather than starting one.**~~
 
 `ingest/dimensional_backfill.py` already streams DERA quarterly ZIPs and reads `num.txt`'s
 `segments` column. It is deliberately narrowed — its docstring says **"NOT the general dimensional

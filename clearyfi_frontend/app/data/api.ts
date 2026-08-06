@@ -87,12 +87,12 @@ export const PROVENANCE = {
       real: [
         "01 identity & structure",
         "02 financial detail",
+        "03 segments & geography",
         "05 governance & people",
         "06 audit & controls",
         "08 filing activity & disclosure events",
       ],
       synthetic: [
-        "03 segments & geography (deferred — needs the segment-axis dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
         "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
       ],
@@ -529,6 +529,85 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ §03 segments & geography */
+
+interface SegmentsResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  fiscal_year: number | null;
+  revenue_tag: string | null;
+  segments: {
+    member: string; label: string; revenue: number | null; operating_income: number | null;
+    assets: number | null; margin: number | null; revenue_share: number | null;
+  }[];
+  geography: {
+    member: string; label: string; revenue: number | null;
+    long_lived_assets: number | null; revenue_share: number | null;
+  }[];
+}
+
+/**
+ * §03 — reportable segments and geography, from ASC 280 dimensional facts.
+ *
+ * **Companyfacts carries no dimensional data at all**, so this is the one section on the page that
+ * needed a new source: DERA's quarterly data sets, ingested by `dimensional_backfill`.
+ *
+ * Three things the card has to say out loud, all measured over 2026q1's 4,309 annual filings:
+ *
+ * **The margin column is usually impossible.** 81.4% of filers with named segments tag segment
+ * revenue, 51.8% assets, and only 35.0% operating income. Margin renders only where both inputs
+ * exist — Apple has it, JPMorgan does not.
+ *
+ * **Shares are of the DISCLOSED splits, not consolidated revenue.** The splits routinely do not
+ * sum to the total, and dividing by the total would imply a remainder this data cannot describe.
+ *
+ * **A company appears in exactly one DERA quarter**, the one it filed in, so the fiscal year is
+ * always shown. Microsoft's July-2026 10-K sits in an unpublished quarter and is simply absent.
+ *
+ * Customer concentration is deliberately absent: the axis reaches 4.1% of filers and its members
+ * are mostly customer CATEGORIES rather than customers.
+ */
+function toSegments(res: SegmentsResponse | null) {
+  const fy = res?.fiscal_year ? `FY${res.fiscal_year}` : null;
+  const pct = (v: number | null) => (v === null ? "N/A" : `${(v * 100).toFixed(1)}%`);
+  const money = (v: number | null) => (v === null ? "N/A" : usdCompact(v));
+
+  const segments = (res?.segments ?? []).map((s) => ({
+    name: s.label,
+    rev: money(s.revenue),
+    op: money(s.operating_income),
+    margin: pct(s.margin),
+    // No bar where there is no margin: a 0%-wide track next to "N/A" reads as a real zero.
+    marginW: s.margin === null ? "0%" : `${Math.max(0, Math.min(100, s.margin * 100)).toFixed(0)}%`,
+    assets: money(s.assets),
+    share: pct(s.revenue_share),
+  }));
+
+  const geography = (res?.geography ?? []).map((g) => ({
+    name: g.label,
+    rev: money(g.revenue),
+    assets: money(g.long_lived_assets),
+    share: pct(g.revenue_share),
+  }));
+
+  const missingMargins = (res?.segments ?? []).filter((s) => s.margin === null).length;
+  return {
+    ok: res?.status === "ok",
+    fiscalYear: fy,
+    segments,
+    geography,
+    reason: res?.reason ?? "Segment data could not be read for this company just now.",
+    note:
+      (fy ? `The filer's own ASC 280 segments, as tagged in its ${fy} annual report. ` : "") +
+      "Segment definitions are management's and are not comparable across companies. " +
+      (missingMargins
+        ? `${missingMargins} of ${segments.length} segments tag no operating income, so their margin is N/A. `
+        : "") +
+      "Shares are of the disclosed splits, which need not sum to consolidated revenue.",
   };
 }
 
@@ -1994,13 +2073,12 @@ export const api = {
    * `StatementBusinessSegmentsAxis`). ANNUAL only: ASC 280 is a yearly footnote, so this takes a
    * fiscal year and not a quarter.
    */
-  companySegments: (symbol: string, _fiscalYear: number) =>
-    resolve<CompanySegments>({
-      segments: hub.hubData(symbol).segments,
-      segNote: hub.hubData(symbol).segNote,
-      geoAssets: hub.hubData(symbol).geoAssets,
-      custConc: hub.hubData(symbol).custConc,
-    }),
+  companySegments: async (symbol: string, _fiscalYear: number) => {
+    const seg = await getJson<SegmentsResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/segments`,
+    ).catch(() => null);
+    return { seg: toSegments(seg) } as CompanySegments;
+  },
 
   /**
    * §05 governance & people, now entirely on real filings.
@@ -2306,10 +2384,8 @@ export interface CompanyFootnotes {
 }
 
 export interface CompanySegments {
-  segments: hub.HubData["segments"];
-  segNote: string;
-  geoAssets: hub.HubData["geoAssets"];
-  custConc: hub.HubData["custConc"];
+  /** §03 on ASC 280 dimensional facts. The fixture branch is gone. */
+  seg: ReturnType<typeof toSegments>;
 }
 
 export interface CompanyGovernance {

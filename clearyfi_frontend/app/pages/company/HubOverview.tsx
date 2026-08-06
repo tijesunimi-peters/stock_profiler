@@ -230,6 +230,7 @@ export function HubOverview() {
   const activity = disclosure.data.activity;
   const cyber = disclosure.data.cyber;
   const changes = disclosure.data.changes;
+  const seg = segments.data.seg;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -245,10 +246,6 @@ export function HubOverview() {
     structure: identity.data.structure,
     years: financials.data.years,
     statements: financials.data.statements,
-    segments: segments.data.segments,
-    segNote: segments.data.segNote,
-    geoAssets: segments.data.geoAssets,
-    custConc: segments.data.custConc,
     capital: footnotes.data.capital,
     pvp: governance.data.pvp,
     audit: disclosure.data.audit,
@@ -705,85 +702,118 @@ export function HubOverview() {
       </section>
 
       {/* ============================================================ 03 */}
+      {/*
+        The one section that needed a NEW source: companyfacts carries no dimensional facts at all,
+        so ASC 280 segments and geography come from DERA's quarterly data sets.
+
+        Two things the cards must keep saying. Margin renders only where the filer tagged BOTH
+        revenue and operating income — 35% of filers with named segments do. And shares are of the
+        DISCLOSED splits, which need not sum to consolidated revenue, so dividing by the total
+        would imply a remainder this data cannot describe.
+
+        Customer concentration is deliberately not built: the axis reaches 4.1% of filers and its
+        members are mostly customer categories rather than customers.
+      */}
       <section className="hub-sec">
         <HubHead
           id="s3"
           n="03"
           title="Segments & geography"
-          src="ASC 280 · 10-K segment footnote"
-          synthetic="Segment and geographic splits are DIMENSIONAL facts (ASC 280 axes), which live only in DERA's num.txt segments column — not in companyfacts. Phase C ingests them. Until then every figure in this section is generated from the ticker."
+          src="ASC 280 · DERA financial statement data sets"
         />
         <div className="p-card">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Reportable segments</span>
-            <span className="hub-hint">revenue and operating income as disclosed</span>
+            <span className="hub-hint">
+              {seg.fiscalYear ? `as tagged in the ${seg.fiscalYear} annual report` : "as disclosed"}
+            </span>
             <CalcChip label={HUB_CALCS.segmargin.label} open={calc === "segmargin"} onToggle={() => toggleCalc("segmargin")} />
             <Src href={L.tenK}>Read the segment footnote ↗</Src>
           </div>
-          <div className="hub-table-head hub-seg-grid">
-            <span>Segment</span>
-            <span className="ta-r">Revenue</span>
-            <span className="ta-r">Op. income</span>
-            <span>Operating margin</span>
-            <span className="ta-r">Assets</span>
-          </div>
-          {d.segments.map((s) => (
-            <div className="hub-seg-grid hub-row" key={s.name}>
-              <span className="hub-seg-name">
-                <i style={{ background: s.color }} />
-                {s.name}
-              </span>
-              <span className="hub-cell-mono ta-r">{s.rev}</span>
-              <span className="hub-cell-mono ta-r">{s.op}</span>
-              <span className="hub-seg-margin">
-                <span className="hub-seg-track">
-                  <span style={{ width: s.marginW }} />
-                </span>
-                <span className="hub-cell-mono">{s.margin}</span>
-              </span>
-              <span className="hub-cell-mono ta-r">{s.assets}</span>
-            </div>
-          ))}
-          <div className="hub-note">{d.segNote}</div>
+          {seg.ok && seg.segments.length ? (
+            <>
+              <div className="hub-table-head hub-seg-grid">
+                <span>Segment</span>
+                <span className="ta-r">Revenue</span>
+                <span className="ta-r">Op. income</span>
+                <span>Operating margin</span>
+                <span className="ta-r">Assets</span>
+              </div>
+              {seg.segments.map((s) => (
+                <div className="hub-seg-grid hub-row" key={s.name}>
+                  <span className="hub-seg-name">{s.name}</span>
+                  <span className="hub-cell-mono ta-r">
+                    <Fig v={s.rev} />
+                  </span>
+                  <span className="hub-cell-mono ta-r">
+                    <Fig v={s.op} />
+                  </span>
+                  <span className="hub-seg-margin">
+                    {/* No track where there is no margin — a zero-width bar beside "N/A" reads
+                        as a real zero, which is the rule this page rests on. */}
+                    {s.margin === "N/A" ? null : (
+                      <span className="hub-seg-track">
+                        <span style={{ width: s.marginW }} />
+                      </span>
+                    )}
+                    <span className="hub-cell-mono">
+                      <Fig v={s.margin} />
+                    </span>
+                  </span>
+                  <span className="hub-cell-mono ta-r">
+                    <Fig v={s.assets} />
+                  </span>
+                </div>
+              ))}
+            </>
+          ) : (
+            <FootnoteEmpty reason={seg.reason} />
+          )}
+          <div className="hub-note">{seg.note}</div>
           {calc === "segmargin" && <CalcDrawer calc={HUB_CALCS.segmargin} />}
         </div>
 
         <div className="hub-grid hub-mt">
           <div className="p-card">
             <div className="hub-panel-head">
+              <span className="hub-label no-mb">Revenue by country</span>
+              <Src href={L.tenK}>Read the segment footnote ↗</Src>
+            </div>
+            {seg.geography.length ? (
+              seg.geography.map((g) => (
+                <div className="hub-geo-row" key={`rev${g.name}`}>
+                  <span className="hub-seg-name">{g.name}</span>
+                  <span className="hub-cell-mono ta-r">
+                    <Fig v={g.rev} />
+                  </span>
+                  <span className="hub-cell-mono ta-r is-soft">{g.share}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason="This filer tags no geographic revenue split for the year held." />
+            )}
+          </div>
+
+          <div className="p-card">
+            <div className="hub-panel-head">
               <span className="hub-label no-mb">Long-lived assets by country</span>
               <Src href={L.tenK}>Read the segment footnote ↗</Src>
             </div>
-            {d.geoAssets.map((g) => (
-              <div className="hub-geo-row" key={g.name}>
-                <span className="hub-seg-name">
-                  <i style={{ background: g.color }} />
-                  {g.name}
-                </span>
-                <span className="hub-cell-mono ta-r">{g.amt}</span>
-                <span className="hub-cell-mono ta-r is-soft">{g.w}</span>
-              </div>
-            ))}
-          </div>
-          <div className="p-card">
-            <div className="hub-panel-head">
-              <span className="hub-label no-mb">
-                Customer concentration · filers must name any customer &gt;10%
-              </span>
-              <Src href={L.tenK}>Read Item 1 ↗</Src>
-            </div>
-            {d.custConc.map((c) => (
-              <div className="hub-cust-row" key={c.label}>
-                <span className="hub-cell">
-                  {c.label} <span className="hub-hint">{c.kind}</span>
-                </span>
-                <span className="hub-cust-pct">{c.pct}</span>
-              </div>
-            ))}
-            <div className="hub-note">
-              Customers are identified only where the filer names them; percentages are of
-              consolidated revenue.
-            </div>
+            {seg.geography.some((g) => g.assets !== "N/A") ? (
+              seg.geography
+                .filter((g) => g.assets !== "N/A")
+                .map((g) => (
+                  <div className="hub-geo-row" key={`ass${g.name}`}>
+                    <span className="hub-seg-name">{g.name}</span>
+                    <span className="hub-cell-mono ta-r">
+                      <Fig v={g.assets} />
+                    </span>
+                    <span className="hub-cell-mono ta-r is-soft" />
+                  </div>
+                ))
+            ) : (
+              <FootnoteEmpty reason="This filer tags revenue by country but not property, plant and equipment by country — the two are separate ASC 280 disclosures and many filers give only the first." />
+            )}
           </div>
         </div>
       </section>

@@ -48,6 +48,10 @@ export interface HubData {
     balance: StatementRowData[];
     cash: StatementRowData[];
   };
+  /**
+   * @deprecated §03 reads `/companies/{symbol}/segments` (ASC 280 dimensional facts) as of
+   * 2026-08-06. No longer read by the company hub.
+   */
   segments: {
     name: string;
     rev: string;

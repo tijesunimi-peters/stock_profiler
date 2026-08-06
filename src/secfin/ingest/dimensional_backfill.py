@@ -45,7 +45,9 @@ from secfin.config import settings
 from secfin.ingest.downloader import download_dera_quarter
 from secfin.normalize.mapping import CONCEPTS
 from secfin.storage.dimensional_geo_repository import DimensionalGeoRow
+from secfin.storage.dimensional_repository import DimensionalFact
 from secfin.storage.sqlite_dimensional_geo_repository import SQLiteDimensionalGeoRepository
+from secfin.storage.sqlite_dimensional_repository import SQLiteDimensionalRepository
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,42 @@ _REVENUE_TAG_SET = frozenset(REVENUE_TAGS)
 
 _ANNUAL_FORMS = frozenset({"10-K", "10-K/A"})
 _GEO_AXIS = "Geographical"
+
+# ---------------------------------------------------------------- §03's per-company extract
+#
+# A SECOND pass over the same stream, writing a SECOND table. The geo table above is the input to
+# a shipped sector metric whose reader applies no tag or axis filter, so widening it would corrupt
+# a production number silently -- see storage/dimensional_repository.py.
+
+_SEGMENT_AXIS = "BusinessSegments"
+
+#: Tags §03 renders per segment. Revenue is a duration (qtrs=4); Assets is an instant (qtrs=0).
+_SEGMENT_TAGS: dict[str, str] = {
+    **{t: "4" for t in REVENUE_TAGS},
+    "OperatingIncomeLoss": "4",
+    "Assets": "0",
+}
+#: Geographic tags: revenue (a duration) plus §03.2's long-lived assets (an instant).
+_GEO_TAGS: dict[str, str] = {
+    **{t: "4" for t in REVENUE_TAGS},
+    "PropertyPlantAndEquipmentNet": "0",
+}
+
+#: Members that are STRUCTURE, not a segment: the generic placeholder a filer uses when it has no
+#: named segments, and the reconciling buckets. Measured over 2026q1's 4,309 annual filings:
+#: `ReportableSegment` alone is the single most common member (9,750 rows), and 531 filers carry
+#: NOTHING but members from this set -- a card naming them would print "ReportableSegment: $X".
+#:
+#: Reconciling members are excluded for the same reason the geo path excludes them: corporate and
+#: eliminations double-count against the segments they reconcile.
+_NON_SEGMENT_MEMBERS = frozenset({
+    "ReportableSegment", "SingleReportableSegment", "OperatingSegments",
+    "ReportableSegmentAggregationBeforeOtherOperatingSegment",
+    "AllOtherSegments", "AllOther", "Other",
+    "CorporateAndOther", "Corporate", "CorporateNonSegment", "CorporateAndReconcilingItems",
+    "MaterialReconcilingItems", "IntersegmentEliminations", "ConsolidationEliminations",
+    "SegmentContinuingOperations",
+})
 
 
 def _tsv_rows(f) -> csv.DictReader:
@@ -189,6 +227,85 @@ def _resolve_filing_rows(
     return out
 
 
+def _dimensional_kind(segments: str, axis: str) -> str | None:
+    """The member on `axis` for a CLEAN single-axis row, or None to skip.
+
+    Same three filters the geo path uses and for the same reasons: a cross-tab with another axis
+    is not a clean per-member split, and a `ConsolidationItems` qualifier that is not
+    `OperatingSegments` is a reconciling row that double-counts.
+    """
+    if not segments:
+        return None
+    axes = parse_axes(segments)
+    if axis not in axes:
+        return None
+    if set(axes) - {axis, "ConsolidationItems"}:
+        return None
+    if axes.get("ConsolidationItems") not in (None, "OperatingSegments"):
+        return None
+    return axes[axis]
+
+
+def extract_dimensional_facts_from_zip(zip_path: str | Path) -> list[DimensionalFact]:
+    """§03's per-company facts: named business segments, plus geography including long-lived assets.
+
+    Deliberately separate from `extract_geo_rows_from_zip` -- see
+    `storage/dimensional_repository.py` for why the two tables do not merge.
+
+    Placeholder and reconciling members are dropped, so a filer whose only members are
+    `ReportableSegment` / `Corporate` yields no segment rows at all. That is the honest outcome:
+    34.0% of annual filers have two or more NAMEABLE segments, against 52.1% carrying the axis.
+    """
+    out: list[DimensionalFact] = []
+    with zipfile.ZipFile(zip_path) as z:
+        sub_meta = _read_annual_submissions(z)
+        if not sub_meta:
+            return out
+        with z.open("num.txt") as f:
+            for row in _tsv_rows(f):
+                meta = sub_meta.get(row.get("adsh"))
+                if meta is None:
+                    continue
+                cik, period, fiscal_year = meta
+                if row.get("ddate") != period:  # current-year column only -- drop comparatives
+                    continue
+                tag, qtrs = row.get("tag"), row.get("qtrs")
+                segments = row.get("segments") or ""
+
+                # Try EVERY axis this row could belong to, rather than picking one from the tag.
+                # Revenue is wanted on both axes, so selecting by tag put every geographic revenue
+                # row into the segment branch and then dropped it -- Apple ingested five segments
+                # and zero countries.
+                for axis, wanted in ((_SEGMENT_AXIS, _SEGMENT_TAGS), (_GEO_AXIS, _GEO_TAGS)):
+                    if wanted.get(tag) != qtrs:
+                        continue
+                    member = _dimensional_kind(segments, axis)
+                    if member is None:
+                        continue
+                    if axis == _SEGMENT_AXIS and member in _NON_SEGMENT_MEMBERS:
+                        continue
+                    try:
+                        value = float(row["value"])
+                    except (KeyError, ValueError):
+                        continue  # blank / non-numeric -- skip, never coerce to 0
+                    out.append(
+                        DimensionalFact(
+                            cik=cik,
+                            accession=row["adsh"],
+                            axis=axis,
+                            member=member,
+                            tag=tag,
+                            ddate=row["ddate"],
+                            qtrs=qtrs,
+                            value=value,
+                            unit=row.get("uom") or "USD",
+                            fiscal_year=fiscal_year,
+                            form="10-K",
+                        )
+                    )
+    return out
+
+
 def extract_geo_rows_from_zip(zip_path: str | Path) -> list[DimensionalGeoRow]:
     """Parse one DERA quarterly ZIP into geographic-revenue rows (+ the consolidated total). No
     DB access -- pure parse, so it's unit-testable against a fixture ZIP."""
@@ -209,16 +326,24 @@ def run_dimensional_backfill(
     """Parse each ZIP and write the geo rows through the single-writer repository. Returns the total
     row count written."""
     repo = SQLiteDimensionalGeoRepository(db_path)
+    dim_repo = SQLiteDimensionalRepository(db_path)
     total = 0
     try:
         for zp in zip_paths:
             rows = extract_geo_rows_from_zip(zp)
             repo.bulk_upsert(rows)  # single writer owns the connection
             total += len(rows)
-            logger.info("ingested %d geo rows from %s", len(rows), zp.name)
+            # §03's per-company facts, into their own table. See the module docstring.
+            facts = extract_dimensional_facts_from_zip(zp)
+            dim_repo.bulk_upsert(facts)
+            logger.info(
+                "ingested %d geo rows and %d §03 dimensional facts from %s",
+                len(rows), len(facts), zp.name,
+            )
     finally:
         repo.close()
-    logger.info("dimensional geo backfill done: %d rows across %d ZIP(s)", total, len(zip_paths))
+        dim_repo.close()
+    logger.info("dimensional backfill done: %d geo rows across %d ZIP(s)", total, len(zip_paths))
     return total
 
 

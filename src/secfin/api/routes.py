@@ -42,6 +42,7 @@ from secfin.normalize.geography import classify_location
 from secfin.normalize.insider_summary import summarize_insider_transactions
 from secfin.normalize.filing_changes import build_filing_changes
 from secfin.normalize.officer_changes import build_officer_changes
+from secfin.normalize.segments import build_segment_breakdown
 from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
@@ -160,6 +161,7 @@ from secfin.sec.filing_index import fetch_filing_index
 from secfin.sec.trading_arrangements import parse_trading_arrangements
 from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
 from secfin.storage.filing_cover_repository import FilingCoverRepository
+from secfin.storage.dimensional_repository import DimensionalRepository
 from secfin.storage.filing_index_repository import FilingIndexRepository
 from secfin.storage.trading_arrangement_repository import TradingArrangementRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
@@ -373,6 +375,10 @@ def get_filing_index_repo(request: Request) -> FilingIndexRepository:
 
 def get_trading_arrangement_repo(request: Request) -> TradingArrangementRepository:
     return request.app.state.trading_arrangement_repo
+
+
+def get_dimensional_repo(request: Request) -> DimensionalRepository:
+    return request.app.state.dimensional_repo
 
 
 def get_filing_cover_repo(request: Request) -> FilingCoverRepository:
@@ -3131,6 +3137,65 @@ _NAMED_8K_ITEMS: dict[str, str] = {
     "8.01": "Other events",
     "9.01": "Financial statements and exhibits",
 }
+
+
+@public_router.get(
+    "/companies/{symbol}/segments",
+    tags=["Financials"],
+    summary="ASC 280 reportable segments and geography",
+)
+async def get_segments(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    dimensional_repo: DimensionalRepository = Depends(get_dimensional_repo),
+) -> dict:
+    """Reportable segments and geography, from ASC 280 dimensional facts.
+
+    **Companyfacts carries no dimensional data**, so this comes from DERA's quarterly data sets --
+    a different source with a different cadence, and both matter to how the answer reads.
+
+    **A company appears in exactly ONE DERA quarter**, the one it filed in, so `fiscal_year` is
+    reported and never implied. Microsoft's July-2026 10-K sits in 2026q3, which SEC had not
+    published when this was built; its segments are simply absent until it does.
+
+    **Nameable segments are rarer than the axis.** Measured over 2026q1's 4,309 annual filings:
+    52.1% carry `BusinessSegments`, but only **34.0% have two or more named members** -- 531 tag
+    nothing but `ReportableSegment`, `Corporate` or `AllOtherSegments`, which are structure rather
+    than businesses and are dropped on ingest.
+
+    **The margin column is usually impossible.** Of filers with named segments, 81.4% tag segment
+    revenue, 51.8% assets, and only **35.0% operating income**; all three together, 18.3%. `margin`
+    is null unless both inputs exist -- it is never derived from revenue alone.
+
+    **Shares are of the DISCLOSED splits, not of consolidated revenue.** The splits often do not
+    sum to the total, and dividing by the total would imply a remainder this data cannot describe.
+
+    Customer concentration is deliberately not served: the `MajorCustomers` axis reaches 4.1% of
+    annual filers and its members are mostly customer CATEGORIES (`Commercial`, `Residential`)
+    rather than customers, so the card would be wrong more often than right.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    result = build_segment_breakdown(cik, dimensional_repo.facts_for_cik(cik))
+    return {
+        "cik": cik,
+        "status": result.status,
+        "reason": result.reason,
+        "fiscal_year": result.fiscal_year,
+        "accession": result.accession,
+        "revenue_tag": result.revenue_tag,
+        "segments": [asdict(r) for r in result.segments],
+        "geography": [asdict(r) for r in result.geography],
+        "caveats": [
+            "Segment definitions are the FILER's own and are not comparable across companies -- "
+            "ASC 280 requires the segments management uses, not a standard taxonomy.",
+            "Shares are of the disclosed splits, not of consolidated revenue: the splits often do "
+            "not sum to the total.",
+            "Operating margin is derived, and is null wherever the filer did not tag segment "
+            "operating income -- roughly two thirds of filers with named segments.",
+        ],
+    }
 
 
 @public_router.get(

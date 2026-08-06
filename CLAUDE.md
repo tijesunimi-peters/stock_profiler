@@ -165,6 +165,11 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    segments.py                # §03: ASC 280 reportable segments + geography from dimensional
+                               #   facts. ONE revenue tag per filing (variants double-count);
+                               #   margin only where BOTH revenue and operating income are tagged
+                               #   (35% of filers); shares are of the DISCLOSED splits, which need
+                               #   not sum to consolidated revenue
     filing_changes.py          # the "what changed this filing" band: a NOTIFICATION, not a status
                                #   board -- only events that HAPPENED since the prior annual report,
                                #   so a quiet company yields no rows and the caller names what was
@@ -236,6 +241,12 @@ src/secfin/
     sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
     sector_insider_flow_repository.py   # abstract per-SIC-group trailing-window insider net buy/sell
     sqlite_sector_insider_flow_repository.py  # sector_insider_flow table (P6a)
+    dimensional_repository.py           # abstract per-company ASC 280 facts for §03 (segments +
+                                        #   geography). A SEPARATE table from dimensional_geo_facts
+                                        #   ON PURPOSE: the sector-mix batch reads that one with no
+                                        #   tag/axis filter, so widening it would silently corrupt a
+                                        #   shipped metric
+    sqlite_dimensional_repository.py    # dimensional_facts; keyed (cik, accession, axis, member, tag)
     dimensional_geo_repository.py       # abstract raw ASC 280 geographic-revenue facts (P6b)
     sqlite_dimensional_geo_repository.py  # dimensional_geo_facts table (DERA geo rows + consolidated)
     sector_geographic_mix_repository.py # abstract per-SIC-group revenue-weighted domestic/intl mix

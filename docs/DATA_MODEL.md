@@ -1946,3 +1946,70 @@ Rule 10D-1 cover check mark.
 > annual figure and every quarterly row tagged against the same fiscal year, so Microsoft's
 > `GrossProfit 2013FY` held 54,366M beside 13,595M and 15,247M — **all from one accession, filed
 > the same day**. The period bounds are part of the key.
+
+---
+
+## Reportable segments & geography (`normalize/segments.py`) — §03
+
+`GET /companies/{symbol}/segments`. **The one surface that needed a new source**: companyfacts
+carries no dimensional facts at all, so ASC 280 segment and geography splits come from DERA's
+quarterly data sets via `ingest/dimensional_backfill.py`.
+
+### A second table, deliberately
+
+`dimensional_geo_facts` feeds a shipped sector metric (P6b), and `sector_geographic_mix` reads it
+with **no tag or axis filter** — every non-consolidated row there is taken to be geographic
+revenue. Adding business-segment rows or `PropertyPlantAndEquipmentNet` to it would silently
+corrupt a production number into something plausible. So that contract is frozen and §03 gets
+`dimensional_facts`, which carries an `axis`. Geographic revenue is ingested into **both**; ~8k
+rows is cheaper than one table serving two contracts.
+
+### Measured coverage (2026q1, 4,309 annual filings)
+
+| | share of annual filers |
+|---|---:|
+| carries a `BusinessSegments` axis | 52.1% |
+| **has ≥2 NAMEABLE segments** | **34.0%** |
+| carries `Geographical` | 39.6% |
+| carries `MajorCustomers` | 4.1% |
+
+531 filers tag nothing but structural members. Of those with nameable segments: revenue 81.4%,
+assets 51.8%, **operating income 35.0%**, all three 18.3%.
+
+> Two of these differ from the V5 note they supersede, which recorded 66.5% for `BusinessSegments`
+> and 12.1% for `MajorCustomers`. The figures above are counted from 2026q1's `num.txt` directly.
+
+### Four rules the shaping enforces
+
+**One revenue tag per filing.** A filing can disaggregate under several revenue tags; summing them
+double-counts. The highest-preference canonical candidate present wins — the same rule the
+geographic rollup uses, and why `mapping.py` keeps candidates ordered.
+
+**Structural members are dropped on ingest.** `ReportableSegment`, `SingleReportableSegment`,
+`Corporate`, `AllOtherSegments`, `IntersegmentEliminations` and their kin are structure, not
+businesses — and the reconciling ones double-count against the segments they reconcile.
+`ReportableSegment` alone is the single most common member in the source (9,750 rows).
+
+**Margin needs both inputs.** `margin` is null unless the filer tagged segment revenue *and*
+operating income, and no bar is drawn beside an `N/A` — a zero-width track reads as a real zero.
+
+**Shares are of the DISCLOSED splits.** They routinely do not sum to consolidated revenue, so
+dividing by the total would imply a remainder this data cannot describe.
+
+### Two absences that look identical, and one that is the filer's choice
+
+A company appears in **exactly one DERA quarter** — the one it filed in. Microsoft's July-2026
+10-K sits in 2026q3, unpublished. And Tesla tags segment `GrossProfit` and `CostOfRevenue` but
+**neither segment revenue nor operating income**. From the store those are indistinguishable, so
+the empty state names both rather than claiming the first.
+
+Separately, revenue-by-country and long-lived-assets-by-country are **separate ASC 280
+disclosures**; Amazon gives the first and not the second, and the card says so rather than
+implying a gap in our ingest.
+
+### Customer concentration is deliberately not served
+
+The `MajorCustomers` axis reaches 4.1% of annual filers, and its members are mostly customer
+**categories** — `ExternalCustomers` (213), `Commercial` (177), `Residential` (148), `Industrial`
+(93) — outranking actual customers (`CustomerA` 64, `CustomerB` 59). A concentration card built on
+it would be wrong more often than right.
