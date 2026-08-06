@@ -84,13 +84,17 @@ export const PROVENANCE = {
    */
   partialSurfaces: {
     "company overview": {
-      real: ["01 identity & structure", "02 financial detail", "06 audit & controls"],
+      real: [
+        "01 identity & structure",
+        "02 financial detail",
+        "05 governance & people",
+        "06 audit & controls",
+        "08 filing activity & disclosure events",
+      ],
       synthetic: [
         "03 segments & geography (deferred — needs Phase C dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
-        "05 governance (partly \u2014 insider transactions and CEO compensation actually paid are real)",
         "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
-        "08 risk & events",
       ],
     },
   } as Record<string, { real: string[]; synthetic: string[] }>,
@@ -525,6 +529,125 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ §08 filing activity & disclosure */
+
+interface FilingActivityResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  indexed_filings?: number;
+  covered_from?: string | null;
+  covered_to?: string | null;
+  amended?: number;
+  amended_share?: number | null;
+  forms?: { form: string; count: number }[];
+  eight_k_count?: number;
+  items?: { code: string; label: string | null; count: number }[];
+  material_agreements?: { form: string; filed: string | null; accession: string }[];
+}
+
+/**
+ * §08, re-scoped from "disclosure change" to filing activity (operator ruling 2026-08-05).
+ *
+ * Five of the section's seven designed fields are irreducibly narrative — a risk-factor diff, the
+ * MD&A's attributed drivers, outlook language, the cybersecurity FRAMEWORK line and human-capital
+ * headcount. None has a Track 1 path and none was faked.
+ *
+ * What replaces them is what a company's filing record actually shows: which 8-K items it reports
+ * and how often, its form mix, and its amendment rate. That is a real and comparable fact about
+ * how a company talks to the market — Tesla files 18 Item 1.01 material agreements where Apple
+ * files none, and JPMorgan's window is 87% prospectus supplements.
+ *
+ * **Every count is scoped to EDGAR's rolling indexed window, and the window travels with it.**
+ * Apple's reaches 2015 and JPMorgan's covers twelve months; a count without its window would
+ * compare a decade against a year.
+ *
+ * **Two of the six cards restate §06 deliberately** (operator ruling, duplication accepted). They
+ * name §06 as their source rather than presenting a second finding.
+ */
+function toFilingActivity(res: FilingActivityResponse | null) {
+  const window =
+    res?.covered_from && res?.covered_to
+      ? `${res.covered_from.slice(0, 4)}–${res.covered_to.slice(0, 4)}`
+      : "the indexed window";
+
+  return {
+    ok: res?.status === "ok",
+    reason: res?.reason ?? "This company's filing index could not be read just now.",
+    window,
+    indexed: res?.indexed_filings ?? 0,
+    eightKs: res?.eight_k_count ?? 0,
+    items: (res?.items ?? []).map((i) => ({
+      code: i.code,
+      label: i.label ?? `Item ${i.code}`,
+      count: i.count,
+    })),
+    forms: (res?.forms ?? []).map((f) => ({ form: f.form, count: f.count })),
+    // An amendment may be a correction OR a routine refiling, and the index cannot tell them
+    // apart — so this is a rate, never a quality score.
+    amended: res?.amended ?? 0,
+    amendedPct:
+      res?.amended_share === null || res?.amended_share === undefined
+        ? "N/A"
+        : `${(res.amended_share * 100).toFixed(1)}%`,
+    agreements: (res?.material_agreements ?? []).map((a) => ({
+      form: a.form,
+      date: a.filed ? humanDate(a.filed) : "date N/A",
+    })),
+    note:
+      `Counts cover the ${res?.indexed_filings ?? 0} filings EDGAR lists for this company, ` +
+      `${window} — a rolling window, not the company's whole history. Item codes say which kind ` +
+      "of event was reported, never what it said.",
+  };
+}
+
+/**
+ * §08.3 cybersecurity — Item 1C, from the `cyd` taxonomy in the 10-K instance.
+ *
+ * **`materially_affected` is the valuable one.** An affirmative `false` is the registrant stating
+ * no material cyber effect — a *checked* negative, where a missing 8-K Item 1.05 is only an
+ * unchecked box. Both are shown, and they are not the same claim.
+ *
+ * **The framework line stays empty.** Which standard a company follows (NIST CSF, ISO 27001) is a
+ * `cyd` prose TextBlock, and prose is Track 2.
+ */
+function toCybersecurity(res: AuditResponse | null, incidents: number) {
+  const c = res?.cybersecurity;
+  const ok = c?.status === "ok";
+  const yes = (v: boolean | null | undefined) => v === true;
+
+  const governance = !ok
+    ? []
+    : [
+        yes(c?.positions_responsible) ? "a named position or committee is responsible" : null,
+        yes(c?.reports_to_board) ? "it reports to the board" : null,
+        yes(c?.processes_integrated) ? "processes are integrated into overall risk management" : null,
+        yes(c?.third_party_engaged) ? "a third party is engaged" : null,
+        yes(c?.third_party_oversight) ? "third-party risk is overseen" : null,
+      ].filter(Boolean);
+
+  return {
+    ok,
+    reason: c?.reason ?? "Item 1C cybersecurity tagging has not been read for this company.",
+    governance,
+    // The two independent answers to "was there an incident", kept apart.
+    materialEffect: !ok
+      ? "N/A"
+      : c?.materially_affected === false
+        ? "The registrant states no material effect from a cybersecurity risk or incident."
+        : c?.materially_affected === true
+          ? "The registrant states a cybersecurity risk or incident HAS materially affected it."
+          : "Not tagged.",
+    incidents:
+      incidents > 0
+        ? `${plural(incidents, "8-K Item 1.05 filing")} on file — a reported material incident.`
+        : "No 8-K Item 1.05 in the indexed window.",
+    frameworkReason:
+      "Which framework a registrant follows (NIST CSF, ISO 27001) is Item 1C narrative, tagged " +
+      "only as a prose block.",
   };
 }
 
@@ -1091,6 +1214,16 @@ interface AuditResponse {
     covered_to?: string | null;
     events: { kind: string; item: string; filed: string | null; accession: string }[];
     late_filings: { form: string; filed: string | null }[];
+  };
+  cybersecurity?: {
+    status: string;
+    reason: string | null;
+    materially_affected: boolean | null;
+    processes_integrated: boolean | null;
+    third_party_engaged: boolean | null;
+    positions_responsible: boolean | null;
+    reports_to_board: boolean | null;
+    third_party_oversight: boolean | null;
   };
   clawback?: {
     status: string;
@@ -1865,12 +1998,17 @@ export const api = {
     // The auditor read can cost a 15 MB instance fetch server-side on a filer's FIRST request
     // (cached per accession after that), so a failure must not take §08 down with it. `null`
     // flows into the adapter's honest-empty branch.
-    const audit = await getJson<AuditResponse>(
-      `/v1/companies/${encodeURIComponent(symbol)}/audit`,
-    ).catch(() => null);
+    const enc = encodeURIComponent(symbol);
+    const [audit, activity] = await Promise.all([
+      getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+      getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
+    ]);
+    const incidents =
+      (activity?.items ?? []).find((i) => i.code === "1.05")?.count ?? 0;
     return {
       audit: toAuditCards(audit),
-      narrative: hub.hubData(symbol).narrative,
+      activity: toFilingActivity(activity),
+      cyber: toCybersecurity(audit, incidents),
       changes: hub.hubData(symbol).changes,
     } as CompanyDisclosure;
   },
@@ -2139,7 +2277,10 @@ export interface CompanyDisclosure {
   // neither exists in any SEC structured source, and a field that can only ever hold invented
   // strings should not be typed as if it might hold real ones.
   audit: ReturnType<typeof toAuditCards>;
-  narrative: hub.HubData["narrative"];
+  /** §08 re-scoped: what this company files, and how often. */
+  activity: ReturnType<typeof toFilingActivity>;
+  /** §08.3 Item 1C, from the `cyd` flags. */
+  cyber: ReturnType<typeof toCybersecurity>;
   changes: hub.HubData["changes"];
 }
 

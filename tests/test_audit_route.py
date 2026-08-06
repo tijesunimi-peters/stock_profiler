@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from secfin.api.routes import _audit_events
+from secfin.api.routes import _audit_events, preferred_annual_report
 from secfin.sec.cover import CoverFacts, ExtensionCensus
 from secfin.sec.filing_index import FilingIndexEntry
 from secfin.storage.sqlite_filing_cover_repository import SQLiteFilingCoverRepository
@@ -155,3 +155,44 @@ class TestTheCoverStoreFetchesOnce:
     def test_an_untagged_flag_survives_the_round_trip_as_none(self, cover_repo):
         cover_repo.upsert_cover(CIK, self._facts(icfr_auditor_attestation=None))
         assert cover_repo.get_cover(CIK).icfr_auditor_attestation is None
+
+
+class TestWhichAnnualReportIsRead:
+    """The newest annual FILING is not always the annual REPORT.
+
+    Tesla's newest is a 10-K/A filed 2026-04-30 -- a 5,986-byte Part III amendment that
+    incorporates proxy information and carries almost none of the cover page. Reading it stored a
+    shell: no Item 1C tagging, and zero Item 408(a) arrangements where the real 10-K discloses two
+    named officers. §05.5 reported "no plans adopted" about a company that had adopted two.
+    """
+
+    @staticmethod
+    def _f(form: str, date: str) -> FilingIndexEntry:
+        return FilingIndexEntry(cik=CIK, accession=f"a-{date}", form=form, filing_date=date)
+
+    def test_an_original_beats_a_newer_amendment(self):
+        chosen = preferred_annual_report(
+            [self._f("10-K/A", "2026-04-30"), self._f("10-K", "2026-01-29")]
+        )
+        assert chosen.form == "10-K"
+        assert chosen.filing_date == "2026-01-29"
+
+    def test_the_newest_original_wins_among_originals(self):
+        chosen = preferred_annual_report(
+            [self._f("10-K", "2026-01-29"), self._f("10-K", "2025-01-30")]
+        )
+        assert chosen.filing_date == "2026-01-29"
+
+    def test_an_amendment_is_used_when_no_original_is_indexed(self):
+        # EDGAR's rolling window can move past the original; an amendment is then all there is.
+        chosen = preferred_annual_report([self._f("10-K/A", "2026-04-30")])
+        assert chosen.form == "10-K/A"
+
+    def test_a_20f_is_treated_the_same_way(self):
+        chosen = preferred_annual_report(
+            [self._f("20-F/A", "2026-05-01"), self._f("20-F", "2026-02-01")]
+        )
+        assert chosen.form == "20-F"
+
+    def test_nothing_indexed_is_none_not_an_error(self):
+        assert preferred_annual_report([]) is None

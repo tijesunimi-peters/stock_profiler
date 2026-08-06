@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-from collections import defaultdict
-from collections.abc import Iterable
+from collections import Counter, defaultdict
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -1037,6 +1037,29 @@ async def _ensure_filing_index(
     return repo.indexed_count(cik)
 
 
+def preferred_annual_report(candidates: Sequence[FilingIndexEntry]) -> FilingIndexEntry | None:
+    """The annual report whose cover page to read: the newest ORIGINAL, not the newest filing.
+
+    Tesla's newest annual filing by date is a 10-K/A filed 2026-04-30 -- a **5,986-byte** Part III
+    amendment that incorporates proxy information and carries almost none of the cover page.
+    Taking newest-first stored that shell: no Item 1C tagging, and **zero Item 408(a) arrangements
+    where the real 10-K discloses two named officers**, so §05.5 reported "no plans adopted" about
+    a company that had adopted two. The auditor happened to survive in the amendment, which is why
+    §06 still looked healthy and the gap stayed invisible.
+
+    A Part III amendment does not restate the cover page, so the original remains authoritative for
+    every fact read from it. This deliberately departs from latest-filed-wins, which is a rule
+    about restated FACTS in `raw_facts` -- not about which document carries a cover page.
+
+    An amendment is used only when no original is indexed, which happens when EDGAR's rolling
+    window has moved past the original.
+    """
+    if not candidates:
+        return None
+    originals = [f for f in candidates if not (f.form or "").endswith("/A")]
+    return (originals or list(candidates))[0]
+
+
 async def _cover_for_cik(
     cover_repo: FilingCoverRepository,
     arrangement_repo: TradingArrangementRepository,
@@ -1057,13 +1080,15 @@ async def _cover_for_cik(
     if cover is not None:
         return cover, None
 
-    annual = filing_repo.get_filings(cik, ["10-K", "10-K/A", "20-F"], 1)
+    annual = preferred_annual_report(
+        filing_repo.get_filings(cik, ["10-K", "10-K/A", "20-F", "20-F/A"], 8)
+    )
     if not annual:
         return None, (
             "No annual report is indexed for this company, so there is no instance to read. "
             "Run the filing-index backfill for this filer."
         )
-    filing = annual[0]
+    filing = annual
     base = (
         f"https://www.sec.gov/Archives/edgar/data/{cik}/"
         f"{(filing.accession or '').replace('-', '')}"
@@ -1235,6 +1260,36 @@ async def get_audit(
         # when it is true, so `None` on a clean filer means the question did not arise. Neither
         # says whether a clawback POLICY exists: that is a listing-standard requirement disclosed
         # in the proxy's prose, and it stays out of reach.
+        # Item 1C, from the same cover page. `None` is UNTAGGED, never "no": the requirement
+        # applies to annual reports for fiscal years ending on or after 2023-12-15.
+        #
+        # `materially_affected` is the one worth having. An affirmative `false` is the registrant
+        # STATING no material cyber effect -- a checked negative, where a missing 8-K Item 1.05 is
+        # only an unchecked box. The framework a company follows (NIST CSF, ISO 27001) is a `cyd`
+        # TextBlock, which is prose and is not read.
+        "cybersecurity": {
+            "status": "ok"
+            if cover is not None and cover.cyber_materially_affected is not None
+            else "na",
+            "reason": None
+            if cover is not None and cover.cyber_materially_affected is not None
+            else (
+                filing_note
+                or "This annual report carries no Item 1C cybersecurity tagging. The requirement "
+                "applies to fiscal years ending on or after 2023-12-15."
+            ),
+            "materially_affected": None if cover is None else cover.cyber_materially_affected,
+            "processes_integrated": None if cover is None else cover.cyber_processes_integrated,
+            "third_party_engaged": None if cover is None else cover.cyber_third_party_engaged,
+            "positions_responsible": None if cover is None else cover.cyber_positions_responsible,
+            "reports_to_board": None if cover is None else cover.cyber_reports_to_board,
+            "third_party_oversight": None if cover is None else cover.cyber_third_party_oversight,
+            "framework": {
+                "status": "na",
+                "reason": "Which framework a registrant follows (NIST CSF, ISO 27001) is an "
+                "Item 1C narrative, tagged only as a prose TextBlock.",
+            },
+        },
         "clawback": {
             "status": "ok" if cover is not None else "na",
             "reason": None
@@ -3056,6 +3111,108 @@ async def get_trading_arrangements(
             "Adoption and termination dates are the filer's own text; `*_raw` carries what they "
             "wrote and the ISO field is null where the format was not recognised.",
             "Securities amounts are as filed, in the filer's own unit, and are not corrected.",
+        ],
+    }
+
+
+# 8-K items §08 reports on by name. Everything else is counted but not narrated -- a card that
+# named all thirty would be a taxonomy dump rather than a profile.
+_NAMED_8K_ITEMS: dict[str, str] = {
+    "1.01": "Material agreement entered",
+    "1.02": "Material agreement terminated",
+    "1.05": "Material cybersecurity incident",
+    "2.02": "Results of operations",
+    "4.01": "Auditor changed",
+    "4.02": "Non-reliance on prior statements",
+    "5.02": "Officer or director change",
+    "5.07": "Shareholder vote",
+    "7.01": "Regulation FD disclosure",
+    "8.01": "Other events",
+    "9.01": "Financial statements and exhibits",
+}
+
+
+@public_router.get(
+    "/companies/{symbol}/filing-activity",
+    tags=["Financials"],
+    summary="What a company files, how often, and which 8-K items it reports",
+)
+async def get_filing_activity(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> dict:
+    """The shape of a company's disclosure: form mix, amendment rate and 8-K item profile.
+
+    **Existence, dates and item codes. Never contents.** An 8-K's body is prose; this counts which
+    items a filer reports and when, which is a real and comparable fact about how a company talks
+    to the market. Tesla files 18 Item 1.01 material agreements where Apple files none; JPMorgan's
+    window is 87% 424B2 prospectus supplements, which is why that window is one year long.
+
+    **Every number is scoped to the INDEXED WINDOW and the window travels with it.**
+    `/submissions/` serves EDGAR's rolling recent list, not a company's whole history, and the
+    windows differ enormously -- Apple's reaches 2015, JPMorgan's covers twelve months. A count
+    without its window would compare a decade against a year.
+
+    Built cache-aside: the first view of a company indexes it, then this is a SQLite read.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        indexed = await _ensure_filing_index(filing_repo, client, cik)
+
+    if not indexed:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": (
+                "This company's filing index could not be built, so we have not looked at what "
+                "it files. That is not the same as finding nothing."
+            ),
+        }
+
+    covered_from, covered_to = filing_repo.indexed_window(cik)
+    forms: Counter[str] = Counter()
+    for entry in filing_repo.get_filings(cik, None, 100_000):
+        forms[entry.form] += 1
+    amended = sum(n for form, n in forms.items() if form.endswith("/A"))
+
+    eight_ks = filing_repo.get_filings(cik, ["8-K", "8-K/A"], 10_000)
+    items: Counter[str] = Counter()
+    for entry in eight_ks:
+        for code in (entry.items or "").split(","):
+            if code.strip():
+                items[code.strip()] += 1
+
+    return {
+        "cik": cik,
+        "status": "ok",
+        "reason": None,
+        "indexed_filings": indexed,
+        "covered_from": covered_from,
+        "covered_to": covered_to,
+        "amended": amended,
+        # A rate, not a judgment: an amendment is a correction OR a routine refiling, and the
+        # index cannot tell them apart.
+        "amended_share": (amended / indexed) if indexed else None,
+        "forms": [{"form": f, "count": n} for f, n in forms.most_common(8)],
+        "eight_k_count": len(eight_ks),
+        "items": [
+            {"code": c, "label": _NAMED_8K_ITEMS.get(c), "count": n}
+            for c, n in items.most_common()
+            if c in _NAMED_8K_ITEMS
+        ],
+        "material_agreements": [
+            {"form": e.form, "filed": e.filing_date, "accession": e.accession}
+            for e in eight_ks
+            if "1.01" in {c.strip() for c in (e.items or "").split(",")}
+        ][:8],
+        "caveats": [
+            "Counts are over EDGAR's ROLLING indexed window, not a company's whole history -- "
+            "the window is reported and differs by filer from one year to a decade.",
+            "Item codes say WHICH kind of event was reported, never what it said. An 8-K's body "
+            "is prose and is not read.",
+            "An amendment may be a correction or a routine refiling; the index cannot tell them "
+            "apart, so the rate is not a quality measure.",
         ],
     }
 

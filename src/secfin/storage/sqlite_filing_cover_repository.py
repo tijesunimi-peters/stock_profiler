@@ -33,6 +33,13 @@ CREATE TABLE IF NOT EXISTS filing_cover_facts (
     icfr_auditor_attestation INTEGER,
     error_correction INTEGER,
     clawback_recovery_analysis INTEGER,
+    -- Item 1C cybersecurity flags. NULL is UNTAGGED, never "no".
+    cyber_materially_affected INTEGER,
+    cyber_processes_integrated INTEGER,
+    cyber_third_party_engaged INTEGER,
+    cyber_positions_responsible INTEGER,
+    cyber_reports_to_board INTEGER,
+    cyber_third_party_oversight INTEGER,
     -- Which version of sec/cover.py's field set wrote this row. An older one is
     -- treated as a cache MISS, so adding a field heals the cache instead of
     -- silently serving NULL for every filer already in it.
@@ -57,13 +64,15 @@ _COLUMNS = (
     "cik, accession, form, filed, period_end, auditor_name, auditor_firm_id, auditor_location, "
     "registrant_name, incorporation_state, filer_category, fiscal_year_end, fiscal_year_focus, "
     "icfr_auditor_attestation, error_correction, clawback_recovery_analysis, "
+    "cyber_materially_affected, cyber_processes_integrated, cyber_third_party_engaged, "
+    "cyber_positions_responsible, cyber_reports_to_board, cyber_third_party_oversight, "
     "extension_namespace, extension_distinct, extension_facts, "
     "total_facts, extension_top, instance_bytes, schema_version"
 )
 
 _UPSERT_SQL = f"""
 INSERT INTO filing_cover_facts ({_COLUMNS})
-VALUES ({",".join("?" * 23)})
+VALUES ({",".join("?" * 29)})
 ON CONFLICT (cik, accession) DO UPDATE SET
     form = excluded.form,
     filed = excluded.filed,
@@ -79,6 +88,12 @@ ON CONFLICT (cik, accession) DO UPDATE SET
     icfr_auditor_attestation = excluded.icfr_auditor_attestation,
     error_correction = excluded.error_correction,
     clawback_recovery_analysis = excluded.clawback_recovery_analysis,
+    cyber_materially_affected = excluded.cyber_materially_affected,
+    cyber_processes_integrated = excluded.cyber_processes_integrated,
+    cyber_third_party_engaged = excluded.cyber_third_party_engaged,
+    cyber_positions_responsible = excluded.cyber_positions_responsible,
+    cyber_reports_to_board = excluded.cyber_reports_to_board,
+    cyber_third_party_oversight = excluded.cyber_third_party_oversight,
     extension_namespace = excluded.extension_namespace,
     extension_distinct = excluded.extension_distinct,
     extension_facts = excluded.extension_facts,
@@ -87,6 +102,11 @@ ON CONFLICT (cik, accession) DO UPDATE SET
     instance_bytes = excluded.instance_bytes,
     schema_version = excluded.schema_version
 """
+
+
+def _flag(value: bool | None) -> int | None:
+    """1/0/NULL. NULL is UNTAGGED and is a different answer from `false`."""
+    return None if value is None else int(value)
 
 
 class SQLiteFilingCoverRepository(FilingCoverRepository):
@@ -107,7 +127,17 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
         were read keep NULL, which reads as "we have not looked", not as "false".
         """
         have = {row[1] for row in self._conn.execute("PRAGMA table_info(filing_cover_facts)")}
-        for column in ("error_correction", "clawback_recovery_analysis", "schema_version"):
+        for column in (
+            "error_correction",
+            "clawback_recovery_analysis",
+            "cyber_materially_affected",
+            "cyber_processes_integrated",
+            "cyber_third_party_engaged",
+            "cyber_positions_responsible",
+            "cyber_reports_to_board",
+            "cyber_third_party_oversight",
+            "schema_version",
+        ):
             if column not in have:
                 self._conn.execute(
                     f"ALTER TABLE filing_cover_facts ADD COLUMN {column} INTEGER"
@@ -140,6 +170,12 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
                 None
                 if facts.clawback_recovery_analysis is None
                 else int(facts.clawback_recovery_analysis),
+                _flag(facts.cyber_materially_affected),
+                _flag(facts.cyber_processes_integrated),
+                _flag(facts.cyber_third_party_engaged),
+                _flag(facts.cyber_positions_responsible),
+                _flag(facts.cyber_reports_to_board),
+                _flag(facts.cyber_third_party_oversight),
                 ext.namespace,
                 ext.distinct,
                 ext.facts,
@@ -166,7 +202,7 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
             return None
         # A row written before the current field set is a miss, not an answer -- see
         # COVER_SCHEMA_VERSION. The caller re-reads the instance once and upserts over it.
-        if (row[22] or 0) < COVER_SCHEMA_VERSION:
+        if (row[28] or 0) < COVER_SCHEMA_VERSION:
             return None
         return self._row(row)
 
@@ -176,7 +212,7 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
     @staticmethod
     def _row(r: tuple) -> CoverFacts:
         try:
-            top = [(str(name), int(count)) for name, count in json.loads(r[20] or "[]")]
+            top = [(str(name), int(count)) for name, count in json.loads(r[26] or "[]")]
         except (ValueError, TypeError):
             top = []
         return CoverFacts(
@@ -195,12 +231,18 @@ class SQLiteFilingCoverRepository(FilingCoverRepository):
             icfr_auditor_attestation=None if r[13] is None else bool(r[13]),
             error_correction=None if r[14] is None else bool(r[14]),
             clawback_recovery_analysis=None if r[15] is None else bool(r[15]),
+            cyber_materially_affected=None if r[16] is None else bool(r[16]),
+            cyber_processes_integrated=None if r[17] is None else bool(r[17]),
+            cyber_third_party_engaged=None if r[18] is None else bool(r[18]),
+            cyber_positions_responsible=None if r[19] is None else bool(r[19]),
+            cyber_reports_to_board=None if r[20] is None else bool(r[20]),
+            cyber_third_party_oversight=None if r[21] is None else bool(r[21]),
             extensions=ExtensionCensus(
-                namespace=r[16],
-                distinct=r[17] or 0,
-                facts=r[18] or 0,
-                total_facts=r[19] or 0,
+                namespace=r[22],
+                distinct=r[23] or 0,
+                facts=r[24] or 0,
+                total_facts=r[25] or 0,
                 top=top,
             ),
-            instance_bytes=r[21],
+            instance_bytes=r[27],
         )

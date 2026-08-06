@@ -227,6 +227,8 @@ export function HubOverview() {
   const officers = governance.data.officers;
   const policies = governance.data.policies;
   const plans = governance.data.plans;
+  const activity = disclosure.data.activity;
+  const cyber = disclosure.data.cyber;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -249,10 +251,11 @@ export function HubOverview() {
     capital: footnotes.data.capital,
     pvp: governance.data.pvp,
     audit: disclosure.data.audit,
+    activity: disclosure.data.activity,
+    cyber: disclosure.data.cyber,
     obligations: footnotes.data.obligations,
     footnotes: footnotes.data.footnotes,
     footnotePeriod: footnotes.data.footnotePeriod,
-    narrative: disclosure.data.narrative,
     covenant: footnotes.data.covenant,
   };
 
@@ -1274,62 +1277,93 @@ export function HubOverview() {
       </section>
 
       {/* ============================================================ 08 */}
+      {/*
+        RE-SCOPED from "disclosure change" (operator ruling 2026-08-05). Five of the seven designed
+        fields are irreducibly narrative — the risk-factor diff, MD&A drivers, outlook language,
+        the cybersecurity framework line and human-capital headcount. None has a Track 1 path, and
+        none is faked. What fills the section instead is the filing record itself.
+
+        Two of the six cards deliberately restate §06 (the operator accepted the duplication).
+        They name §06 as their source rather than posing as a second finding.
+      */}
       <section className="hub-sec">
-        <HubHead id="s8" n="08" title="Disclosure change" src="10-K Item 1A / 1C · MD&A · 8-K 1.01 & 2.02" />
-        <div className="p-card">
-          <div className="hub-panel-head">
-            <span className="hub-panel-title">Risk factor diff</span>
-            <span className="hub-hint">
-              {d.narrative.rfCount} risk factors · {d.narrative.rfDelta} vs prior year ·{" "}
-              {d.narrative.rfWords}
-            </span>
-            <Src href={L.tenK}>Read Item 1A ↗</Src>
-          </div>
-          {d.narrative.rfDiff.map((r, i) => (
-            <div className="hub-rf-row" key={`${r.kind}${i}`}>
-              <span className="hub-rf-kind">{r.kind}</span>
-              <span className="hub-cell">{r.text}</span>
-            </div>
-          ))}
-          <div className="hub-note">
-            Added, removed, and reworded are categorical labels — no direction is implied.
-          </div>
-        </div>
-
-        <div className="hub-grid hub-mt">
+        <HubHead
+          id="s8"
+          n="08"
+          title="Filing activity & disclosure events"
+          src="/submissions/ filing index · 10-K Item 1C · 8-K item codes"
+        />
+        <div className="hub-grid">
           <div className="p-card">
-            <div className="hub-panel-head">
-              <span className="hub-label no-mb">Management-attributed drivers · MD&amp;A</span>
-              <Src href={L.tenK}>Read MD&amp;A ↗</Src>
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">8-K disclosure profile</span>
+              <span className="hub-hint">{activity.eightKs} 8-Ks · {activity.window}</span>
             </div>
-            <div className="hub-quotes">
-              {d.narrative.mdna.map((m) => (
-                <span key={m}>{m}</span>
-              ))}
-            </div>
-            <div className="hub-note">
-              Attribution is management's own language, quoted in condensed form — not an
-              independent finding.
-            </div>
+            {activity.ok && activity.items.length ? (
+              <>
+                {activity.items.slice(0, 7).map((i) => (
+                  <div className="hub-kv-row" key={i.code}>
+                    <span className="hub-cell">
+                      {i.label}
+                      <span className="hub-hint hub-changed-mark">{i.code}</span>
+                    </span>
+                    <span className="hub-cell-mono is-soft ta-r">{i.count}</span>
+                  </div>
+                ))}
+                <div className="hub-note">{activity.note}</div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={activity.reason} />
+            )}
           </div>
 
           <div className="p-card">
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">Form mix &amp; amendments</span>
+              <span className="hub-hint">{activity.indexed} filings · {activity.window}</span>
+            </div>
+            {activity.ok ? (
+              <>
+                {activity.forms.slice(0, 6).map((f) => (
+                  <div className="hub-kv-row" key={f.form}>
+                    <span className="hub-cell">{f.form}</span>
+                    <span className="hub-cell-mono is-soft ta-r">{f.count}</span>
+                  </div>
+                ))}
+                <div className="hub-foot-rule">
+                  {activity.amended} amended ({activity.amendedPct})
+                </div>
+                <div className="hub-note">
+                  An amendment may be a correction or a routine refiling — the filing index cannot
+                  tell them apart, so this is a rate, not a quality measure.
+                </div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={activity.reason} />
+            )}
+          </div>
+
+          <div className="p-card">
             <div className="hub-panel-head">
-              <span className="hub-label no-mb">Cybersecurity · Item 1C</span>
+              <span className="hub-label no-mb">Cybersecurity · 10-K Item 1C</span>
               <Src href={L.tenK}>Read Item 1C ↗</Src>
             </div>
-            <div className="hub-facts">
-              <span>{d.narrative.cyber.gov}</span>
-              <span>{d.narrative.cyber.framework}</span>
-              <span className="is-strong">{d.narrative.cyber.incident}</span>
-            </div>
-            <div className="hub-foot-rule">
-              <div className="hub-label">Human capital · Item 1</div>
-              <div className="hub-cell-mono is-soft">
-                {d.narrative.humanCapital.heads} employees · {d.narrative.humanCapital.turnover}{" "}
-                {d.narrative.humanCapital.note}
-              </div>
-            </div>
+            {cyber.ok ? (
+              <>
+                <div className="hub-facts">
+                  <span className="is-strong">{cyber.materialEffect}</span>
+                  <span>{cyber.incidents}</span>
+                  <span>
+                    Governance: {cyber.governance.length ? cyber.governance.join(", ") : "not tagged"}.
+                  </span>
+                </div>
+                <div className="hub-note" title={cyber.frameworkReason}>
+                  The framework a registrant follows is not tagged — see the filing.
+                </div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={cyber.reason} />
+            )}
           </div>
 
           <div className="p-card">
@@ -1337,19 +1371,61 @@ export function HubOverview() {
               <span className="hub-label no-mb">Material agreements · 8-K 1.01</span>
               <Src href={L.eightK}>Read the 8-Ks ↗</Src>
             </div>
-            {d.narrative.agreements.map((a, i) => (
-              <div className="hub-agree-row" key={`${a.t}${i}`}>
-                <span className="hub-cell">{a.t}</span>
-                <span className="hub-cell-mono is-soft ta-r">{a.date}</span>
-              </div>
-            ))}
+            {activity.agreements.length ? (
+              activity.agreements.map((a, i) => (
+                <div className="hub-kv-row" key={`${a.date}${i}`}>
+                  <span className="hub-cell">{a.form} Item 1.01</span>
+                  <span className="hub-cell-mono is-soft ta-r">{a.date}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty
+                reason={`No 8-K Item 1.01 among the ${activity.indexed} filings indexed for this company, ${activity.window}.`}
+              />
+            )}
+            <div className="hub-note">
+              Existence and date only. What the agreement says — its counterparty, its terms — is
+              the 8-K's text and its exhibits.
+            </div>
+          </div>
+
+          {/* Both cards below read the SAME filings §06 reads. They say so. */}
+          <div className="p-card">
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Restatement &amp; non-reliance events</span>
+              <Src href={L.eightK}>Read the 8-Ks ↗</Src>
+            </div>
+            <div className="hub-facts">
+              <span className="is-strong">{d.audit.restate}</span>
+              <span>{d.audit.change}</span>
+              <span>{d.audit.late}</span>
+            </div>
+            <div className="hub-note">
+              The same 8-K Item 4.01/4.02 and Form 12b-25 filings §06 reads, on the disclosure
+              timeline rather than the audit-quality one. {d.audit.windowNote}
+            </div>
           </div>
 
           <div className="p-card">
-            <div className="hub-label">Outlook language · 8-K 2.02 exhibit</div>
-            <span className="hub-cell">{d.narrative.guidance}</span>
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">Tag-set density</span>
+              <span className="hub-hint">{d.audit.nonGaap.recur} of tagged facts</span>
+            </div>
+            {d.audit.extensionsOk ? (
+              <div className="hub-facts">
+                <span className="is-strong">
+                  {d.audit.nonGaap.count} distinct elements in the registrant's own taxonomy
+                </span>
+                <span>Most used: {d.audit.nonGaap.items}</span>
+              </div>
+            ) : (
+              <FootnoteEmpty reason={d.audit.extensionsReason} />
+            )}
             <div className="hub-note">
-              Guidance is a furnished exhibit, not audited — tracked for language change only.
+              How far this filer departs from the standard taxonomy — the same census §06 shows.
+              It is a count of element names, never a non-GAAP adjustment count. No prior-year
+              comparison: only the latest annual instance is stored, so a change over time cannot
+              be shown.
             </div>
           </div>
         </div>

@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 
 _XBRLI = "{http://www.xbrl.org/2003/instance}"
 _DEI = re.compile(r"^\{http://xbrl\.sec\.gov/dei/[\d-]+\}(.+)$")
+_CYD = re.compile(r"^\{http://xbrl\.sec\.gov/cyd/[\d-]+\}(.+)$")
 _TAG = re.compile(r"^\{([^}]+)\}(.+)$")
 
 #: Namespaces published by a standards body rather than by the registrant. Anything outside this
@@ -83,7 +84,10 @@ _WANTED_DEI: dict[str, str] = {
 #: 3 -- Item 408(a) trading arrangements parsed from the same instance (2026-08-05). Not a
 #:      field on CoverFacts, but the same fetch fills `trading_arrangements`, so a cached cover
 #:      row means that table was never populated for the filer.
-COVER_SCHEMA_VERSION = 3
+#: 4 -- Item 1C `cyd` cybersecurity flags (2026-08-05)
+#: 5 -- the annual report PICKER changed (2026-08-05): rows written before this may point at a
+#:      Part III 10-K/A shell rather than the original 10-K, so every one is suspect.
+COVER_SCHEMA_VERSION = 5
 
 #: Booleans that ride along in the same fetch. Stored as `True`/`False`/`None` -- `None` and
 #: `False` are different answers, and collapsing them would invent a disclosure.
@@ -96,6 +100,30 @@ _WANTED_FLAGS: dict[str, str] = {
     # listing-standard clawback policy exists at all is proxy prose and stays out of reach.
     "DocumentFinStmtErrorCorrectionFlag": "error_correction",
     "DocumentFinStmtRestatementRecoveryAnalysisFlag": "clawback_recovery_analysis",
+}
+
+
+#: Item 1C cybersecurity flags, from the `cyd` taxonomy in the same instance. Measured 2026-08-05:
+#: all six are tagged by 8 of 8 exemplar filers, so this is a dense disclosure rather than a
+#: sometimes-thing.
+#:
+#: The `...MateriallyAffected...` one is the valuable one and the reason this beats the 8-K Item
+#: 1.05 existence check alone: it is an affirmative `false` -- the registrant STATING no material
+#: effect -- where a missing Item 1.05 is only an unchecked box. A checked negative, not an absence.
+#:
+#: The taxonomy's ten TextBlocks are prose (the framework a company follows, its process
+#: description) and are deliberately not read: they are Track 2.
+_WANTED_CYD: dict[str, str] = {
+    "CybersecurityRiskMateriallyAffectedOrReasonablyLikelyToMateriallyAffectRegistrantFlag":
+        "cyber_materially_affected",
+    "CybersecurityRiskManagementProcessesIntegratedFlag": "cyber_processes_integrated",
+    "CybersecurityRiskManagementThirdPartyEngagedFlag": "cyber_third_party_engaged",
+    "CybersecurityRiskManagementPositionsOrCommitteesResponsibleFlag":
+        "cyber_positions_responsible",
+    "CybersecurityRiskManagementPositionsOrCommitteesResponsibleReportToBoardFlag":
+        "cyber_reports_to_board",
+    "CybersecurityRiskThirdPartyOversightAndIdentificationProcessesFlag":
+        "cyber_third_party_oversight",
 }
 
 
@@ -144,6 +172,14 @@ class CoverFacts:
     #: Did that correction require a clawback recovery analysis under 240.10D-1(b)? Only asked
     #: when `error_correction` is true, so None on a clean filer is "not applicable".
     clawback_recovery_analysis: bool | None = None
+    #: Item 1C cybersecurity flags. `None` is UNTAGGED, never "no" -- the requirement applies to
+    #: annual reports for fiscal years ending on or after 2023-12-15.
+    cyber_materially_affected: bool | None = None
+    cyber_processes_integrated: bool | None = None
+    cyber_third_party_engaged: bool | None = None
+    cyber_positions_responsible: bool | None = None
+    cyber_reports_to_board: bool | None = None
+    cyber_third_party_oversight: bool | None = None
     extensions: ExtensionCensus = field(default_factory=ExtensionCensus)
     instance_bytes: int | None = None
     status: str = "ok"  # "ok" | "na"
@@ -221,8 +257,18 @@ def parse_cover_facts(instance_xml: str) -> CoverFacts:
             extension_ns = uri
             extension_elements[local] += 1
 
+        if el.get("contextRef") not in dimensionless:
+            continue
+
+        cyd = _CYD.match(el.tag)
+        if cyd is not None:
+            field_name = _WANTED_CYD.get(cyd.group(1))
+            if field_name:
+                setattr(result, field_name, _bool((el.text or "").strip()))
+            continue
+
         dei = _DEI.match(el.tag)
-        if dei is None or el.get("contextRef") not in dimensionless:
+        if dei is None:
             continue
         name = dei.group(1)
         value = (el.text or "").strip()

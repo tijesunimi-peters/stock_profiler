@@ -249,3 +249,63 @@ class TestTheCacheHealsWhenTheFieldSetGrows:
             assert got.clawback_recovery_analysis is None
         finally:
             repo.close()
+
+
+class TestItem1CCybersecurityFlags:
+    """All six `cyd` flags are tagged by 8 of 8 exemplar filers (measured 2026-08-05), so this is
+    a dense disclosure. What matters is that an UNTAGGED one never reads as a "no"."""
+
+    CYD = "http://xbrl.sec.gov/cyd/2025"
+
+    def _cyd_instance(self, facts: str) -> str:
+        return (
+            f'<xbrl xmlns="{XBRLI}" xmlns:dei="{DEI}" xmlns:cyd="{self.CYD}" '
+            f'xmlns:xbrldi="{XBRLDI}">{_ctx("c")}{facts}</xbrl>'
+        )
+
+    def test_the_six_flags_are_read(self):
+        facts = (
+            '<cyd:CybersecurityRiskMateriallyAffectedOrReasonablyLikelyToMateriallyAffect'
+            'RegistrantFlag contextRef="c">false</cyd:CybersecurityRiskMateriallyAffected'
+            'OrReasonablyLikelyToMateriallyAffectRegistrantFlag>'
+            '<cyd:CybersecurityRiskManagementProcessesIntegratedFlag contextRef="c">true'
+            "</cyd:CybersecurityRiskManagementProcessesIntegratedFlag>"
+            '<cyd:CybersecurityRiskManagementThirdPartyEngagedFlag contextRef="c">true'
+            "</cyd:CybersecurityRiskManagementThirdPartyEngagedFlag>"
+            '<cyd:CybersecurityRiskManagementPositionsOrCommitteesResponsibleFlag contextRef="c">'
+            "true</cyd:CybersecurityRiskManagementPositionsOrCommitteesResponsibleFlag>"
+            '<cyd:CybersecurityRiskManagementPositionsOrCommitteesResponsibleReportToBoardFlag '
+            'contextRef="c">true</cyd:CybersecurityRiskManagementPositionsOrCommitteesResponsible'
+            "ReportToBoardFlag>"
+            '<cyd:CybersecurityRiskThirdPartyOversightAndIdentificationProcessesFlag '
+            'contextRef="c">true</cyd:CybersecurityRiskThirdPartyOversightAndIdentification'
+            "ProcessesFlag>"
+        )
+        facts_parsed = parse_cover_facts(self._cyd_instance(facts))
+        # An affirmative FALSE: the registrant stating no material effect. A checked negative,
+        # which is a stronger answer than a missing 8-K Item 1.05.
+        assert facts_parsed.cyber_materially_affected is False
+        assert facts_parsed.cyber_processes_integrated is True
+        assert facts_parsed.cyber_third_party_engaged is True
+        assert facts_parsed.cyber_positions_responsible is True
+        assert facts_parsed.cyber_reports_to_board is True
+        assert facts_parsed.cyber_third_party_oversight is True
+
+    def test_an_untagged_flag_is_none_not_false(self):
+        # A filing predating the requirement (fiscal years ending before 2023-12-15) tags none of
+        # them. False would assert the registrant answered "no" about a question never asked.
+        facts_parsed = parse_cover_facts(self._cyd_instance(""))
+        assert facts_parsed.cyber_materially_affected is None
+        assert facts_parsed.cyber_reports_to_board is None
+
+    def test_the_prose_text_blocks_are_never_read(self):
+        # Ten of the taxonomy's fifteen elements are TextBlocks -- the framework a company follows,
+        # its process description. Prose, Track 2, and there is no field for them.
+        facts = (
+            '<cyd:CybersecurityRiskManagementProcessesForAssessingIdentifyingAndManaging'
+            'ThreatsTextBlock contextRef="c">&lt;p&gt;We follow NIST CSF&lt;/p&gt;'
+            "</cyd:CybersecurityRiskManagementProcessesForAssessingIdentifyingAndManaging"
+            "ThreatsTextBlock>"
+        )
+        facts_parsed = parse_cover_facts(self._cyd_instance(facts))
+        assert "NIST" not in str(facts_parsed)

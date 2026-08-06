@@ -1031,7 +1031,14 @@ backend task after Phase 0.
 | 8.6 | Material agreements · 8-K 1.01 | **P** | Existence and date: shipped capability. **The agreement's title is text: T.** |
 | 8.7 | Outlook language · 8-K 2.02 exhibit | **T** | Guidance is a furnished exhibit. |
 
-> **⚠️ Operator decision needed.** Six of seven fields here are Track 2. Options:
+> ✅ **DECIDED 2026-08-05 — option (c), re-scope the whole section.** §08 is now
+> **"Filing activity & disclosure events"**, six cards, all real: the 8-K item profile, form mix
+> and amendment rate (`/filing-activity`), Item 1C cybersecurity from the `cyd` flags, material
+> agreements from 8-K 1.01, plus restatement events and tag-set density — the last two knowingly
+> restating §06, which the cards say outright. 8.1/8.2/8.5/8.7 and the framework line are gone
+> rather than faked: no Track 1 path exists for any of them.
+>
+> ~~**⚠️ Operator decision needed.** Six of seven fields here are Track 2. Options:~~
 > **(a)** Render the section with 8.4 and 8.6 live and the rest in honest empty states — a section
 > that is mostly empty states.
 > **(b)** Re-scope §08 to **"Filing activity & disclosure events"**: 8-K item codes over time,

@@ -1818,3 +1818,72 @@ the filer's unit, and it is neither corrected nor suppressed — the same rule t
 their raw reported unit everywhere else. It will look like our bug and it is not.
 
 `MtrlTermsOfTrdArrTextBlock` — what the plan actually instructs — is prose, Track 2, and unread.
+
+---
+
+## Filing activity & disclosure events (§08) — re-scoped
+
+**Operator ruling 2026-08-05.** Five of §08's seven designed fields are irreducibly narrative and
+none was faked: the risk-factor diff (Item 1A), MD&A attributed drivers (Item 7), outlook language
+(a furnished 8-K 2.02 exhibit), the cybersecurity **framework** line, and human-capital headcount
+(Item 1.10, already settled as untagged). The section now carries the filing record instead.
+
+### `GET /companies/{symbol}/filing-activity`
+
+Form mix, amendment rate and 8-K item profile, over the company's indexed window. **Existence,
+dates and item codes — never contents.** An item code says *which kind* of event was reported, not
+what it said.
+
+Measured 2026-08-05:
+
+| | filings | 8-Ks | Item 1.01 | Item 1.05 | amended | window |
+|---|---:|---:|---:|---:|---:|---|
+| Tesla | 1,001 | 127 | 18 | 0 | 5.3% | 2018–2026 |
+| Apple | 1,000 | 106 | 0 | 0 | 2.8% | 2015–2026 |
+| Microsoft | 1,000 | 66 | 0 | **2** | 1.8% | 2020–2026 |
+| JPMorgan | 25,529 | 26 | 0 | 0 | 0.5% | 2025–2026 |
+
+**Every count is scoped to EDGAR's ROLLING window and the window travels with it.** Apple's reaches
+2015 and JPMorgan's covers twelve months — because JPMorgan files 22,184 424B2 prospectus
+supplements, which fill the rolling list. A count without its window compares a decade to a year.
+
+**An amendment rate is a rate, not a quality score.** An amendment may be a correction or a routine
+refiling and the index cannot tell them apart, so the card says so.
+
+### Item 1C cybersecurity — the `cyd` flags
+
+Six flags, tagged by **8 of 8** exemplar filers, parsed from the same instance `sec/cover.py`
+already reads and served on `/audit`:
+
+`CybersecurityRiskMateriallyAffected…Flag` · `…ProcessesIntegratedFlag` ·
+`…ThirdPartyEngagedFlag` · `…PositionsOrCommitteesResponsibleFlag` · `…ReportToBoardFlag` ·
+`CybersecurityRiskThirdPartyOversightAndIdentificationProcessesFlag`
+
+**The first is the valuable one.** An affirmative `false` is the registrant **stating** no material
+cyber effect — a *checked* negative, where a missing 8-K Item 1.05 is only an unchecked box. Both
+are shown and they are not the same claim. `None` is UNTAGGED, never "no": the requirement applies
+to fiscal years ending on or after 2023-12-15.
+
+**The framework line stays Track 2.** Which standard a registrant follows (NIST CSF, ISO 27001) is
+a `cyd` prose TextBlock. Ten of the taxonomy's fifteen elements are TextBlocks and none is read.
+
+### Two cards deliberately restate §06
+
+Restatement/non-reliance events and tag-set density are the **same filings and the same census §06
+shows**. The operator accepted that duplication; the cards name §06 as their source rather than
+posing as a second finding. Tag density additionally states that it **cannot show a change over
+time**, because only the latest annual instance is stored.
+
+### The annual-report picker — `preferred_annual_report`
+
+**The newest annual FILING is not always the annual REPORT.** Tesla's newest is a 10-K/A filed
+2026-04-30 — a **5,986-byte** Part III amendment incorporating proxy information, which carries
+almost none of the cover page. Reading it newest-first stored a shell: no Item 1C tagging, and
+**zero Item 408(a) arrangements where the real 2.68 MB 10-K discloses two named officers**. §05.5
+reported "no plans adopted" about a company that had adopted two. The auditor happened to survive
+in the amendment, which is why §06 still looked healthy and the gap stayed invisible.
+
+The picker now prefers the newest **original**, using an amendment only when no original is
+indexed. This deliberately departs from latest-filed-wins, which is a rule about restated *facts*
+in `raw_facts` — not about which document carries a cover page. `COVER_SCHEMA_VERSION` was bumped
+so every row written under the old picker is treated as a miss and re-read.

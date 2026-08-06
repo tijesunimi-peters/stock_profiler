@@ -142,7 +142,10 @@ src/secfin/
     institutional.py           # fetch + parse 13F info table + cover page, 13D/G
     cover.py                   # 10-K cover-page dei facts (auditor name/PCAOB id/location, ICFR
                                #   attestation flag, Rule 10D-1 error-correction + clawback-recovery
-                               #   flags) + company extension-tag census, from the
+                               #   flags, Item 1C `cyd` cybersecurity flags) + extension-tag census.
+                               #   COVER_SCHEMA_VERSION stamps every row: an older stamp reads as a
+                               #   cache MISS, so adding a field (or changing WHICH filing is read)
+                               #   heals the cache instead of serving NULL forever. From the
                                #   filing's EXTRACTED XBRL INSTANCE (*_htm.xml). Tagged facts in
                                #   XML -- NOT a document parse, so the EX-21 exception is untouched
     trading_arrangements.py    # Item 408(a) Rule 10b5-1 arrangements from the SAME 10-K instance
