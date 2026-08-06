@@ -851,6 +851,22 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         # slot it fills (operator ruling 2026-08-04). It is never folded into `guarantee_obligations`.
         ["LettersOfCreditOutstandingAmount", "StandbyLettersOfCreditAmountOutstanding"],
     ),
+    "loss_contingency_accrual": (
+        "Loss Contingency Accrual",
+        # §07.1's ONLY structured column. 8.1% of all filers market-wide (1,373 of 16,920) and
+        # ~24% of established ones -- the gap is the long tail of tiny registrants, not a
+        # disagreement between measurements.
+        #
+        # `LossContingencyDamagesSoughtValue` is deliberately ABSENT from this list despite similar
+        # coverage (6.8%): damages sought is what a PLAINTIFF claims, not what the filer recorded.
+        # Unioning them would report an opponent's demand as the company's own accrual.
+        [
+            "LossContingencyAccrualAtCarryingValue",
+            "LitigationReserve",
+            "LitigationReserveCurrent",
+            "LitigationReserveNoncurrent",
+        ],
+    ),
     "environmental_accrual": (
         "Environmental Remediation Accrual",
         # 6.2% / 16.8% for the headline tag. The current/noncurrent split is a different cut of the
@@ -1108,6 +1124,12 @@ OBLIGATION_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
         # evidence that one happened, so it cannot make the card `ok` on its own.
         ["restructuring_charge", "restructuring_reserve", "restructuring_paid"],
     ),
+    "legal_proceedings": (
+        "Legal proceedings",
+        ["loss_contingency_accrual"],
+        0.08,
+        ["loss_contingency_accrual"],
+    ),
     "guarantees": (
         "Guarantees, environmental & off-balance-sheet",
         ["guarantee_obligations", "letters_of_credit", "environmental_accrual"],
@@ -1119,6 +1141,14 @@ OBLIGATION_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
 
 #: Why an obligation group is empty, when "this filer chose not to disclose" would be misleading.
 OBLIGATION_GROUP_NOTES: dict[str, str] = {
+    "legal_proceedings": (
+        "Under ASC 450 an accrual is recorded only when a loss is both probable and REASONABLY "
+        "ESTIMABLE, so its absence is not a zero exposure -- a filer can disclose a matter it "
+        "cannot size, and most do. The matters themselves are Item 3 narrative: what each one is, "
+        "what stage it has reached and how long it has run are tagged in no structured source. "
+        "(A `LitigationCase` axis carries named matters for about one annual filer in seventy, "
+        "which is too few to build a table on.)"
+    ),
     "purchase_commitments": (
         "Purchase commitments are split across three unrelated tag families and no single tag "
         "reaches 15% of filers, so this card reads the union of all three. Even so only about a "

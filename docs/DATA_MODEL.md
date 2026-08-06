@@ -180,6 +180,36 @@ fixed number of *filings*, not of years, so its span is set by how much the comp
 (2.0 — two annual-report cycles) no floor is published, because one that moved with filing volume
 would look like a measurement of something.
 
+### Legal proceedings: one structured column out of four
+
+`loss_contingency_accrual` is the only part of §07.1 that exists in structured form —
+`LossContingencyAccrualAtCarryingValue` and the `LitigationReserve*` family, on **8.1% of the
+16,920 companies in `raw_facts`** (about 24% of established filers; the gap is the long tail of
+tiny registrants, not two measurements disagreeing). What a matter is, what stage it has reached
+and how long it has run are Item 3 narrative.
+
+**An absent accrual is emphatically not a zero exposure.** ASC 450 records one only when a loss is
+both probable *and* reasonably estimable, so a filer can disclose a matter it cannot size — and
+most do. Of Apple, J&J, Pfizer and Coca-Cola, **none** tags a recorded accrual.
+
+**What those filers tag instead is adjacent and different**, which is why the candidate list stays
+narrow rather than reaching for coverage:
+
+| tag | why it is NOT the accrual |
+|---|---|
+| `LossContingencyDamagesSoughtValue` (6.8%) | what a **plaintiff demands** — an opponent's claim |
+| `LossContingencyDamagesAwardedValue` (JNJ) | an outcome, not a balance |
+| `LossContingencyLossInPeriod` (PFE) | a P&L flow, not a balance |
+| `ProductLiabilityContingency…InExcessOfAccrual…` (PFE) | the excess **over** the accrual |
+| `IncomeTaxReconciliationTaxContingencies` (KO, AAPL) | uncertain **tax** positions — unrelated |
+
+Unioning any of them would roughly double the apparent coverage by reporting a different quantity
+under this heading.
+
+**A `LitigationCase` axis does carry named matters** — `LeadPigmentLitigation`,
+`EthyleneOxideTortLitigationIllinois` — but on 66 of 4,634 annual filers (**1.4%**), one in
+seventy. That is a real structured source and still too rare to build a table on.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

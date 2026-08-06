@@ -329,6 +329,10 @@ interface FootnotesResponse {
     reason: string | null;
     coverage: number;
     lines: { canonical_concept: string; label: string; value: number; unit: string }[];
+    /** Why this group is thin or empty, when "the filer chose not to disclose" would mislead. */
+    note?: string | null;
+    form?: string | null;
+    filed?: string | null;
   }[];
 }
 
@@ -1362,6 +1366,8 @@ function toObligationCards(res: FootnotesResponse | null) {
   const commit = res ? groupValues(res, "purchase_commitments") : empty;
   const restr = res ? groupValues(res, "restructuring") : empty;
   const guar = res ? groupValues(res, "guarantees") : empty;
+  const legal = res ? groupValues(res, "legal_proceedings") : empty;
+  const legalGroup = res?.groups.find((g) => g.group === "legal_proceedings");
 
   const ladder = [
     ["Year 1", "purchase_obligation_y1"], ["Year 2", "purchase_obligation_y2"],
@@ -1418,12 +1424,26 @@ function toObligationCards(res: FootnotesResponse | null) {
     offBS: guar.money("letters_of_credit"),
     offBSLabel: "Letters of credit outstanding",
     guaranteesReason: guar.ok ? null : guar.reason,
-    // §07.1 is not built: three of its four columns are Item 3 narrative. See the route docstring.
-    legalReason:
-      "What a legal matter is, what stage it has reached and how long it has run are Item 3 " +
-      "narrative, so this table is not sourced from filings. A recorded accrual is structured " +
-      "but is tagged by under a quarter of filers — and under ASC 450 it exists only when a loss " +
-      "is both probable and estimable, so its absence never means the exposure is zero.",
+    // §07.1's ONE structured column. The other three — the matter, its stage, its age — are Item 3
+    // narrative, so the card reports the accrual alone rather than a table it cannot fill.
+    //
+    // The absence is the common case and is NOT a zero: of the four best-known filers checked,
+    // none tags a recorded accrual. What JNJ and Pfizer tag instead is adjacent and different —
+    // damages AWARDED against them, a loss recognised IN THE PERIOD, an exposure IN EXCESS OF the
+    // accrual — and mapping any of those in would report something else under this heading.
+    legalAccrual: legal.money("loss_contingency_accrual"),
+    legalOk: legal.ok,
+    legalReason: asCopy(legal.reason),
+    // When the group is `na` the route uses the standing note AS the reason, so carrying both
+    // prints the same paragraph twice. The note is the accrual's bound; the reason is the absence's
+    // explanation. Where they are the same string only one is a note.
+    legalNote:
+      legalGroup?.note && legalGroup.note !== legalGroup.reason ? asCopy(legalGroup.note) : null,
+    legalSource: legal.ok
+      ? [legalGroup?.form, legalGroup?.filed ? fmtFiled(legalGroup.filed) : null]
+          .filter(Boolean)
+          .join(" · ")
+      : null,
   };
 }
 
@@ -1487,6 +1507,15 @@ interface AuditResponse {
   critical_audit_matters: { status: string; reason: string };
   critical_accounting_estimates: { status: string; reason: string };
   filing?: { form: string | null; filed: string | null; accession: string | null } | null;
+}
+
+/** `"2026-07-29" → "29 Jul 2026"`. A filing date is known to the day, so unlike an index edge it
+ * is shown to the day. */
+function fmtFiled(iso?: string | null): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${Number(d)} ${names[Number(m) - 1] ?? ""} ${y}`;
 }
 
 /** API `reason` strings are authored in Python, where the repo writes an em dash as ASCII `--`.
@@ -2232,9 +2261,12 @@ export const api = {
       /** §04.5 on the ASC ClassOfStock axis. */
       shareClasses: toShareClasses(classes),
       /*
-       * §07's three buildable cards over the fixture's shape. The legal-proceedings table stays a
-       * fixture BY RULING (2026-08-04): three of its four columns are Item 3 narrative, so it is
-       * marked synthetic rather than rebuilt around the one column that is structured.
+       * §07, now all four cards on filings. The 2026-08-04 ruling kept the legal-proceedings TABLE
+       * as a marked fixture; it was overturned on 2026-08-06 once the fixture's contents were
+       * looked at rather than its shape. It invented three matters per company — "securities class
+       * action · on appeal · $214M" against a named issuer — which is a fabricated ALLEGATION, not
+       * a fabricated number, and the synthetic chip did not stop the rows reading as data. The
+       * card now reports the one structured column, the recorded accrual.
        */
       obligations: { ...hub.hubData(symbol).obligations, ...toObligationCards(obl) },
       covenant: hub.hubData(symbol).covenant,
@@ -2557,8 +2589,10 @@ export interface CompanyFootnotes {
   blockholders: ReturnType<typeof toBlockholders>;
   /** §04.5 share classes, on the ASC ClassOfStock axis. */
   shareClasses: ReturnType<typeof toShareClasses>;
-  // The fixture's shape with §07's plumbed cards merged over it. `legal` and `rangeNote` still
-  // come from the fixture and are marked synthetic in the view; everything else is filings data.
+  // The fixture's shape with §07's plumbed cards merged over it. As of 2026-08-06 the fixture's
+  // `legal` rows and `rangeNote` are no longer READ by the view: §07.1 renders the recorded
+  // accrual and an explained absence instead of three invented matters. The fixture fields remain
+  // in the type only because `hub.HubData` still declares them.
   obligations: hub.HubData["obligations"] & ReturnType<typeof toObligationCards>;
   covenant: string;
 }

@@ -1299,27 +1299,28 @@ export function HubOverview() {
               estimable" means the filer disclosed a matter without a recordable amount, not that
               the exposure is zero
             </span>
-            {/* Three of this table's four columns — the matter, its stage, its age — are Item 3
-                narrative. Operator ruling 2026-08-04: mark it rather than rebuild it around the
-                one structured column, which under a quarter of filers tag anyway. */}
-            <SynthCard why={d.obligations.legalReason} />
             <Src href={L.tenK}>Read Item 3 ↗</Src>
           </div>
-          <div className="hub-table-head hub-legal-grid">
-            <span>Matter</span>
-            <span>Stage</span>
-            <span className="ta-r">Accrual</span>
-            <span className="ta-r">Since</span>
-          </div>
-          {d.obligations.legal.map((l, i) => (
-            <div className="hub-legal-grid hub-row" key={`${l.matter}${i}`}>
-              <span className="hub-cell">{l.matter}</span>
-              <span className="hub-cell-mono is-soft">{l.stage}</span>
-              <span className="hub-cell-mono ta-r">{l.accrual}</span>
-              <span className="hub-cell-mono ta-r is-soft">{l.since}</span>
+          {/* Three of the four columns this card used to show — the matter, its stage, its age —
+              are Item 3 narrative, and the rows standing in for them were invented. A fabricated
+              matter is not a fabricated number: "securities class action, on appeal, $214M"
+              against a named issuer reads as a fact about that company. So the card reports the
+              ONE structured column and says plainly what it is not reporting. */}
+          {d.obligations.legalOk ? (
+            <div>
+              <span className="hub-hint">Recorded loss contingency accrual</span>
+              <div className="hub-big is-lg">{d.obligations.legalAccrual}</div>
+              {d.obligations.legalSource && (
+                <div className="hub-cell-mono is-soft">{d.obligations.legalSource}</div>
+              )}
             </div>
-          ))}
-          <div className="hub-note">{d.obligations.rangeNote}</div>
+          ) : (
+            <FootnoteEmpty reason={d.obligations.legalReason} />
+          )}
+          {/* What bounds the figure above. Absent when there is no figure — the empty state has
+              already given the same paragraph as its reason, and printing it twice reads as a
+              rendering fault rather than emphasis. */}
+          {d.obligations.legalNote && <div className="hub-note">{d.obligations.legalNote}</div>}
         </div>
 
         <div className="hub-grid hub-mt">
