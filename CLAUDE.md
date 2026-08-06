@@ -170,6 +170,14 @@ src/secfin/
                                #   margin only where BOTH revenue and operating income are tagged
                                #   (35% of filers); shares are of the DISCLOSED splits, which need
                                #   not sum to consolidated revenue
+    share_classes.py           # §04.5: per-class share counts off the ClassOfStock axis. Has NO
+                               #   votes-per-share field BY DESIGN -- the voting ratio is charter
+                               #   prose, tagged nowhere, and Alphabet's Class B is 6.9% of shares
+                               #   at ten votes each, so counts must never imply control
+    blockholders.py            # §04.7: current 5%+ holders from the 13D/G cache. Latest filing per
+                               #   owner wins (an amendment supersedes); BLOCK_THRESHOLD_PCT = 5.0
+                               #   and anything under it is an EXIT, not a small blockholder --
+                               #   `None` is unknown, which is not below
     filing_changes.py          # the "what changed this filing" band: a NOTIFICATION, not a status
                                #   board -- only events that HAPPENED since the prior annual report,
                                #   so a quiet company yields no rows and the caller names what was
@@ -268,9 +276,13 @@ src/secfin/
                                #   never live path; reconcile-or-exclude + coverage
   ingest/
     downloader.py              # resumable download of SEC bulk zips (incl. DERA FSDS quarters, P6b)
-    dimensional_backfill.py    # P6b: bounded ASC 280 geographic-revenue ingest from DERA quarterly
-                               #   ZIPs (num.txt segments col) -> dimensional_geo_facts. Single
-                               #   writer; reuses mapping "revenue" candidates; reconciling filter
+    dimensional_backfill.py    # bounded dimensional-XBRL ingest from DERA quarterly ZIPs (num.txt
+                               #   segments col). TWO sinks: P6b geographic revenue ->
+                               #   dimensional_geo_facts, and §03/§04.5's BusinessSegments +
+                               #   Geographical + ClassOfStock -> dimensional_facts. EVERY axis on a
+                               #   row is tested, not just the first -- a first-match-wins loop read
+                               #   Apple as 5 segments and 0 countries. Single writer; reuses
+                               #   mapping "revenue" candidates; reconciling filter
     backfill.py                # bulk companyfacts backfill: downloader -> N parsers -> 1 writer
     incremental.py              # daily incremental via SEC daily index + SECClient
     frames_backfill.py          # bulk-ingest frames data for cross-company screening (M4)

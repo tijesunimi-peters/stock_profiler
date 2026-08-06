@@ -42,7 +42,9 @@ from secfin.normalize.geography import classify_location
 from secfin.normalize.insider_summary import summarize_insider_transactions
 from secfin.normalize.filing_changes import build_filing_changes
 from secfin.normalize.officer_changes import build_officer_changes
+from secfin.normalize.blockholders import build_blockholders
 from secfin.normalize.segments import build_segment_breakdown
+from secfin.normalize.share_classes import build_share_classes
 from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
@@ -3145,6 +3147,52 @@ _NAMED_8K_ITEMS: dict[str, str] = {
 
 
 @public_router.get(
+    "/companies/{symbol}/share-classes",
+    tags=["Financials"],
+    summary="Per-class share counts from the ASC ClassOfStock axis",
+)
+async def get_share_classes(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    dimensional_repo: DimensionalRepository = Depends(get_dimensional_repo),
+) -> dict:
+    """A company's share classes, as it tagged them.
+
+    Companyfacts carries no dimensional facts, so per-class counts come from DERA's data sets.
+    The axis is on 1,903 of 2026q1's 4,309 annual filers; a single-class registrant has nothing to
+    disaggregate and returns `na`.
+
+    **Votes per share is absent and always will be.** How many votes a Class B share carries lives
+    in the certificate of incorporation -- prose in an exhibit, tagged in no SEC source. That
+    matters more here than in most gaps: the point of a dual-class structure IS the voting ratio,
+    so a reader must not infer control from the share counts. Class B being the smaller class says
+    nothing about who controls the company.
+
+    **Authorised is not outstanding.** Both are carried -- the gap is issuance headroom, a real
+    fact about dilution capacity -- and they are never mixed.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    result = build_share_classes(cik, dimensional_repo.facts_for_cik(cik, axis="ClassOfStock"))
+    return {
+        "cik": cik,
+        "status": result.status,
+        "reason": result.reason,
+        "fiscal_year": result.fiscal_year,
+        "accession": result.accession,
+        "classes": [asdict(c) for c in result.classes],
+        "caveats": [
+            "Votes per share is not tagged in any SEC structured source -- share counts alone do "
+            "not describe control in a dual-class structure.",
+            "Authorised shares are issuance headroom, not shares in issue.",
+            "Counts are as tagged in the fiscal year shown, which is the latest DERA quarter "
+            "ingested for this filer -- not necessarily its most recent filing.",
+        ],
+    }
+
+
+@public_router.get(
     "/companies/{symbol}/segments",
     tags=["Financials"],
     summary="ASC 280 reportable segments and geography",
@@ -3414,9 +3462,21 @@ async def get_beneficial_ownership(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         owners = await _beneficial_ownership_for_cik(beneficial_ownership_repo, client, cik, limit)
+    # The raw rows are a filing HISTORY; §04's card needs the current position. `current` collapses
+    # to one row per owner (latest filing wins, because a 13D/G amendment supersedes its
+    # predecessor) and separates the 0% amendments, which are EXITS -- a holder saying it dropped
+    # below 5%, not a holder owning nothing. The full history stays in `beneficial_ownership`.
+    current = build_blockholders(owners)
     return {
         "cik": cik,
         "caveats": _BENEFICIAL_OWNERSHIP_CAVEATS,
+        "current": {
+            "status": current.status,
+            "reason": current.reason,
+            "filings_read": current.filings_read,
+            "holders": [asdict(h) for h in current.holders],
+            "exited": [asdict(h) for h in current.exited],
+        },
         # The cover-page type CODE is what the filing carries; the human label is expanded here
         # rather than in the client so `TYPE_OF_REPORTING_PERSON` stays the one place that map
         # lives -- `_vector_payload` expands it the same way for the register's holders table.

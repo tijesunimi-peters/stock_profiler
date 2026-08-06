@@ -72,6 +72,19 @@ _SEGMENT_TAGS: dict[str, str] = {
     "OperatingIncomeLoss": "4",
     "Assets": "0",
 }
+#: §04's class structure. `ClassOfStock` is on 1,903 of 2026q1's 4,309 annual filers (44%), with
+#: members `CommonClassA` / `CommonClassB` / `CommonClassC` and the preferred series. All four are
+#: instants (qtrs=0) -- a share count is a balance, not a flow.
+#:
+#: Votes per share is deliberately absent: it is charter prose, tagged nowhere, and stays N/A.
+_CLASS_AXIS = "ClassOfStock"
+_CLASS_TAGS: dict[str, str] = {
+    "CommonStockSharesOutstanding": "0",
+    "CommonStockSharesIssued": "0",
+    "CommonStockSharesAuthorized": "0",
+    "CommonStockParOrStatedValuePerShare": "0",
+}
+
 #: Geographic tags: revenue (a duration) plus §03.2's long-lived assets (an instant).
 _GEO_TAGS: dict[str, str] = {
     **{t: "4" for t in REVENUE_TAGS},
@@ -276,7 +289,11 @@ def extract_dimensional_facts_from_zip(zip_path: str | Path) -> list[Dimensional
                 # Revenue is wanted on both axes, so selecting by tag put every geographic revenue
                 # row into the segment branch and then dropped it -- Apple ingested five segments
                 # and zero countries.
-                for axis, wanted in ((_SEGMENT_AXIS, _SEGMENT_TAGS), (_GEO_AXIS, _GEO_TAGS)):
+                for axis, wanted in (
+                    (_SEGMENT_AXIS, _SEGMENT_TAGS),
+                    (_GEO_AXIS, _GEO_TAGS),
+                    (_CLASS_AXIS, _CLASS_TAGS),
+                ):
                     if wanted.get(tag) != qtrs:
                         continue
                     member = _dimensional_kind(segments, axis)

@@ -231,6 +231,8 @@ export function HubOverview() {
   const cyber = disclosure.data.cyber;
   const changes = disclosure.data.changes;
   const seg = segments.data.seg;
+  const blockholders = footnotes.data.blockholders;
+  const shareClasses = footnotes.data.shareClasses;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -891,19 +893,45 @@ export function HubOverview() {
             </div>
           </div>
 
+          {/*
+            Per-class share counts, from the ASC ClassOfStock axis (the Phase C ingest). The
+            VOTING column is gone rather than left N/A: votes per share lives in the certificate
+            of incorporation, which is prose, and on this card that omission is the whole point.
+            Alphabet's Class B is 6.9% of shares at ten votes each — a percentage column beside a
+            "votes" column would invite exactly the inference the data cannot support.
+          */}
           <div className="p-card">
-            <div className="hub-panel-head">
-              <span className="hub-label no-mb">Class structure &amp; voting</span>
-              <SynthCard why="The per-class share counts need the ClassOfStock dimensional axis (Phase C), and votes per share is charter prose that is tagged nowhere." />
-              <Src href={L.proxy}>Read the proxy ↗</Src>
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">Share classes</span>
+              <span className="hub-hint">{shareClasses.fiscalYear ?? ""}</span>
+              <Src href={L.tenK}>Read the 10-K ↗</Src>
             </div>
-            {d.capital.classes.map((c) => (
-              <div className="hub-tri-row is-narrow" key={c.c}>
-                <span className="hub-cell">{c.c}</span>
-                <span className="hub-cell-mono ta-r">{c.sh}</span>
-                <span className="hub-cell-mono ta-r is-soft">{c.v}</span>
-              </div>
-            ))}
+            {shareClasses.ok ? (
+              <>
+                <div className="hub-table-head hub-tri-row is-narrow">
+                  <span>Class</span>
+                  <span className="ta-r">Outstanding</span>
+                  <span className="ta-r">Authorised</span>
+                </div>
+                {shareClasses.classes.map((c) => (
+                  <div className="hub-tri-row is-narrow" key={c.label}>
+                    <span className="hub-cell">
+                      {c.label}
+                      <span className="hub-hint hub-changed-mark">{c.share}</span>
+                    </span>
+                    <span className="hub-cell-mono ta-r">
+                      <Fig v={c.outstanding} />
+                    </span>
+                    <span className="hub-cell-mono ta-r is-soft">
+                      <Fig v={c.authorized} />
+                    </span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <FootnoteEmpty reason={shareClasses.reason} />
+            )}
+            <div className="hub-note">{shareClasses.note}</div>
             <div className="hub-note">
               <SynthCard why="Verified absent: the DEF 14A beneficial-ownership table is not XBRL-tagged, so this figure has no structured source." />{" "}
               Insider ownership {d.capital.insiderOwn} of shares outstanding (DEF 14A beneficial
@@ -911,19 +939,35 @@ export function HubOverview() {
             </div>
           </div>
 
+          {/*
+            The 5%+ holders who have actually filed. One row per owner — a 13D/G amendment
+            supersedes its predecessor — and a 0% amendment is an EXIT, reported beneath the list
+            rather than as a holder owning nothing.
+          */}
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-label no-mb">Reported blockholders · 13D/G</span>
-              <SynthCard why="Schedule 13D/G is a shipped capability but this card is not plumbed onto it yet — these holder names and stakes are generated." />
               <Src href={L.all}>EDGAR filings ↗</Src>
             </div>
-            {d.capital.holders.map((h) => (
-              <div className="hub-tri-row is-narrow" key={h.name}>
-                <span className="hub-cell">{h.name}</span>
-                <span className="hub-cell-mono ta-r">{h.pct}</span>
-                <span className="hub-cell-mono ta-r is-soft">{h.form}</span>
-              </div>
-            ))}
+            {blockholders.ok ? (
+              blockholders.holders.map((h) => (
+                <div className="hub-tri-row is-narrow" key={h.name}>
+                  <span className="hub-cell" title={h.filed ? `Filed ${h.filed}` : undefined}>
+                    {h.name}
+                  </span>
+                  <span className="hub-cell-mono ta-r">
+                    <Fig v={h.pct} />
+                  </span>
+                  <span className="hub-cell-mono ta-r is-soft">{h.form}</span>
+                </div>
+              ))
+            ) : (
+              <FootnoteEmpty reason={blockholders.reason} />
+            )}
+            {blockholders.exitNote ? (
+              <div className="hub-note">{blockholders.exitNote}</div>
+            ) : null}
+            <div className="hub-note">{blockholders.note}</div>
           </div>
         </div>
       </section>

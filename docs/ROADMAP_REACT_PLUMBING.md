@@ -520,6 +520,11 @@ Denominator note: **segment, geographic and customer disclosure is an ANNUAL foo
 - **`ClassOfStock` carries `CommonStockSharesOutstanding` (7,770), `…Issued` (5,786),
   `…Authorized` (4,839)** — §04.5's share counts per class. **Votes per share is still absent**, so
   the §04.5 ruling stands unchanged: ship share counts, `N/A` the votes column.
+
+> **Superseded in part (2026-08-06).** `ClassOfStock`'s 59.7% above was counted across all filings
+> in the quarter; counting *10-K filers* directly in 2026q1 gives **44.4%** (1,892 of 4,262) —
+> the same correction that moved `BusinessSegments` from 66.5% to 52.1%. The verdict is unchanged
+> and the card shipped; only the coverage figure moved.
 - **`ProductOrService` carries the revenue tags** — §02.7.
 
 ## Two cards are confirmed available but very thin
@@ -873,9 +878,22 @@ for geography — **reuse those filters, do not re-derive them.**
 | 4.2 | Dilution overhang — options / unvested RSUs / % | **M** | **V1: options outstanding 77.8%**, unvested awards 35.6%. The % is derived against shares outstanding. |
 | 4.3 | Repurchase program — authorized / remaining / repurchased | **M** | **V1 overturned my prediction.** Paid: 75.6%. **Authorized IS tagged** — 31.1% broad, **55.6% deep**, across two tag variants that must both be mapped. All four tiles are `M`. |
 | 4.4 | Shelf (S-3) / convertible notes | **P** + **T** | *Existence and date* of an S-3 from `/filing-index`: **P**, and already proven by V3-P5a §06. Principal amount and maturity: **T**. |
-| 4.5 | Class structure & voting | **D** + **T** | **V5-verified:** the `ClassOfStock` axis carries `CommonStockSharesOutstanding`/`Issued`/`Authorized` on **59.7% of annual filers**. **Votes per share is charter language: T.** A dual-class card that cannot say "10 votes" is a weak card — see the ruling below. |
-| 4.6 | Insider ownership % of shares out | **X** | **V2-verified absent** from the tagged DEF 14A — the beneficial-ownership table is not tagged. |
-| 4.7 | Reported blockholders · 13D/G | **P** | `/companies/{symbol}/beneficial-ownership` — shipped. |
+| 4.5 | Share classes | **D** ✅ | **SHIPPED 2026-08-06** under option (a), retitled per the ruling. `ClassOfStock` widened into `dimensional_backfill`; `normalize/share_classes.py` → `GET /share-classes`. Axis is on **44.4%** of 2026q1's 10-K filers (1,892 of 4,262, counted directly; supersedes V5's 59.7%). **No votes field exists and a test enforces it.** |
+| 4.6 | Insider ownership % of shares out | **X** | **V2-verified absent** from the tagged DEF 14A — the beneficial-ownership table is not tagged. Remains the section's one synthetic slot, marked as such. |
+| 4.7 | Reported blockholders · 13D/G | **P** ✅ | **SHIPPED 2026-08-06.** `normalize/blockholders.py` collapses the 13D/G history: latest filing per owner, `BLOCK_THRESHOLD_PCT = 5.0`, sub-5% listed as **exits** with their residual stake. |
+
+### 4.5 Class structure — ruled (a), shipped 2026-08-06
+
+**Operator: "take both."** Shipped as option (a), and the card was retitled **"Share classes"** —
+not a retitle to dodge rule 2 but because the card no longer claims to cover voting at all. What
+the card asserts instead, in its own footer: the percentages are of shares outstanding **not of
+votes**, and share counts **cannot describe control**. Authorised is named as *issuance headroom*
+so it is never read as shares in issue.
+
+The verification came back as predicted: the axis carries the three share-count tags, and **no
+`dei` or us-gaap element carries votes-per-share**. Option (c) stays rejected.
+
+<details><summary>The original ruling as written</summary>
 
 ### 4.5 Class structure — ruling needed
 
@@ -893,6 +911,8 @@ charter term).
   this column would be a category error. **Rejected.**
 - **Recommendation: (a)**, with the votes column's `N/A` reason naming the charter as the source
   we do not read. Option (c) is listed only so it is explicitly ruled out.
+
+</details>
 
 ### 4.6 Insider ownership — the DEF 14A question
 

@@ -539,6 +539,100 @@ function toPayVersusPerformance(res: PvpResponse | null) {
   };
 }
 
+/* ------------------------------------------------------------ §04 blockholders & class structure */
+
+interface BlockholdersResponse {
+  cik: number;
+  current: {
+    status: string;
+    reason: string | null;
+    filings_read: number;
+    holders: { owner: string; form: string | null; percent_of_class: number | null; shares: number | null; filed: string | null; reporting_person_type: string | null }[];
+    exited: { owner: string; filed: string | null; percent_of_class: number | null }[];
+  };
+}
+
+interface ShareClassesResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  fiscal_year: number | null;
+  classes: {
+    member: string; label: string; shares_outstanding: number | null; shares_issued: number | null;
+    shares_authorized: number | null; par_value: number | null; outstanding_share: number | null;
+  }[];
+}
+
+/**
+ * §04.7 — the 5%+ holders who have actually filed a Schedule 13D or 13G.
+ *
+ * The endpoint returns a filing HISTORY; `current` collapses it to one row per owner, because a
+ * 13D/G amendment supersedes its predecessor. Two things the card must keep saying:
+ *
+ * **A 0% amendment is an exit, not a holder owning nothing.** Rule 13d-2 requires a filing when a
+ * holder drops through 5%, so it is the filer saying "we are out" — real information, but it
+ * belongs beside the list rather than in it.
+ *
+ * **A short list is normal.** Only holders crossing 5% file at all, and passive institutions file
+ * annually on a 45-day lag. This is not an institutional-ownership ranking and must not read as one.
+ */
+function toBlockholders(res: BlockholdersResponse | null) {
+  const c = res?.current;
+  const holders = (c?.holders ?? []).map((h) => ({
+    name: h.owner,
+    pct: h.percent_of_class === null ? "N/A" : `${h.percent_of_class.toFixed(2)}%`,
+    form: (h.form ?? "").replace("SCHEDULE ", ""),
+    filed: h.filed ? humanDate(h.filed) : "",
+  }));
+  // The residual stake matters: "dropped to 0.83%" and "exited entirely" are different events,
+  // and the filing distinguishes them.
+  const exited = (c?.exited ?? []).map((e) => {
+    const to = e.percent_of_class === null ? "" : e.percent_of_class === 0 ? " to nil" : ` to ${e.percent_of_class.toFixed(2)}%`;
+    return `${e.owner}${to} (${e.filed ? humanDate(e.filed) : "date N/A"})`;
+  });
+
+  return {
+    ok: c?.status === "ok" && holders.length > 0,
+    holders,
+    reason: c?.reason ?? "Schedule 13D/G filings could not be read for this company just now.",
+    exitNote: exited.length
+      ? `${plural(exited.length, "filer")} reported dropping below the 5% threshold: ${exited.join("; ")}.`
+      : "",
+    note:
+      `From ${plural(c?.filings_read ?? 0, "Schedule 13D/G filing")} on file. Only a holder ` +
+      "crossing 5% files at all, and passive institutions file annually on a ~45-day lag — so " +
+      "this is who has reported a stake, not a ranking of institutional ownership.",
+  };
+}
+
+/**
+ * §04.5 — share classes, from the ASC `ClassOfStock` axis.
+ *
+ * **Votes per share is absent and always will be**, and on this card that omission is the point.
+ * Alphabet's Class B is 6.9% of shares at ten votes each, so the founders control the company on a
+ * small minority of the stock. Share counts alone cannot describe control, and the card says so
+ * rather than letting the percentages imply it.
+ */
+function toShareClasses(res: ShareClassesResponse | null) {
+  const shares = (v: number | null) =>
+    v === null ? "N/A" : v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : `${(v / 1e6).toFixed(0)}M`;
+  return {
+    ok: res?.status === "ok" && (res?.classes?.length ?? 0) > 0,
+    fiscalYear: res?.fiscal_year ? `FY${res.fiscal_year}` : null,
+    classes: (res?.classes ?? []).map((c) => ({
+      label: c.label,
+      outstanding: shares(c.shares_outstanding),
+      authorized: shares(c.shares_authorized),
+      share: c.outstanding_share === null ? "N/A" : `${(c.outstanding_share * 100).toFixed(1)}%`,
+    })),
+    reason: res?.reason ?? "Share-class data could not be read for this company just now.",
+    note:
+      "Percentages are of shares OUTSTANDING, not of votes. How many votes a class carries is in " +
+      "the certificate of incorporation — prose, tagged in no SEC source — so these counts cannot " +
+      "describe control. Authorised shares are issuance headroom, not shares in issue.",
+  };
+}
+
 /* ------------------------------------------------------------ §03 segments & geography */
 
 interface SegmentsResponse {
@@ -2065,24 +2159,33 @@ export const api = {
     // tells us which it used. Subtracting one from the current year would be a guess.
     const enc = encodeURIComponent(symbol);
     // Both are ANNUAL reads for the same reason (see the note above), so they go together.
-    const [res, cap, obl] = await Promise.all([
+    const [res, cap, obl, blocks, classes] = await Promise.all([
       getJson<FootnotesResponse>(`/v1/companies/${enc}/footnotes?period=FY`),
       getJson<CapitalResponse>(`/v1/companies/${enc}/capital?period=FY`),
       // §07. Annual for the same reason, and allowed to fail alone: it is the thinnest section on
       // the page and the rest of the footnote reads should not disappear with it.
       getJson<FootnotesResponse>(`/v1/companies/${enc}/obligations?period=FY`).catch(() => null),
+      // §04.7 and §04.5. Each fails alone: the first costs a live SEC fetch on a cold filer, and
+      // neither should be able to take the rest of §04 down.
+      getJson<BlockholdersResponse>(`/v1/companies/${enc}/beneficial-ownership?limit=20`).catch(
+        () => null,
+      ),
+      getJson<ShareClassesResponse>(`/v1/companies/${enc}/share-classes`).catch(() => null),
     ]);
     return {
       footnotes: toFootnoteCards(res),
       /** Which annual period these came from — never assume it is the one the page is showing. */
       footnotePeriod: `FY${res.fiscal_year}`,
       /*
-       * §04's three plumbed cards, merged over the fixture's shape. `classes`, `holders`,
-       * `insiderOwn`, `shelf` and `convert` stay on the fixture deliberately: class structure is
-       * dimensional (Phase C), beneficial ownership was verified absent from the tagged DEF 14A,
-       * and the shelf line is a filing-index read that belongs with §06's window handling.
+       * §04, merged over the fixture's shape. `insiderOwn`, `shelf` and `convert` are the only
+       * fields still on the fixture, and each is permanently so: the DEF 14A beneficial-ownership
+       * table is untagged (V2-verified), and shelf/convertible TERMS are exhibit prose.
        */
       capital: { ...hub.hubData(symbol).capital, ...toCapitalCards(cap) },
+      /** §04.7 on real Schedule 13D/G filings. */
+      blockholders: toBlockholders(blocks),
+      /** §04.5 on the ASC ClassOfStock axis. */
+      shareClasses: toShareClasses(classes),
       /*
        * §07's three buildable cards over the fixture's shape. The legal-proceedings table stays a
        * fixture BY RULING (2026-08-04): three of its four columns are Item 3 narrative, so it is
@@ -2403,8 +2506,12 @@ export interface CompanyFootnotes {
   footnotes: ReturnType<typeof toFootnoteCards>;
   /** e.g. "FY2025" — the annual period the footnotes came from, which the section must show. */
   footnotePeriod: string;
-  /** §04: the fixture's shape with the three plumbed cards merged over it. */
+  /** §04: the fixture's shape with the plumbed cards merged over it. */
   capital: hub.HubData["capital"] & ReturnType<typeof toCapitalCards>;
+  /** §04.7 blockholders, on real 13D/G filings. */
+  blockholders: ReturnType<typeof toBlockholders>;
+  /** §04.5 share classes, on the ASC ClassOfStock axis. */
+  shareClasses: ReturnType<typeof toShareClasses>;
   // The fixture's shape with §07's plumbed cards merged over it. `legal` and `rangeNote` still
   // come from the fixture and are marked synthetic in the view; everything else is filings data.
   obligations: hub.HubData["obligations"] & ReturnType<typeof toObligationCards>;

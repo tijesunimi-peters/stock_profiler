@@ -140,9 +140,27 @@ wrong — invisibly, since both are large positive numbers:
 every movement is tagged, and they are not. The rows that exist are returned; no plug row is
 invented to balance an identity nobody filed.
 
-**Two §04 cards are not served at all**, for reasons verified rather than assumed: class structure
-and voting needs the `ClassOfStock` dimensional axis (Phase C) and votes-per-share is charter prose;
-insider ownership % was V2-verified absent from the tagged DEF 14A.
+**One §04 card is not served at all**, for a reason verified rather than assumed: insider ownership %
+was V2-verified absent from the tagged DEF 14A.
+
+**Class structure IS served** (2026-08-06). Phase C widened `dimensional_backfill` to the
+`ClassOfStock` axis, so per-class share counts now come from DERA `num.txt` — `normalize/share_classes.py`,
+`GET /v1/companies/{id}/share-classes`. **Votes per share stays permanently absent**, and that is the
+load-bearing part of the card: the voting ratio lives in the certificate of incorporation, which is
+prose in an exhibit and tagged in no structured source. Alphabet's Class B is 6.9% of shares at ten
+votes each — so a card showing counts alone must say, in as many words, that they cannot describe
+control. There is no `votes`/`voting_power` field on `ShareClass`, and a test asserts there never is.
+`outstanding_share` is a share of shares outstanding, never of votes, never of authorised.
+
+**Blockholders collapse a filing HISTORY into current positions.** `normalize/blockholders.py` takes
+the latest 13D/G per owner — an amendment supersedes its predecessor, so showing both lists one
+holder twice at two contradictory stakes. Below `BLOCK_THRESHOLD_PCT = 5.0` is an **exit**, not a
+small blockholder: Rule 13d-2 requires an amendment on dropping through the threshold, so a 13G/A
+reporting 0.83% is the filer saying it is no longer a 5% holder (Alphabet's cache holds seven such
+rows, down to 0.01%). A filing carrying **no** percentage stays among the holders with an `N/A` —
+unknown is not below. And the subject of a filing is not the feed it came from: a company's own
+submissions carry the 13Gs it files about *other* issuers, which is why NVIDIA's 9.3% of Nebius
+Group was briefly stored as a holding *of* NVIDIA (fixed in both the repository and the route).
 
 ## Handling the messy realities
 
@@ -1969,6 +1987,7 @@ rows is cheaper than one table serving two contracts.
 | | share of annual filers |
 |---|---:|
 | carries a `BusinessSegments` axis | 52.1% |
+| carries `ClassOfStock` (§04.5) | 44.4% |
 | **has ≥2 NAMEABLE segments** | **34.0%** |
 | carries `Geographical` | 39.6% |
 | carries `MajorCustomers` | 4.1% |
