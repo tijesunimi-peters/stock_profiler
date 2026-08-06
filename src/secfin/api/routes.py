@@ -3380,6 +3380,18 @@ async def get_filing_activity(
             if code.strip():
                 items[code.strip()] += 1
 
+    listed_forms = forms.most_common(8)
+    named_items = [
+        {"code": c, "label": _NAMED_8K_ITEMS.get(c), "count": n}
+        for c, n in items.most_common()
+        if c in _NAMED_8K_ITEMS
+    ]
+    agreements = [
+        {"form": e.form, "filed": e.filing_date, "accession": e.accession}
+        for e in eight_ks
+        if "1.01" in {c.strip() for c in (e.items or "").split(",")}
+    ]
+
     return {
         "cik": cik,
         "status": "ok",
@@ -3391,18 +3403,25 @@ async def get_filing_activity(
         # A rate, not a judgment: an amendment is a correction OR a routine refiling, and the
         # index cannot tell them apart.
         "amended_share": (amended / indexed) if indexed else None,
-        "forms": [{"form": f, "count": n} for f, n in forms.most_common(8)],
+        "forms": [{"form": f, "count": n} for f, n in listed_forms],
+        # Every cap on this route reports its own residual. A column of counts sits under a header
+        # giving the total filings, so a reader can add it up -- and silently dropping the tail
+        # makes the two disagree with no explanation. Naming the remainder is what keeps the
+        # shown rows a SAMPLE rather than an implied whole.
+        "forms_not_listed": {
+            "types": len(forms) - len(listed_forms),
+            "filings": indexed - sum(n for _, n in listed_forms),
+        },
         "eight_k_count": len(eight_ks),
-        "items": [
-            {"code": c, "label": _NAMED_8K_ITEMS.get(c), "count": n}
-            for c, n in items.most_common()
-            if c in _NAMED_8K_ITEMS
-        ],
-        "material_agreements": [
-            {"form": e.form, "filed": e.filing_date, "accession": e.accession}
-            for e in eight_ks
-            if "1.01" in {c.strip() for c in (e.items or "").split(",")}
-        ][:8],
+        "items": named_items,
+        # Codes EDGAR used that we have no label for. Dropping them silently would understate a
+        # company's disclosure activity by whatever we happen not to have named.
+        "items_not_labelled": {
+            "codes": len(items) - len(named_items),
+            "occurrences": sum(items.values()) - sum(i["count"] for i in named_items),
+        },
+        "material_agreements": agreements[:8],
+        "material_agreements_total": len(agreements),
         "caveats": [
             "Counts are over EDGAR's ROLLING indexed window, not a company's whole history -- "
             "the window is reported and differs by filer from one year to a decade.",

@@ -1407,7 +1407,7 @@ export function HubOverview() {
             </div>
             {activity.ok && activity.items.length ? (
               <>
-                {activity.items.slice(0, 7).map((i) => (
+                {activity.items.map((i) => (
                   <div className="hub-kv-row" key={i.code}>
                     <span className="hub-cell">
                       {i.label}
@@ -1416,7 +1416,10 @@ export function HubOverview() {
                     <span className="hub-cell-mono is-soft ta-r">{i.count}</span>
                   </div>
                 ))}
-                <div className="hub-note">{activity.note}</div>
+                <div className="hub-note">
+                  {activity.itemsRest ? `${activity.itemsRest} ` : ""}
+                  {activity.note}
+                </div>
               </>
             ) : (
               <FootnoteEmpty reason={activity.reason} />
@@ -1430,7 +1433,7 @@ export function HubOverview() {
             </div>
             {activity.ok ? (
               <>
-                {activity.forms.slice(0, 6).map((f) => (
+                {activity.forms.map((f) => (
                   <div className="hub-kv-row" key={f.form}>
                     <span className="hub-cell">{f.form}</span>
                     <span className="hub-cell-mono is-soft ta-r">{f.count}</span>
@@ -1440,6 +1443,7 @@ export function HubOverview() {
                   {activity.amended} amended ({activity.amendedPct})
                 </div>
                 <div className="hub-note">
+                  {activity.formsRest ? `${activity.formsRest} ` : ""}
                   An amendment may be a correction or a routine refiling — the filing index cannot
                   tell them apart, so this is a rate, not a quality measure.
                 </div>
@@ -1490,6 +1494,7 @@ export function HubOverview() {
               />
             )}
             <div className="hub-note">
+              {activity.agreementsRest ? `${activity.agreementsRest} ` : ""}
               Existence and date only. What the agreement says — its counterparty, its terms — is
               the 8-K's text and its exhibits.
             </div>

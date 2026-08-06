@@ -50,14 +50,17 @@ await p.waitForFunction((tk)=>{
 }, {timeout:90000}, TK);
 await new Promise(r=>setTimeout(r,700));
 
-const { section, cards } = await p.evaluate(()=>{
+const { section, cards, rows } = await p.evaluate(()=>{
   const sec = document.querySelector("#s8")?.closest(".hub-sec");
-  const cards = {};
+  const cards = {}, rows = {};
   for (const c of sec?.querySelectorAll(".p-card")||[]) {
     const label=(c.querySelector(".hub-label")?.textContent||"").trim();
     cards[label]=(c.innerText||"").replace(/\s+/g," ").trim();
+    // Counted as ELEMENTS, not as occurrences of a string in the card's text: the notes beneath
+    // these lists mention the same item codes, so a text match counts the caveat as a row.
+    rows[label]=c.querySelectorAll(".hub-kv-row").length;
   }
-  return { section:(sec?.innerText||"").replace(/\s+/g," ").trim(), cards };
+  return { section:(sec?.innerText||"").replace(/\s+/g," ").trim(), cards, rows };
 });
 console.log("   heading:", section.slice(0, 130));
 
@@ -104,7 +107,7 @@ if (act?.status==="ok") {
   const agreements = (act.material_agreements||[]).length;
   const mac = cards["Material agreements · 8-K 1.01"] || "";
   if (agreements) {
-    ck(`${agreements} material agreements render`, (mac.match(/Item 1\.01/g)||[]).length===agreements,
+    ck(`${agreements} material agreements render`, rows["Material agreements · 8-K 1.01"]===agreements,
        `card=${(mac.match(/Item 1\.01/g)||[]).length} api=${agreements}`);
   } else {
     ck("no agreements is an absence scoped to the window",
@@ -148,6 +151,43 @@ ck("tag density is not called a non-GAAP count",
    !/non-GAAP adjustment count\b(?! )/.test(cards["Tag-set density"]||"") ||
    /never a non-GAAP adjustment count/i.test(cards["Tag-set density"]||""),
    cards["Tag-set density"]?.slice(-200));
+
+// EDGAR names the ownership forms and the proposed-sale notice by bare number — 3, 4, 5, 144.
+// Beside a count column "4  555" reads as two numbers, so each is checked against the payload.
+const FORM_ROWS = 6, ITEM_ROWS = 7;
+const numeric = (act?.forms ?? []).slice(0, FORM_ROWS).filter((f) => /^\d+(\/A)?$/.test(f.form));
+const mix = cards["Form mix & amendments"] || "";
+for (const f of numeric.slice(0, 6))
+  ck(`form ${f.form} is named, not left a bare number`,
+     mix.includes(`Form ${f.form}`), mix.slice(0, 140));
+if (!numeric.length) ck("this filer's form mix has no bare-numeric form to name", true);
+
+// TWO caps in series: the route returns a top slice and reports the rest as a residual, then the
+// card shows fewer rows still. The note must count BOTH — counting only the card's cap reported
+// NVIDIA as "2 further form types (15 filings)" when the truth was 24 types and 79 filings.
+const hiddenFormTypes =
+  Math.max(0, (act?.forms ?? []).length - FORM_ROWS) + (act?.forms_not_listed?.types ?? 0);
+ck("the form mix counts BOTH caps, not just its own",
+   hiddenFormTypes <= 0 || new RegExp(`${hiddenFormTypes} further form type`).test(mix),
+   `expected=${hiddenFormTypes} :: ${mix.slice(-220)}`);
+// The arithmetic a reader can do: shown rows + named remainder = the header's total.
+const shownFilings = (act?.forms ?? []).slice(0, FORM_ROWS).reduce((a, f) => a + f.count, 0);
+const namedRest = Number((/(\d[\d,]*) filings?\) not shown/.exec(mix)?.[1] || "0").replace(/,/g, ""));
+ck("shown rows plus the named remainder reach the header's total",
+   hiddenFormTypes <= 0 || shownFilings + namedRest === act.indexed_filings,
+   `${shownFilings} + ${namedRest} vs ${act?.indexed_filings}`);
+
+const prof = cards["8-K disclosure profile"] || "";
+const hiddenItemTypes =
+  Math.max(0, (act?.items ?? []).length - ITEM_ROWS) + (act?.items_not_labelled?.codes ?? 0);
+ck("the 8-K profile counts unlabelled codes as well as its own cap",
+   hiddenItemTypes <= 0 || new RegExp(`${hiddenItemTypes} further item type`).test(prof),
+   `expected=${hiddenItemTypes} :: ${prof.slice(-220)}`);
+
+const agr = cards["Material agreements · 8-K 1.01"] || "";
+const hiddenAgr = (act?.material_agreements_total ?? 0) - (act?.material_agreements ?? []).length;
+ck("uncapped agreements are named when the list is capped",
+   hiddenAgr <= 0 || new RegExp(`${hiddenAgr} earlier Item 1.01`).test(agr), `hidden=${hiddenAgr}`);
 
 ck("no page error", errs.length===0, errs[0]);
 ck("no 429", http429===0);

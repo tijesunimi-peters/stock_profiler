@@ -783,6 +783,12 @@ interface FilingActivityResponse {
   eight_k_count?: number;
   items?: { code: string; label: string | null; count: number }[];
   material_agreements?: { form: string; filed: string | null; accession: string }[];
+  /** How many 1.01 filings exist in the window; `material_agreements` is capped at 8. */
+  material_agreements_total?: number;
+  /** Form types the route's own top-8 slice left out, so the card can name the whole remainder. */
+  forms_not_listed?: { types: number; filings: number };
+  /** 8-K item codes EDGAR used that we hold no label for, and how often they appeared. */
+  items_not_labelled?: { codes: number; occurrences: number };
 }
 
 /**
@@ -810,18 +816,45 @@ function toFilingActivity(res: FilingActivityResponse | null) {
       ? `${res.covered_from.slice(0, 4)}–${res.covered_to.slice(0, 4)}`
       : "the indexed window";
 
+  const allItems = (res?.items ?? []).map((i) => ({
+    code: i.code,
+    label: i.label ?? `Item ${i.code}`,
+    count: i.count,
+  }));
+  const allForms = (res?.forms ?? []).map((f) => ({ form: formName(f.form), count: f.count }));
+
   return {
     ok: res?.status === "ok",
     reason: res?.reason ?? "This company's filing index could not be read just now.",
     window,
     indexed: res?.indexed_filings ?? 0,
     eightKs: res?.eight_k_count ?? 0,
-    items: (res?.items ?? []).map((i) => ({
-      code: i.code,
-      label: i.label ?? `Item ${i.code}`,
-      count: i.count,
-    })),
-    forms: (res?.forms ?? []).map((f) => ({ form: f.form, count: f.count })),
+    // Both lists are CAPPED for the card, and the cap lives here so the view cannot silently
+    // widen or narrow it. A capped column whose rows no longer sum to the header's total reads as
+    // a rendering fault or as a smaller filer -- so what falls outside the cap is counted and
+    // named rather than dropped.
+    items: allItems.slice(0, ITEM_ROWS),
+    itemsRest: restNote(
+      allItems,
+      ITEM_ROWS,
+      {
+        types: res?.items_not_labelled?.codes ?? 0,
+        count: res?.items_not_labelled?.occurrences ?? 0,
+      },
+      "item type",
+      "occurrence",
+    ),
+    forms: allForms.slice(0, FORM_ROWS),
+    formsRest: restNote(
+      allForms,
+      FORM_ROWS,
+      {
+        types: res?.forms_not_listed?.types ?? 0,
+        count: res?.forms_not_listed?.filings ?? 0,
+      },
+      "form type",
+      "filing",
+    ),
     // An amendment may be a correction OR a routine refiling, and the index cannot tell them
     // apart — so this is a rate, never a quality score.
     amended: res?.amended ?? 0,
@@ -829,6 +862,12 @@ function toFilingActivity(res: FilingActivityResponse | null) {
       res?.amended_share === null || res?.amended_share === undefined
         ? "N/A"
         : `${(res.amended_share * 100).toFixed(1)}%`,
+    // The agreements list is capped at 8 by the route. When more exist the card says so rather
+    // than reading as the filer's complete history of material agreements.
+    agreementsRest:
+      (res?.material_agreements_total ?? 0) > (res?.material_agreements ?? []).length
+        ? `${(res?.material_agreements_total ?? 0) - (res?.material_agreements ?? []).length} earlier Item 1.01 filings in the window are not listed.`
+        : null,
     agreements: (res?.material_agreements ?? []).map((a) => ({
       form: a.form,
       date: a.filed ? humanDate(a.filed) : "date N/A",
@@ -1507,6 +1546,42 @@ interface AuditResponse {
   critical_audit_matters: { status: string; reason: string };
   critical_accounting_estimates: { status: string; reason: string };
   filing?: { form: string | null; filed: string | null; accession: string | null } | null;
+}
+
+/** How many rows each capped column on §08 shows. */
+const FORM_ROWS = 6;
+const ITEM_ROWS = 7;
+
+/**
+ * What a capped column left out, or null when it left out nothing.
+ *
+ * There are TWO caps in series and both must be counted, which is the whole reason this is a
+ * function. The route returns only its own top slice and reports the rest as a residual; the card
+ * then shows fewer rows still. Counting only the card's cap understates the remainder badly —
+ * NVIDIA reads as "2 further form types (15 filings)" when the truth is 24 types and 79 filings —
+ * and a note that undercounts is worse than no note, because it asserts a completeness that the
+ * uncounted tail contradicts.
+ */
+function restNote(
+  all: { count: number }[],
+  cap: number,
+  residual: { types: number; count: number },
+  kind: string,
+  unit: string,
+): string | null {
+  const beyondCap = all.slice(cap);
+  const types = beyondCap.length + residual.types;
+  if (!types) return null;
+  const n = beyondCap.reduce((sum, r) => sum + r.count, 0) + residual.count;
+  return `${types} further ${kind}${types === 1 ? "" : "s"} (${n.toLocaleString()} ${unit}${n === 1 ? "" : "s"}) not shown.`;
+}
+
+/** EDGAR names the Section 16 ownership forms and the proposed-sale notice by bare number — `3`,
+ * `4`, `5`, `144`, and their `/A` amendments. In a column beside counts those read as numbers
+ * rather than as names, so they get the word EDGAR itself uses. Display only: the form string the
+ * API returned is unchanged, and nothing is renamed except by prefix. */
+function formName(form: string): string {
+  return /^\d+(\/A)?$/.test(form) ? `Form ${form}` : form;
 }
 
 /** `"2026-07-29" → "29 Jul 2026"`. A filing date is known to the day, so unlike an index edge it

@@ -1076,8 +1076,18 @@ backend task after Phase 0.
 > rather than faked: no Track 1 path exists for any of them.
 >
 > ~~**⚠️ Operator decision needed.** Six of seven fields here are Track 2. Options:~~
-> **(a)** Render the section with 8.4 and 8.6 live and the rest in honest empty states — a section
-> that is mostly empty states.
+> **Verified 2026-08-06** (232 driven assertions over 7 filers). Two defects found and fixed, both
+> about **silent caps** rather than wrong data:
+> 1. `/filing-activity` capped forms at `most_common(8)`, dropped 8-K item codes it held no label
+>    for, and capped agreements at 8 — all without saying so. It now returns `forms_not_listed`,
+>    `items_not_labelled` and `material_agreements_total`, and the cards name the remainder. The
+>    rows under "1005 filings" summed to 911 with no explanation; they now say "26 further form
+>    types (94 filings) not shown" and the column adds up.
+> 2. EDGAR names the Section 16 forms by bare number, so the form mix rendered `4  566` — two
+>    numbers side by side. Display-only prefix: `Form 4`, `Form 144`.
+>
+> ~~**(a)** Render the section with 8.4 and 8.6 live and the rest in honest empty states — a section
+> that is mostly empty states.~~
 > **(b)** Re-scope §08 to **"Filing activity & disclosure events"**: 8-K item codes over time,
 > acceptance lag, amendment rate, restatement events, tag-set changes. All **P/M** today, all
 > genuinely about *disclosure change*, and it fills the same four card slots.
