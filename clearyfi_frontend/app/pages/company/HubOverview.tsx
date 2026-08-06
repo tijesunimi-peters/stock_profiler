@@ -229,6 +229,7 @@ export function HubOverview() {
   const plans = governance.data.plans;
   const activity = disclosure.data.activity;
   const cyber = disclosure.data.cyber;
+  const changes = disclosure.data.changes;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -278,28 +279,44 @@ export function HubOverview() {
         </button>
       </div>
 
-      {/* what changed this filing */}
+      {/*
+        A NOTIFICATION of what happened, not a status board (operator direction 2026-08-05).
+        Every row is an event; a company with a quiet year shows none, replaced by one line naming
+        the signals that were checked. That is why this can share filings with §06 and §08 without
+        repeating the page: those answer the same questions INCLUDING their negatives, and this
+        shows only the positives.
+      */}
       <div className="hub-changed">
         <div className="hub-changed-head">
           <span className="hub-changed-title">What changed this filing</span>
-          <span className="hub-hint">
-            diffed against the prior annual report · change is described, not scored
-          </span>
-          {/* The most prominent band on the page and entirely a fixture — including a row that
-              claims a critical audit matter is "unchanged", which §06 below correctly reports we
-              cannot read at all. Two claims that contradict each other need the false one
-              marked, not left to the banner four screens away. */}
-          <SynthCard why="Every row here is generated. Diffing a filing against the prior one needs the risk-factor, segment and CAM narratives — all Track 2 — so nothing in this band is read from a filing yet." />
+          <span className="hub-hint">{changes.subtitle}</span>
         </div>
-        <div className="hub-changed-rows">
-          {d.changes.map((c) => (
-            <div className="hub-changed-row" key={c.tag}>
-              <span className="hub-changed-tag">{c.tag}</span>
-              <span className="hub-changed-text">{c.text}</span>
-              <span className="hub-changed-src">{c.src}</span>
+        {changes.ok && changes.rows.length ? (
+          <div className="hub-changed-rows">
+            {changes.rows.map((c) => (
+              <div className="hub-changed-row" key={`${c.tag}${c.src}`}>
+                <span className="hub-changed-tag">{c.tag}</span>
+                <span className="hub-changed-text">{c.text}</span>
+                <span className="hub-changed-src">{c.src}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="hub-changed-rows">
+            <div className="hub-changed-row">
+              <span className="hub-changed-tag">QUIET</span>
+              <span className="hub-changed-text">
+                {changes.ok ? changes.quiet : changes.reason}
+              </span>
+              {/* Naming the signals is what makes the silence a CHECKED absence rather than a
+                  shrug — and it is the difference between "nothing happened" and "we did not
+                  look", which read identically otherwise. */}
+              <span className="hub-changed-src" title={changes.checked.join(" · ")}>
+                {changes.checked.length ? `${changes.checked.length} signals checked` : "not checked"}
+              </span>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ============================================================ 01 */}

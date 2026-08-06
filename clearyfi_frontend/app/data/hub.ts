@@ -31,6 +31,11 @@ export interface StatementRowData {
 
 export interface HubData {
   years: string[];
+  /**
+   * @deprecated The "What changed this filing" band reads `/companies/{symbol}/changes` as of
+   * 2026-08-05 — a real notification of events since the prior annual report. No longer read by
+   * the company hub.
+   */
   changes: { tag: string; text: string; src: string }[];
   structure: {
     subCount: number;

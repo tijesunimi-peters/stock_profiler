@@ -92,7 +92,7 @@ export const PROVENANCE = {
         "08 filing activity & disclosure events",
       ],
       synthetic: [
-        "03 segments & geography (deferred — needs Phase C dimensional ingest)",
+        "03 segments & geography (deferred — needs the segment-axis dimensional ingest)",
         "04 capital structure (partly — share counts and repurchases are real)",
         "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
       ],
@@ -529,6 +529,58 @@ function toPayVersusPerformance(res: PvpResponse | null) {
     // TSR is the indexed value of $100 invested — never rendered with a % sign.
     tsr: latest.tsr === null ? "N/A" : `$${latest.tsr.toFixed(2)}`,
     peerTsr: latest.peer_tsr === null ? "N/A" : `$${latest.peer_tsr.toFixed(2)}`,
+  };
+}
+
+/* ------------------------------------------------------------ the "what changed" band */
+
+interface FilingChangesResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  since: string | null;
+  checked: string[];
+  changes: { tag: string; text: string; source: string; date: string | null }[];
+}
+
+/**
+ * The "What changed this filing" band — a NOTIFICATION, not a status board (operator direction
+ * 2026-08-05).
+ *
+ * A status board answers "did the auditor change?" with *no*. A notification stays silent unless
+ * something happened. So every row here is an event, and a company with a quiet year shows none —
+ * replaced by one line naming what was checked, which makes the silence a checked absence rather
+ * than a shrug.
+ *
+ * That is also why this can share filings with §06 and §08 without the page repeating itself:
+ * those sections answer the same questions **including their negatives**, and this shows only the
+ * positives.
+ *
+ * The TAGS row is the only true diff of this filing against the prior one — concepts the filer
+ * started or stopped tagging. A value-level restatement diff was measured and rejected: it is
+ * dominated by `Other…` aggregation lines whose content legitimately differs between filings.
+ */
+function toFilingChanges(res: FilingChangesResponse | null) {
+  const rows = (res?.changes ?? []).map((c) => ({
+    tag: c.tag,
+    text: c.text,
+    src: c.date ? `${c.source} · ${humanDate(c.date)}` : c.source,
+  }));
+
+  const since = res?.since ? humanDate(res.since) : null;
+  return {
+    ok: res?.status === "ok",
+    rows,
+    subtitle: since
+      ? `since the annual report filed ${since} · change is described, not scored`
+      : "change is described, not scored",
+    // Shown only when nothing fired. Naming the signals is what separates "we looked and found
+    // nothing" from "we did not look".
+    quiet: since
+      ? `No change among the signals checked since the annual report filed ${since}.`
+      : "Nothing to compare against yet.",
+    checked: res?.checked ?? [],
+    reason: res?.reason ?? "This company's filing record could not be read just now.",
   };
 }
 
@@ -1999,9 +2051,10 @@ export const api = {
     // (cached per accession after that), so a failure must not take §08 down with it. `null`
     // flows into the adapter's honest-empty branch.
     const enc = encodeURIComponent(symbol);
-    const [audit, activity] = await Promise.all([
+    const [audit, activity, changes] = await Promise.all([
       getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
       getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
+      getJson<FilingChangesResponse>(`/v1/companies/${enc}/changes`).catch(() => null),
     ]);
     const incidents =
       (activity?.items ?? []).find((i) => i.code === "1.05")?.count ?? 0;
@@ -2009,7 +2062,7 @@ export const api = {
       audit: toAuditCards(audit),
       activity: toFilingActivity(activity),
       cyber: toCybersecurity(audit, incidents),
-      changes: hub.hubData(symbol).changes,
+      changes: toFilingChanges(changes),
     } as CompanyDisclosure;
   },
 
@@ -2281,7 +2334,8 @@ export interface CompanyDisclosure {
   activity: ReturnType<typeof toFilingActivity>;
   /** §08.3 Item 1C, from the `cyd` flags. */
   cyber: ReturnType<typeof toCybersecurity>;
-  changes: hub.HubData["changes"];
+  /** The "what changed" band, on real filings. */
+  changes: ReturnType<typeof toFilingChanges>;
 }
 
 export interface CompanyFilingEvents {

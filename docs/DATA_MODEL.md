@@ -1887,3 +1887,62 @@ The picker now prefers the newest **original**, using an amendment only when no 
 indexed. This deliberately departs from latest-filed-wins, which is a rule about restated *facts*
 in `raw_facts` — not about which document carries a cover page. `COVER_SCHEMA_VERSION` was bumped
 so every row written under the old picker is treated as a miss and re-read.
+
+---
+
+## "What changed this filing" (`normalize/filing_changes.py`)
+
+`GET /companies/{symbol}/changes`. **A notification, not a status board** (operator direction
+2026-08-05). A status board answers "did the auditor change?" with *no*; a notification stays
+silent unless something happened. **Every row is an event that occurred**, and a company with a
+quiet year returns none — replaced by one line naming the signals that were checked, so the silence
+is a checked absence rather than a shrug.
+
+That distinction is also what lets this share filings with §06 and §08 without the page repeating
+itself: those sections answer the same questions **including their negatives**, because an absence
+there is a finding scoped to an indexed window. This returns only the positives.
+
+### Signals
+
+| Row | Source |
+|---|---|
+| `TAGS` | concepts newly tagged / no longer tagged between the two most recent **unamended** annual reports |
+| `RESTATED` | 8-K Item 4.02, or the 10-K cover's `DocumentFinStmtErrorCorrectionFlag` |
+| `AUDIT` | 8-K Item 4.01 |
+| `CYBER` | 8-K Item 1.05 |
+| `LATE` | Form 12b-25 |
+| `OFFICERS` · `DEBT` | 8-K Items 5.02 and 1.01, **rolled up** — Coca-Cola files 28 and Tesla 18, and a notification band that scrolls is not a notification |
+
+Only filings after the prior annual report count, and that date is stated on the band.
+
+### The tag diff must exclude amendments
+
+Measured 2026-08-05: Apple +7/−8, Coca-Cola +23/−7, Microsoft +22/−1, JPMorgan +29/−8 —
+**Tesla +0/−276**. Tesla's newest annual accession is the Part III 10-K/A carrying 2 tagged facts
+against the original's 278, so an unguarded diff reports "276 concepts dropped" about a company
+that dropped none. `annual_tag_sets` filters to `form IN ('10-K','20-F')`. Same root cause as the
+cover-page picker; two consumers, one trap.
+
+### A value-level restatement diff was measured and rejected
+
+The proposal was to diff `raw_facts` for the same concept and period across accessions. Keyed
+correctly — exact period, differing accessions — there are 289–876 per company, and they are **not**
+mostly rounding. They are mostly `Other…` aggregation lines:
+
+```
+NVDA  OtherAssetsNoncurrent            3,038M → 6,425M   53%
+NVDA  OtherAccruedLiabilitiesCurrent     228M →   906M   75%
+AAPL  OtherAssetsNoncurrent           72,634M → 83,727M  13%
+```
+
+What a filing lumps into "Other" depends on which components it breaks out separately, so a 10-K
+and a 10-Q legitimately disagree. That is a **presentation difference, not a restatement**, and it
+is the common case — a materiality floor does not fix it, because the large movers are exactly the
+"Other" buckets. The restatement signals used instead are the filer's own: 8-K Item 4.02 and the
+Rule 10D-1 cover check mark.
+
+> A first attempt at this measurement grouped by `(gaap_tag, fiscal_year, fiscal_period)` and
+> reported ~9,900 "restated" keys per company. That was an artifact: `(2013, "FY")` covers the
+> annual figure and every quarterly row tagged against the same fiscal year, so Microsoft's
+> `GrossProfit 2013FY` held 54,366M beside 13,595M and 15,247M — **all from one accession, filed
+> the same day**. The period bounds are part of the key.

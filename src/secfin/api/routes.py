@@ -40,6 +40,7 @@ from secfin.normalize.flows import (
 )
 from secfin.normalize.geography import classify_location
 from secfin.normalize.insider_summary import summarize_insider_transactions
+from secfin.normalize.filing_changes import build_filing_changes
 from secfin.normalize.officer_changes import build_officer_changes
 from secfin.normalize.mapping import (
     CAPITAL_GROUP_NOTES,
@@ -3130,6 +3131,67 @@ _NAMED_8K_ITEMS: dict[str, str] = {
     "8.01": "Other events",
     "9.01": "Financial statements and exhibits",
 }
+
+
+@public_router.get(
+    "/companies/{symbol}/changes",
+    tags=["Financials"],
+    summary="What changed since the prior annual report",
+)
+async def get_filing_changes(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    repo: RawFactRepository = Depends(get_repo),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+    cover_repo: FilingCoverRepository = Depends(get_filing_cover_repo),
+    arrangement_repo: TradingArrangementRepository = Depends(get_trading_arrangement_repo),
+) -> dict:
+    """A NOTIFICATION of what happened, not a status board (operator direction 2026-08-05).
+
+    Every row is an event. A company with a quiet year returns none, and the caller says what was
+    checked rather than printing four rows of "unchanged". §06 and §08 answer the same questions
+    including their negatives; this returns only the positives, so the same filings can appear in
+    both without the page saying the same thing twice.
+
+    **The tag-set row is the only true diff of this filing against the prior one** -- concepts the
+    filer started or stopped tagging. Amendments are excluded from that comparison: Tesla's newest
+    annual accession is a Part III 10-K/A with 2 tagged facts against the original's 278, and
+    diffing against it would report "276 concepts dropped" about a company that dropped none.
+
+    **A value-level restatement diff was measured and rejected.** Keyed on the exact period with
+    differing accessions there are 289-876 per company, dominated by `Other...` aggregation lines
+    whose content legitimately differs between filings -- NVIDIA's `OtherAssetsNoncurrent` moves
+    53% because a 10-K and a 10-Q break out different components. The restatement signals used
+    here are the filer's own: 8-K Item 4.02 and the Rule 10D-1 cover check mark.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        indexed = await _ensure_filing_index(filing_repo, client, cik)
+        cover, _ = await _cover_for_cik(
+            cover_repo, arrangement_repo, filing_repo, client, cik
+        )
+
+    result = build_filing_changes(
+        annuals=repo.annual_tag_sets(cik, 2),
+        filings=filing_repo.get_filings(cik, None, 5_000) if indexed else [],
+        index_built=bool(indexed),
+        error_correction=None if cover is None else cover.error_correction,
+    )
+    return {
+        "cik": cik,
+        "status": result.status,
+        "reason": result.reason,
+        "since": result.since,
+        "prior_accession": result.prior_accession,
+        "latest_accession": result.latest_accession,
+        "checked": result.checked,
+        "changes": [asdict(c) for c in result.changes],
+        "caveats": [
+            "Only things that HAPPENED are listed. An empty list means nothing among the checked "
+            "signals fired -- see `checked` for what was examined.",
+            "8-K items are existence and date only; an 8-K's body is prose and is not read.",
+        ],
+    }
 
 
 @public_router.get(

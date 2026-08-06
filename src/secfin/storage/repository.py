@@ -64,6 +64,20 @@ class RawFactRepository(ABC):
         """
 
     @abstractmethod
+    def annual_tag_sets(self, cik: int, limit: int = 2) -> list[tuple[str, str | None, set[str]]]:
+        """The tag SET of each of the newest `limit` UNAMENDED annual filings, newest first.
+
+        `(accession, filed, tags)`. What a company tags is a disclosure choice, so a concept that
+        appears or disappears between two annual reports is a real change in what it reports --
+        readable without touching a word of narrative.
+
+        **Amendments are excluded, and that exclusion is load-bearing.** Tesla's newest annual
+        accession is a Part III 10-K/A carrying 2 tagged facts against the original's 278. Diffing
+        against it reports "276 concepts dropped", which is a catastrophic false claim about a
+        company that dropped none. Same shape as the cover-page picker in `api/routes.py`.
+        """
+
+    @abstractmethod
     def has_any_facts(self, cik: int) -> bool:
         """Cheap existence check: has this company EVER had a real companyfacts
         ingestion (any period at all)? Lets the period-scoped cache-aside helper

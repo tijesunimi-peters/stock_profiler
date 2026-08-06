@@ -635,8 +635,18 @@ This band is a **diff against the prior annual report**. Three of its four rows 
 | 0.6 | `AUDIT` — auditor change | **P** | 8-K **Item 4.01** existence from `/filing-index` `items`. The *CAM* half of this row is **T**. |
 | 0.7 | `DEBT` — credit agreement amended + covenant | **P** / **T** | 8-K **Item 1.01** existence and date: **P**. The covenant *terms* are exhibit prose: **T**. |
 
-> **⚠️ Operator decision needed before this band is built.** It is a four-row band and only rows
-> 0.5–0.7 have a Track 1 path. Options:
+> ✅ **BUILT 2026-08-05.** Re-framed by the operator as **a notification of changes that
+> happened**, which is stronger than any of the options below: rows appear only when something
+> fired, so "no auditor change" is never a row, and a quiet company gets one line naming the
+> signals checked. `TAGS` (tag-set diff, amendments excluded), `RESTATED`, `AUDIT`, `CYBER`,
+> `LATE`, and rolled-up `OFFICERS`/`DEBT`. Row 0.4 (RISK) and 0.5 (SEGMENT) are simply absent
+> rather than empty — nothing happened is not the same as nothing can be read.
+>
+> **The proposed value-level restatement diff was measured and REJECTED** — dominated by `Other…`
+> aggregation lines whose content legitimately differs between filings. See `docs/DATA_MODEL.md`.
+>
+> ~~**⚠️ Operator decision needed before this band is built.** It is a four-row band and only rows
+> 0.5–0.7 have a Track 1 path. Options:~~
 > **(a)** Render the band with the rows that resolve and give the Track 2 rows their honest state
 > in place — keeps the layout, tells the truth, looks sparse on filers with no 8-K activity.
 > **(b)** Re-scope the band to "what changed in the *structured* record" — segment membership,

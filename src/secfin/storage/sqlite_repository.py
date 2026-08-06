@@ -175,6 +175,31 @@ class SQLiteRawFactRepository(RawFactRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_fact(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def annual_tag_sets(self, cik: int, limit: int = 2) -> list[tuple[str, str | None, set[str]]]:
+        # form IN ('10-K', '20-F') and never their /A variants -- see the interface docstring.
+        accessions = self._conn.execute(
+            """
+            SELECT accession, MAX(filed) AS filed
+            FROM raw_facts
+            WHERE cik = ? AND form IN ('10-K', '20-F') AND accession IS NOT NULL
+            GROUP BY accession
+            ORDER BY filed DESC, accession DESC
+            LIMIT ?
+            """,
+            (cik, limit),
+        ).fetchall()
+        out: list[tuple[str, str | None, set[str]]] = []
+        for accession, filed in accessions:
+            tags = {
+                row[0]
+                for row in self._conn.execute(
+                    "SELECT DISTINCT gaap_tag FROM raw_facts WHERE cik = ? AND accession = ?",
+                    (cik, accession),
+                )
+            }
+            out.append((accession, filed, tags))
+        return out
+
     def has_any_facts(self, cik: int) -> bool:
         # fiscal_year IS NOT NULL scopes this to a real companyfacts ingestion (bulk,
         # incremental, or a ticker-resolved cache-aside fetch -- all three flatten a

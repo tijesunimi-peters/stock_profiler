@@ -165,6 +165,12 @@ src/secfin/
                                #   diff_holders, prior_quarter_end)
     cusip.py                   # CusipResolver + resolve_snapshot_cusips (13F CUSIP->CIK,
                                #   exact-name-match, conservative)
+    filing_changes.py          # the "what changed this filing" band: a NOTIFICATION, not a status
+                               #   board -- only events that HAPPENED since the prior annual report,
+                               #   so a quiet company yields no rows and the caller names what was
+                               #   checked. Tag-set diff (amendments excluded: a Part III 10-K/A
+                               #   shell would read "276 concepts dropped") + 8-K item events. A
+                               #   value-level restatement diff was measured and REJECTED
     officer_changes.py         # §05.1: Form 3 arrivals (person + role) interleaved with 8-K Item
                                #   5.02 events (date), NEVER joined -- neither filing references the
                                #   other. NO action verb: EDGAR's item code has no sub-item letter,
