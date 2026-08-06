@@ -974,7 +974,7 @@ it could reclassify three cards.
 | # | Card / field | Band | Source or plan |
 |---|---|---|---|
 | 6.1 | Auditor — firm | ✅ **SHIPPED 2026-08-03** | `sec/cover.py` reads `dei:AuditorName` + `AuditorFirmId` + `AuditorLocation` from the 10-K's extracted instance, stored in `filing_cover_facts`. Also fills §01.9. |
-| 6.2 | Auditor — tenure | **X — renders N/A with the reason** | PCAOB Form AP carries it; SEC does not. The card shows the **PCAOB firm id** (the join key) and the auditor's location in that slot, labelled as neither. |
+| 6.2 | Auditor — tenure | **P** ✅ *(a floor, not the tenure)* | **SHIPPED 2026-08-06.** Tenure itself stays absent — PCAOB Form AP carries it, SEC does not — so the slot keeps the **PCAOB firm id** and location, and adds a **floor** derived from data already held: the tagged auditor + no 8-K Item 4.01 in the indexed window. `normalize/auditor_continuity.py`; zero new fetches. **Under 2 years of window it makes no claim at all** — EDGAR's window is a filing count, so JPMorgan's is 1.0 years and a floor there would measure filing volume. |
 | 6.3 | Auditor — fees / non-audit % | **X — renders N/A with the reason** | **V2-verified absent** from the tagged DEF 14A. |
 | 6.4 | "Auditor changed · 8-K Item 4.01" | ✅ **SHIPPED 2026-08-03** | `/filing-index` `items`, matched whole. Absence names the indexed window. |
 | 6.5 | "Non-reliance restatement · 8-K Item 4.02" | ✅ **SHIPPED 2026-08-03** | `/filing-index` `items` |

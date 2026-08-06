@@ -174,6 +174,13 @@ src/secfin/
                                #   votes-per-share field BY DESIGN -- the voting ratio is charter
                                #   prose, tagged nowhere, and Alphabet's Class B is 6.9% of shares
                                #   at ten votes each, so counts must never imply control
+    auditor_continuity.py      # §06.2's tenure slot: a FLOOR under the tenure no SEC filing
+                               #   carries -- the tagged auditor plus the ABSENCE of an 8-K Item
+                               #   4.01 in the indexed window. Never a tenure (E&Y has audited
+                               #   Apple since 2009; the index reaches 2015). A window under
+                               #   MIN_WINDOW_YEARS makes NO claim: EDGAR's window is a filing
+                               #   count, so JPMorgan's 25,529 filings/yr buy 1.0 years and a
+                               #   floor there would track filing volume, not tenure
     blockholders.py            # §04.7: current 5%+ holders from the 13D/G cache. Latest filing per
                                #   owner wins (an amendment supersedes); BLOCK_THRESHOLD_PCT = 5.0
                                #   and anything under it is an EXIT, not a small blockholder --

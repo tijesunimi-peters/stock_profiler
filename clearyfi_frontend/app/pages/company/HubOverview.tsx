@@ -1208,6 +1208,20 @@ export function HubOverview() {
                 {d.audit.tenure}
               </span>
             </div>
+            {/* The floor under the tenure we cannot serve. It is deliberately two lines: the claim,
+                and then what bounds it — without the second, "since Jun 2015" reads as the date
+                E&Y was engaged, which is six years wrong for Apple in the flattering direction.
+                A filer whose index is too short to say anything says that instead. */}
+            {d.audit.continuity ? (
+              <div className="hub-mt-xs">
+                <div className="hub-cell-mono">{d.audit.continuity}</div>
+                <div className="hub-note">{d.audit.continuityNote}</div>
+              </div>
+            ) : (
+              d.audit.continuityNote && (
+                <div className="hub-note hub-mt-xs">{d.audit.continuityNote}</div>
+              )
+            )}
             <div className="hub-cell-mono is-soft hub-mt-xs" title={d.audit.feesReason}>
               Fees <Fig v={d.audit.fees} reason={d.audit.feesReason} /> · {d.audit.nonAudit}
             </div>

@@ -162,6 +162,24 @@ unknown is not below. And the subject of a filing is not the feed it came from: 
 submissions carry the 13Gs it files about *other* issuers, which is why NVIDIA's 9.3% of Nebius
 Group was briefly stored as a holding *of* NVIDIA (fixed in both the repository and the route).
 
+### Auditor tenure is not served; a floor under it is
+
+No SEC filing carries auditor tenure — PCAOB Form AP does, and `pcaob_firm_id` is the join key to
+it. What §06.2 serves instead is a **lower bound**, from two things already held: the auditor tagged
+on the latest annual report, and the *absence* of an 8-K **Item 4.01** across the indexed window.
+Item 4.01 is a required disclosure on an accountant resigning, being dismissed or being engaged, so
+no 4.01 in a window means no change in it.
+
+It is never a tenure and the copy says so: E&Y has audited Apple since 2009, and the index reaches
+2015. Where a 4.01 *is* on file the floor is that date rather than the window edge — otherwise the
+incumbent is credited with its predecessor's years.
+
+**A short window disqualifies the claim outright.** `/submissions/` serves a rolling window of a
+fixed number of *filings*, not of years, so its span is set by how much the company files: Apple's
+1,000 filings reach back 11.2 years, JPMorgan's 25,529 reach back 1.0. Below `MIN_WINDOW_YEARS`
+(2.0 — two annual-report cycles) no floor is published, because one that moved with filing volume
+would look like a measurement of something.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

@@ -42,6 +42,7 @@ from secfin.normalize.geography import classify_location
 from secfin.normalize.insider_summary import summarize_insider_transactions
 from secfin.normalize.filing_changes import build_filing_changes
 from secfin.normalize.officer_changes import build_officer_changes
+from secfin.normalize.auditor_continuity import build_auditor_continuity
 from secfin.normalize.blockholders import build_blockholders
 from secfin.normalize.segments import build_segment_breakdown
 from secfin.normalize.share_classes import build_share_classes
@@ -1198,6 +1199,10 @@ async def get_audit(
     * **`events`** -- 8-K Item 4.01 (auditor changed) and 4.02 (previously-issued statements
       should no longer be relied on), plus Form 12b-25 late-filing notifications, from the filing
       index. Existence and dates only; an 8-K's body is prose and is never read.
+    * **`auditor_continuity`** -- a FLOOR under the tenure we cannot serve, from the tagged auditor
+      plus the absence of an 8-K Item 4.01 in the indexed window. Never a tenure: it is bounded by
+      how far the index reaches, which is set by the filer's volume (Apple 11.2 years, JPMorgan
+      1.0), and under two years the claim is not made at all.
     * **`extension_tags`** -- how many elements the filing tags in the registrant's OWN taxonomy.
 
     **The instance is 1.4-14.9 MB and there is no range shortcut**, so it is fetched once per
@@ -1262,9 +1267,21 @@ async def get_audit(
             "instance_bytes": cover.instance_bytes,
         }
 
+    # The floor under the tenure we cannot serve: the tagged auditor plus the ABSENCE of an 8-K
+    # Item 4.01 across the indexed window. Assembled here rather than in either block because it
+    # reads across both -- `sec/cover.py`'s auditor and the filing index's events.
+    continuity = build_auditor_continuity(
+        (auditor or {}).get("name"),
+        events.get("events") or [],
+        covered_from=events.get("covered_from"),
+        covered_to=events.get("covered_to"),
+        indexed_filings=events.get("indexed_filings"),
+    )
+
     return {
         "cik": cik,
         "auditor": auditor,
+        "auditor_continuity": asdict(continuity),
         "audit_events": events,
         "extension_tags": extensions,
         # The two Rule 10D-1 check marks from the same cover page. Carried here because this is

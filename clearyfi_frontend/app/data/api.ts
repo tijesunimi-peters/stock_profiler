@@ -1438,6 +1438,17 @@ interface AuditResponse {
     location?: string | null;
     icfr_auditor_attestation?: boolean | null;
   };
+  auditor_continuity?: {
+    status: string;
+    reason?: string | null;
+    auditor?: string | null;
+    since?: string | null;
+    since_is_a_change?: boolean;
+    years?: number | null;
+    indexed_from?: string | null;
+    indexed_to?: string | null;
+    indexed_filings?: number | null;
+  };
   audit_events: {
     status: string;
     reason?: string | null;
@@ -1476,6 +1487,22 @@ interface AuditResponse {
   critical_audit_matters: { status: string; reason: string };
   critical_accounting_estimates: { status: string; reason: string };
   filing?: { form: string | null; filed: string | null; accession: string | null } | null;
+}
+
+/** API `reason` strings are authored in Python, where the repo writes an em dash as ASCII `--`.
+ * That is correct in source and reads as a typo once rendered, so it is converted here — at the
+ * boundary where a reason stops being data and becomes copy. */
+function asCopy(reason?: string | null): string | null {
+  return reason ? reason.replace(/\s--\s/g, " — ") : (reason ?? null);
+}
+
+/** `"2015-06-01" → "Jun 2015"`. Month granularity: the floor is the edge of the INDEX, not an
+ * event, so a day would imply precision about the auditor that the date does not carry. */
+function monthYear(iso?: string | null): string {
+  if (!iso) return "";
+  const [y, m] = iso.split("-");
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${names[Number(m) - 1] ?? ""} ${y}`.trim();
 }
 
 /** `"2015-06-01" → "2015"`. Only the year, because a window is a range, not a date. */
@@ -1535,7 +1562,7 @@ function toAuditCards(res: AuditResponse | null) {
 
   return {
     firm: auditorOk ? (a?.name as string) : "N/A",
-    firmReason: auditorOk ? null : (a?.reason ?? "The auditor is not tagged in this filing."),
+    firmReason: auditorOk ? null : (asCopy(a?.reason) ?? "The auditor is not tagged in this filing."),
     // The slot the fixture used for tenure. Tenure is NOT available from any SEC source, so it
     // carries the two auditor facts that are — and names the PCAOB id as an id, not a duration.
     tenure: auditorOk
@@ -1546,6 +1573,24 @@ function toAuditCards(res: AuditResponse | null) {
     tenureReason:
       "Auditor tenure is not disclosed in any SEC filing — PCAOB Form AP carries it, and the " +
       "PCAOB firm id shown here is the key that joins to it.",
+    // A FLOOR under the tenure, not the tenure. Two sentences, because the second is what stops
+    // the first being read as a start date: E&Y has audited Apple since 2009 and our index reaches
+    // 2015, so `since` is bounded by the index, not by the engagement.
+    continuity: (() => {
+      const c = res?.auditor_continuity;
+      if (c?.status !== "ok" || !c.since) return null;
+      return c.since_is_a_change
+        ? `Signed every annual report since the Item 4.01 change of ${c.since}`
+        : `Signed every annual report since at least ${monthYear(c.since)}`;
+    })(),
+    continuityNote: (() => {
+      const c = res?.auditor_continuity;
+      if (c?.status !== "ok" || !c.since) return asCopy(c?.reason);
+      return c.since_is_a_change
+        ? `Dated from the auditor change itself — the engagement began here.`
+        : `No Item 4.01 auditor change in the ${c.years} yrs indexed. A floor, not a tenure: ` +
+          `the firm may have served long before the index reaches.`;
+    })(),
     fees: "N/A",
     nonAudit: "non-audit share N/A",
     feesReason:
@@ -1590,9 +1635,9 @@ function toAuditCards(res: AuditResponse | null) {
         : "N/A",
     },
     extensionsOk: extOk,
-    extensionsReason: extOk ? null : (ext?.reason ?? "No annual report is indexed for this filer."),
-    camsReason: res?.critical_audit_matters?.reason ?? null,
-    estimatesReason: res?.critical_accounting_estimates?.reason ?? null,
+    extensionsReason: extOk ? null : (asCopy(ext?.reason) ?? "No annual report is indexed for this filer."),
+    camsReason: asCopy(res?.critical_audit_matters?.reason),
+    estimatesReason: asCopy(res?.critical_accounting_estimates?.reason),
     filing: res?.filing ?? null,
   };
 }
