@@ -619,9 +619,21 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
 
     # Inventory composition (~27%). Plain components first -- they outscored `NetOfReserves` 27% to
     # 18% in the survey, which is the reverse of what the taxonomy's naming suggests.
+    # The "AndSupplies" / "AndPurchasedParts" variants are the SAME line with the filer's own
+    # qualifier, and omitting them rendered N/A about a figure the filer disclosed: Coca-Cola tags
+    # `...AndSuppliesNetOfReserves` (2026-04-30) and Apple `...AndPurchasedPartsNetOfReserves`
+    # (2026-07-31), so raw materials read N/A on two of eight exemplars. Found by an N/A audit,
+    # 2026-08-06. Contrast the tax-credit components, which look like variants and are NOT --
+    # `...TaxCreditsResearch` is a component of `...TaxCredits`, and folding it in would report a
+    # part as the whole.
     "inventory_raw_materials": (
         "Raw Materials",
-        ["InventoryRawMaterials", "InventoryRawMaterialsNetOfReserves"],
+        [
+            "InventoryRawMaterials",
+            "InventoryRawMaterialsNetOfReserves",
+            "InventoryRawMaterialsAndSuppliesNetOfReserves",
+            "InventoryRawMaterialsAndPurchasedPartsNetOfReserves",
+        ],
     ),
     "inventory_work_in_process": (
         "Work in Process",

@@ -160,6 +160,27 @@ def _column_roles(header: list[str]) -> tuple[int, int | None, int | None]:
     return name_i, jur_i, own_i
 
 
+def _split_header(table: list[list[str]]) -> tuple[list[str], list[list[str]]]:
+    """The column-header row and the body, skipping a leading TITLE row.
+
+    Filers routinely open the table with a full-width title -- Coca-Cola's reads "Subsidiaries of
+    The Coca-Cola Company As of December 31, 2025" in a single cell, with the real column header
+    ("Organized Under Laws of:") on the row beneath. Taking row 0 as the header found no
+    jurisdiction column, so **every one of its 39 subsidiaries lost its jurisdiction** -- and the
+    card's "% organized outside the U.S." was computed from that, reporting 0% for a company whose
+    subsidiaries include Cayman Islands and Japan entities. A wrong figure, not a missing one.
+
+    A row narrower than the table's widest is a title, not a header. At most the first three rows
+    are skipped: beyond that we are hunting for a header rather than recognising one, which is the
+    kind of guessing this module refuses to do.
+    """
+    width = max(len(r) for r in table)
+    for i, row in enumerate(table[:3]):
+        if len(row) >= width or _JURISDICTION_HINT.search(" ".join(row)):
+            return row, table[i + 1 :]
+    return table[0], table[1:]
+
+
 def parse_ex21(document: str) -> Ex21Result:
     """Read an EX-21 exhibit into a subsidiary list, or say why it could not be read.
 
@@ -185,7 +206,7 @@ def parse_ex21(document: str) -> Ex21Result:
         )
 
     table = max(tables, key=len)
-    header, *body = table
+    header, body = _split_header(table)
     name_i, jur_i, own_i = _column_roles(header)
     # A recognised header is what tells us this really is a subsidiary table. Without one we are
     # guessing at a grid, and the row count has to carry the confidence instead.
@@ -204,6 +225,12 @@ def parse_ex21(document: str) -> Ex21Result:
         cells = [_strip_footnote(c) for c in row]
         name = cells[name_i] if name_i < len(cells) else ""
         if not name:
+            continue
+        # A SECTION LABEL, not an entity. Coca-Cola's table reads "The Coca-Cola Company /
+        # Delaware", then a bare "Subsidiaries:" row, then the list -- and that label was being
+        # counted and rendered as a subsidiary with no jurisdiction. No legal entity name ends in
+        # a colon, so this is a safe drop rather than a guess.
+        if name.endswith(":"):
             continue
         subs.append(
             Subsidiary(
