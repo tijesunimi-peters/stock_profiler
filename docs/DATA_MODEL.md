@@ -1533,7 +1533,9 @@ the filings actually covered, and every surface states it — a "trailing 90 day
 `plan_flagged` out of `plan_known`. Pre-2022 filings predate the Form 4 cover box, so a bare
 "0 under a plan" would claim every trade was discretionary when **nobody classified any of them**
 (`plan_known == 0`). The flag reports that a trade was made **under** a plan — never the plan's
-adoption date, so no cooling-off window can be drawn from it (D-10b5-1).
+adoption date, so no cooling-off window can be drawn **from the Form 4 box**. (That was
+D-10b5-1. It holds for Form 4 and was wrong in general — 10-K **Item 408(a)** does carry
+adoption dates per named officer; see "Rule 10b5-1 trading arrangements" below.)
 
 ### An absence of Form 3/4/5 is not an absence of insider trading
 
@@ -1745,3 +1747,74 @@ store while its backfill reported success. It happened again the moment these tw
 `SQLiteFilingCoverRepository.get_cover` treats an older stamp as a **miss**, so the next request
 re-reads that filer's instance once and the cache heals itself. **Bump it when you add to
 `_WANTED_DEI` or `_WANTED_FLAGS`.**
+
+---
+
+## Rule 10b5-1 trading arrangements (`sec/trading_arrangements.py`) — §05.5
+
+`GET /companies/{symbol}/trading-arrangements`. Regulation S-K **Item 408(a)**, effective Dec 2022,
+requires a registrant to disclose whether any director or officer **adopted or terminated** a
+trading arrangement during the last fiscal quarter — and, when one did, the person, their title,
+the date, the duration and the securities covered. All of it is tagged in the `ecd` taxonomy in the
+10-K's inline XBRL.
+
+### This overturns D-10b5-1
+
+D-10b5-1 held that we can never state when a plan was adopted, only that a trade was made under
+one. **That is true of Form 4's `aff10b5One` box, which carries no date, and false of Item 408(a).**
+Measured across eight filers 2026-08-05:
+
+| | disclosed |
+|---|---|
+| JPMorgan | 10 named officers — Dimon 10 Nov 2025 (P270D, 200,000 sh), Lake, Erdoes, Barnum… |
+| Amazon | 7 — Jassy, Bezos, Herrington… plus **one termination** (Olsavsky, 19 Nov 2025) |
+| NVIDIA | 2 — Kress 18 Dec 2025 (P460D), Dabiri 10 Dec 2025 |
+| Alphabet, Tesla | 2 each |
+| Microsoft | 1 — Hood, 10 Jun 2026 |
+| Apple, Coca-Cola | 0, flags tagged `false` — a real "none this quarter" |
+
+### It costs no extra fetch
+
+Item 408(a)'s facts sit in the **same extracted instance** `sec/cover.py` already reads for §06.
+`_cover_for_cik` parses both from one download and writes both stores. Parsing them in a second
+endpoint with its own fetch would double the most expensive read this product makes to obtain facts
+already in hand.
+
+### One fiscal quarter, not a year (operator ruling 2026-08-05)
+
+Item 408(a) is a **quarterly** disclosure. Reading the latest 10-K covers that filing's fourth
+fiscal quarter; the three 10-Qs would cover the rest at three more multi-megabyte instance fetches.
+The window is stated on every response and on the card, because "no plans adopted" over one quarter
+and over a year are very different claims.
+
+### Three things a plausible implementation gets wrong
+
+**The facts are dimensional, not positional.** Each person is a member on `ecd:IndividualAxis`
+(`msft:AmyEHoodMember`). JPMorgan's 10-K has ten people and three securities amounts — reading them
+in document order hands one officer's plan size to another. Everything is grouped by `contextRef`.
+
+**The dates are free text.** The elements are named `…Date` but typed as strings, and the format
+varies: `June 10, 2026` (Microsoft), `November 3, 2025` (Amazon), `12/10/2025` (NVIDIA).
+`adoption_date` is ISO where a known format parsed and **null otherwise**; `adoption_date_raw`
+always carries what the filer wrote, so an unrecognised format is visible rather than lost or
+guessed. `12/10/2025` is read US-order — the convention every measured filer uses — which is
+exactly why the raw value must survive beside it.
+
+**Adoption and termination are different events.** Amazon's CFO terminated a plan in the same
+quarter six colleagues adopted one. Collapsing them reports a dateless adoption where the filing
+says the opposite.
+
+### Two absences that are not the same
+
+A filing tagging the flags `false` against a catch-all member has **answered** Item 408(a) —
+"nobody adopted a plan this quarter" is a finding. A filing with no `ecd` flags at all predates the
+requirement and answers nothing; that is `status="na"` with a reason.
+
+### Amounts are as filed
+
+Microsoft tags its CFO's plan at **48,700,000,000 shares** against ~7.4 billion outstanding. Every
+other filer's amounts are plausible (Alphabet 4,200; Tesla 84,000). That is the filer's number in
+the filer's unit, and it is neither corrected nor suppressed — the same rule that keeps values in
+their raw reported unit everywhere else. It will look like our bug and it is not.
+
+`MtrlTermsOfTrdArrTextBlock` — what the plan actually instructs — is prose, Track 2, and unread.

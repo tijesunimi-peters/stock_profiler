@@ -342,9 +342,21 @@ filed only when an incident occurs, so its absence is ambiguous. The `cyd` flag 
 `NonRule10b51ArrAdoptedFlag` · `NonRule10b51ArrTrmntdFlag` · `InsiderTrdPoliciesProcAdoptedFlag`.
 
 Whether **any** director or officer adopted or terminated a trading arrangement in the period.
-**This does not overturn D-10b5-1** — it is a period-level boolean, not a plan adoption *date*, so
-a cooling-off band still cannot be drawn. It does give §05.5 a truthful sentence it does not have
-today.
+
+> ⚠️ **CORRECTED 2026-08-05. This DOES overturn D-10b5-1, and the paragraph below was wrong.**
+>
+> V3 read the four flags and stopped there, concluding "a period-level boolean, not a plan
+> adoption date". The `ecd` taxonomy carries much more in the same instance, hung off
+> `ecd:IndividualAxis` with one member per person: `TrdArrIndName`, `TrdArrIndTitle`,
+> **`TrdArrAdoptionDate`**, `TrdArrTerminationDate`, `TrdArrExpirationDate`, `TrdArrDuration` and
+> `TrdArrSecuritiesAggAvailAmt`. Verified across eight filers — JPMorgan discloses ten named
+> officers with dates, Amazon seven, NVIDIA two, Apple and Coca-Cola none.
+>
+> The original claim, that we can never state when a plan was adopted, is true of **Form 4's
+> `aff10b5One` box** and false of **Item 408(a)**. See `sec/trading_arrangements.py`.
+
+~~**This does not overturn D-10b5-1** — it is a period-level boolean, not a plan adoption *date*,
+so a cooling-off band still cannot be drawn.~~
 
 ### `dei:IcfrAuditorAttestationFlag` — and what it does NOT say
 
@@ -375,7 +387,7 @@ all** — but it does **not** carry `AuditorName`, which lives in the instance.
 - **§01.10 employees — settled as `N/A`.** Not a gap in our ingest; filers do not tag it.
 - **§06.2 auditor tenure — still `X`**, but `AuditorFirmId` supplies the PCAOB join key.
 - **§08.3 cybersecurity — two of three lines become Track 1.**
-- **§05.5 — gains a truthful flag; D-10b5-1 still stands.**
+- **§05.5 — ~~gains a truthful flag; D-10b5-1 still stands~~. CORRECTED 2026-08-05: the same instance carries names, titles and ADOPTION DATES. D-10b5-1 is overturned; §05.5 is built.**
 - **§06.7 ICFR — stays Track 2.** The attestation flag is not the effectiveness conclusion.
 
 **The instance-parse path now pays for six cards across four sections, not one.** That changes the
@@ -881,7 +893,7 @@ and the fees half of 6.1). They should be decided together, not one at a time �
 | 5.2 | Governance policies (was: board composition) | ✅ **DONE 2026-08-04** | The four designed tiles stay **X** — board size, independence and tenure are tagged nowhere, re-verified against the 10-K instance. **Repointed** (operator ruling) to four check marks that ARE tagged: three `ecd` flags already riding in the PvP payload, plus `dei:DocumentFinStmtErrorCorrectionFlag` from the 10-K cover. An untagged box renders `N/A`, never "no". The clawback half never claims a POLICY exists — that is proxy prose. |
 | 5.3 | CEO pay mix / total / pay ratio / say-on-pay | **partly `X`** | **V2: the DEF 14A IS tagged.** CEO **total comp** + comp-actually-paid + TSR are numeric `ecd` facts, 3 years (FY2024+). **Mix, pay ratio and say-on-pay are NOT tagged.** Ruling required — see V2. |
 | 5.4 | Insider transactions summary | ✅ **DONE 2026-08-04** | `GET /insider-summary` over the same Form 3/4/5 rows, tallied in `normalize/insider_summary.py`. Window is **filings, not days**; headline counts are the A/D flag with the open-market (P/S) subset in the footer — both operator rulings 2026-08-04. |
-| 5.5 | "N officers with 10b5-1 plans adopted in the trailing year" | **partial — shipped as a count with its denominator** | `rule_10b5_1` gives *how many trades were made under a plan*, not the adoption date (D-10b5-1). The card now reads "N of M were flagged as made under a Rule 10b5-1 plan — the flag reports a trade was pre-arranged, never when the plan was adopted", and a filer whose filings predate the 2022 box says so instead of reporting 0. **V3's `ecd:Rule10b51ArrAdoptedFlag`/`…TrmntdFlag`** (whether *any* officer adopted or terminated an arrangement in the period) is still unbuilt and still a period boolean, not a date: **D-10b5-1 stands.** |
+| 5.5 | Rule 10b5-1 plans | ✅ **DONE 2026-08-05** | `GET /trading-arrangements` — 10-K **Item 408(a)** `ecd` facts: the person, their title, the **adoption date**, the duration and the securities covered, per individual. **This overturns D-10b5-1**, which was true of Form 4's `aff10b5One` box and wrong about Item 408(a). Parsed from the instance `/audit` already reads, so it costs no extra fetch. **One fiscal QUARTER**, not the trailing year (operator ruling) — the 10-K's own quarter; the three 10-Qs would cover the rest at three more multi-MB fetches. Adoption and termination stay distinct; dates are the filer's text and carry a raw form beside the ISO one. |
 
 ### 5.3 — the verification that could move this card from X to P
 

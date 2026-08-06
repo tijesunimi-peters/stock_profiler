@@ -153,12 +153,14 @@ from secfin.storage.api_key_repository import ApiKeyRepository
 from secfin.storage.beneficial_ownership_repository import BeneficialOwnershipRepository
 from secfin.storage.company_profile_repository import CompanyProfileRepository
 from secfin.storage.cusip_repository import CusipMapRepository
-from secfin.sec.cover import find_extracted_instance, parse_cover_facts
+from secfin.sec.cover import CoverFacts, find_extracted_instance, parse_cover_facts
 from secfin.sec.exhibits import find_ex21_filename, parse_ex21
 from secfin.sec.filing_index import fetch_filing_index
+from secfin.sec.trading_arrangements import parse_trading_arrangements
 from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
 from secfin.storage.filing_cover_repository import FilingCoverRepository
 from secfin.storage.filing_index_repository import FilingIndexRepository
+from secfin.storage.trading_arrangement_repository import TradingArrangementRepository
 from secfin.storage.holdings_repository import HoldingsSnapshotRepository
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.metric_distribution_repository import MetricDistributionRepository
@@ -366,6 +368,10 @@ def get_company_profile_repo(request: Request) -> CompanyProfileRepository:
 
 def get_filing_index_repo(request: Request) -> FilingIndexRepository:
     return request.app.state.filing_index_repo
+
+
+def get_trading_arrangement_repo(request: Request) -> TradingArrangementRepository:
+    return request.app.state.trading_arrangement_repo
 
 
 def get_filing_cover_repo(request: Request) -> FilingCoverRepository:
@@ -1031,6 +1037,58 @@ async def _ensure_filing_index(
     return repo.indexed_count(cik)
 
 
+async def _cover_for_cik(
+    cover_repo: FilingCoverRepository,
+    arrangement_repo: TradingArrangementRepository,
+    filing_repo: FilingIndexRepository,
+    client: SECClient,
+    cik: int,
+) -> tuple[CoverFacts | None, str | None]:
+    """The latest annual report's cover facts, read once and shared by §06 and §05.5.
+
+    The instance behind this is 1.4-14.9 MB with no range shortcut, so it is fetched once per
+    accession, ever. Item 408(a)'s trading arrangements sit in the SAME document, which is why
+    they are parsed here rather than by a second endpoint doing its own fetch -- that would double
+    the most expensive read this product makes to get facts we already had in hand.
+
+    Returns `(cover, note)`; the note explains an absence and is None on success.
+    """
+    cover = cover_repo.get_cover(cik)
+    if cover is not None:
+        return cover, None
+
+    annual = filing_repo.get_filings(cik, ["10-K", "10-K/A", "20-F"], 1)
+    if not annual:
+        return None, (
+            "No annual report is indexed for this company, so there is no instance to read. "
+            "Run the filing-index backfill for this filer."
+        )
+    filing = annual[0]
+    base = (
+        f"https://www.sec.gov/Archives/edgar/data/{cik}/"
+        f"{(filing.accession or '').replace('-', '')}"
+    )
+    name = find_extracted_instance(await client.get_json(f"{base}/index.json"))
+    if not name:
+        return None, (
+            f"The {filing.form} filed {filing.filing_date} carries no extracted XBRL instance, "
+            "which means it predates inline-XBRL tagging for annual reports."
+        )
+
+    xml = await client.get_text(f"{base}/{name}")
+    cover = parse_cover_facts(xml)
+    cover.accession = filing.accession
+    cover.form = filing.form
+    cover.filed = filing.filing_date
+    cover_repo.upsert_cover(cik, cover)
+
+    # Same document, second consumer. Stored even when empty: a filing that says "no arrangements"
+    # has answered Item 408(a), and that is not the same as never having looked.
+    arrangements = parse_trading_arrangements(xml)
+    arrangement_repo.replace_for_filing(cik, filing.accession or "", arrangements.arrangements)
+    return cover, None
+
+
 def _audit_events(filing_repo: FilingIndexRepository, cik: int) -> dict:
     """Auditor changes, non-reliance restatements and late filings, from the filing INDEX.
 
@@ -1089,6 +1147,7 @@ async def get_audit(
     ticker_cache: TickerCache = Depends(get_ticker_cache),
     filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
     cover_repo: FilingCoverRepository = Depends(get_filing_cover_repo),
+    arrangement_repo: TradingArrangementRepository = Depends(get_trading_arrangement_repo),
 ) -> dict:
     """Who audits this company, what audit events are on file, and how far it departs from US-GAAP.
 
@@ -1116,33 +1175,9 @@ async def get_audit(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         events = _audit_events(filing_repo, cik)
 
-        cover = cover_repo.get_cover(cik)
-        filing_note: str | None = None
-        if cover is None:
-            annual = filing_repo.get_filings(cik, ["10-K", "10-K/A", "20-F"], 1)
-            if not annual:
-                filing_note = (
-                    "No annual report is indexed for this company, so there is no instance to "
-                    "read the auditor from. Run the filing-index backfill for this filer."
-                )
-            else:
-                filing = annual[0]
-                base = (
-                    f"https://www.sec.gov/Archives/edgar/data/{cik}/"
-                    f"{(filing.accession or '').replace('-', '')}"
-                )
-                name = find_extracted_instance(await client.get_json(f"{base}/index.json"))
-                if not name:
-                    filing_note = (
-                        f"The {filing.form} filed {filing.filing_date} carries no extracted XBRL "
-                        "instance, which means it predates inline-XBRL tagging for annual reports."
-                    )
-                else:
-                    cover = parse_cover_facts(await client.get_text(f"{base}/{name}"))
-                    cover.accession = filing.accession
-                    cover.form = filing.form
-                    cover.filed = filing.filing_date
-                    cover_repo.upsert_cover(cik, cover)
+        cover, filing_note = await _cover_for_cik(
+            cover_repo, arrangement_repo, filing_repo, client, cik
+        )
 
     if cover is None:
         auditor = {"status": "na", "reason": filing_note}
@@ -2945,6 +2980,84 @@ async def get_officer_changes(
             limit=limit,
             roster_limit=roster_limit,
         )
+
+
+@public_router.get(
+    "/companies/{symbol}/trading-arrangements",
+    tags=["Insider Trades"],
+    summary="Rule 10b5-1 trading arrangements adopted or terminated, from 10-K Item 408(a)",
+)
+async def get_trading_arrangements(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+    cover_repo: FilingCoverRepository = Depends(get_filing_cover_repo),
+    arrangement_repo: TradingArrangementRepository = Depends(get_trading_arrangement_repo),
+) -> dict:
+    """Which directors and officers adopted or terminated a trading arrangement, and when.
+
+    **This is the disclosure D-10b5-1 said did not exist.** That limitation held that we can never
+    state when a plan was adopted -- only that a trade was made under one -- because Form 4's
+    `aff10b5One` box carries no date. True of Form 4, and wrong about Item 408(a): since Dec 2022 a
+    registrant must disclose the person, the date, the duration and the securities covered, tagged
+    in the `ecd` taxonomy. Verified across eight filers 2026-08-05.
+
+    **One fiscal quarter, not a year** (operator ruling 2026-08-05). Item 408(a) is a quarterly
+    disclosure and this reads the latest 10-K, so it covers that filing's fourth fiscal quarter.
+    The three 10-Qs would cover the rest and cost three more multi-megabyte instance fetches; the
+    window is reported so it cannot be mistaken for a year.
+
+    **Adopted and terminated are different events.** Amazon's CFO terminated a plan in the same
+    quarter six colleagues adopted one; a payload that collapsed them would report a dateless
+    adoption where the filing says the opposite.
+
+    **Dates are the filer's own text.** These elements are named `...Date` but typed as strings,
+    and the format varies -- `June 10, 2026`, `November 3, 2025`, `12/10/2025`. `adoption_date` is
+    ISO where a known format parsed and null otherwise; `adoption_date_raw` always carries what the
+    filer wrote, so an unparsed one is visible rather than lost.
+
+    **Amounts are as filed.** Microsoft tags its CFO's plan at 48.7 billion shares against ~7.4
+    billion outstanding. That is the filer's number in the filer's unit, and it is not silently
+    corrected or suppressed -- but it is theirs, not ours.
+
+    Costs nothing extra to serve: parsed from the same instance `/audit` already reads.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        cover, note = await _cover_for_cik(
+            cover_repo, arrangement_repo, filing_repo, client, cik
+        )
+
+    if cover is None or not cover.accession:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": note or "No annual report has been read for this company.",
+            "arrangements": [],
+        }
+
+    rows = arrangement_repo.get_for_filing(cik, cover.accession)
+    return {
+        "cik": cik,
+        "status": "ok",
+        "reason": None,
+        "filing": {
+            "form": cover.form,
+            "filed": cover.filed,
+            "accession": cover.accession,
+            "period_end": cover.period_end,
+        },
+        "adopted_count": sum(1 for r in rows if r.rule_10b5_1_adopted),
+        "terminated_count": sum(1 for r in rows if r.rule_10b5_1_terminated),
+        "arrangements": [asdict(r) for r in rows],
+        "caveats": [
+            "Item 408(a) is disclosed per FISCAL QUARTER. This covers the quarter of the latest "
+            "annual report only -- not the trailing year.",
+            "Adoption and termination dates are the filer's own text; `*_raw` carries what they "
+            "wrote and the ISO field is null where the format was not recognised.",
+            "Securities amounts are as filed, in the filer's own unit, and are not corrected.",
+        ],
+    }
 
 
 @router.get(

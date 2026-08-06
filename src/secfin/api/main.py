@@ -35,6 +35,9 @@ from secfin.storage.sqlite_company_profile_repository import SQLiteCompanyProfil
 from secfin.storage.sqlite_filing_cover_repository import SQLiteFilingCoverRepository
 from secfin.storage.sqlite_filing_index_repository import SQLiteFilingIndexRepository
 from secfin.storage.sqlite_cusip_repository import SQLiteCusipMapRepository
+from secfin.storage.sqlite_trading_arrangement_repository import (
+    SQLiteTradingArrangementRepository,
+)
 from secfin.storage.sqlite_holdings_repository import SQLiteHoldingsSnapshotRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
 from secfin.storage.sqlite_metric_distribution_repository import (
@@ -165,6 +168,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # /audit route because the fetch behind it is 1.4-14.9 MB per filing and there is no range
     # shortcut -- so a filing is downloaded once per accession, ever. See sec/cover.py.
     app.state.filing_cover_repo = SQLiteFilingCoverRepository(settings.secfin_db_path)
+    app.state.trading_arrangement_repo = SQLiteTradingArrangementRepository(
+        settings.secfin_db_path
+    )
     # Precomputed asset-weighted sector DuPont aggregates (Sector Analytics D1) -- sibling of
     # metric_rank_repo above, same read-only-on-the-serving-path shape; analytical/sector_dupont.py
     # is the sole writer, so the live API never touches DuckDB. See routes.get_sector_dupont_repo.
@@ -207,6 +213,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.company_profile_repo.close()
         app.state.filing_index_repo.close()
         app.state.filing_cover_repo.close()
+        app.state.trading_arrangement_repo.close()
         app.state.sector_dupont_repo.close()
         app.state.sector_lifecycle_repo.close()
         app.state.sector_theme_score_repo.close()

@@ -226,6 +226,7 @@ export function HubOverview() {
   const insider = governance.data.insider;
   const officers = governance.data.officers;
   const policies = governance.data.policies;
+  const plans = governance.data.plans;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -1045,6 +1046,50 @@ export function HubOverview() {
             >
               Full insider activity view →
             </button>
+          </div>
+
+          {/*
+            §05.5, and a FIFTH card in a 2×2 grid — a deliberate layout change (operator ruling
+            2026-08-05), because what this shows outgrew the footer sentence it used to be.
+
+            D-10b5-1 said a plan's adoption date is unknowable. That held for Form 4's aff10b5One
+            box, which carries no date, and is wrong about Item 408(a): since Dec 2022 a filer
+            must name the person, the date, the duration and the securities covered.
+          */}
+          <div className="p-card">
+            <div className="hub-panel-head is-split">
+              <span className="hub-label no-mb">Rule 10b5-1 plans · 10-K Item 408(a)</span>
+              <Src href={L.tenK}>Read the 10-K ↗</Src>
+            </div>
+            {plans.ok ? (
+              <>
+                <div className="hub-ins-summary">{plans.headline}</div>
+                {plans.rows.map((r, i) => (
+                  <div className="hub-tri-row is-top" key={`${r.person}${i}`}>
+                    <span className="hub-cell" title={r.title}>
+                      {r.person}
+                      {/* Adopting and terminating are opposite events; only the rarer one is
+                          marked, so the common case stays quiet. */}
+                      {r.kind === "terminated" ? (
+                        <span className="hub-hint hub-changed-mark">terminated</span>
+                      ) : null}
+                    </span>
+                    <span className="hub-cell-mono is-soft">
+                      {[r.duration, r.shares].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                    <span
+                      className="hub-cell-mono ta-r"
+                      title={r.dateExact ? undefined : "The filer wrote this date as text in a format we do not parse, so it is shown as written."}
+                    >
+                      {r.date}
+                    </span>
+                  </div>
+                ))}
+                <div className="hub-note">{plans.note}</div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={plans.reason} />
+            )}
           </div>
         </div>
       </section>

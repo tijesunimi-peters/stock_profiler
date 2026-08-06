@@ -145,6 +145,12 @@ src/secfin/
                                #   flags) + company extension-tag census, from the
                                #   filing's EXTRACTED XBRL INSTANCE (*_htm.xml). Tagged facts in
                                #   XML -- NOT a document parse, so the EX-21 exception is untouched
+    trading_arrangements.py    # Item 408(a) Rule 10b5-1 arrangements from the SAME 10-K instance
+                               #   cover.py reads (so no extra fetch): person, title, ADOPTION
+                               #   DATE, duration, securities -- dimensional on ecd:IndividualAxis.
+                               #   Overturns D-10b5-1, which held for Form 4's box and NOT for
+                               #   Item 408(a). Dates are the filer's free text: ISO where a known
+                               #   format parses, raw always kept beside it
     proxy.py                   # DEF 14A pay-versus-performance from the same kind of instance;
                                #   `ecd` facts only, never the HTML …TextBlock elements
     frames.py                  # fetch + parse SEC frames API (cross-company screening)
@@ -205,6 +211,10 @@ src/secfin/
                                         #   COVER_SCHEMA_VERSION -- an older stamp reads as a MISS,
                                         #   so ADDING a cover field heals the cache instead of
                                         #   silently serving NULL for every filer already in it
+    trading_arrangement_repository.py   # abstract Item 408(a) store, keyed (cik, accession, member)
+    sqlite_trading_arrangement_repository.py  # trading_arrangements; filled by the same instance
+                                        #   read as filing_cover_facts. Replace-per-filing, so a
+                                        #   re-parse under a newer COVER_SCHEMA_VERSION writes
     company_profile_repository.py       # abstract cik->SIC profile store (Metrics Phase 2)
     sqlite_company_profile_repository.py
     metric_value_repository.py          # abstract materialized-metric store (Metrics Phase 2)

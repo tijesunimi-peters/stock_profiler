@@ -528,6 +528,99 @@ function toPayVersusPerformance(res: PvpResponse | null) {
   };
 }
 
+/* ------------------------------------------------------------ §05.5 Rule 10b5-1 arrangements */
+
+interface TradingArrangementsResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  filing?: { form: string | null; filed: string | null; accession: string | null; period_end: string | null } | null;
+  adopted_count?: number;
+  terminated_count?: number;
+  arrangements: {
+    person: string | null;
+    title: string | null;
+    rule_10b5_1_adopted: boolean | null;
+    rule_10b5_1_terminated: boolean | null;
+    adoption_date: string | null;
+    adoption_date_raw: string | null;
+    termination_date: string | null;
+    termination_date_raw: string | null;
+    duration: string | null;
+    securities_amount: number | null;
+    securities_unit: string | null;
+  }[];
+}
+
+/** `P268D` → `268 days`. An ISO duration is precise and unreadable; this only expands days. */
+function planDuration(iso: string | null): string {
+  const m = /^P(\d+)D$/.exec(iso ?? "");
+  return m ? `${m[1]} days` : (iso ?? "");
+}
+
+/**
+ * §05.5 — who adopted or terminated a Rule 10b5-1 plan, and when.
+ *
+ * **This is the disclosure D-10b5-1 said did not exist.** That limitation held we can never state
+ * a plan's adoption date, only that a trade was made under one — true of Form 4's `aff10b5One`
+ * box, and wrong about Item 408(a), which has required the person, the date, the duration and the
+ * securities covered since Dec 2022.
+ *
+ * **One fiscal quarter, not a year** (operator ruling 2026-08-05). Item 408(a) is disclosed
+ * quarterly and this reads the latest 10-K, so it covers that filing's fourth fiscal quarter. The
+ * window is stated on the card, because "no plans adopted" over one quarter and over a year are
+ * very different claims.
+ *
+ * **Adopted and terminated are kept apart.** Amazon's CFO terminated a plan in the same quarter
+ * six colleagues adopted one.
+ *
+ * **Amounts are as filed.** Microsoft tags its CFO's plan at 48.7 billion shares against ~7.4
+ * billion outstanding. That is the filer's number in the filer's unit; correcting or hiding it
+ * would be us editing a filing.
+ */
+function toTradingArrangements(res: TradingArrangementsResponse | null) {
+  const quarter = res?.filing?.period_end ? humanDate(res.filing.period_end) : null;
+  const rows = (res?.arrangements ?? []).map((a) => {
+    const terminated = a.rule_10b5_1_terminated === true;
+    const iso = terminated ? a.termination_date : a.adoption_date;
+    const raw = terminated ? a.termination_date_raw : a.adoption_date_raw;
+    return {
+      person: a.person ?? "Name not reported",
+      title: a.title ?? "",
+      kind: terminated ? ("terminated" as const) : ("adopted" as const),
+      // The ISO date where a known format parsed, otherwise the filer's own words. These
+      // elements are typed as text, so an unrecognised format is shown rather than dropped.
+      date: iso ? humanDate(iso) : (raw ?? "date not reported"),
+      dateExact: !!iso,
+      duration: planDuration(a.duration),
+      shares:
+        a.securities_amount === null
+          ? ""
+          : `${a.securities_amount.toLocaleString()} ${a.securities_unit ?? ""}`.trim(),
+    };
+  });
+
+  const adopted = res?.adopted_count ?? 0;
+  const terminated = res?.terminated_count ?? 0;
+  const headline = !rows.length
+    ? `No director or officer adopted or terminated a Rule 10b5-1 plan in the quarter ended ${quarter ?? "covered by the latest 10-K"}.`
+    : `${plural(adopted, "plan")} adopted` +
+      (terminated ? ` and ${plural(terminated, "terminated")}` : "") +
+      ` in the quarter ended ${quarter ?? "covered by the latest 10-K"}.`;
+
+  return {
+    ok: res?.status === "ok",
+    rows,
+    headline,
+    reason:
+      res?.reason ??
+      "Rule 10b5-1 arrangements could not be read for this company just now.",
+    note:
+      "Item 408(a) is disclosed per fiscal QUARTER — this is the quarter of the latest annual " +
+      "report, not the trailing year. Dates and amounts are the filer's own, as filed.",
+  };
+}
+
 /* ------------------------------------------------------------ §05.2 governance policies */
 
 /**
@@ -1580,6 +1673,9 @@ export const api = {
       // §01.9. The same read §06 makes, and the server has it cached per accession after the
       // first call for a filer — so this is one SQLite lookup, not a second 15 MB fetch.
       getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+      getJson<TradingArrangementsResponse>(`/v1/companies/${enc}/trading-arrangements`).catch(
+        () => null,
+      ),
     ]);
     return {
       profile: profileRows(p, audit),
@@ -1737,18 +1833,22 @@ export const api = {
     // — `null` flows into each adapter's honest-empty branch.
     // Four independent reads, in parallel and each failing alone. `/audit` is shared with §06 —
     // it is cache-aside over the 10-K instance, so the second caller pays a SQLite read.
-    const [pvp, insiderSummary, officers, audit] = await Promise.all([
+    const [pvp, insiderSummary, officers, audit, plans] = await Promise.all([
       getJson<PvpResponse>(`/v1/companies/${enc}/pay-versus-performance`).catch(() => null),
       getJson<InsiderSummaryResponse>(`/v1/companies/${enc}/insider-summary?limit=10`).catch(
         () => null,
       ),
       getJson<OfficerChangesResponse>(`/v1/companies/${enc}/officer-changes`).catch(() => null),
       getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+      getJson<TradingArrangementsResponse>(`/v1/companies/${enc}/trading-arrangements`).catch(
+        () => null,
+      ),
     ]);
     return {
       insider: toInsiderSummary(insiderSummary),
       officers: toOfficerChanges(officers),
       policies: toGovernancePolicies(pvp, audit),
+      plans: toTradingArrangements(plans),
       pvp: toPayVersusPerformance(pvp),
     } as CompanyGovernance;
   },
@@ -2030,6 +2130,8 @@ export interface CompanyGovernance {
   officers: ReturnType<typeof toOfficerChanges>;
   /** §05.2 repointed: the governance check marks that ARE tagged. */
   policies: ReturnType<typeof toGovernancePolicies>;
+  /** §05.5 on 10-K Item 408(a) — named officers, adoption dates, durations. */
+  plans: ReturnType<typeof toTradingArrangements>;
 }
 
 export interface CompanyDisclosure {

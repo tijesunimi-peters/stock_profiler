@@ -80,7 +80,10 @@ _WANTED_DEI: dict[str, str] = {
 #:
 #: 1 -- auditor, ICFR attestation, extension census
 #: 2 -- Rule 10D-1 error-correction + clawback-recovery flags (2026-08-04)
-COVER_SCHEMA_VERSION = 2
+#: 3 -- Item 408(a) trading arrangements parsed from the same instance (2026-08-05). Not a
+#:      field on CoverFacts, but the same fetch fills `trading_arrangements`, so a cached cover
+#:      row means that table was never populated for the filer.
+COVER_SCHEMA_VERSION = 3
 
 #: Booleans that ride along in the same fetch. Stored as `True`/`False`/`None` -- `None` and
 #: `False` are different answers, and collapsing them would invent a disclosure.
