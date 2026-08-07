@@ -1083,6 +1083,18 @@ export const LABEL_TO_ID: Record<string, string> = {
 
 /** One precision per chart, taken from the series magnitude. */
 export function unitFmt(unit: string, mag?: number): (v: number) => string {
+  /*
+   * API units first. The fixture's units are DISPLAY units whose values were pre-scaled ("$B"
+   * means the numbers are already billions); the API reports in the unit the filer filed
+   * (`USD`, `shares`, `ratio`), raw and unscaled, because rescaling on the way in loses the
+   * reported figure. So scaling happens here, at the point of display, and only here.
+   */
+  if (unit === "USD") return scaled("$");
+  if (unit === "USD/shares") return (v) => `$${v.toFixed(2)}`;
+  if (unit === "shares") return scaled("");
+  if (unit === "ratio") return (v) => `${(v * 100).toFixed(1)}%`;
+  if (unit === "pure" || unit === "Employee") return (v) => Math.round(v).toLocaleString();
+
   if (unit === "%") return (v) => `${v.toFixed(0)}%`;
   if (unit === "M") return (v) => `${Math.round(v)}M`;
   if (unit === "k") return (v) => `${Math.round(v)}k`;
@@ -1091,6 +1103,21 @@ export function unitFmt(unit: string, mag?: number): (v: number) => string {
   if (unit === "$") return (v) => `$${v.toFixed(2)}`;
   const dp = mag !== undefined && Math.abs(mag) >= 10 ? 0 : 1;
   return (v) => `$${v.toFixed(dp)}B`;
+}
+
+/** Magnitude-scaled formatter: one scale for the WHOLE series, chosen from its largest value.
+ *
+ * Per-point scaling would render the same line as "$1.2B" then "$986M" then "$1.4B", which reads
+ * as three different quantities. The scale is picked once by the caller's `mag` and every point
+ * on the axis uses it. */
+function scaled(prefix: string): (v: number) => string {
+  return (v) => {
+    const a = Math.abs(v);
+    const [div, suffix] =
+      a >= 1e12 ? [1e12, "T"] : a >= 1e9 ? [1e9, "B"] : a >= 1e6 ? [1e6, "M"] : a >= 1e3 ? [1e3, "k"] : [1, ""];
+    const n = v / div;
+    return `${prefix}${Math.abs(n) >= 100 || !suffix ? Math.round(n) : n.toFixed(1)}${suffix}`;
+  };
 }
 
 // ============================================================ institutional register

@@ -47,6 +47,7 @@ from secfin.normalize.blockholders import build_blockholders
 from secfin.normalize.segments import build_segment_breakdown
 from secfin.normalize.share_classes import build_share_classes
 from secfin.normalize.mapping import (
+    CONCEPTS,
     CAPITAL_GROUP_NOTES,
     CAPITAL_GROUPS,
     FOOTNOTE_GROUPS,
@@ -60,6 +61,7 @@ from secfin.normalize.metrics import (
     METRIC_LABELS,
     METRIC_UNITS,
     compute_fy_metrics_with_trend,
+    compute_concept_series,
     compute_metric_history,
     compute_metrics,
     metric_periods,
@@ -82,7 +84,6 @@ from secfin.normalize.register import (
 )
 from secfin.normalize.schema import (
     BalanceSheetViz,
-    TYPE_OF_REPORTING_PERSON,
     BeneficialOwnership,
     CapitalStructureSeries,
     CashFlowSeries,
@@ -91,6 +92,7 @@ from secfin.normalize.schema import (
     CompanyPeerDistribution,
     CompanyPeerRanks,
     CompanyProfileInfo,
+    ConceptSeries,
     CondensedStatement,
     CusipResolutionStats,
     FiscalPeriod,
@@ -100,15 +102,18 @@ from secfin.normalize.schema import (
     InsiderFlowWindow,
     InsiderSummary,
     InsiderTransaction,
-    OfficerChanges,
     IssuerHolder,
     MetricFrequency,
     MetricHistory,
     MetricSpread,
     NormalizedView,
+    OfficerChanges,
     PeerDistribution,
     PeerRank,
     RawFact,
+    RestatementBasis,
+    SectorCompanyValue,
+    SectorCompanyValueList,
     SectorDupont,
     SectorGeographicMix,
     SectorInsiderFlow,
@@ -116,8 +121,6 @@ from secfin.normalize.schema import (
     SectorLifecycleSeries,
     SectorList,
     SectorSeries,
-    SectorCompanyValue,
-    SectorCompanyValueList,
     SectorSpread,
     SectorSpreadList,
     SectorSpreadProfile,
@@ -126,6 +129,7 @@ from secfin.normalize.schema import (
     SectorThemeScores,
     Statement,
     StatementType,
+    TYPE_OF_REPORTING_PERSON,
     ThemeConstituent,
 )
 from secfin.normalize.screening import (
@@ -2064,6 +2068,13 @@ async def get_metric_history(
     frequency: MetricFrequency = Query(
         "quarterly", description="Series frequency: quarterly (finest) or annual (FY only)"
     ),
+    restatement_basis: RestatementBasis = Query(
+        "as-restated",
+        description=(
+            "as-restated (latest-filed inputs) or as-originally-reported (the inputs the first "
+            "filing to report each period gave)"
+        ),
+    ),
     repo: RawFactRepository = Depends(get_repo),
     ticker_cache: TickerCache = Depends(get_ticker_cache),
 ) -> MetricHistory:
@@ -2086,7 +2097,60 @@ async def get_metric_history(
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         facts = await _facts_for_cik(repo, client, cik)
-    return compute_metric_history(facts, cik, metric, frequency)
+    return compute_metric_history(facts, cik, metric, frequency, restatement_basis)
+
+
+@public_router.get(
+    "/companies/{symbol}/concept-series",
+    response_model=ConceptSeries,
+    tags=["Financials"],
+    summary="One statement line item across every period on file",
+)
+async def get_concept_series(
+    symbol: str,
+    concept: str = Query(..., description="Canonical concept key, e.g. revenue, cost_of_revenue"),
+    frequency: MetricFrequency = Query(
+        "quarterly", description="Series frequency: quarterly (discrete quarters) or annual"
+    ),
+    restatement_basis: RestatementBasis = Query(
+        "as-restated",
+        description=(
+            "as-restated (latest-filed value for each period) or as-originally-reported (the "
+            "value the first filing to report that period gave)"
+        ),
+    ),
+    repo: RawFactRepository = Depends(get_repo),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+) -> ConceptSeries:
+    """A canonical concept's whole reported history — the line-item counterpart to
+    `/metrics/{metric}/history`.
+
+    Served cache-aside from the operational store, same as the metric routes. The two share their
+    period axis and their `MetricSeriesPoint` shape, so a chart can overlay a line item on a ratio
+    without reconciling anything.
+
+    **Both restatement bases are real here**, which is the point of keeping every filing's value
+    (see CLAUDE.md — restatements are never deleted). `as-restated` reports what the company says
+    the period was NOW; `as-originally-reported` reports what it said at the time. A whole series
+    is computed on ONE basis: a line that mixed them per period would be neither.
+
+    **Flows and stocks are read differently and `kind` says which.** A quarterly flow is the
+    DISCRETE quarter, recovered by differencing the year-to-date durations filers actually tag;
+    a stock is the level at the period end and is never summed.
+
+    A period the filer did not report is a gap point (`value` null), never interpolated. An
+    unknown `concept` is a 404; a concept this filer tags nowhere is a 200 with no points and a
+    `reason` — an absence of disclosure, which is not a zero.
+    """
+    if concept not in CONCEPTS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown concept '{concept}'. See /v1/concepts for the canonical list.",
+        )
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        facts = await _facts_for_cik(repo, client, cik)
+    return compute_concept_series(facts, cik, concept, frequency, restatement_basis)
 
 
 # Surfaced on every peer-ranking response. Percentile is POSITION, not a verdict -- for some

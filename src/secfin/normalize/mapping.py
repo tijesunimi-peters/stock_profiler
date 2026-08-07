@@ -832,6 +832,12 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     ),
     "severance_costs": ("Severance Costs", ["SeveranceCosts1"]),
 
+    # Headcount. A dei cover-page fact, not a financial statement one -- and RARE: 376 of the
+    # 16,920 companies in raw_facts tag it (2.2%). Item 1's human-capital discussion is where most
+    # filers put it, in prose. Carried because the financial-history picker offers it and a real
+    # series for the 2.2% beats a fabricated one for everybody (operator ruling 2026-08-07).
+    "employees": ("Employees", ["EntityNumberOfEmployees"]),
+
     # Guarantees, environmental, off-balance-sheet -- the thinnest group on the page.
     "guarantee_obligations": (
         "Guarantee Obligations",

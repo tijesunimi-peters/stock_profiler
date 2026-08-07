@@ -1523,6 +1523,34 @@ class TrendSignal(BaseModel):
     window: int | None = None  # number of series points the signal considered
 
 
+class ConceptSeries(BaseModel):
+    """One canonical CONCEPT's value across every period on file, for the history chart.
+
+    Distinct from `MetricHistory`, which serves the 30 computed metrics: this serves the
+    statement LINE ITEMS (revenue, cost of revenue, cash from operations...) that have no ratio
+    behind them. Both share `MetricSeriesPoint`, `frequency` and `restatement_basis` so a chart
+    can overlay one on the other without reconciling two shapes.
+    """
+
+    cik: int
+    concept: str
+    label: str
+    #: The reported unit (USD, shares, ...). None when the concept resolved to no usable fact.
+    unit: str | None = None
+    #: Flows are summed over a period; stocks are a level at its end. A chart must not mix them
+    #: on one axis without saying so, and the two are never differenced against each other.
+    kind: Literal["flow", "stock"] | None = None
+    #: Which candidate tag was chosen, and whether it is the filer's own extension. Provenance
+    #: travels with the series, not just with a point.
+    source_tag: str | None = None
+    is_extension: bool = False
+    frequency: MetricFrequency = "quarterly"
+    restatement_basis: RestatementBasis = "as-restated"
+    points: list[MetricSeriesPoint] = Field(default_factory=list)
+    #: Set when the concept resolves to nothing for this filer -- an untagged concept, not a zero.
+    reason: str | None = None
+
+
 class MetricHistory(BaseModel):
     """One metric's full history for one company (Tier 1 series + Tier 2 signals)."""
 

@@ -210,6 +210,59 @@ under this heading.
 `EthyleneOxideTortLitigationIllinois` — but on 66 of 4,634 annual filers (**1.4%**), one in
 seventy. That is a real structured source and still too rare to build a table on.
 
+### Headcount is a cover-page fact, and a rare one
+
+`employees` maps the single dei tag `EntityNumberOfEmployees`, tagged by **376 of the 16,920
+companies in `raw_facts` (2.2%)**. Item 1's human-capital discussion is where most registrants put
+headcount, in prose. It is carried so the financial-history picker can draw a real series for the
+filers that do tag it, and an explained empty state for the rest — the alternative was the
+fabricated series that used to stand there.
+
+### Two restatement bases, both real
+
+The store keeps every filing's value for a period (`accession` + `filed`, nothing deleted), so the
+same period is recoverable from either end of its filing history — and `/concept-series` and
+`/metrics/{m}/history` both take `restatement_basis`:
+
+| | which filing wins | answers |
+|---|---|---|
+| `as-restated` (default) | latest-filed | what the company says the period was **now** |
+| `as-originally-reported` | first to report it | what the company said **at the time** |
+
+Neither is truer; they answer different questions, and a series that mixed them period by period
+would answer neither — so a whole series is computed on one basis. **As-restated is the default
+everywhere**, including the history chart, because every other surface (statements, metrics, the
+footnote cards) is latest-filed-wins and a chart defaulting the other way would silently disagree
+with them.
+
+Verified against real filings: Apple FY2008 Q2 net income reads **$1.136B as originally reported
+and $2.421B as restated** (the retrospective adoption of subscription accounting for iPhone);
+Coca-Cola FY2017 Q4 revenue moves **$7.512B → $8.314B**. But a divergence is **not always a
+restatement** — NVIDIA reports 136,516,000 in one filing and 137,000,000 in a later one, which is
+the same figure at a different reported precision. Nothing in the data distinguishes the two, so
+the UI states both possibilities and claims neither.
+
+### One tag per series, chosen by coverage
+
+A series fixes on ONE candidate tag for its whole history: a ratio whose denominator changed
+definition halfway along would move for a reason that is not the business. **But the first
+candidate with any usable value is the wrong one to fix on.** Filers switch tags, most often at
+the ASC 606 revenue transition, and a fragment covering four years beat a tag covering eighteen
+under a first-hit rule.
+
+The failure this caused was live and invisible: NVIDIA tagged
+`RevenueFromContractWithCustomerExcludingAssessedTax` for FY2019–FY2022 and `Revenues` for
+FY2009–FY2027, so its revenue series ended in 2022 and **its gross margin and net margin were
+`N/A` outright**. Measured over 1,500 companies with a full payload, **18.7% picked a revenue tag
+with under two thirds the coverage of the best available** (net income 3.1%, cash from operations
+3.5%) — AT&T and Boeing among them, on tags with 2–5 periods against one with 74.
+
+`_choose_tag` keeps mapping preference *unless* the preferred tag covers less than two thirds of
+what the best-covered candidate does. Preference still decides between tags that both cover the
+history; this only rejects fragments, and never blends two tags into one line. `statements.py` is
+unaffected — it selects per period, so a filer that switched tags already gets the right one for
+each period there.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

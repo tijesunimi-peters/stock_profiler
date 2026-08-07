@@ -1576,6 +1576,103 @@ function restNote(
   return `${types} further ${kind}${types === 1 ? "" : "s"} (${n.toLocaleString()} ${unit}${n === 1 ? "" : "s"}) not shown.`;
 }
 
+/**
+ * Where a non-reliance restatement lands on a series' own period axis.
+ *
+ * An Item 4.02 8-K is dated by when it was FILED, and the chart's x-axis is fiscal periods — so a
+ * mark goes on the first period that ENDED on or after the filing, which is the earliest period a
+ * reader could have been looking at when the warning appeared. It is never placed on the period
+ * the restatement was *about*: the 8-K's body says which periods those are, and that is prose.
+ *
+ * An event before the visible range is dropped rather than clamped to the first point, which
+ * would move a real date onto a period it did not happen in.
+ */
+async function restatementMarks(
+  auditP: Promise<AuditResponse | null>,
+  pts: { period_end?: string | null }[],
+): Promise<{ i: number; tag: string }[]> {
+  const audit = await auditP;
+  const evs = (audit?.audit_events?.events ?? []).filter((e) => e.kind === "non_reliance_restatement");
+  const marks: { i: number; tag: string }[] = [];
+  for (const e of evs) {
+    if (!e.filed) continue;
+    const i = pts.findIndex((p) => (p.period_end ?? "") >= e.filed!);
+    if (i >= 0) marks.push({ i, tag: "non-reliance restatement" });
+  }
+  return marks;
+}
+
+/* ------------------------------------------------------- financial history: the real catalogue */
+
+interface ConceptSeriesResponse {
+  concept: string;
+  label: string;
+  unit: string | null;
+  kind: "flow" | "stock" | null;
+  source_tag: string | null;
+  is_extension: boolean;
+  frequency: string;
+  restatement_basis: string;
+  reason: string | null;
+  points: { fiscal_year: number; fiscal_period: string; period_end: string | null; value: number | null }[];
+}
+
+/**
+ * What the financial-history picker offers, and where each entry actually comes from.
+ *
+ * TWO backends, because a line item and a ratio are different things: the 30 computed metrics come
+ * from `/metrics/{key}/history`, the statement line items from `/concept-series`. Both share a
+ * period axis and a point shape, so overlaying one on the other is safe.
+ *
+ * **The fixture this replaced offered 25 entries and drew a seeded random walk for every one of
+ * them.** Two are gone rather than faked:
+ *
+ *  - *Risk factor count* — Item 1A is narrative; there is no structured source and no plan for one.
+ *  - Nothing else. *Employees* stays despite being tagged by 2.2% of filers (operator ruling
+ *    2026-08-07): a real series for the few who tag it and an explained absence for the rest.
+ *
+ * Two labels changed because the fixture's were wrong about what the data is — `cash` is cash and
+ * equivalents (short-term investments are a separate concept the filer tags separately), and
+ * `debt` is long-term debt (no filer tags a single "total debt" figure; the metrics engine builds
+ * one by adding the current portion, which is a DERIVED number and not a line item).
+ */
+export const HISTORY_METRICS: {
+  id: string;
+  label: string;
+  group: string;
+  source: "concept" | "metric";
+  key: string;
+}[] = [
+  { id: "rev", label: "Revenue", group: "Income statement", source: "concept", key: "revenue" },
+  { id: "gm", label: "Gross margin", group: "Income statement", source: "metric", key: "gross_margin" },
+  { id: "opm", label: "Operating margin", group: "Income statement", source: "metric", key: "operating_margin" },
+  { id: "cogs", label: "Cost of revenue", group: "Income statement", source: "concept", key: "cost_of_revenue" },
+  { id: "gp", label: "Gross profit", group: "Income statement", source: "concept", key: "gross_profit" },
+  { id: "rd", label: "R&D expense", group: "Income statement", source: "concept", key: "research_and_development" },
+  { id: "sga", label: "SG&A expense", group: "Income statement", source: "concept", key: "sga_expense" },
+  { id: "oi", label: "Operating income", group: "Income statement", source: "concept", key: "operating_income" },
+  { id: "ni", label: "Net income", group: "Income statement", source: "concept", key: "net_income" },
+  { id: "eps", label: "Diluted EPS", group: "Income statement", source: "metric", key: "eps_diluted" },
+
+  { id: "cfo", label: "Cash from operations", group: "Cash flow", source: "concept", key: "cash_from_operations" },
+  { id: "capex", label: "Capital expenditures", group: "Cash flow", source: "concept", key: "capital_expenditures" },
+  { id: "fcf", label: "Free cash flow", group: "Cash flow", source: "metric", key: "fcf" },
+  { id: "buyback", label: "Share repurchases", group: "Cash flow", source: "concept", key: "share_repurchases" },
+
+  { id: "cash", label: "Cash & equivalents", group: "Balance sheet", source: "concept", key: "cash_and_equivalents" },
+  { id: "inv", label: "Inventories", group: "Balance sheet", source: "concept", key: "inventory" },
+  { id: "debt", label: "Long-term debt", group: "Balance sheet", source: "concept", key: "long_term_debt" },
+  { id: "defrev", label: "Deferred revenue", group: "Balance sheet", source: "concept", key: "deferred_revenue" },
+
+  { id: "rpo", label: "Remaining perf. obligations", group: "Footnote", source: "concept", key: "rpo_total" },
+  { id: "sbc", label: "Stock compensation", group: "Footnote", source: "concept", key: "share_based_compensation" },
+  { id: "etr", label: "Effective tax rate", group: "Footnote", source: "concept", key: "effective_tax_rate" },
+  { id: "legal", label: "Legal accruals", group: "Footnote", source: "concept", key: "loss_contingency_accrual" },
+
+  { id: "shares", label: "Diluted shares", group: "Cover page", source: "metric", key: "share_count" },
+  { id: "heads", label: "Employees", group: "Cover page", source: "concept", key: "employees" },
+];
+
 /** EDGAR names the Section 16 ownership forms and the proposed-sale notice by bare number — `3`,
  * `4`, `5`, `144`, and their `/A` amendments. In a column beside counts those read as numbers
  * rather than as names, so they get the word EDGAR itself uses. Display only: the form string the
@@ -1861,7 +1958,11 @@ interface MetricsResponse {
 }
 interface MetricHistoryResponse {
   metric: string; label: string; unit: string;
-  points: { fiscal_year: number; fiscal_period: string; value: number | null; status: string }[];
+  restatement_basis?: string;
+  points: {
+    fiscal_year: number; fiscal_period: string; value: number | null; status: string;
+    period_end?: string | null;
+  }[];
 }
 
 /**
@@ -2275,11 +2376,62 @@ export const api = {
    * `basis` maps to the as-filed vs as-restated distinction. We keep every restatement
    * (`accession` + `filed`, latest wins), so the DATA exists; no endpoint exposes the vintage yet.
    */
-  companyMetricSeries: (symbol: string, id: string, range: "8q" | "20q" | "5y", basis: "filed" | "restated") =>
-    resolve<CompanyMetricSeries>({
-      series: hub.seriesFor(symbol, id, range, basis),
-      defs: hub.metricDefs(symbol),
-    }),
+  companyMetricSeries: async (
+    symbol: string,
+    id: string,
+    range: "8q" | "20q" | "5y",
+    basis: "filed" | "restated",
+  ): Promise<CompanyMetricSeries> => {
+    const def = HISTORY_METRICS.find((m) => m.id === id);
+    if (!def) return { series: null, defs: HISTORY_METRICS };
+
+    const enc = encodeURIComponent(symbol);
+    const annual = range === "5y";
+    const frequency = annual ? "annual" : "quarterly";
+    // The page's two tabs, in the vocabulary the schema already had. `as-originally-reported` is
+    // the value the FIRST filing to report a period gave; `as-restated` the latest.
+    const rb = basis === "filed" ? "as-originally-reported" : "as-restated";
+    const q = `frequency=${frequency}&restatement_basis=${rb}`;
+
+    // The comparability marks. 8-K Item 4.02 is a REQUIRED filing when previously-issued
+    // statements should no longer be relied on, which is the one comparability break the filing
+    // record states outright. Fetched alongside, allowed to fail alone: a chart without its marks
+    // is still a chart, but a chart that cannot draw is nothing.
+    const eventsP = getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null);
+
+    const res =
+      def.source === "metric"
+        ? await getJson<MetricHistoryResponse>(`/v1/companies/${enc}/metrics/${def.key}/history?${q}`)
+            .catch(() => null)
+        : await getJson<ConceptSeriesResponse>(`/v1/companies/${enc}/concept-series?concept=${def.key}&${q}`)
+            .catch(() => null);
+    if (!res) return { series: null, defs: HISTORY_METRICS };
+
+    // Newest N, then back into chronological order. The route returns the WHOLE history — Apple's
+    // reaches 2007 — and the range tabs are about how much of it to show.
+    const take = annual ? 5 : range === "8q" ? 8 : 20;
+    const pts = (res.points ?? []).slice(-take);
+
+    return {
+      series: {
+        vals: pts.map((p) => p.value),
+        labels: pts.map((p) =>
+          p.fiscal_period === "FY" ? `FY${p.fiscal_year}` : `${p.fiscal_period} FY${String(p.fiscal_year).slice(2)}`,
+        ),
+        events: await restatementMarks(eventsP, pts),
+        unit: res.unit ?? "",
+        label: res.label ?? def.label,
+        annual,
+        // Provenance the fixture had no way to carry.
+        sourceTag: "source_tag" in res ? (res.source_tag ?? null) : null,
+        isExtension: "is_extension" in res ? !!res.is_extension : false,
+        restatementBasis: res.restatement_basis ?? rb,
+        reason: "reason" in res ? ((res as ConceptSeriesResponse).reason ?? null) : null,
+        periodEnds: pts.map((p) => p.period_end ?? null),
+      },
+      defs: HISTORY_METRICS,
+    };
+  },
 
   /**
    * §02's footnote cards, §04's capital cards and §07's obligations.
@@ -2648,9 +2800,28 @@ export interface CompanyFinancials {
   snapshot: hub.SnapshotTile[];
 }
 
+/** One picked metric's series, as the financial-history chart consumes it. */
+export interface HistorySeries {
+  vals: (number | null)[];
+  labels: string[];
+  /** Comparability events at point indices — filled from the filing index, not from the series. */
+  events: { i: number; tag: string }[];
+  unit: string;
+  label: string;
+  annual: boolean;
+  /** Which us-gaap/dei tag this line actually read, and whether the filer defined it itself. */
+  sourceTag: string | null;
+  isExtension: boolean;
+  /** Echoed from the route so the chart states the basis it is on rather than assuming. */
+  restatementBasis: string;
+  /** Set when the filer tags this concept nowhere — an absence, not a series of zeros. */
+  reason: string | null;
+  periodEnds: (string | null)[];
+}
+
 export interface CompanyMetricSeries {
-  series: hub.SeriesResult | null;
-  defs: hub.MetricDef[];
+  series: HistorySeries | null;
+  defs: typeof HISTORY_METRICS;
 }
 
 export interface CompanyFootnotes {

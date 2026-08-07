@@ -212,7 +212,13 @@ src/secfin/
                                #   member (domestic/international/other) for the sector geo mix (P6b);
                                #   the documented moat -- separate from geography.py (filer HQ)
     screening.py                # SCREENABLE_CONCEPTS + frames<->RawFact reconciliation (M4)
-    metrics.py                  # fundamental metrics over RawFact history -> MetricValue
+    metrics.py                  # fundamental metrics over RawFact history -> MetricValue, PLUS
+                               #   compute_concept_series (statement LINE ITEMS for the financial-
+                               #   history chart) and _choose_tag. Both restatement bases are real:
+                               #   as-restated (latest-filed) and as-originally-reported (first to
+                               #   report the period). _choose_tag picks ONE tag per series by
+                               #   COVERAGE with mapping preference as tie-break -- a first-hit
+                               #   rule made NVIDIA's revenue end in FY2022 and its margins N/A
                                #   (period_end-anchored, TTM/as-of, status+reason; R1-R8) +
                                #   METRIC_DIRECTION favorability map (higher_is_better)
     themes.py                   # composite-health THEMES (theme -> constituent metrics) +

@@ -37,7 +37,16 @@ export function HistoryView() {
   const T = sel.focal;
   const [picked, setPicked] = useState<string[]>(["rev"]);
   const [range, setRange] = useState<"8q" | "20q" | "5y">("20q");
-  const [basis, setBasis] = useState<"filed" | "restated">("filed");
+  /*
+   * Defaults to AS-RESTATED, not to the tab that sits first.
+   *
+   * Every other surface in the product reads latest-filed-wins — the statements, the metrics
+   * engine's documented R9 default, the footnote cards. A history chart defaulting to
+   * as-originally-reported would disagree with the overview about any period a filer ever
+   * corrected, with nothing on either page explaining why. As-filed is the deliberate second
+   * look, so it is the deliberate second click.
+   */
+  const [basis, setBasis] = useState<"filed" | "restated">("restated");
   const [zoom, setZoom] = useState(false);
 
   /*
@@ -79,12 +88,47 @@ export function HistoryView() {
   const shown = primary ? primary.vals.filter((v): v is number => v != null) : [];
   const title = series.length === 1 ? primary?.label : `${series.length} metrics compared`;
 
-  const chartSeries = series.map((x) => ({
-    id: x.id,
-    label: x.s.label,
-    color: x.color,
-    points: x.s.labels.map((p, i) => ({ period: p, value: x.s.vals[i] })),
-  }));
+  // Marks ride on the FIRST picked series' axis — all picked series share one period axis, so
+  // any of them indexes the same points.
+  const marks = series[0]?.s.events ?? [];
+
+  // A picked metric the filer tags nowhere comes back with no points and a reason. It must be
+  // named: silently drawing two lines when three were picked reads as a rendering fault.
+  const missing = picked
+    .map((id, i) => ({ id, def: defs.find((d) => d.id === id), s: res.data![i]?.series }))
+    .filter((x) => x.s && x.s.vals.length === 0);
+
+  /*
+   * Overlaying a ratio on a currency puts 0.74 next to 81,600,000,000 — the margin renders as a
+   * flat line on the zero gridline, which is not "read shape, not level", it is one metric erased
+   * by the other. So when the picked metrics do not share a unit, each line is indexed to its OWN
+   * range and the axis stops claiming to be a quantity. The legend keeps every metric's real
+   * latest value in its real unit, which is where a level belongs.
+   *
+   * Indexed by min-max rather than to the first point: a series whose first value is near zero
+   * would otherwise blow up to thousands, and a series starting at zero cannot be indexed at all.
+   */
+  const mixedUnits = units.length > 1;
+  const indexed = (vals: (number | null)[]) => {
+    const real = vals.filter((v): v is number => v != null);
+    if (!real.length) return vals;
+    const lo = Math.min(...real);
+    const hi = Math.max(...real);
+    // A flat series has no range to spread over; centring it says "no movement" honestly.
+    if (hi === lo) return vals.map((v) => (v == null ? null : 50));
+    return vals.map((v) => (v == null ? null : ((v - lo) / (hi - lo)) * 100));
+  };
+
+  const chartSeries = series.map((x) => {
+    const vals = mixedUnits ? indexed(x.s.vals) : x.s.vals;
+    return {
+      id: x.id,
+      label: x.s.label,
+      color: x.color,
+      points: x.s.labels.map((p, i) => ({ period: p, value: vals[i] })),
+    };
+  });
+  const chartFmt = mixedUnits ? (v: number) => `${Math.round(v)}` : fmt;
 
   return (
     <div className="hub">
@@ -114,7 +158,7 @@ export function HistoryView() {
             </div>
             {/* Re-authored at the overlay's width rather than scaling the inline copy up —
                 scaling would shrink every label below the legible floor. */}
-            <SeriesChart series={chartSeries} format={fmt} legend={series.length > 1} height={460} label={`${title} expanded`} />
+            <SeriesChart series={chartSeries} format={chartFmt} legend={series.length > 1} height={460} label={`${title} expanded`} />
           </div>
         </div>
       )}
@@ -195,7 +239,7 @@ export function HistoryView() {
             </div>
           </div>
 
-          <SeriesChart series={chartSeries} format={fmt} legend={series.length > 1} height={330} label={title} />
+          <SeriesChart series={chartSeries} format={chartFmt} legend={series.length > 1} height={330} label={title} />
 
           <div className="hub-drawer-notes">
             {series.length === 1 && shown.length > 0 && (
@@ -215,15 +259,55 @@ export function HistoryView() {
                 </span>
               );
             })}
-            {units.length > 1 && (
-              <span>Mixed units ({units.join(", ")}) share one axis — read shape, not level.</span>
+            {mixedUnits && (
+              <span>
+                Mixed units ({units.join(", ")}), so each line is indexed to its own range
+                (0–100) and the axis is not a quantity — compare shape, not level. Each metric's
+                real latest value is in the legend above.
+              </span>
             )}
+            {missing.map((m) => (
+              <span key={m.id}>
+                {m.def?.label ?? m.id}: not tagged by this filer in any period — an absence of
+                disclosure, not a zero, so no line is drawn.
+              </span>
+            ))}
             <span>
               {picked.length < 3
                 ? "Select up to three metrics to overlay."
                 : "Three metrics is the maximum — deselect one to add another."}
             </span>
-          <span>Dashed markers flag filing events that affect comparability.</span>
+          {/* Only what was actually found. The claim used to be unconditional, standing over three
+              invented events at fixed quarters; now a chart with no 8-K Item 4.02 in range says
+              so, and does not imply the filer has never restated anything ever. */}
+          <span>
+            {marks.length
+              ? `${marks.length} non-reliance restatement 8-K${marks.length > 1 ? "s" : ""} (Item 4.02) marked — the filing said prior statements should not be relied on. Which periods it covered is the 8-K's text.`
+              : "No 8-K Item 4.02 non-reliance filing falls in this range."}
+          </span>
+          {/* The two bases are real values from real filings, and a difference between them is
+              not always a restatement: filers change reported PRECISION too (NVIDIA reports
+              136,516,000 in one filing and 137,000,000 in a later one). Saying "restated" of
+              every divergence would invent corrections out of rounding. */}
+          <span>
+            {basis === "filed"
+              ? "As originally reported — the value the first filing to report each period gave."
+              : "As restated — the latest-filed value for each period."}
+            {" "}Where the two differ the filer either corrected the figure or reported it to a
+            different precision; the chart does not claim which.
+          </span>
+          {series.some((x) => x.s.isExtension) && (
+            <span>
+              Lines marked from a company extension tag are the filer's own element, not US-GAAP.
+            </span>
+          )}
+          {/* Provenance per line. A computed metric has no single tag behind it — it is built from
+              several concepts — so it says that rather than reporting a tag it does not have. */}
+          <span>
+            {series
+              .map((x) => `${x.s.label}: ${x.s.sourceTag ?? "computed from several concepts"}`)
+              .join(" · ")}
+          </span>
         </div>
       </div>
     </div>
