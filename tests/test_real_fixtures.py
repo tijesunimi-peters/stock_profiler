@@ -55,7 +55,11 @@ def test_aapl_income_statement_matches_real_filing():
     # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 2 more AAPL facts map --
     # UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount ($13.3B) and its
     # DueAfterFiveYears sibling ($773M). Total unchanged at 425.
-    assert coverage_report(period_facts) == {"unmapped": 219, "mapped": 206}
+    # Moved again 2026-08-09 by the DEPRECIATION candidates: Apple tags `Depreciation` 3 times in
+    # FY2025 and those rows were unmapped, so 3 move from unmapped to mapped. Apple also tags
+    # `DepreciationDepletionAndAmortization`, which still ANSWERS the statement line -- `Depreciation`
+    # ranks last precisely so it never displaces a truer variant. Total unchanged at 425.
+    assert coverage_report(period_facts) == {"unmapped": 216, "mapped": 209}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"

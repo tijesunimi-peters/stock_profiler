@@ -263,6 +263,41 @@ history; this only rejects fragments, and never blends two tags into one line. `
 unaffected — it selects per period, so a filer that switched tags already gets the right one for
 each period there.
 
+### Depreciation: one concept was three
+
+`depreciation_amortization` was missing the two commonest spellings of its own idea, so it resolved
+for **50.7%** of the 16,920 companies in `raw_facts` while the tags sat in the store unread
+(measured 2026-08-09):
+
+| tag | companies | |
+|---|---:|---|
+| `DepreciationDepletionAndAmortization` | 7,997 | the standard cash-flow line, already mapped |
+| `DepreciationAndAmortization` | 5,997 | **exactly this concept — was unmapped** |
+| `DepreciationAmortizationAndAccretionNet` | 1,109 | already mapped; adds accretion |
+| `Depreciation` | 9,493 | the commonest of all — **and not this concept** |
+
+Adding `DepreciationAndAmortization` takes the combined concept to **63.8%**. It ranks ahead of the
+accretion variant, because accretion (of an asset-retirement obligation, say) is neither
+depreciation nor amortization — a reorder that moves 194 companies and improves every one.
+
+**`Depreciation` is deliberately not a candidate for it.** It is the most common tag of the four,
+so any ordering by popularity would put it first — and it excludes amortization. Filers that use it
+overwhelmingly tag `AmortizationOfIntangibleAssets` *beside* it rather than instead of it:
+**Microsoft reports depreciation $34.3B and amortization $4.7B for FY2026 and tags no combined
+variant at all**, as does Alphabet. Listing `Depreciation` under a line labelled "Depreciation &
+Amortization" would have understated Microsoft by its entire intangible amortization.
+
+Candidate tags are **alternatives, never addends** — the mapping cannot sum two tags into one
+concept — so the split is served as two more concepts rather than flattened into a wrong one:
+
+- `depreciation` → `Depreciation` (56.1%)
+- `amortization_of_intangibles` → `AmortizationOfIntangibleAssets` (45.1%)
+
+A company can resolve the combined line *and* the split: Apple tags
+`DepreciationDepletionAndAmortization` ($11.7B) and `Depreciation` ($8.0B) in the same period,
+which is consistent rather than contradictory — the first contains the second. The three rows are
+therefore never summed and never treated as a reconciliation of one another.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

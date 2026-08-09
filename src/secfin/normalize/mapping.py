@@ -489,8 +489,43 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     ),
     "depreciation_amortization": (
         "Depreciation & Amortization",
-        ["DepreciationDepletionAndAmortization", "DepreciationAmortizationAndAccretionNet"],
+        # The COMBINED line, and only tags that genuinely combine the two. Measured 2026-08-09
+        # over the 16,920 companies in raw_facts:
+        #
+        #   DepreciationDepletionAndAmortization     7,997  the standard cash-flow line
+        #   DepreciationAndAmortization              5,997  EXACTLY this concept -- was missing
+        #   DepreciationAmortizationAndAccretionNet  1,109  adds accretion, which is neither
+        #
+        # `DepreciationAndAmortization` was absent, which left this concept on 50.7% of filers
+        # when the tag to reach 63.8% was already stored. It ranks ahead of the accretion variant
+        # because accretion (of an asset-retirement obligation, say) is neither depreciation nor
+        # amortization, so where a filer tags both the exact one should answer -- a reorder that
+        # moves 194 companies and improves every one.
+        #
+        # **`Depreciation` is deliberately NOT a candidate here.** It excludes amortization, and
+        # filers that tag it overwhelmingly tag `AmortizationOfIntangibleAssets` beside it rather
+        # than instead of it -- Microsoft and Alphabet both do. Listing it here would have put
+        # depreciation alone under a line labelled "Depreciation & Amortization" and understated
+        # Microsoft by its entire intangible amortization. Candidates are ALTERNATIVES, never
+        # addends: the mapping cannot sum two tags into one concept, so the split is served as the
+        # two concepts below instead of being flattened into a wrong one.
+        [
+            "DepreciationDepletionAndAmortization",
+            "DepreciationAndAmortization",
+            "DepreciationAmortizationAndAccretionNet",
+        ],
     ),
+    # The SPLIT, for the 56.1% / 45.1% of filers that tag these. NOT fallbacks for the combined
+    # concept above and never summed into it: a filer may tag depletion or accretion elsewhere, so
+    # the parts need not add to any total it reports -- and Microsoft (depreciation $34.3B,
+    # amortization $4.7B, no combined tag at all) is exactly why serving them separately is the
+    # only truthful option for such a filer.
+    "depreciation": ("Depreciation", ["Depreciation"]),
+    "amortization_of_intangibles": (
+        "Amortization of Intangibles",
+        ["AmortizationOfIntangibleAssets"],
+    ),
+
     # --- cash flow, tier 2 (verified 2026-07-16 vs fixtures) ---
     "dividends_paid": (
         "Dividends Paid",
@@ -970,6 +1005,13 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "cash_from_financing",
         "capital_expenditures",
         "depreciation_amortization",
+        # Shown beside the combined line, not instead of it -- and a filer can resolve BOTH:
+        # Apple tags DepreciationDepletionAndAmortization ($11.7B) and Depreciation ($8.0B) in the
+        # same period, which is consistent rather than contradictory (the first contains the
+        # second). So these rows are never summed with the combined one and never treated as a
+        # reconciliation of it.
+        "depreciation",
+        "amortization_of_intangibles",
         "change_in_receivables",
         "change_in_inventories",
         "change_in_prepaid_expenses",

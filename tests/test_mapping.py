@@ -206,3 +206,81 @@ def test_balance_sheet_keeps_dei_shares_without_letting_them_anchor_the_column()
     assert stmt.period_end == "2025-09-27"           # anchored by us-gaap, not dei
     assert by_concept["total_assets"] == 359_241e6   # primary, not the comparative
     assert by_concept["shares_outstanding"] == 14_773_260_000  # dei still served
+
+
+# ------------------------------------------------------------------ depreciation & amortization
+
+
+class TestDepreciationCandidates:
+    """`depreciation_amortization` was missing the two commonest spellings of its own concept.
+
+    Measured 2026-08-09 over the 16,920 companies in `raw_facts`: the concept resolved for 50.7%
+    while the tags to reach 76.4% were already stored. `DepreciationAndAmortization` (5,997
+    companies) and `Depreciation` (9,493 -- the single commonest variant) were simply not in the
+    candidate list.
+    """
+
+    def test_the_exact_concept_match_is_a_candidate(self):
+        assert "DepreciationAndAmortization" in candidate_tags("depreciation_amortization")
+
+    def test_the_standard_cash_flow_tag_still_wins(self):
+        # 7,997 companies resolve on it today and none of them may move.
+        tags = candidate_tags("depreciation_amortization")
+        assert tags[0] == "DepreciationDepletionAndAmortization"
+
+    def test_the_exact_match_outranks_the_accretion_variant(self):
+        """Accretion is neither depreciation nor amortization.
+
+        Where a filer tags both, the tag that means exactly this concept should answer. 194
+        companies move on this ordering and every one of them gains precision.
+        """
+        tags = candidate_tags("depreciation_amortization")
+        assert tags.index("DepreciationAndAmortization") < tags.index(
+            "DepreciationAmortizationAndAccretionNet"
+        )
+
+    def test_depreciation_alone_is_not_a_candidate_for_the_combined_line(self):
+        """`Depreciation` excludes amortization, so it cannot fill a D&A line.
+
+        Microsoft and Alphabet both tag `Depreciation` and `AmortizationOfIntangibleAssets`
+        SEPARATELY and neither tags any combined variant. Listing `Depreciation` here would have
+        put depreciation alone under a line labelled "Depreciation & Amortization" and understated
+        Microsoft by its entire intangible amortization. Candidates are alternatives, never
+        addends.
+        """
+        assert "Depreciation" not in candidate_tags("depreciation_amortization")
+
+    def test_the_split_is_served_as_its_own_concepts(self):
+        # 56.1% of filers tag `Depreciation`, 45.1% `AmortizationOfIntangibleAssets`. Serving the
+        # split truthfully beats flattening it into a concept it does not mean.
+        assert candidate_tags("depreciation") == ["Depreciation"]
+        assert candidate_tags("amortization_of_intangibles") == ["AmortizationOfIntangibleAssets"]
+
+    def test_a_filer_reporting_the_split_gets_both_lines_correctly_labelled(self):
+        facts = [
+            _column_fact("NetCashProvidedByUsedInOperatingActivities", 100.0,
+                         "2022-10-01", "2023-09-30", fy=2023),
+            _column_fact("Depreciation", 11.0, "2022-10-01", "2023-09-30", fy=2023),
+            _column_fact("AmortizationOfIntangibleAssets", 4.0,
+                         "2022-10-01", "2023-09-30", fy=2023),
+        ]
+        stmt = build_statement(facts, 320193, "cashflow", 2023, "FY")
+        by = {x.canonical_concept: x for x in stmt.lines}
+        assert by["depreciation"].value == 11.0
+        assert by["depreciation"].label == "Depreciation"
+        assert by["amortization_of_intangibles"].value == 4.0
+        # The combined concept stays absent rather than being filled with the depreciation half.
+        assert "depreciation_amortization" not in by
+
+    def test_a_filer_reporting_the_combined_line_gets_only_that(self):
+        facts = [
+            _column_fact("NetCashProvidedByUsedInOperatingActivities", 100.0,
+                         "2022-10-01", "2023-09-30", fy=2023),
+            _column_fact("DepreciationDepletionAndAmortization", 19.0,
+                         "2022-10-01", "2023-09-30", fy=2023),
+        ]
+        stmt = build_statement(facts, 320193, "cashflow", 2023, "FY")
+        by = {x.canonical_concept: x for x in stmt.lines}
+        assert by["depreciation_amortization"].value == 19.0
+        assert by["depreciation_amortization"].source_tag == "DepreciationDepletionAndAmortization"
+        assert "depreciation" not in by
