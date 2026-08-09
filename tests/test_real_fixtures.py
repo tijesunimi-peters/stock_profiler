@@ -126,7 +126,11 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 2 more WMT facts map, both
     # LettersOfCreditOutstandingAmount -- one per balance-sheet date, since the filer tags the
     # comparative prior year alongside the current one. Total unchanged at 518.
-    assert coverage_report(period_facts) == {"unmapped": 284, "mapped": 234}
+    # Moved 2026-08-09 by the PREFERRED-STOCK parenthetical concepts: 4 Walmart facts that were
+    # unmapped now map. Walmart authorises preferred and issues none, so those rows are disclosed
+    # ZEROS -- which is the common case market-wide (42.8% of filers) and a real answer, not a gap.
+    # Total unchanged at 518.
+    assert coverage_report(period_facts) == {"unmapped": 280, "mapped": 238}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -178,7 +182,13 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     # Total unchanged at 1003.
     # Moved again 2026-08-04 by the §07 OBLIGATION concepts: 1 more JPM fact maps,
     # UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount ($1.9B). Total unchanged at 1003.
-    assert coverage_report(period_facts) == {"unmapped": 841, "mapped": 162}
+    # Moved 2026-08-09 by the PREFERRED-STOCK parenthetical concepts: 7 JPMorgan facts now map --
+    # more than Walmart's 4 because JPM actually HAS preferred outstanding (banks issue it as
+    # regulatory capital). It tags authorised 200,000,000, issued 2,005,375, par $1 and a
+    # LIQUIDATION PREFERENCE of $20.1B; it does not tag shares outstanding at all. Walmart, by
+    # contrast, tags authorised 100,000,000 against issued 0 -- the same four concepts telling
+    # opposite stories, which is the point of keeping them apart. Total unchanged at 1003.
+    assert coverage_report(period_facts) == {"unmapped": 834, "mapped": 169}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"

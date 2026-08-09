@@ -341,6 +341,47 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     ),
     "common_stock_value": ("Common Stock (Par Value Carried)", ["CommonStockValue"]),
     "preferred_stock_value": ("Preferred Stock (Par Value Carried)", ["PreferredStockValue"]),
+    # The balance-sheet PARENTHETICAL, which filers print on the face beside the carrying amount.
+    # Measured 2026-08-09 over the 16,920 companies in raw_facts. Each is its own concept because
+    # each is a different quantity in a different unit -- they are never candidates for one
+    # another, and a caller must not substitute one where another is missing.
+    #
+    #   authorized  63.5%  shares      what the charter permits -- ISSUANCE HEADROOM
+    #   par value   59.1%  USD/shares
+    #   issued      55.2%  shares
+    #   outstanding 52.2%  shares      issued less any held in treasury
+    #
+    # **Authorized is not issued, and a zero here is a DISCLOSURE.** Most US registrants authorize
+    # a block of preferred in the charter and issue none of it: of the 9,337 filers tagging
+    # `PreferredStockSharesIssued`, only 2,090 (12.4% of all companies) report a latest value above
+    # zero, while 7,247 (42.8%) report exactly 0. So a large authorized number beside a zero issued
+    # is the normal case and means the company has NO preferred claim outstanding -- reading the
+    # authorized figure as preferred in issue would invert that. The zero must render as `0`, not
+    # as N/A: the filer answered the question, and the answer was none.
+    "preferred_stock_shares_authorized": (
+        "Preferred Shares Authorized",
+        ["PreferredStockSharesAuthorized"],
+    ),
+    "preferred_stock_shares_issued": ("Preferred Shares Issued", ["PreferredStockSharesIssued"]),
+    "preferred_stock_shares_outstanding": (
+        "Preferred Shares Outstanding",
+        ["PreferredStockSharesOutstanding"],
+    ),
+    "preferred_stock_par_value": (
+        "Preferred Stock Par Value",
+        ["PreferredStockParOrStatedValuePerShare"],
+    ),
+    # The aggregate claim that ranks AHEAD of common in a liquidation -- the figure that actually
+    # matters to a common holder, and the reason the share counts above are not the whole story.
+    # 3.8% of filers tag it, so it is usually N/A and honestly so.
+    #
+    # `PreferredStockLiquidationPreference` (4.1%) is NOT a candidate for this: it is the PER-SHARE
+    # preference in USD/shares, where this is the aggregate in USD. Same words, different
+    # quantities -- unioning them would report a per-share figure as a total.
+    "preferred_stock_liquidation_preference": (
+        "Preferred Liquidation Preference",
+        ["PreferredStockLiquidationPreferenceValue"],
+    ),
     "additional_paid_in_capital": (
         "Additional Paid-In Capital",
         ["AdditionalPaidInCapital", "AdditionalPaidInCapitalCommonStock"],
@@ -991,6 +1032,16 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "finance_lease_liabilities",
         "common_stock_value",
         "preferred_stock_value",
+        # The parenthetical, in the order filers print it. Mostly zeros by nature -- see the note
+        # on these concepts: a zero issued beside a large authorized is the common, meaningful case.
+        "preferred_stock_par_value",
+        "preferred_stock_shares_authorized",
+        "preferred_stock_shares_issued",
+        "preferred_stock_shares_outstanding",
+        # Only 3.8% of filers tag it, so it is absent for almost everyone -- but the ones who do
+        # are exactly the ones with real preferred, and for them this is the figure that matters:
+        # JPMorgan's $20.1B ranks ahead of every common share. It clutters no one else's statement.
+        "preferred_stock_liquidation_preference",
         "additional_paid_in_capital",
         "retained_earnings",
         "accumulated_oci",

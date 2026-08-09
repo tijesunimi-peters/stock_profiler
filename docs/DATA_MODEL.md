@@ -298,6 +298,39 @@ A company can resolve the combined line *and* the split: Apple tags
 which is consistent rather than contradictory — the first contains the second. The three rows are
 therefore never summed and never treated as a reconciliation of one another.
 
+### Preferred stock: four lookalikes that must not substitute for one another
+
+The mapping held only `preferred_stock_value` (the carrying amount, 44.8%). The balance-sheet
+parenthetical filers print beside it was unmapped entirely — measured 2026-08-09 over the 16,920
+companies in `raw_facts`:
+
+| concept | tag | unit | companies |
+|---|---|---|---:|
+| `preferred_stock_shares_authorized` | `PreferredStockSharesAuthorized` | shares | 63.5% |
+| `preferred_stock_par_value` | `PreferredStockParOrStatedValuePerShare` | USD/shares | 59.1% |
+| `preferred_stock_shares_issued` | `PreferredStockSharesIssued` | shares | 55.2% |
+| `preferred_stock_shares_outstanding` | `PreferredStockSharesOutstanding` | shares | 52.2% |
+| `preferred_stock_liquidation_preference` | `PreferredStockLiquidationPreferenceValue` | USD | 3.8% |
+
+Each is its own concept and **none is a candidate for any other**. They are different quantities in
+different units, and substituting one for a missing other inverts the meaning.
+
+**Authorized is issuance headroom, not stock in issue — and a zero is a disclosure.** Most US
+registrants authorize a block of preferred in the charter and issue none of it. Of the 9,337 filers
+tagging `PreferredStockSharesIssued`, only **2,090 (12.4% of all companies) report a latest value
+above zero**, while **7,247 (42.8%) report exactly 0**. Walmart authorizes 100,000,000 preferred
+shares and has issued 0; filling an absent `issued` from `authorized` would turn that into a
+company with a hundred million preferred shares outstanding. The zero renders as `0`, not `N/A` —
+the filer answered, and the answer was none. (This is the converse of the usual rule: never render
+a *missing* value as 0, and never hide a *reported* 0 behind N/A.)
+
+**The aggregate liquidation preference is not the per-share one.**
+`PreferredStockLiquidationPreference` (4.1%) is per share in USD/shares;
+`PreferredStockLiquidationPreferenceValue` (3.8%) is the aggregate in USD. Only the aggregate is
+mapped, because it is the claim ranking ahead of common — JPMorgan's is **$20.1B**, being its
+2,005,375 shares at $10,000 each. Unioning the two would report a per-share figure as a total, an
+error of four orders of magnitude, and is exactly why share counts alone mislead here.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

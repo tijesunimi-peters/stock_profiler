@@ -284,3 +284,82 @@ class TestDepreciationCandidates:
         assert by["depreciation_amortization"].value == 19.0
         assert by["depreciation_amortization"].source_tag == "DepreciationDepletionAndAmortization"
         assert "depreciation" not in by
+
+
+# ------------------------------------------------------------------------------ preferred stock
+
+
+class TestPreferredStockConcepts:
+    """The preferred parenthetical: four quantities that look alike and are not interchangeable.
+
+    Measured 2026-08-09 over the 16,920 companies in `raw_facts`: authorised 63.5%, par 59.1%,
+    issued 55.2%, outstanding 52.2%. Of the 9,337 filers tagging issued, only 2,090 report a
+    latest value above zero — 7,247 report exactly 0.
+    """
+
+    def _bs(self, *facts):
+        base = _column_fact("Assets", 1000.0, "", "", fy=2023, instant="2023-09-30")
+        stmt = build_statement([base, *facts], 320193, "balance", 2023, "FY")
+        return {x.canonical_concept: x for x in stmt.lines}
+
+    def test_each_quantity_is_its_own_concept(self):
+        # None may be a candidate for another: substituting authorised where issued is missing
+        # would report charter headroom as stock in issue.
+        assert candidate_tags("preferred_stock_shares_authorized") == [
+            "PreferredStockSharesAuthorized"
+        ]
+        assert candidate_tags("preferred_stock_shares_issued") == ["PreferredStockSharesIssued"]
+        assert candidate_tags("preferred_stock_shares_outstanding") == [
+            "PreferredStockSharesOutstanding"
+        ]
+        assert candidate_tags("preferred_stock_par_value") == [
+            "PreferredStockParOrStatedValuePerShare"
+        ]
+
+    def test_authorized_is_never_a_candidate_for_issued(self):
+        """Authorised is issuance headroom, not stock in issue.
+
+        Walmart authorises 100,000,000 preferred shares and has issued 0. Filling an absent
+        `issued` from `authorized` would turn that into a company with 100 million preferred
+        shares outstanding.
+        """
+        for concept in (
+            "preferred_stock_shares_issued",
+            "preferred_stock_shares_outstanding",
+            "preferred_stock_value",
+        ):
+            assert "PreferredStockSharesAuthorized" not in candidate_tags(concept)
+
+    def test_a_disclosed_zero_is_served_as_zero(self):
+        # 42.8% of filers report exactly 0 issued. The filer answered the question and the answer
+        # was none -- dropping the row, or showing N/A, loses a real disclosure.
+        lines = self._bs(
+            _column_fact("PreferredStockSharesAuthorized", 100_000_000, "", "",
+                         fy=2023, instant="2023-09-30"),
+            _column_fact("PreferredStockSharesIssued", 0, "", "", fy=2023, instant="2023-09-30"),
+        )
+        assert lines["preferred_stock_shares_authorized"].value == 100_000_000
+        assert lines["preferred_stock_shares_issued"].value == 0
+        assert lines["preferred_stock_shares_issued"].value is not None
+
+    def test_the_aggregate_liquidation_preference_is_not_the_per_share_one(self):
+        """Same words, different quantities — and different units.
+
+        `PreferredStockLiquidationPreferenceValue` is the aggregate in USD;
+        `PreferredStockLiquidationPreference` is per share in USD/shares. Unioning them would
+        report a per-share figure as a total. JPMorgan's aggregate is $20.1B — its 2,005,375
+        shares at a $10,000 preference each — so the error would be four orders of magnitude.
+        """
+        tags = candidate_tags("preferred_stock_liquidation_preference")
+        assert tags == ["PreferredStockLiquidationPreferenceValue"]
+        assert "PreferredStockLiquidationPreference" not in tags
+
+    def test_a_filer_with_real_preferred_reports_the_claim_ahead_of_common(self):
+        lines = self._bs(
+            _column_fact("PreferredStockSharesIssued", 2_005_375, "", "",
+                         fy=2023, instant="2023-09-30"),
+            _column_fact("PreferredStockLiquidationPreferenceValue", 20_100_000_000, "", "",
+                         fy=2023, instant="2023-09-30"),
+        )
+        assert lines["preferred_stock_shares_issued"].value == 2_005_375
+        assert lines["preferred_stock_liquidation_preference"].value == 20_100_000_000
