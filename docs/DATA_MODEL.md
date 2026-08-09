@@ -331,6 +331,48 @@ mapped, because it is the claim ranking ahead of common — JPMorgan's is **$20.
 2,005,375 shares at $10,000 each. Unioning the two would report a per-share figure as a total, an
 error of four orders of magnitude, and is exactly why share counts alone mislead here.
 
+### The lease ladder spans two accounting standards
+
+The mapping held ASC 842's balance-sheet concepts (liability, right-of-use asset, discount rate)
+but no maturity ladder at all — neither standard's. Measured 2026-08-09 over the 16,920 companies
+in `raw_facts`:
+
+| | reach |
+|---|---:|
+| ASC 842 (`LesseeOperatingLeaseLiabilityPaymentsDue*`) | 38.2% |
+| pre-842 (`OperatingLeasesFutureMinimumPaymentsDue*`) | 44.3% |
+| **union** | **56.4%** |
+
+3,084 companies only ever filed the old form, 2,048 only the new, and **4,411 span the 2019
+transition** — so mapping either standard alone leaves roughly half the market with an empty card
+and no way to tell that from a filer with no leases. Each rung takes both tags, ASC 842 first:
+group resolution is **per period**, so a filer's 2017 ladder answers from the old tag and its 2023
+ladder from the new one, and `source_tag` says which spoke.
+
+**They are the same disclosure under different standards, not the same measure.** Before ASC 842
+these were minimum rentals under non-cancellable operating leases that sat *entirely off* the
+balance sheet — the ladder was the only disclosure of the obligation. Under ASC 842 they are
+undiscounted payments that reconcile to a *recognised* liability, and the standard also changed
+what is in scope. A ladder read across 2019 has a real discontinuity, which is the accounting
+changing rather than an artifact.
+
+**The rungs are undiscounted and are not the liability.** `lease_imputed_interest`
+(`LesseeOperatingLeaseLiabilityUndiscountedExcessAmount`, 38.1%, ASC 842 only) is what reconciles
+them, and the identity holds to the dollar on real filings:
+
+| | total payments | − imputed interest | = liability |
+|---|---:|---:|---:|
+| Apple FY2025 | $14,725M | $2,235M | **$12,490M** ✓ |
+| Walmart FY2026 | $22,624M | $7,052M | **$15,572M** ✓ |
+| Coca-Cola FY2025 | $2,019M | $297M | **$1,722M** ✓ |
+| JPMorgan FY2025 | $11,255M | $1,918M | **$9,337M** ✓ |
+
+Nothing in the mapping enforces that — the three concepts resolve from three independent tags — so
+it holding exactly is evidence the rungs, the reconciling item and the liability all point at the
+same disclosure. It is kept as a regression test. Pre-842 ladders are excluded from it: there was
+no recognised liability to reconcile to, which is why the imputed-interest concept is ASC 842 only
+and why the two eras must never be netted against each other.
+
 ## Handling the messy realities
 
 - **Different tags, same concept** → the candidate list. Add tags as you find gaps.

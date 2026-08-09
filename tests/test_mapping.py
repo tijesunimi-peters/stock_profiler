@@ -363,3 +363,84 @@ class TestPreferredStockConcepts:
         )
         assert lines["preferred_stock_shares_issued"].value == 2_005_375
         assert lines["preferred_stock_liquidation_preference"].value == 20_100_000_000
+
+
+# --------------------------------------------------------------------------- lease maturities
+
+
+class TestLeaseMaturityLadder:
+    """The lease ladder spans two accounting standards, and that is the whole difficulty.
+
+    Measured 2026-08-09 over the 16,920 companies in `raw_facts`: ASC 842's tags reach 38.2%, the
+    pre-842 minimum-rental tags 44.3%, the union 56.4%. 3,084 companies only ever filed the old
+    form, 2,048 only the new, 4,411 span the 2019 transition.
+    """
+
+    def _rung(self, *facts):
+        base = _column_fact("Assets", 1000.0, "", "", fy=2023, instant="2023-09-30")
+        from secfin.normalize.statements import build_concept_group
+
+        return build_concept_group([base, *facts], 320193, "lease_maturities", 2023, "FY")
+
+    def test_both_eras_answer_the_same_rung(self):
+        # A filer files one form or the other depending on the year, so a rung that mapped only
+        # one standard went blank for half the market.
+        for concept, new, old in (
+            ("lease_maturity_y1", "LesseeOperatingLeaseLiabilityPaymentsDueNextTwelveMonths",
+             "OperatingLeasesFutureMinimumPaymentsDueCurrent"),
+            ("lease_maturity_y2", "LesseeOperatingLeaseLiabilityPaymentsDueYearTwo",
+             "OperatingLeasesFutureMinimumPaymentsDueInTwoYears"),
+            ("lease_maturity_thereafter", "LesseeOperatingLeaseLiabilityPaymentsDueAfterYearFive",
+             "OperatingLeasesFutureMinimumPaymentsDueThereafter"),
+        ):
+            tags = candidate_tags(concept)
+            assert tags == [new, old], concept
+
+    def test_asc_842_wins_a_year_that_tags_both(self):
+        """In a transition year the recognised-liability disclosure is the operative one.
+
+        Group resolution is per PERIOD, so this is decided year by year rather than once for the
+        whole history -- a filer's 2017 ladder answers from the old tag and its 2023 ladder from
+        the new one.
+        """
+        group = self._rung(
+            _column_fact("LesseeOperatingLeaseLiabilityPaymentsDueNextTwelveMonths", 500.0,
+                         "", "", fy=2023, instant="2023-09-30"),
+            _column_fact("OperatingLeasesFutureMinimumPaymentsDueCurrent", 400.0,
+                         "", "", fy=2023, instant="2023-09-30"),
+        )
+        line = next(x for x in group["lines"] if x.canonical_concept == "lease_maturity_y1")
+        assert line.value == 500.0
+        assert line.source_tag == "LesseeOperatingLeaseLiabilityPaymentsDueNextTwelveMonths"
+
+    def test_a_pre_842_filer_still_gets_a_ladder(self):
+        # 3,084 companies only ever filed the old form. Mapping ASC 842 alone would have left
+        # every one of them with an empty card and no way to tell that from a filer with no leases.
+        group = self._rung(
+            _column_fact("OperatingLeasesFutureMinimumPaymentsDueCurrent", 400.0,
+                         "", "", fy=2023, instant="2023-09-30"),
+            _column_fact("OperatingLeasesFutureMinimumPaymentsDue", 1800.0,
+                         "", "", fy=2023, instant="2023-09-30"),
+        )
+        by = {x.canonical_concept: x.value for x in group["lines"]}
+        assert by["lease_maturity_y1"] == 400.0
+        assert by["lease_maturity_total"] == 1800.0
+
+    def test_imputed_interest_is_asc_842_only(self):
+        """It reconciles the ladder to the recognised liability, which pre-842 did not have.
+
+        Total undiscounted payments LESS imputed interest equals `operating_lease_liabilities`.
+        There was no such liability before ASC 842, so a pre-842 ladder cannot be checked this way
+        and the two must never be netted against each other.
+        """
+        assert candidate_tags("lease_imputed_interest") == [
+            "LesseeOperatingLeaseLiabilityUndiscountedExcessAmount"
+        ]
+
+    def test_the_ladder_is_not_the_lease_liability(self):
+        # The rungs are UNDISCOUNTED. Summing them and calling it the liability overstates it by
+        # the imputed interest -- which is exactly why that reconciling item is mapped beside them.
+        assert "LesseeOperatingLeaseLiabilityPaymentsDue" not in candidate_tags(
+            "operating_lease_liabilities"
+        )
+        assert "OperatingLeaseLiability" not in candidate_tags("lease_maturity_total")

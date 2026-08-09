@@ -23,7 +23,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from secfin.normalize.statements import available_periods, build_statement, coverage_report
+from secfin.normalize.statements import (
+    available_periods,
+    build_concept_group,
+    build_statement,
+    coverage_report,
+)
 from secfin.sec.companyfacts import flatten_company_facts
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -59,7 +64,11 @@ def test_aapl_income_statement_matches_real_filing():
     # FY2025 and those rows were unmapped, so 3 move from unmapped to mapped. Apple also tags
     # `DepreciationDepletionAndAmortization`, which still ANSWERS the statement line -- `Depreciation`
     # ranks last precisely so it never displaces a truer variant. Total unchanged at 425.
-    assert coverage_report(period_facts) == {"unmapped": 216, "mapped": 209}
+    # Moved again 2026-08-09 by the LEASE MATURITY ladder: 8 facts each for Apple, Walmart
+    # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
+    # the imputed-interest reconciling item), which is the whole ladder and a good sign the
+    # rungs line up. Total unchanged at 425.
+    assert coverage_report(period_facts) == {"unmapped": 208, "mapped": 217}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -130,7 +139,11 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     # unmapped now map. Walmart authorises preferred and issues none, so those rows are disclosed
     # ZEROS -- which is the common case market-wide (42.8% of filers) and a real answer, not a gap.
     # Total unchanged at 518.
-    assert coverage_report(period_facts) == {"unmapped": 280, "mapped": 238}
+    # Moved again 2026-08-09 by the LEASE MATURITY ladder: 8 facts each for Apple, Walmart
+    # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
+    # the imputed-interest reconciling item), which is the whole ladder and a good sign the
+    # rungs line up. Total unchanged at 518.
+    assert coverage_report(period_facts) == {"unmapped": 272, "mapped": 246}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -188,7 +201,11 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     # LIQUIDATION PREFERENCE of $20.1B; it does not tag shares outstanding at all. Walmart, by
     # contrast, tags authorised 100,000,000 against issued 0 -- the same four concepts telling
     # opposite stories, which is the point of keeping them apart. Total unchanged at 1003.
-    assert coverage_report(period_facts) == {"unmapped": 834, "mapped": 169}
+    # Moved again 2026-08-09 by the LEASE MATURITY ladder: 8 facts each for Apple, Walmart
+    # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
+    # the imputed-interest reconciling item), which is the whole ladder and a good sign the
+    # rungs line up. Total unchanged at 1003.
+    assert coverage_report(period_facts) == {"unmapped": 826, "mapped": 177}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -487,3 +504,48 @@ def test_jpm_bank_balance_sheet_has_structural_gaps():
     # interest_expense (97.898B) asserted on the income statement above.
     assert by_concept["interest_paid"] == 96436000000
     assert by_concept["change_in_cash"] == -125979000000
+
+
+def test_lease_ladder_reconciles_to_the_recognised_liability():
+    """ASC 842's own identity, checked against three real filings.
+
+    Total undiscounted lease payments LESS imputed interest equals the operating lease liability.
+    Nothing in the mapping enforces this -- the three concepts resolve from three independent tags
+    -- so it holding to the DOLLAR is evidence that the ladder rungs, the reconciling item and the
+    liability are all pointing at the same disclosure. A rung mapped to the wrong year, or the
+    per-share liquidation-preference class of error, would break it immediately.
+
+    Pre-ASC-842 ladders are deliberately excluded: there was no recognised liability to reconcile
+    to, which is exactly why `lease_imputed_interest` is ASC 842 only.
+    """
+    checked = 0
+    for fixture, cik in (
+        ("aapl_companyfacts.json", 320193),
+        ("wmt_companyfacts.json", 104169),
+        ("jpm_companyfacts.json", 19617),
+    ):
+        facts = _load(fixture, cik)
+        year = next(y for y, p in available_periods(facts) if p == "FY")
+
+        ladder = build_concept_group(facts, cik, "lease_maturities", year, "FY")
+        by = {x.canonical_concept: x.value for x in ladder["lines"]}
+        leases = build_concept_group(facts, cik, "leases", year, "FY")
+        liability = next(
+            (
+                x.value
+                for x in leases["lines"]
+                if x.canonical_concept == "operating_lease_liabilities"
+            ),
+            None,
+        )
+
+        total = by.get("lease_maturity_total")
+        imputed = by.get("lease_imputed_interest")
+        if total is None or imputed is None or liability is None:
+            continue  # a filer that does not tag the full ASC 842 table has nothing to check
+        assert total - imputed == liability, fixture
+        checked += 1
+
+    # Without this the test passes by checking nothing the moment a rung stops resolving, which is
+    # the failure it exists to catch.
+    assert checked == 3, f"only {checked} of 3 fixtures had a full ASC 842 ladder to reconcile"

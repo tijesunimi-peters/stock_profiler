@@ -799,6 +799,79 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     # Leases (~82% liability, 73% discount rate). The weighted-average TERM is deliberately absent:
     # it is an ISO-8601 duration, and companyfacts carries no duration-typed facts at all -- the
     # survey found it on zero filers out of the whole volume.
+    # The operating-lease MATURITY ladder, spanning both accounting standards. Measured 2026-08-09
+    # over the 16,920 companies in raw_facts: ASC 842's tags reach 38.2%, the pre-842 minimum-rental
+    # tags 44.3%, and the union 56.4% -- 3,084 companies only ever filed the old form, 2,048 only
+    # the new, and 4,411 span the 2019 transition.
+    #
+    # **The two are the same disclosure under different standards, not the same measure.** Before
+    # ASC 842 these were minimum rentals under non-cancellable operating leases that sat ENTIRELY
+    # OFF the balance sheet -- the ladder was the only disclosure of the obligation. Under ASC 842
+    # they are undiscounted payments that RECONCILE to a recognised liability, and the standard also
+    # changed what is in scope (short-term exemptions, non-lease components). A ladder read across
+    # 2019 therefore has a real discontinuity, which is the accounting changing and not an artifact.
+    # Group resolution is per PERIOD, so each year answers with its own era's tag and the
+    # `source_tag` on every line says which standard spoke.
+    #
+    # ASC 842 ranks first: in a transition year that tags both, the recognised-liability disclosure
+    # is the operative one.
+    "lease_maturity_y1": (
+        "Lease Payments Due in Year 1",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueNextTwelveMonths",
+            "OperatingLeasesFutureMinimumPaymentsDueCurrent",
+        ],
+    ),
+    "lease_maturity_y2": (
+        "Year 2",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueYearTwo",
+            "OperatingLeasesFutureMinimumPaymentsDueInTwoYears",
+        ],
+    ),
+    "lease_maturity_y3": (
+        "Year 3",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueYearThree",
+            "OperatingLeasesFutureMinimumPaymentsDueInThreeYears",
+        ],
+    ),
+    "lease_maturity_y4": (
+        "Year 4",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueYearFour",
+            "OperatingLeasesFutureMinimumPaymentsDueInFourYears",
+        ],
+    ),
+    "lease_maturity_y5": (
+        "Year 5",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueYearFive",
+            "OperatingLeasesFutureMinimumPaymentsDueInFiveYears",
+        ],
+    ),
+    "lease_maturity_thereafter": (
+        "Thereafter",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDueAfterYearFive",
+            "OperatingLeasesFutureMinimumPaymentsDueThereafter",
+        ],
+    ),
+    "lease_maturity_total": (
+        "Total Undiscounted Lease Payments",
+        [
+            "LesseeOperatingLeaseLiabilityPaymentsDue",
+            "OperatingLeasesFutureMinimumPaymentsDue",
+        ],
+    ),
+    # What reconciles the ladder above to `operating_lease_liabilities`: total undiscounted
+    # payments LESS this equals the recognised liability. ASC 842 only (38.1%) -- there was no
+    # liability to reconcile to before it, which is why a pre-842 ladder cannot be checked this
+    # way and must never be summed against one.
+    "lease_imputed_interest": (
+        "Imputed Interest on Lease Payments",
+        ["LesseeOperatingLeaseLiabilityUndiscountedExcessAmount"],
+    ),
     "operating_lease_discount_rate": (
         "Weighted-Average Discount Rate",
         ["OperatingLeaseWeightedAverageDiscountRatePercent"],
@@ -1342,6 +1415,16 @@ FOOTNOTE_GROUPS: dict[str, tuple[str, list[str], float, list[str]]] = {
         ["operating_lease_liabilities", "operating_lease_right_of_use_asset", "operating_lease_discount_rate"],
         0.82,
         ["operating_lease_liabilities"],
+    ),
+    "lease_maturities": (
+        "Lease maturity ladder",
+        [
+            "lease_maturity_y1", "lease_maturity_y2", "lease_maturity_y3",
+            "lease_maturity_y4", "lease_maturity_y5", "lease_maturity_thereafter",
+            "lease_maturity_total", "lease_imputed_interest",
+        ],
+        0.56,
+        ["lease_maturity_y1", "lease_maturity_total"],
     ),
     "capitalized_rd": (
         "R&D capitalisation",
