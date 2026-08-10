@@ -288,10 +288,12 @@ variant at all**, as does Alphabet. Listing `Depreciation` under a line labelled
 Amortization" would have understated Microsoft by its entire intangible amortization.
 
 Candidate tags are **alternatives, never addends** — the mapping cannot sum two tags into one
-concept — so the split is served as two more concepts rather than flattened into a wrong one:
+concept — so the split is served separately rather than flattened into a wrong one:
 
-- `depreciation` → `Depreciation` (56.1%)
-- `amortization_of_intangibles` → `AmortizationOfIntangibleAssets` (45.1%)
+- `depreciation` → `Depreciation` (56.1%) — a new concept
+- `amortization_of_intangibles` → `AmortizationOfIntangibleAssets` (45.1%) — this one already
+  existed on the *income* statement; what changed is that it now also sits on the **cash flow**
+  statement, which is where a filer reporting the split puts its add-backs
 
 A company can resolve the combined line *and* the split: Apple tags
 `DepreciationDepletionAndAmortization` ($11.7B) and `Depreciation` ($8.0B) in the same period,

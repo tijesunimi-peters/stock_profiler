@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from secfin.normalize import mapping as mapping_module
 from secfin.normalize.mapping import candidate_tags, concept_for_tag
 from secfin.normalize.schema import RawFact
 from secfin.normalize.statements import build_statement
@@ -444,3 +445,84 @@ class TestLeaseMaturityLadder:
             "operating_lease_liabilities"
         )
         assert "OperatingLeaseLiability" not in candidate_tags("lease_maturity_total")
+
+
+class TestTheRegistriesAreWellFormed:
+    """Structural guards. Each of these caught, or would have caught, a real silent failure."""
+
+    def test_no_concept_key_is_defined_twice(self):
+        """A duplicate key in a dict literal is legal Python and silently keeps the last one.
+
+        `amortization_of_intangibles` was defined twice (2026-08-09) after being added to the
+        cash-flow block without noticing it already sat in the income block. Both definitions
+        happened to be identical so nothing moved — but the next edit to the first one would have
+        been silently discarded, and nothing in the test suite would have said so.
+        """
+        import collections
+        import pathlib
+        import re
+
+        source = pathlib.Path(mapping_module.__file__).read_text()
+        start = source.index("CONCEPTS: dict[str, tuple[str, list[str]]] = {")
+        body = source[start : source.index("\n}\n", start)]
+        keys = re.findall(r'^\s{4}"([a-z0-9_]+)": ', body, re.M)
+        dupes = [k for k, n in collections.Counter(keys).items() if n > 1]
+        assert dupes == [], f"duplicate CONCEPTS keys: {dupes}"
+
+    def test_every_statement_concept_exists(self):
+        # A typo in STATEMENT_CONCEPTS would drop a line from a statement with no error at all.
+        for statement, concepts in mapping_module.STATEMENT_CONCEPTS.items():
+            for concept in concepts:
+                assert concept in mapping_module.CONCEPTS, f"{statement}: {concept}"
+
+    def test_every_grouped_concept_exists(self):
+        registries = (
+            mapping_module.FOOTNOTE_GROUPS,
+            mapping_module.CAPITAL_GROUPS,
+            mapping_module.OBLIGATION_GROUPS,
+        )
+        for registry in registries:
+            for group, (_label, concepts, _cov, primaries) in registry.items():
+                for concept in concepts:
+                    assert concept in mapping_module.CONCEPTS, f"{group}: {concept}"
+                # A primary that is not in the group's own concept list can never resolve, so the
+                # card would be permanently `na` for a reason no one could see.
+                for concept in primaries:
+                    assert concept in concepts, f"{group}: primary {concept} not in its own group"
+
+    def test_only_the_known_tags_are_shared_between_concepts(self):
+        """A tag serving two concepts is legitimate here, but only in two documented shapes.
+
+        Written as an allow-list rather than a ban: sharing a tag by ACCIDENT means a filer's
+        single fact silently answers two questions, and any caller adding those concepts together
+        double-counts it. The eight below are deliberate and fall into two patterns:
+
+        * **A statement concept and a footnote-group concept over the same fact** — the group is a
+          different card, not a different number, so both must resolve from the same tag.
+        * **A combined basic-and-diluted figure** — a filer whose basic and diluted are equal tags
+          one element for both, and both concepts should report it rather than one going blank.
+        """
+        import collections
+
+        known = {
+            # statement concept  <->  footnote-group concept
+            "AllowanceForDoubtfulAccountsReceivable",
+            "AllowanceForDoubtfulAccountsReceivableCurrent",
+            "ContractWithCustomerLiability",
+            "ContractWithCustomerLiabilityCurrent",
+            "DeferredRevenueCurrent",
+            "EffectiveIncomeTaxRateContinuingOperations",
+            # one element reported for both basic and diluted
+            "EarningsPerShareBasicAndDiluted",
+            "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+        }
+
+        owner = collections.defaultdict(list)
+        for concept, (_label, tags) in mapping_module.CONCEPTS.items():
+            for tag in tags:
+                owner[tag].append(concept)
+        shared = {t for t, cs in owner.items() if len(cs) > 1}
+
+        assert shared - known == set(), f"newly shared tags: {sorted(shared - known)}"
+        stale = sorted(known - shared)
+        assert stale == [], f"no longer shared, drop these from the allow-list: {stale}"

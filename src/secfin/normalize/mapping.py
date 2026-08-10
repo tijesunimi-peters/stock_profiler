@@ -562,10 +562,10 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
     # amortization $4.7B, no combined tag at all) is exactly why serving them separately is the
     # only truthful option for such a filer.
     "depreciation": ("Depreciation", ["Depreciation"]),
-    "amortization_of_intangibles": (
-        "Amortization of Intangibles",
-        ["AmortizationOfIntangibleAssets"],
-    ),
+    # `amortization_of_intangibles` is NOT redefined here: it already exists in the income-statement
+    # block above, with the same tag. It is added to the CASH FLOW statement instead (see
+    # STATEMENT_CONCEPTS), which is where a filer reporting the split puts it -- Microsoft's FY2026
+    # add-backs are depreciation $34.3B and amortization $4.7B, on the cash flow statement.
 
     # --- cash flow, tier 2 (verified 2026-07-16 vs fixtures) ---
     "dividends_paid": (
