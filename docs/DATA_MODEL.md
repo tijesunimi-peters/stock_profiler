@@ -276,9 +276,22 @@ for **50.7%** of the 16,920 companies in `raw_facts` while the tags sat in the s
 | `DepreciationAmortizationAndAccretionNet` | 1,109 | already mapped; adds accretion |
 | `Depreciation` | 9,493 | the commonest of all — **and not this concept** |
 
-Adding `DepreciationAndAmortization` takes the combined concept to **63.8%**. It ranks ahead of the
-accretion variant, because accretion (of an asset-retirement obligation, say) is neither
-depreciation nor amortization — a reorder that moves 194 companies and improves every one.
+Adding `DepreciationAndAmortization` takes the combined concept to **63.8%** — but it ranks **last**,
+and that placement is the whole safety argument.
+
+Tranche 1 (2026-07-16) had **rejected** this extension by store-wide verification: 24 of 53 filers
+tagged it alongside the existing candidates at materially different values in inconsistent
+directions. Re-measured 2026-08-10 across the whole store, the rejection holds — of **50,951
+periods where it coexists** with `DepreciationDepletionAndAmortization` (3,386 companies), 50.2%
+are identical and 55.4% within 1%, but **18.6% differ by more than 1.5×**, worst case six orders of
+magnitude. They are not ordered variants of one quantity.
+
+What makes inclusion safe is that the conflict is measured *only where both are tagged*, which is
+exactly where a last-ranked candidate never fires. Resolution is per period, so a truer variant
+answers wherever one exists; this one fires only for the **2,412 companies that never tag
+`DepreciationDepletionAndAmortization` at all**, where it is unambiguously their
+depreciation-and-amortization line and the alternative is an empty row. Same shape as
+`cash_and_equivalents`' bare `Cash` fallback: narrower where both exist, which is why it is last.
 
 **`Depreciation` is deliberately not a candidate for it.** It is the most common tag of the four,
 so any ordering by popularity would put it first — and it excludes amortization. Filers that use it
@@ -299,6 +312,41 @@ A company can resolve the combined line *and* the split: Apple tags
 `DepreciationDepletionAndAmortization` ($11.7B) and `Depreciation` ($8.0B) in the same period,
 which is consistent rather than contradictory — the first contains the second. The three rows are
 therefore never summed and never treated as a reconciliation of one another.
+
+### Common stock: the parenthetical's missing half
+
+`shares_issued`, `shares_outstanding` and `common_stock_value` already existed; the other two
+items filers print in the balance-sheet parenthetical did not, despite being among the
+best-covered tags in the store (measured 2026-08-10):
+
+| concept | tag | unit | companies |
+|---|---|---|---:|
+| `shares_authorized` | `CommonStockSharesAuthorized` | shares | 78.2% |
+| `common_stock_par_value` | `CommonStockParOrStatedValuePerShare` | USD/shares | 77.0% |
+
+**Authorized less issued is issuance headroom** — what a board can issue without a charter
+amendment. Unlike preferred, where 42.8% of filers report zero issued, a zero common issued is
+rare (633 companies ever), so here the ceiling sits over a real position: Apple's 50.4bn
+authorized against 14.6bn issued.
+
+**For a multi-class filer this is a sum across classes, or absent.** companyfacts carries no
+dimensional facts, so what lands here is the undimensioned value — **Alphabet's reads
+300,000,000,000** across its classes, while **Meta and Berkshire tag authorized per class only and
+have none at all**. Classes carry different voting rights, so this total must never be presented as
+one homogeneous block; the per-class breakdown is §04.5, off the DERA `ClassOfStock` axis
+(`normalize/share_classes.py`), and that card exists precisely because counts alone cannot describe
+control.
+
+`CommonStockNoParValue` (6.6%, also USD/shares) is deliberately not a candidate for par value: it
+is the stated amount per share for stock that *has* no par, a different statement about the
+charter rather than a rarer spelling of the same one.
+
+> **These are statement-FACE elements.** ROADMAP_DATA_DEPTH Phase 2b keeps "single-tag non-face
+> elements" at tag-level, and two tests used `CommonStockSharesIssued`, then
+> `CommonStockSharesAuthorized`, as their exemplar of a deliberately-unmapped tag. Both were
+> mapped in turn, because a parenthetical is printed on the face of the balance sheet and so was
+> never a durable example. The exemplar is now `DeferredTaxAssetsGross` — footnote decomposition,
+> which Phase 2b names explicitly as staying tag-level.
 
 ### Preferred stock: four lookalikes that must not substitute for one another
 
@@ -651,6 +699,13 @@ quantities, rejected.
   accruals, not the aggregate), `LeaseCost` (folds finance-lease cost into an
   operating-lease concept), proceeds-from-debt aggregation across instrument types (no
   true aggregate tag; pick-one would undercount too sharply).
+
+  > **Revisited 2026-08-10, rejection upheld and then narrowly resolved.** The deeper research
+  > this bullet asks for was done store-wide (3,386 coexisting companies, not 53): 18.6% of
+  > coexisting periods differ by >1.5×, so the two are still not ordered variants. `Depreciation`
+  > is therefore **not** a candidate for this concept and is served as its own `depreciation`
+  > concept instead; `DepreciationAndAmortization` is admitted only in **last** place, where it
+  > cannot fire for any filer that tags a truer variant. See "Depreciation: one concept was three".
 
 - **`shares_outstanding`'s `dei` fallback (`EntityCommonStockSharesOutstanding`) — now
   ingested** (was previously dead in practice). The ingest path fetches `dei` alongside

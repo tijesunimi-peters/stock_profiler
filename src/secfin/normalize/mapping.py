@@ -340,6 +340,33 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         ["FinanceLeaseLiability"],
     ),
     "common_stock_value": ("Common Stock (Par Value Carried)", ["CommonStockValue"]),
+    # Common's half of the balance-sheet parenthetical. `shares_issued` and `shares_outstanding`
+    # already existed; these two did not, despite being among the best-covered tags in the store
+    # (measured 2026-08-10 over the 16,920 companies in raw_facts):
+    #
+    #   CommonStockSharesAuthorized          78.2%  shares
+    #   CommonStockParOrStatedValuePerShare  77.0%  USD/shares
+    #
+    # **Authorized less issued is ISSUANCE HEADROOM** -- what a board can issue without going back
+    # for a charter amendment. Unlike preferred, where 42.8% of filers report zero issued, a zero
+    # common issued is rare (633 companies ever), so the authorized figure here is a ceiling over a
+    # real position rather than over nothing.
+    #
+    # **For a multi-class filer this is a SUM ACROSS CLASSES, or absent.** companyfacts carries no
+    # dimensional facts, so what lands here is the undimensioned value: Alphabet's reads
+    # 300,000,000,000 across its classes, while Meta and Berkshire tag authorised per class ONLY
+    # and so have none at all. Classes carry different voting rights, so this total must never be
+    # read as one homogeneous block -- the per-class breakdown is §04.5, off the DERA ClassOfStock
+    # axis (`normalize/share_classes.py`), and that card exists precisely because counts alone
+    # cannot describe control.
+    "shares_authorized": ("Shares Authorized", ["CommonStockSharesAuthorized"]),
+    # `CommonStockNoParValue` (6.6%, also USD/shares) is deliberately NOT a candidate: it is the
+    # stated amount per share for stock that HAS no par, which is a different statement about the
+    # charter, not a smaller-coverage spelling of the same one.
+    "common_stock_par_value": (
+        "Common Stock Par Value",
+        ["CommonStockParOrStatedValuePerShare"],
+    ),
     "preferred_stock_value": ("Preferred Stock (Par Value Carried)", ["PreferredStockValue"]),
     # The balance-sheet PARENTHETICAL, which filers print on the face beside the carrying amount.
     # Measured 2026-08-09 over the 16,920 companies in raw_facts. Each is its own concept because
@@ -538,10 +565,8 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         #   DepreciationAmortizationAndAccretionNet  1,109  adds accretion, which is neither
         #
         # `DepreciationAndAmortization` was absent, which left this concept on 50.7% of filers
-        # when the tag to reach 63.8% was already stored. It ranks ahead of the accretion variant
-        # because accretion (of an asset-retirement obligation, say) is neither depreciation nor
-        # amortization, so where a filer tags both the exact one should answer -- a reorder that
-        # moves 194 companies and improves every one.
+        # when the tag to reach 63.8% was already stored -- but it is a LAST-resort candidate, for
+        # the reason set out below.
         #
         # **`Depreciation` is deliberately NOT a candidate here.** It excludes amortization, and
         # filers that tag it overwhelmingly tag `AmortizationOfIntangibleAssets` beside it rather
@@ -550,10 +575,29 @@ CONCEPTS: dict[str, tuple[str, list[str]]] = {
         # Microsoft by its entire intangible amortization. Candidates are ALTERNATIVES, never
         # addends: the mapping cannot sum two tags into one concept, so the split is served as the
         # two concepts below instead of being flattened into a wrong one.
+        #
+        # **`DepreciationAndAmortization` IS LAST, and that placement is the whole safety
+        # argument.** Tranche 1 (2026-07-16) REJECTED extending this concept with it, having
+        # measured 24 of 53 filers tagging it alongside the existing candidates at materially
+        # different values in inconsistent directions. Re-measured 2026-08-10 across the whole
+        # store, that holds: of 50,951 periods where it coexists with
+        # `DepreciationDepletionAndAmortization` (3,386 companies), 50.2% are identical and 55.4%
+        # within 1% -- but 18.6% differ by more than 1.5x, with a worst case of six orders of
+        # magnitude. They are NOT ordered variants of one quantity.
+        #
+        # The conflict is measured only where both are tagged, which is precisely where this
+        # candidate never fires: ranked last, `DepreciationDepletionAndAmortization` or the
+        # accretion variant answers first in any period that has one, and group and statement
+        # resolution is per PERIOD. It fires only for the 2,412 companies that never tag
+        # `DepreciationDepletionAndAmortization` at all, where it is unambiguously their
+        # depreciation-and-amortization line and the alternative is an empty row.
+        #
+        # Same shape as `cash_and_equivalents`' bare `Cash` fallback: narrower where both exist,
+        # which is why it is last.
         [
             "DepreciationDepletionAndAmortization",
-            "DepreciationAndAmortization",
             "DepreciationAmortizationAndAccretionNet",
+            "DepreciationAndAmortization",
         ],
     ),
     # The SPLIT, for the 56.1% / 45.1% of filers that tag these. NOT fallbacks for the combined
@@ -1104,9 +1148,13 @@ STATEMENT_CONCEPTS: dict[StatementType, list[str]] = {
         "operating_lease_liabilities",
         "finance_lease_liabilities",
         "common_stock_value",
+        # Common's parenthetical, in the order filers print it. `shares_issued` and
+        # `shares_outstanding` sit further down with the other share counts.
+        "common_stock_par_value",
+        "shares_authorized",
         "preferred_stock_value",
-        # The parenthetical, in the order filers print it. Mostly zeros by nature -- see the note
-        # on these concepts: a zero issued beside a large authorized is the common, meaningful case.
+        # Preferred's parenthetical. Mostly zeros by nature -- see the note on these concepts:
+        # a zero issued beside a large authorized is the common, meaningful case.
         "preferred_stock_par_value",
         "preferred_stock_shares_authorized",
         "preferred_stock_shares_issued",

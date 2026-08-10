@@ -142,18 +142,20 @@ def test_aapl_fixture_full_view():
     total_dr = by_tag["ContractWithCustomerLiability"]
     assert total_dr.value == 13700000000
     assert total_dr.canonical_concept == "deferred_revenue"
-    # ...and a genuinely unmapped tag (a parenthetical share count -- single-tag
-    # non-face elements stay tag-level by design) is served right alongside.
+    # ...and a genuinely unmapped tag (tax-footnote decomposition -- single-tag non-face elements
+    # stay tag-level by design) is served right alongside.
     #
-    # This was `CommonStockSharesIssued` until 2026-08-02, when §04's capital-structure concepts
-    # mapped it. The exemplar moved rather than the assertion: what is being tested is that an
-    # UNMAPPED tag round-trips with `canonical_concept=None`, not that this particular tag stays
-    # unmapped forever. `CommonStockSharesAuthorized` is the same kind of element -- a balance-sheet
-    # parenthetical -- and is still unmapped.
-    authorized = by_tag["CommonStockSharesAuthorized"]
-    assert authorized.value == 50400000000
-    assert authorized.unit == "shares"
-    assert authorized.canonical_concept is None
+    # THIRD exemplar: `CommonStockSharesIssued` until 2026-08-02 (§04 mapped it), then
+    # `CommonStockSharesAuthorized` until 2026-08-10 (the common-stock parenthetical mapped it).
+    # The exemplar moves rather than the assertion: what is tested is that an UNMAPPED tag
+    # round-trips with `canonical_concept=None`, not that any particular tag stays unmapped. Both
+    # predecessors were parentheticals, which are printed on the statement FACE and so were never
+    # durable choices; `DeferredTaxAssetsGross` is footnote decomposition, which Phase 2b names
+    # explicitly as staying tag-level.
+    unmapped = by_tag["DeferredTaxAssetsGross"]
+    assert unmapped.value == 38417000000
+    assert unmapped.unit == "USD"
+    assert unmapped.canonical_concept is None
     # Every non-dei row sits in the primary column -- no comparative leakage anywhere.
     assert all(
         (r.period_end or r.instant) == "2025-09-27"

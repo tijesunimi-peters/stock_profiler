@@ -68,7 +68,9 @@ def test_aapl_income_statement_matches_real_filing():
     # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
     # the imputed-interest reconciling item), which is the whole ladder and a good sign the
     # rungs line up. Total unchanged at 425.
-    assert coverage_report(period_facts) == {"unmapped": 208, "mapped": 217}
+    # Moved again 2026-08-10 by the COMMON-STOCK parenthetical (common authorised and par
+    # value): 4 facts each, the two concepts at two instants. Total unchanged at 425.
+    assert coverage_report(period_facts) == {"unmapped": 204, "mapped": 221}
 
     stmt = build_statement(facts, 320193, "income", 2025, "FY")
     assert stmt.form == "10-K"
@@ -143,7 +145,9 @@ def test_wmt_income_statement_has_retailer_shaped_gaps():
     # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
     # the imputed-interest reconciling item), which is the whole ladder and a good sign the
     # rungs line up. Total unchanged at 518.
-    assert coverage_report(period_facts) == {"unmapped": 272, "mapped": 246}
+    # Moved again 2026-08-10 by the COMMON-STOCK parenthetical (common authorised and par
+    # value): 4 facts each, the two concepts at two instants. Total unchanged at 518.
+    assert coverage_report(period_facts) == {"unmapped": 268, "mapped": 250}
 
     stmt = build_statement(facts, 104169, "income", 2026, "FY")
     by_concept = {line.canonical_concept: line.value for line in stmt.lines}
@@ -205,7 +209,9 @@ def test_jpm_bank_income_statement_has_structural_gaps():
     # and JPMorgan -- all three tag the full ASC 842 ladder (five rungs, thereafter, total and
     # the imputed-interest reconciling item), which is the whole ladder and a good sign the
     # rungs line up. Total unchanged at 1003.
-    assert coverage_report(period_facts) == {"unmapped": 826, "mapped": 177}
+    # Moved again 2026-08-10 by the COMMON-STOCK parenthetical (common authorised and par
+    # value): 4 facts each, the two concepts at two instants. Total unchanged at 1003.
+    assert coverage_report(period_facts) == {"unmapped": 822, "mapped": 181}
 
     stmt = build_statement(facts, 19617, "income", 2025, "FY")
     assert stmt.form == "10-K"

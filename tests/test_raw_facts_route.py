@@ -87,20 +87,22 @@ async def test_unknown_ticker_404s():
 
 
 async def test_unmapped_tag_round_trips_with_full_fidelity():
-    # CommonStockSharesAuthorized (a balance-sheet parenthetical) is deliberately unmapped:
-    # single-tag non-face elements stay tag-level per the cluster-driven decision
-    # (ROADMAP_DATA_DEPTH Phase 2b). This endpoint is how such numbers stay reachable.
+    # DeferredTaxAssetsGross is deliberately unmapped: single-tag non-face elements stay
+    # tag-level per the cluster-driven decision (ROADMAP_DATA_DEPTH Phase 2b), and tax-footnote
+    # decomposition is named there as exactly that class. This endpoint is how such numbers stay
+    # reachable.
     #
-    # The exemplar was `CommonStockSharesIssued` until 2026-08-02, when §04's capital-structure
-    # concepts mapped it. What this test pins is that an UNMAPPED tag round-trips with full
-    # fidelity -- not that any particular tag stays unmapped, which is a thing the mapping is
-    # supposed to keep changing.
-    assert concept_for_tag("CommonStockSharesAuthorized") is None
+    # THIRD exemplar: `CommonStockSharesIssued` until 2026-08-02 (§04 mapped it), then
+    # `CommonStockSharesAuthorized` until 2026-08-10 (the common-stock parenthetical mapped it).
+    # What this test pins is that an UNMAPPED tag round-trips with full fidelity -- not that any
+    # particular tag stays unmapped, which is a thing the mapping is supposed to keep changing.
+    # A parenthetical is printed on the statement FACE, so it was never a durable choice here.
+    assert concept_for_tag("DeferredTaxAssetsGross") is None
 
     resp = await _call(
         _aapl_repo(),
         symbol="AAPL",  # ticker path, via the fake cache
-        tag=["CommonStockSharesAuthorized"],
+        tag=["DeferredTaxAssetsGross"],
         year=2025,
         period="FY",
     )
@@ -112,14 +114,14 @@ async def test_unmapped_tag_round_trips_with_full_fidelity():
     # Deterministic order: sorted by date, so comparative (2024-09-28) precedes primary.
     comparative, primary = resp.facts
     assert comparative.instant == "2024-09-28"
-    assert comparative.value == 50400000000
+    assert comparative.value == 34873000000
     assert comparative.frame == "CY2024Q3I"  # SEC frame string passes through untouched
     assert primary.instant == "2025-09-27"
-    assert primary.value == 50400000000
+    assert primary.value == 38417000000
     for row in (comparative, primary):
         assert row.taxonomy == "us-gaap"
-        assert row.gaap_tag == "CommonStockSharesAuthorized"
-        assert row.unit == "shares"
+        assert row.gaap_tag == "DeferredTaxAssetsGross"
+        assert row.unit == "USD"
         # Source-faithful flattening: an instant fact carries period_end == instant
         # (sec/companyfacts.py sets instant from `end` when there's no `start`) --
         # served as stored, not tidied.

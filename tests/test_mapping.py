@@ -229,15 +229,24 @@ class TestDepreciationCandidates:
         tags = candidate_tags("depreciation_amortization")
         assert tags[0] == "DepreciationDepletionAndAmortization"
 
-    def test_the_exact_match_outranks_the_accretion_variant(self):
-        """Accretion is neither depreciation nor amortization.
+    def test_the_conflicting_variant_ranks_last(self):
+        """`DepreciationAndAmortization` is a last-resort candidate, and must stay one.
 
-        Where a filer tags both, the tag that means exactly this concept should answer. 194
-        companies move on this ordering and every one of them gains precision.
+        Tranche 1 (2026-07-16) rejected extending this concept with it: 24 of 53 filers tagged it
+        alongside the existing candidates at materially different values in inconsistent
+        directions. Re-measured 2026-08-10 store-wide that holds — across 50,951 coexisting
+        periods (3,386 companies) 50.2% are identical and 55.4% within 1%, but **18.6% differ by
+        more than 1.5x**, worst case six orders of magnitude.
+
+        Last place is what makes including it safe: resolution is per PERIOD, so wherever a truer
+        variant exists it answers, and this one fires only for the 2,412 companies that never tag
+        `DepreciationDepletionAndAmortization` at all. Promoting it would expose every one of
+        those 18.6% conflicts.
         """
         tags = candidate_tags("depreciation_amortization")
-        assert tags.index("DepreciationAndAmortization") < tags.index(
-            "DepreciationAmortizationAndAccretionNet"
+        assert tags[-1] == "DepreciationAndAmortization"
+        assert tags.index("DepreciationAmortizationAndAccretionNet") < tags.index(
+            "DepreciationAndAmortization"
         )
 
     def test_depreciation_alone_is_not_a_candidate_for_the_combined_line(self):
@@ -526,3 +535,62 @@ class TestTheRegistriesAreWellFormed:
         assert shared - known == set(), f"newly shared tags: {sorted(shared - known)}"
         stale = sorted(known - shared)
         assert stale == [], f"no longer shared, drop these from the allow-list: {stale}"
+
+
+class TestCommonStockParenthetical:
+    """Common's half of the parenthetical. `shares_issued`/`shares_outstanding` already existed;
+    authorised and par value did not, despite 78.2% / 77.0% coverage (measured 2026-08-10).
+    """
+
+    def _bs(self, *facts):
+        base = _column_fact("Assets", 1000.0, "", "", fy=2023, instant="2023-09-30")
+        stmt = build_statement([base, *facts], 320193, "balance", 2023, "FY")
+        return {x.canonical_concept: x for x in stmt.lines}
+
+    def test_authorized_and_par_are_their_own_concepts(self):
+        assert candidate_tags("shares_authorized") == ["CommonStockSharesAuthorized"]
+        assert candidate_tags("common_stock_par_value") == ["CommonStockParOrStatedValuePerShare"]
+
+    def test_authorized_is_never_a_candidate_for_issued_or_outstanding(self):
+        # Authorised less issued is issuance HEADROOM. Substituting it would report a ceiling as
+        # a position -- Apple's authorised 50.4bn against 14.6bn issued.
+        for concept in ("shares_issued", "shares_outstanding", "common_stock_value"):
+            assert "CommonStockSharesAuthorized" not in candidate_tags(concept)
+
+    def test_no_par_value_is_not_a_par_value(self):
+        """`CommonStockNoParValue` (6.6%) is a different statement about the charter.
+
+        It is the stated amount per share for stock that HAS no par — not a lower-coverage
+        spelling of par value, so it is not a fallback for one.
+        """
+        assert "CommonStockNoParValue" not in candidate_tags("common_stock_par_value")
+
+    def test_headroom_reads_as_a_ceiling_over_a_real_position(self):
+        # `shares_outstanding`, not `shares_issued`: only the former is on the balance-sheet face
+        # (the latter lives in §04's share roll-forward group).
+        lines = self._bs(
+            _column_fact("CommonStockSharesAuthorized", 50_400_000_000, "", "",
+                         fy=2023, instant="2023-09-30"),
+            _column_fact("CommonStockSharesOutstanding", 14_608_963_000, "", "",
+                         fy=2023, instant="2023-09-30"),
+        )
+        assert lines["shares_authorized"].value == 50_400_000_000
+        assert lines["shares_outstanding"].value == 14_608_963_000
+
+    def test_a_multi_class_total_is_still_just_a_total(self):
+        """For a multi-class filer this is a SUM ACROSS CLASSES, or absent.
+
+        companyfacts carries no dimensional facts, so what lands here is the undimensioned value:
+        Alphabet's reads 300,000,000,000 across its classes, while Meta and Berkshire tag
+        authorised per class ONLY and have none at all. Classes carry different voting rights, so
+        nothing may present this as one homogeneous block — the per-class breakdown is §04.5, off
+        the DERA ClassOfStock axis.
+        """
+        lines = self._bs(
+            _column_fact("CommonStockSharesAuthorized", 300_000_000_000, "", "",
+                         fy=2023, instant="2023-09-30"),
+        )
+        row = lines["shares_authorized"]
+        assert row.value == 300_000_000_000
+        # No per-class field exists on a statement line, and none may be inferred from this one.
+        assert not hasattr(row, "share_class")

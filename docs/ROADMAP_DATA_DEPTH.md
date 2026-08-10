@@ -133,6 +133,11 @@ Operator decisions that supersede the per-tag framing of Phase 2's "what next":
   ingested filers — worked from `docs/tag_glossary.jsonl` (meanings, not tag names),
   verified per-concept, shipped in tranches. Single-tag non-face elements stay
   tag-level. Est. ~80–120 new concepts from the current store.
+  **Clarified 2026-08-10:** a balance-sheet PARENTHETICAL counts as statement-face under (a).
+  It is printed on the face beside the carrying amount, and treating it as non-face left the
+  common- and preferred-stock authorised/par/issued/outstanding items unmapped at 52–78%
+  coverage. Footnote DECOMPOSITION (tax reconciliation detail, SBC option detail, maturity
+  schedules) is what "single-tag non-face" means and still stays tag-level.
   **Tranche 1 SHIPPED (2026-07-16):** 46 new concepts + 10 candidate extensions (95
   concepts total, 143 tags mapped), every multi-tag cluster verified store-wide for
   coexistence conflicts; one cluster REJECTED by that verification (the
