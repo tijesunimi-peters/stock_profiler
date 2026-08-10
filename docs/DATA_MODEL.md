@@ -391,8 +391,78 @@ and why the two eras must never be netted against each other.
 
 ## Improving coverage
 
-`statements.coverage_report()` counts mapped vs. unmapped facts. Unmapped high-frequency
-tags are your best candidates to add next.
+`statements.coverage_report()` counts mapped vs. unmapped facts for ONE filing. For the
+whole-corpus picture, `scripts/mapping_coverage.py` measures both directions across every
+company in the store; unmapped high-frequency tags are your best candidates to add next.
+
+### Measured coverage — whole market (2026-08-10)
+
+Over **16,920 companies / 121,318,516 fact rows / 11,097 distinct tags** in `raw_facts`.
+Re-run with:
+
+```bash
+docker compose run --rm -T -v "$PWD/data:/out" api \
+    python - /out/mapping_coverage.json < scripts/mapping_coverage.py
+```
+
+**Two numbers, and the second keeps the first honest:**
+
+| | | |
+|---|---:|---|
+| Canonical concepts defined | **161** | |
+| Distinct tags the mapping claims | 239 of 11,097 | **2.2%** |
+| **Fact rows the mapping claims** | 56,853,318 of 121,318,516 | **46.9%** |
+
+That gap is the design, not a defect: 161 concepts sit on the head of a very long tail, so
+2% of tag *names* carry 47% of the *facts*. But it also means **over half the stored corpus
+belongs to no canonical concept** — "we normalize SEC filings" is true of the head and not
+of the whole.
+
+**Across companies.** Every concept resolves for someone (no dead concepts), and no company
+resolves them all — the ceiling is 143 of 161:
+
+| p10 | p25 | **median** | p75 | p90 | max |
+|---:|---:|---:|---:|---:|---:|
+| 27 | 45 | **75** | 99 | 114 | 143 |
+
+**By concept**, share of the 16,920 companies that resolve it:
+
+| coverage | concepts |
+|---|---:|
+| ≥90% | 8 |
+| 75–90% | 15 |
+| 50–75% | 41 |
+| 25–50% | 58 |
+| 10–25% | 26 |
+| 2–10% | 13 |
+
+The spine is solid — net income 94.7%, total assets 94.4%, cash from operations 93.9%,
+stockholders' equity 91.5%. Per statement the *median* concept sits far lower than the best:
+income 58%, balance 49%, cash flow 47%.
+
+**The worklist.** The 40 most-used unmapped tags are only **5.9% of all rows**, so there is
+no single sweep that closes the gap. The current head:
+
+| tag | companies |
+|---|---:|
+| `EntityPublicFloat` | 84.4% |
+| `CommonStockSharesAuthorized` | 78.2% |
+| `CommonStockParOrStatedValuePerShare` | 77.0% |
+| `StockIssuedDuringPeriodValueNewIssues` | 63.2% |
+| `DeferredTaxAssetsGross` / `...OperatingLossCarryforwards` / `...Net` | 55.5 / 54.9 / 51.5% |
+| `AntidilutiveSecuritiesExcludedFromComputationOfEarningsPerShareAmount` | 48.0% |
+
+`EntityPublicFloat` is the highest-coverage unmapped tag in the store and sits on a scope
+boundary — it is a filed dei cover-page fact (market value of non-affiliate shares at a
+stated date), not vendor price data — so it needs an operator ruling, not a mapping edit.
+The common-stock parenthetical is the exact analogue of the preferred-stock work above, and
+the deferred-tax-asset family is a coherent unmapped block.
+
+> **Coverage alone is a trap.** It points at tags that look like a concept and are not: the
+> commonest depreciation tag excludes amortization, and the commonest liquidation-preference
+> tag is per-share where its sibling is aggregate. Always check what a candidate MEANS, and
+> which companies it lands on, before mapping it — `docs/tag_glossary.jsonl` carries the
+> FASB definitions for exactly this.
 
 **The mapping-research reference is `docs/tag_glossary.jsonl`** (generated 2026-07-16 by
 `scripts/tag_glossary.py`; regeneration command in its first line's `_meta`): one line
@@ -402,8 +472,9 @@ coverage, units, period type, and current mapped status. Hunt unification candid
 economic concept (the `Revenues` family, `AccruedLiabilitiesCurrent` vs the combined
 payables+accruals tags) only surface through definition text and coverage stats, e.g.
 `grep -i "customer advance" docs/tag_glossary.jsonl`. Unmapped rows sorted by
-`companies` are the priority worklist. Coverage numbers are measured against the
-store's fully-ingested companies (73 at generation), not the whole market.
+`companies` are the priority worklist. **The glossary's own coverage numbers are measured
+against the store's fully-ingested companies (73 at generation), not the whole market** —
+use the whole-market figures above for coverage, and the glossary for what a tag MEANS.
 
 Every time you add a concept or candidate tag:
 
