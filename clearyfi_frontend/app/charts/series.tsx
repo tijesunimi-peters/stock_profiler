@@ -56,9 +56,7 @@ const seriesDraw: DrawFn<SeriesData> = (svg, { d3, still, width, height, data, c
   const periods = data.series[0]?.points.map((p) => p.period) ?? [];
   if (!periods.length) return;
 
-  const iw = width - M.left - M.right;
   const ih = height - M.top - M.bottom;
-  const x = d3.scalePoint<string>().domain(periods).range([0, iw]).padding(0.08);
 
   const values = data.series.flatMap((s) =>
     s.points.map((p) => p.value).filter((v): v is number => v != null),
@@ -76,7 +74,32 @@ const seriesDraw: DrawFn<SeriesData> = (svg, { d3, still, width, height, data, c
     .nice()
     .range([ih, 0]);
 
-  const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
+  /*
+   * The left margin is measured, not assumed.
+   *
+   * `M.left` is 46px, and the y labels are right-aligned into it — which leaves about 6px of slack
+   * at "10000M" (36.7px in IBM Plex Mono at 9px). Any label longer than that, or the same label in
+   * a wider fallback face before the webfont loads, runs off the left edge of the chart. That is a
+   * silent, environment-dependent clip: it renders fine on the machine it was built on.
+   *
+   * So the ticks are measured in this SVG, at the size `gridStyle` will draw them, and the margin
+   * only ever GROWS from the shared default — no existing chart loses plot width.
+   */
+  const probe = svg.append("g").style("opacity", 0);
+  let widest = 0;
+  for (const t of y.ticks(4)) {
+    const node = mono(probe.append("text").text(data.format(t as number)), 9).node() as
+      | SVGTextElement
+      | null;
+    widest = Math.max(widest, node?.getComputedTextLength?.() ?? 0);
+  }
+  probe.remove();
+  const left = Math.max(M.left, Math.ceil(widest) + 12);
+
+  const iw = width - left - M.right;
+  const x = d3.scalePoint<string>().domain(periods).range([0, iw]).padding(0.08);
+
+  const g = svg.append("g").attr("transform", `translate(${left},${M.top})`);
 
   const yAxis = g
     .append("g")
@@ -200,14 +223,14 @@ const seriesDraw: DrawFn<SeriesData> = (svg, { d3, still, width, height, data, c
   readout?.hide();
   svg
     .append("rect")
-    .attr("x", M.left)
+    .attr("x", left)
     .attr("y", M.top)
     .attr("width", iw)
     .attr("height", ih)
     .style("fill", "transparent")
     .on("mousemove", (event) => {
       const [px, py] = d3.pointer(event, container as any);
-      const rel = px - M.left;
+      const rel = px - left;
       let nearest = periods[0];
       let best = Infinity;
       for (const p of periods) {
