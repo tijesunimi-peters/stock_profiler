@@ -28,13 +28,23 @@ export default defineConfig({
   server: {
     port: 5174,
     strictPort: true,
-    // The API seam. Nothing calls it yet — every figure in this app is synthetic
-    // (see app/data/README.md) — but when the real endpoints are plumbed in, they
-    // are same-origin here and need no CORS.
+    /*
+     * The API seam — same-origin here, so no CORS.
+     *
+     * `changeOrigin` is deliberately OFF. The API ungates first-party browser calls
+     * (`api/auth.py::_is_first_party_browser`): it takes `Sec-Fetch-Site`, and where a browser
+     * does not send that it falls back to checking `Origin`/`Referer` against the request's
+     * `Host`. `changeOrigin: true` rewrites Host to the TARGET (127.0.0.1:8000) while the
+     * referer still names the dev server, so the two can never match and every auth-gated
+     * endpoint 401s — the whole institutional view, which is the first view built on them.
+     *
+     * Preserving Host costs nothing here (the target is a plain local API, not a vhost) and
+     * makes the fallback work, so the view loads whether or not the browser sends Sec-Fetch-*.
+     */
     proxy: {
       "/v1": {
         target: process.env.CLEARYFI_API ?? "http://127.0.0.1:8000",
-        changeOrigin: true,
+        changeOrigin: false,
       },
     },
   },
