@@ -2216,6 +2216,263 @@ function toStatementRows(res: CondensedResponse, key: "income" | "balance" | "ca
 }
 
 
+/* ------------------------------------------------------------------ institutional: the register */
+
+interface PeriodsResponse {
+  cik: number;
+  periods: string[];
+  period_meta: {
+    as_of: string;
+    filed_earliest: string | null;
+    filed_latest: string | null;
+    deadline: string | null;
+    deadline_days: number | null;
+    days_after_period_end: number | null;
+  };
+  caveats: string[];
+}
+
+interface FiledSinceResponse {
+  period: string;
+  filings: { form: string; filer: string | null; filed: string | null; shares: number | null;
+             what: string | null; accession: string | null }[];
+  filing_count: number;
+  does_not_restate: boolean;
+  does_not_restate_reason: string;
+  register_filed_latest: string | null;
+  dates_are: string;
+}
+
+interface AttributionResponse {
+  period: string;
+  attribution: {
+    status: string;
+    reason: string | null;
+    formula: string;
+    cannot: string;
+    population: string;
+    rows_are_additive: boolean;
+    shares_outstanding: number | null;
+    shares_outstanding_as_of: string | null;
+    rows: { key: string; label: string; source: string; shares: number | null; as_of: string | null;
+            holder_count: number | null; share_of_outstanding: number | null }[];
+  };
+}
+
+interface HoldersResponse {
+  period: string;
+  holders: { manager_cik: number; manager_name: string; shares: number | null; value: number | null;
+             location: string | null }[];
+}
+
+interface ActivityResponse {
+  from_period: string;
+  to_period: string;
+  activity: { manager_cik: number; manager_name: string; shares_before: number | null;
+              shares_after: number | null; shares_change: number | null; action: string }[];
+}
+
+/**
+ * Which quarter the register should be read at.
+ *
+ * NOT the newest period on file. A 13F is due 45 days after quarter end, so the newest quarter is
+ * a partially-filed register until its deadline passes — measured 2026-08-10, Apple's newest
+ * quarter held 817 reporting managers against 9,237 in the quarter before it, because only ~9% of
+ * filers had reported. Every holder count, concentration figure and manager-mix share computed on
+ * that quarter would be a statistic about who files early.
+ *
+ * So: if today is before the newest period's deadline, the register uses the period before it, and
+ * the card names the filling quarter separately. Derived from `period_meta` rather than pinned to a
+ * constant — the view previously hardcoded "2026-03-31", which is right only until it isn't.
+ */
+export function pickBasePeriod(
+  periods: string[],
+  meta: PeriodsResponse["period_meta"],
+  today = new Date().toISOString().slice(0, 10),
+): { base: string | null; filling: string | null } {
+  if (!periods.length) return { base: null, filling: null };
+  const newest = periods[0];
+  const stillFilling = !!meta?.deadline && today < meta.deadline;
+  if (!stillFilling) return { base: newest, filling: null };
+  // Past the deadline for the previous quarter but not this one: the previous quarter is the
+  // complete register, and the newest is reported as what is arriving.
+  return { base: periods[1] ?? newest, filling: newest };
+}
+
+/** `"2026-03-31"` → `"31 Mar 2026"`. */
+function instDate(iso?: string | null): string {
+  if (!iso) return "N/A";
+  const [y, m, d] = iso.split("-");
+  const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${Number(d)} ${names[Number(m) - 1] ?? ""} ${y}`;
+}
+
+function daysBetween(a?: string | null, b?: string | null): number | null {
+  if (!a || !b) return null;
+  return Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
+}
+
+/**
+ * The freshness band. Every figure below it on the page inherits this quarter's age, which is why
+ * it leads the section.
+ *
+ * The filling quarter is reported HERE rather than silently excluded: a reader who knows Q2 exists
+ * needs to see why the register does not use it yet.
+ */
+function toInstFreshness(
+  periods: PeriodsResponse,
+  base: string | null,
+  filling: string | null,
+  filed: FiledSinceResponse | null,
+): hub.InstFreshness {
+  const meta = periods.period_meta ?? ({} as PeriodsResponse["period_meta"]);
+  const today = new Date().toISOString().slice(0, 10);
+  const filedOn = filed?.register_filed_latest ?? meta.filed_latest ?? null;
+  const age = daysBetween(base, today);
+  const toDeadline = daysBetween(today, meta.deadline);
+  return {
+    asOfQtr: instDate(base),
+    filedOn: instDate(filedOn),
+    age: age === null ? "age unknown" : `${age} days old`,
+    nextClose: instDate(meta.deadline),
+    daysToNext: toDeadline === null ? "date unknown" : `${toDeadline} days`,
+    deltaCount: filed ? String(filed.filing_count) : "N/A",
+    // A RE-confirmation means a manager restating a position it already held, which needs the
+    // prior position to compare against; `-filed-since` returns the filings, not that comparison.
+    // Reporting the filing count here would relabel one number as a different one.
+    confirmed: "N/A",
+    confirmedNote:
+      "a re-confirmation needs the filing matched to the position it restates, which is not derived",
+    lag:
+      "13F is filed up to 45 days after quarter end, so this register is a lagged snapshot, never live." +
+      (filling
+        ? ` ${instDate(filling)} is still being filed and is excluded from the register until ${instDate(meta.deadline)}.`
+        : ""),
+    scope: "Long positions in Section 13(f) securities only — no shorts, no cash, no non-US holdings.",
+  };
+}
+
+/**
+ * §01's arithmetic row and the filings behind it.
+ *
+ * **There is no adjusted register, and the tile says so in the API's own words.** A Schedule 13D/G
+ * reports a total beneficial position, a Form 4 a single transaction, and a 13F a quarter-end
+ * holding by a DIFFERENT population of filers; summing them would invent a share count nobody
+ * filed. The endpoint refuses to derive it (`does_not_restate`), and the tile carries that refusal
+ * rather than a number.
+ */
+function toInstSnapshot(
+  base: string | null,
+  filed: FiledSinceResponse | null,
+  attribution: AttributionResponse | null,
+  activity: ActivityResponse | null,
+): hub.InstSnapshot {
+  const a = attribution?.attribution;
+  const inst = a?.rows.find((r) => r.key === "institutional");
+
+  const figs = (a?.rows ?? []).map((r) => ({
+    id: r.key,
+    label: r.label,
+    value: r.shares === null ? "N/A" : usdCompact(r.shares).replace("$", ""),
+    sub:
+      r.share_of_outstanding === null
+        ? `${r.holder_count ?? 0} holders · source ${r.source}`
+        : `${(r.share_of_outstanding * 100).toFixed(1)}% of shares outstanding · ${r.holder_count ?? 0} holders`,
+    calc: {
+      formula: a?.formula ?? "",
+      // The single most important line in this section: these rows overlap by construction.
+      note: a?.cannot ?? "",
+      inputs: [
+        { k: "Source", v: r.source },
+        { k: "As of", v: instDate(r.as_of) },
+        { k: "Holders", v: String(r.holder_count ?? "N/A") },
+        { k: "Shares outstanding", v: a?.shares_outstanding ? usdCompact(a.shares_outstanding).replace("$", "") : "N/A" },
+        { k: "Outstanding as of", v: instDate(a?.shares_outstanding_as_of) },
+      ],
+    },
+  }));
+
+  /*
+   * The ten largest MOVES, and only positions reported at BOTH ends.
+   *
+   * Two things this deliberately does not do. It does not take the first ten rows: the endpoint
+   * returns every manager in the register (5,955 for Apple) in filer order, so an unsorted head is
+   * an alphabetical accident. And it does not plot an exit or a new position — those carry a null
+   * on one side, and a dumbbell can only draw a number, so `?? 0` would render "Norges Bank
+   * 192.3M → 0M" for a manager that simply left the register. A null is not a reported zero, and
+   * for Apple's quarter 519 of 5,955 rows are one-sided. They are counted beneath the chart
+   * instead.
+   */
+  const rows = activity?.activity ?? [];
+  const moved = rows
+    .filter((m) => m.shares_before != null && m.shares_after != null)
+    .sort((a, b) => Math.abs(b.shares_change ?? 0) - Math.abs(a.shares_change ?? 0))
+    .slice(0, 10)
+    .map((m) => ({
+      key: String(m.manager_cik),
+      label: m.manager_name,
+      prior: (m.shares_before as number) / 1e6,
+      current: (m.shares_after as number) / 1e6,
+    }));
+  const exited = rows.filter((m) => m.action === "exited").length;
+  const opened = rows.filter((m) => m.action === "new").length;
+
+  return {
+    adjusted: {
+      base: inst?.holder_count ? `${inst.holder_count.toLocaleString()} managers` : "N/A",
+      baseLabel: base ? `13F register at ${instDate(base)}` : "no 13F quarter on file",
+      net: filed ? String(filed.filing_count) : "N/A",
+      appliedCount: 0,
+      deltaCount: filed?.filing_count ?? 0,
+      // Deliberately not a number — see the docstring.
+      value: "N/A",
+      // The view renders this hint verbatim, so it carries the whole clause.
+      pct: "not derived — the three form families count different populations",
+      note: filed?.does_not_restate_reason ?? "",
+    },
+    adjustedCalc: {
+      formula: "base 13F register + faster forms filed since = NOT DERIVED",
+      note: filed?.does_not_restate_reason ?? "",
+      inputs: [
+        { k: "Base quarter", v: instDate(base) },
+        { k: "Base register", v: inst?.holder_count ? `${inst.holder_count.toLocaleString()} managers` : "N/A" },
+        { k: "Filings since", v: String(filed?.filing_count ?? 0) },
+        { k: "Dates are", v: filed?.dates_are ?? "filing dates" },
+      ],
+    },
+    deltaForms: (filed?.filings ?? []).map((f) => ({
+      form: f.form,
+      who: f.filer ?? "filer not stated",
+      what: f.what ?? "position reported",
+      shares: f.shares === null || f.shares === undefined ? "N/A" : usdCompact(f.shares).replace("$", ""),
+      accepted: instDate(f.filed),
+      lagRule: f.form.startsWith("SC 13") ? "within 5 business days" : "within 2 business days",
+      applied: "not applied to the register — see the note",
+    })),
+    moved,
+    movedNote:
+      rows.length === 0
+        ? null
+        : // NOT "in the register": this is the two-quarter DIFF population, which differs from the
+          // single-quarter holder count on the tile above (Coca-Cola: 3,127 compared vs 3,534 held).
+          `Ten largest moves of the ${rows.length.toLocaleString()} managers compared across the ` +
+          `two quarters. ` +
+          `${exited.toLocaleString()} exited and ${opened.toLocaleString()} opened a position this ` +
+          `quarter — those report a position on one side only, so they are counted here rather ` +
+          `than drawn against a zero nobody filed.`,
+    cadence: [
+      { form: "13F-HR", rule: "45 days after quarter end", role: "the register itself" },
+      { form: "SC 13D/G", rule: "5 business days (13D) / 45 days after year end (13G)", role: "5%+ stakes, between quarters" },
+      { form: "Form 4", rule: "2 business days", role: "insider transactions, between quarters" },
+    ],
+    figs,
+    // Required by the fixture's interface and read by nothing: the §01 tiles carry their own
+    // `calc`, so this duplicate of the third tile's is left pointing at the same object rather
+    // than fabricated. Drops out when `InstSnapshot` moves off `hub.ts`.
+    instPctCalc: figs[2]?.calc ?? { formula: "", note: "", inputs: [] },
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -2737,13 +2994,45 @@ export const api = {
   // These map onto endpoints that ALREADY SHIP (V3-P5a, operator-accepted 2026-08-01), so the
   // boundaries are the ones the backend already drew.
 
-  /** §01 register snapshot. Phase A: `-periods`, `-filed-since`, `-share-attribution`, `filing-index`. */
-  instRegisterSnapshot: (symbol: string, _quarterEnd: string) =>
-    resolve<InstRegisterSnapshot>({
-      freshness: hub.instFreshness(symbol),
-      snapshot: hub.instSnapshot(symbol),
+  /**
+   * §01 register snapshot — REAL, on `-periods`, `-filed-since`, `-share-attribution`,
+   * `-holders` and `-activity`.
+   *
+   * The quarter is DERIVED, not passed in: see `pickBasePeriod`. A caller cannot ask for "the
+   * latest" and get a meaningful register, because the latest quarter is still being filed.
+   */
+  instRegisterSnapshot: async (symbol: string): Promise<InstRegisterSnapshot> => {
+    const enc = encodeURIComponent(symbol);
+    const periods = await getJson<PeriodsResponse>(`/v1/companies/${enc}/institutional-periods`);
+    const { base, filling } = pickBasePeriod(periods.periods, periods.period_meta);
+    if (!base) {
+      return {
+        freshness: toInstFreshness(periods, null, null, null),
+        snapshot: toInstSnapshot(null, null, null, null),
+        extras: hub.instRegisterExtras(symbol),
+      };
+    }
+    // Each read is allowed to fail alone: a missing dumbbell should not blank the freshness band.
+    const [filed, attribution, holders, activity] = await Promise.all([
+      getJson<FiledSinceResponse>(
+        `/v1/companies/${enc}/institutional-filed-since?period=${base}`,
+      ).catch(() => null),
+      getJson<AttributionResponse>(
+        `/v1/companies/${enc}/institutional-share-attribution?period=${base}`,
+      ).catch(() => null),
+      getJson<HoldersResponse>(
+        `/v1/companies/${enc}/institutional-holders?period=${base}&limit=12`,
+      ).catch(() => null),
+      getJson<ActivityResponse>(
+        `/v1/companies/${enc}/institutional-activity?period=${base}&limit=12`,
+      ).catch(() => null),
+    ]);
+    return {
+      freshness: toInstFreshness(periods, base, filling, filed),
+      snapshot: toInstSnapshot(base, filed, attribution, activity),
       extras: hub.instRegisterExtras(symbol),
-    }),
+    };
+  },
 
   /** §02 over time & holders. Phase A: `-holdings-series`, `-holders`, `-register`. Takes a COUNT. */
   instRegisterSeries: (symbol: string, _quarters: number) =>

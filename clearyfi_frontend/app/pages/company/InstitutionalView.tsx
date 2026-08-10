@@ -123,7 +123,7 @@ export function InstitutionalView() {
    * vocabularies: a 13F QUARTER-END for point-in-time reads, a LOOKBACK COUNT for the series ones.
    * They are not interchangeable — see `data/api.ts`.
    */
-  const snapshotRead = useApi(() => api.instRegisterSnapshot(T, INST_QUARTER_END), [T]);
+  const snapshotRead = useApi(() => api.instRegisterSnapshot(T), [T]);
   const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
   const flowsRead = useApi(() => api.instFlows(T, INST_QUARTER_END), [T]);
   const behaviourRead = useApi(() => api.instBehaviour(T, INST_QUARTERS), [T]);
@@ -258,7 +258,7 @@ export function InstitutionalView() {
             <div className="inst-arith-cell">
               <span className="hub-label no-mb">Adjusted register</span>
               <span className="inst-fresh-value">{snap.adjusted.value}</span>
-              <span className="hub-hint">{snap.adjusted.pct} of shares outstanding</span>
+              <span className="hub-hint">{snap.adjusted.pct}</span>
             </div>
           </div>
 
@@ -270,8 +270,8 @@ export function InstitutionalView() {
           />
           <div className="hub-note">
             Hollow is the position as reported in the prior quarter&apos;s 13F, filled the current
-            register. Colour is manager type, the same encoding used everywhere on this page.
-            Direction is described, not scored.
+            register. Direction is described, not scored.
+            {snap.movedNote ? ` ${snap.movedNote}` : ""}
           </div>
 
           <div className="inst-more">
@@ -341,8 +341,11 @@ export function InstitutionalView() {
         )}
         {/* Without this line a reader takes the proxy ownership table for trading activity. */}
         <div className="hub-note">
-          Insider ownership above is the DEF 14A beneficial ownership table. Section 16
-          transactions are reported in full on their own view.
+          The three figures above do NOT add up and are not exhaustive: a holder above 5% files
+          both a 13F and a Schedule 13D/G, and a 10% owner is also an insider, so the same shares
+          appear in more than one row. &ldquo;Insider &amp; affiliate&rdquo; is Forms 3/4/5, not the
+          DEF 14A beneficial-ownership table — that table is tagged in no structured source.
+          Section 16 transactions are reported in full on their own view.
         </div>
       </section>
 

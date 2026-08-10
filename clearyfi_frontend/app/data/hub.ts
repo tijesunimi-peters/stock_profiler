@@ -1298,6 +1298,8 @@ export interface Calc {
 }
 
 export interface InstSnapshot {
+  /** What the dumbbell leaves out and why — null on the fixture, set by the real adapter. */
+  movedNote?: string | null;
   adjusted: {
     base: string;
     baseLabel: string;
