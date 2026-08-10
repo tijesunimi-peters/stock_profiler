@@ -2259,6 +2259,38 @@ interface AttributionResponse {
   };
 }
 
+interface RegisterResponse {
+  period: string;
+  period_meta: { within_deadline?: boolean; ingested_filer_count?: number } | null;
+  total_reported_shares: number | null;
+  excluded_holder_count: number | null;
+  concentration: {
+    status: string; formula: string; cannot: string; population: string;
+    holder_count: number | null; hhi: number | null; effective_holders: number | null;
+    gini: number | null; top1_share: number | null; top5_share: number | null;
+    top10_share: number | null; managers_for_half: number | null;
+  };
+  composition: {
+    status: string; formula: string; cannot: string; population: string;
+    categories: { key: string; label: string; holder_count: number; shares: number; weight: number }[];
+    classified_holder_count: number; unclassified_holder_count: number;
+    unclassified_shares: number; coverage: number;
+  };
+  share_vector: {
+    manager_cik: number; manager_name: string; shares: number; weight: number;
+    cumulative: number; sic: string | null;
+  }[];
+  share_vector_total_rows: number;
+}
+
+interface HoldingsSeriesResponse {
+  periods: string[];
+  series: {
+    manager_cik: number; manager_name: string;
+    points: { period: string; shares: number | null; value: number | null }[];
+  }[];
+}
+
 interface HoldersResponse {
   period: string;
   holders: { manager_cik: number; manager_name: string; shares: number | null; value: number | null;
@@ -2470,6 +2502,223 @@ function toInstSnapshot(
     // `calc`, so this duplicate of the third tile's is left pointing at the same object rather
     // than fabricated. Drops out when `InstSnapshot` moves off `hub.ts`.
     instPctCalc: figs[2]?.calc ?? { formula: "", note: "", inputs: [] },
+  };
+}
+
+/** `"2026-03-31"` → `"1Q26"`, the label the register charts use. */
+function qLabel(iso: string): string {
+  const [y, m] = iso.split("-");
+  return `${Math.ceil(Number(m) / 3)}Q${y.slice(2)}`;
+}
+
+/**
+ * The legend swatch for band `i` of `n`.
+ *
+ * Mirrors `stackedAreaDraw`'s own ramp in `charts/series.tsx` (#c0703a → #f0dcc6 across the band
+ * index). The chart colours by position and takes no colour input, so a legend with its own
+ * palette shows one colour beside a band drawn in another — which makes "colour is categorical
+ * identity" false exactly where a reader relies on it to match a row to a layer.
+ */
+function mixSwatch(i: number, n: number): string {
+  const from = [0xc0, 0x70, 0x3a];
+  const to = [0xf0, 0xdc, 0xc6];
+  const t = n <= 1 ? 0 : i / (n - 1);
+  const ch = from.map((f, k) => Math.round(f + (to[k] - f) * t));
+  return `#${ch.map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * §02's register-over-time, manager mix and largest holders.
+ *
+ * **The mix describes a MINORITY of the register and the card has to say so.** Categories come
+ * from each filer's own SIC registration, and most filers carry none: for Apple's quarter 80 of
+ * 6,044 holders are classified — 1.3% of holders, but 43.1% of shares. The endpoint reports that
+ * as `coverage`, and a stacked area with no such note reads as the whole register's composition.
+ *
+ * SIC is also a REGISTRATION category, not a strategy — an index fund, a stock-picker and a quant
+ * shop all register as investment advice. The endpoint's own `cannot` says so and is carried into
+ * the "how this is computed" drawer rather than paraphrased.
+ */
+function toInstRegister(
+  base: string | null,
+  periods: string[],
+  registers: (RegisterResponse | null)[],
+  series?: HoldingsSeriesResponse | null,
+): hub.InstRegister {
+  // Oldest-first for charting; the API returns newest-first.
+  const chron = [...periods].reverse();
+  const regByPeriod = new Map<string, RegisterResponse>();
+  registers.forEach((r) => r && regByPeriod.set(r.period, r));
+
+  /*
+   * Register over time, from the per-quarter `-register` reads rather than by aggregating the
+   * series.
+   *
+   * Aggregating the series is a trap in both directions. A series row is per (manager, CUSIP) and
+   * Apple has 43 CUSIPs, so 1,238 of its 7,424 rows carry TWO points for the same quarter —
+   * Eastern Bank reports 958,350 and 156,941 separately. Taking the first point per row silently
+   * drops the rest (6,024M against 8,315M actual); counting points instead of managers inflates
+   * the holder count to 9,237 against 6,076 distinct filers. `-register` already publishes both
+   * figures on the same population the §01 tiles and the top-ten denominator use, so the chart
+   * agrees with the rest of the page by construction.
+   */
+  const counts: number[] = [];
+  const sharesM: number[] = [];
+  for (const p of chron) {
+    const r = regByPeriod.get(p);
+    counts.push(r?.concentration?.holder_count ?? 0);
+    sharesM.push((r?.total_reported_shares ?? 0) / 1e6);
+  }
+  const net =
+    counts.length > 1 ? counts[counts.length - 1] - counts[counts.length - 2] : null;
+
+  // Manager mix over the same quarters. A category absent in a quarter contributes 0 for that
+  // quarter, which is a real zero weight, not a missing one.
+  const catKeys = new Map<string, string>();
+  for (const r of registers) {
+    for (const c of r?.composition?.categories ?? []) catKeys.set(c.key, c.label);
+  }
+  const bands = [...catKeys].map(([key, label]) => ({
+    key,
+    label,
+    values: chron.map((p) => {
+      const cat = regByPeriod.get(p)?.composition?.categories?.find((c) => c.key === key);
+      return (cat?.weight ?? 0) * 100;
+    }),
+  }));
+
+  const current = base ? regByPeriod.get(base) : undefined;
+  const priorPeriod = chron[chron.length - 2];
+  const prior = priorPeriod ? regByPeriod.get(priorPeriod) : undefined;
+
+  // Band order must match the chart's, which stacks `bands` in array order — the legend indexes
+  // into the same list so swatch i is layer i.
+  const bandOrder = bands.map((b) => b.key);
+  const mixLegend = (current?.composition?.categories ?? []).map((c) => {
+    const p = prior?.composition?.categories?.find((x) => x.key === c.key);
+    return {
+      k: c.label,
+      pct: `${(c.weight * 100).toFixed(1)}%`,
+      pctN: c.weight * 100,
+      prior: p ? `${(p.weight * 100).toFixed(1)}%` : "N/A",
+      priorN: (p?.weight ?? 0) * 100,
+      color: mixSwatch(Math.max(0, bandOrder.indexOf(c.key)), bandOrder.length),
+    };
+  });
+
+  const con = current?.concentration;
+  const comp = current?.composition;
+  // The area is normalised to 100%, so a swinging DENOMINATOR is invisible in it: Apple's
+  // classified share runs 18.9%-43.1% across these quarters on 68-80 filers. Without this the
+  // chart reads as the register's composition changing.
+  const covers = chron
+    .map((p) => regByPeriod.get(p)?.composition?.coverage)
+    .filter((c): c is number => typeof c === "number");
+  const coverRange = covers.length
+    ? `${(Math.min(...covers) * 100).toFixed(1)}%-${(Math.max(...covers) * 100).toFixed(1)}%`
+    : null;
+  const total = current?.total_reported_shares ?? null;
+
+  // Largest managers, with each one's own nine-quarter panel from the same series.
+  const holders = (current?.share_vector ?? []).slice(0, 12).map((h) => {
+    const mgr = series?.series.find((m) => m.manager_cik === h.manager_cik);
+    // Sum every point for the period, not the first: a manager holding two of the issuer's CUSIPs
+    // reports them as separate points, and taking one understates that manager's position.
+    const spark = chron.map((p) => {
+      const pts = (mgr?.points ?? []).filter((x) => x.period === p && x.shares != null);
+      return pts.length ? pts.reduce((a, x) => a + (x.shares as number), 0) / 1e6 : null;
+    });
+    const last = spark[spark.length - 1];
+    const prev = spark[spark.length - 2];
+    return {
+      name: h.manager_name,
+      kind: h.sic ? `SIC ${h.sic}` : "no SIC on its registration",
+      form: "13F-HR",
+      filed: base ? instDate(base) : "N/A",
+      shares: usdCompact(h.shares).replace("$", ""),
+      // Weight is of REPORTED 13F shares, not of shares outstanding — a different denominator
+      // from §01's tiles, and mixing them would overstate every holder.
+      pct: `${(h.weight * 100).toFixed(2)}%`,
+      delta:
+        last == null || prev == null
+          ? "N/A"
+          : `${last - prev >= 0 ? "+" : ""}${(last - prev).toFixed(1)}M`,
+      spark,
+    };
+  });
+
+  return {
+    quarters: chron.map(qLabel),
+    holderCounts: counts,
+    sharesM,
+    netHolders:
+      net === null
+        ? "N/A"
+        : `${net >= 0 ? "+" : ""}${net.toLocaleString()} managers vs the prior quarter`,
+    mix: { periods: chron.map(qLabel), bands },
+    mixLegend,
+    top10: con?.top10_share == null ? "N/A" : `${(con.top10_share * 100).toFixed(1)}%`,
+    top10Note:
+      con?.top10_share == null
+        ? "no register ingested for this quarter"
+        : `of the ${(total ?? 0) / 1e6 >= 1 ? usdCompact(total ?? 0).replace("$", "") : "0"} shares reported by ${con.holder_count?.toLocaleString() ?? "?"} managers — a share of 13F-REPORTED shares, not of shares outstanding.` +
+          (comp
+            ? ` Manager mix covers ${comp.classified_holder_count.toLocaleString()} of ${(comp.classified_holder_count + comp.unclassified_holder_count).toLocaleString()} holders (${(comp.coverage * 100).toFixed(1)}% of reported shares) — the rest carry no SIC code` +
+              (coverRange ? `, and that coverage runs ${coverRange} across the quarters charted, so the mix's own denominator moves.` : ".")
+            : ""),
+    holders,
+  };
+}
+
+/** §02's "how this is computed" drawers and the top-ten history behind the figure. */
+function toInstRegisterExtras(
+  periods: string[],
+  registers: (RegisterResponse | null)[],
+): hub.InstRegisterExtras {
+  const chron = [...periods].reverse();
+  const byPeriod = new Map<string, RegisterResponse>();
+  registers.forEach((r) => r && byPeriod.set(r.period, r));
+
+  const top10Series = chron
+    .map((p) => ({ period: qLabel(p), value: (byPeriod.get(p)?.concentration?.top10_share ?? 0) * 100 }))
+    .filter((x) => x.value > 0);
+  const latest = top10Series[top10Series.length - 1]?.value ?? null;
+  const first = top10Series[0]?.value ?? null;
+  const current = byPeriod.get(chron[chron.length - 1] ?? "");
+
+  return {
+    top10Series,
+    top10Latest: latest === null ? "N/A" : `${latest.toFixed(1)}%`,
+    top10Change:
+      latest === null || first === null
+        ? ""
+        : `${latest - first >= 0 ? "+" : ""}${(latest - first).toFixed(1)}pp over ${top10Series.length} quarters`,
+    top10DrawerNote:
+      current?.concentration?.cannot ??
+      "A concentration figure describes the ingested register, not the whole market.",
+    classificationCalc: {
+      formula: current?.composition?.formula ?? "",
+      // The endpoint's own warning, carried verbatim: SIC is a registration category, not a
+      // strategy, so this is not "index vs active".
+      note: current?.composition?.cannot ?? "",
+      inputs: [
+        { k: "Population", v: current?.composition?.population ?? "N/A" },
+        { k: "Classified holders", v: current?.composition?.classified_holder_count?.toLocaleString() ?? "N/A" },
+        { k: "Unclassified holders", v: current?.composition?.unclassified_holder_count?.toLocaleString() ?? "N/A" },
+        { k: "Share coverage", v: current?.composition ? `${(current.composition.coverage * 100).toFixed(1)}%` : "N/A" },
+      ],
+    },
+    top10Calc: {
+      formula: current?.concentration?.formula ?? "",
+      note: current?.concentration?.cannot ?? "",
+      inputs: [
+        { k: "Population", v: current?.concentration?.population ?? "N/A" },
+        { k: "Managers", v: current?.concentration?.holder_count?.toLocaleString() ?? "N/A" },
+        { k: "HHI", v: current?.concentration?.hhi?.toFixed(0) ?? "N/A" },
+        { k: "Effective holders", v: current?.concentration?.effective_holders?.toFixed(1) ?? "N/A" },
+        { k: "Managers for half the register", v: current?.concentration?.managers_for_half?.toLocaleString() ?? "N/A" },
+      ],
+    },
   };
 }
 
@@ -3009,7 +3258,6 @@ export const api = {
       return {
         freshness: toInstFreshness(periods, null, null, null),
         snapshot: toInstSnapshot(null, null, null, null),
-        extras: hub.instRegisterExtras(symbol),
       };
     }
     // Each read is allowed to fail alone: a missing dumbbell should not blank the freshness band.
@@ -3030,13 +3278,44 @@ export const api = {
     return {
       freshness: toInstFreshness(periods, base, filling, filed),
       snapshot: toInstSnapshot(base, filed, attribution, activity),
-      extras: hub.instRegisterExtras(symbol),
     };
   },
 
-  /** §02 over time & holders. Phase A: `-holdings-series`, `-holders`, `-register`. Takes a COUNT. */
-  instRegisterSeries: (symbol: string, _quarters: number) =>
-    resolve<InstRegisterSeries>({ register: hub.instRegister(symbol) }),
+  /**
+   * §02 over time & holders — REAL, on `-holdings-series` and `-register`.
+   *
+   * `-register` is per QUARTER and carries the composition, so the nine-quarter manager mix costs
+   * nine calls. They run in parallel and are ~130ms / 14KB each; the operator ruling allows the
+   * frontend as many requests as it needs, and the alternative is a mix chart with one point.
+   */
+  instRegisterSeries: async (symbol: string, quarters: number): Promise<InstRegisterSeries> => {
+    const enc = encodeURIComponent(symbol);
+    const periodsRes = await getJson<PeriodsResponse>(`/v1/companies/${enc}/institutional-periods`);
+    const { base } = pickBasePeriod(periodsRes.periods, periodsRes.period_meta);
+    if (!base) {
+      return { register: toInstRegister(null, [], []), extras: toInstRegisterExtras([], []) };
+    }
+
+    // Only quarters up to and including the base: the newest is still being filed, and including
+    // it drops Apple from 9,237 holders to 817 — a 91% cliff that reads as the register
+    // collapsing rather than as a deadline that has not passed.
+    const upTo = periodsRes.periods.filter((p) => p <= base).slice(0, quarters);
+
+    const [series, ...registers] = await Promise.all([
+      getJson<HoldingsSeriesResponse>(
+        `/v1/companies/${enc}/institutional-holdings-series?quarters=${quarters + 1}`,
+      ).catch(() => null),
+      ...upTo.map((p) =>
+        getJson<RegisterResponse>(`/v1/companies/${enc}/institutional-register?period=${p}`).catch(
+          () => null,
+        ),
+      ),
+    ]);
+    return {
+      register: toInstRegister(base, upTo, registers, series),
+      extras: toInstRegisterExtras(upTo, registers),
+    };
+  },
 
   /** §03 flows & concentration. Phase A: `-activity`, `-activity-series`, `-conviction`. */
   instFlows: (symbol: string, _quarterEnd: string) =>
@@ -3233,11 +3512,13 @@ export interface CompanyPeerRelative {
 export interface InstRegisterSnapshot {
   freshness: hub.InstFreshness;
   snapshot: hub.InstSnapshot;
-  extras: hub.InstRegisterExtras;
 }
 
 export interface InstRegisterSeries {
   register: hub.InstRegister;
+  /** §02's drawers. They live here rather than on the §01 payload because their inputs are the
+   *  per-quarter `-register` reads this section already makes. */
+  extras: hub.InstRegisterExtras;
 }
 
 export interface InstFlows {

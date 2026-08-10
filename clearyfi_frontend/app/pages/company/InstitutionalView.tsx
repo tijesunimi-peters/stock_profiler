@@ -157,7 +157,9 @@ export function InstitutionalView() {
 
   const f = snapshotRead.data.freshness;
   const snap = snapshotRead.data.snapshot;
-  const ext = snapshotRead.data.extras;
+  // §02's drawers travel with §02's data, not §01's — their inputs are the per-quarter register
+  // reads that section makes.
+  const ext = seriesRead.data.extras;
   const reg = seriesRead.data.register;
   const flows = flowsRead.data.flows;
   const stew = stewardRead.data.steward;
@@ -356,7 +358,9 @@ export function InstitutionalView() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-panel-title">Register over time</span>
-              <span className="hub-hint">holder count and reported shares, five quarters</span>
+              <span className="hub-hint">
+                holder count and reported shares, {reg.quarters.length} quarters
+              </span>
               <button type="button" className="hub-tab is-sm" title="Open larger" onClick={() => setZoom("register")}>
                 ⤡ Expand
               </button>
@@ -468,7 +472,7 @@ export function InstitutionalView() {
             {holdersOpen ? "− hide the manager list" : "+ show every reporting manager"}
           </button>
           <span className="hub-hint">
-            largest reporting managers · nine-quarter panel each · shares, % out and quarter-over-quarter change
+            largest reporting managers · nine-quarter panel each · shares, share of the 13F register and quarter-over-quarter change
           </span>
         </div>
 
@@ -507,7 +511,9 @@ export function InstitutionalView() {
             <div className="hub-table-head inst-hold-grid">
               <span>Manager · classification</span>
               <span className="ta-r">Shares</span>
-              <span className="ta-r">% out</span>
+              {/* NOT "% out": this is a share of 13F-REPORTED shares, a different and much
+                  smaller denominator than shares outstanding. §01's tiles use outstanding. */}
+              <span className="ta-r">% of 13F</span>
               <span className="ta-r">Δ QoQ</span>
             </div>
             {reg.holders.map((h) => (
