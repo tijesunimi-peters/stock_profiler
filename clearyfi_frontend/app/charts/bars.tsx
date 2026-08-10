@@ -696,9 +696,28 @@ const dumbbellDraw: DrawFn<{ rows: DumbbellRow[]; format: (v: number) => string 
   { d3, width, height, data, container },
 ) => {
   svg.selectAll("*").remove();
-  // Wide enough for a full manager name — these are cover-page identities and truncating one
-  // ("Geode Capital Manage…") makes two filers look like the same filer.
-  const left = 168;
+  /*
+   * The label gutter is MEASURED, so a full manager name fits.
+   *
+   * These are cover-page identities and truncating one ("Geode Capital Manage…") makes two filers
+   * look like the same filer — which is why this was a fixed 168px meaning "wide enough for a
+   * name". It was not: "PUBLIC SECTOR PENSION INVESTMENT BOARD" renders 224.5px and ran 66.5px
+   * past the left edge of the chart and 49.5px past the card, with no clipping to hint at it.
+   *
+   * So the gutter grows to the widest label it actually has to draw. It is capped at 45% of the
+   * chart so a long name cannot squeeze the plot away on a narrow card; only where that cap binds
+   * is a label trimmed, and then the full identity stays reachable in the hover readout and in an
+   * SVG <title>, so no filer is silently renamed into another.
+   */
+  const probe = svg.append("g").style("opacity", 0);
+  let widest = 0;
+  for (const r of data.rows) {
+    const node = sans(probe.append("text").text(r.label), 10.5, 500).node() as SVGTextElement | null;
+    widest = Math.max(widest, node?.getComputedTextLength?.() ?? 0);
+  }
+  probe.remove();
+  const left = Math.min(Math.max(168, Math.ceil(widest) + 12), Math.max(120, Math.floor(width * 0.45)));
+  const labelMax = left - 10;
   const iw = width - left - 54;
   const ih = height - 26;
   const g = svg.append("g").attr("transform", `translate(${left},8)`);
@@ -724,7 +743,7 @@ const dumbbellDraw: DrawFn<{ rows: DumbbellRow[]; format: (v: number) => string 
 
   for (const r of data.rows) {
     const cy = (y(r.key) ?? 0) + y.bandwidth() / 2;
-    sans(
+    const labelEl = sans(
       svg
         .append("text")
         .attr("x", left - 10)
@@ -734,6 +753,17 @@ const dumbbellDraw: DrawFn<{ rows: DumbbellRow[]; format: (v: number) => string 
       10.5,
       500,
     );
+    // Only trims where the 45% cap binds — otherwise the gutter was sized to hold this label.
+    const node = labelEl.node() as SVGTextElement | null;
+    if (node?.getComputedTextLength) {
+      let text = r.label;
+      while (text.length > 4 && node.getComputedTextLength() > labelMax) {
+        text = text.slice(0, -1);
+        labelEl.text(`${text.trimEnd()}…`);
+      }
+    }
+    // The full identity, whether or not it was trimmed.
+    labelEl.append("title").text(r.label);
     g.append("line")
       .attr("x1", x(r.prior))
       .attr("x2", x(r.current))
