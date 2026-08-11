@@ -4205,11 +4205,15 @@
 
 /* i6 · limits & supply, i7 · reference */
 
+/* The name column has a FLOOR. At `minmax(0, 1fr)` a two-word category ("Tender offers")
+   collapsed and wrapped, and `baseline` then aligned the state text to the first line — so the
+   state read as sitting between "Tender" and "offers". `start` keeps a genuine wrap at a narrow
+   width reading as two lines of one row rather than as interleaved columns. */
 .inst-check-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(12rem, 1fr) auto auto;
   gap: 12px;
-  align-items: baseline;
+  align-items: start;
 }
 
 .inst-check-name {

@@ -3199,6 +3199,119 @@ function toInstBehavior(
   };
 }
 
+interface FilingIndexResponse {
+  indexed_count: number;
+  covered_from: string | null;
+  covered_to: string | null;
+  supply: {
+    status: string; reason: string | null; formula: string; cannot: string; population: string;
+    categories: {
+      key: string; label: string; forms: string[]; count: number;
+      latest_filed: string | null; latest_form: string | null;
+    }[];
+  };
+  acceptance_lag: {
+    status: string; reason: string | null; formula?: string; cannot?: string;
+    median_days?: number | null; days?: number[];
+  };
+}
+
+/**
+ * §06 register limits & supply.
+ *
+ * **Existence and date, never terms.** A registration statement establishes which shares MAY be
+ * resold; it does not say a sale happened, how many shares it covers, or when a lock-up ends —
+ * that is exhibit prose. So the supply checks report which categories of filing EXIST over the
+ * indexed window, the selling-shareholder card names the form rather than a share count, and the
+ * windows-and-expiries chart has no source at all and says so instead of drawing invented dates.
+ *
+ * **An absence is scoped to the window, which differs enormously by filer.** EDGAR serves a
+ * rolling slice of recent filings, so Apple's index reaches 2015 while a heavy filer's covers one
+ * year. Every "no filing on file" here carries the window it was checked over.
+ */
+function toInstLimits(
+  fi: FilingIndexResponse | null,
+  act: FilingActivityResponse | null,
+  plans: TradingArrangementsResponse | null,
+): hub.InstLimits {
+  const cats = fi?.supply?.categories ?? [];
+  const cat = (k: string) => cats.find((c) => c.key === k);
+  const window =
+    fi?.covered_from && fi?.covered_to
+      ? `${instDate(fi.covered_from)} to ${instDate(fi.covered_to)}`
+      : "the indexed window";
+
+  const registration = cat("registration");
+  const checks = cats.map((c) => ({
+    k: c.label,
+    // A count with its latest date, or a checked absence naming the window it was checked over.
+    // Short enough not to collide with the row label — the window itself is stated once, in the
+    // note below, rather than repeated on every absent row.
+    state:
+      c.count > 0
+        ? `${c.count.toLocaleString()} filed · latest ${instDate(c.latest_filed)}`
+        : "none in the indexed window",
+    forms: c.forms.slice(0, 6).join(" · "),
+    on: c.count > 0,
+  }));
+
+  const lag = fi?.acceptance_lag;
+  const lagDays = lag?.days ?? [];
+
+  return {
+    selling: {
+      active: (registration?.count ?? 0) > 0,
+      form: registration?.latest_form ?? "S-1 / S-3",
+      // Who may sell and how many shares are TERMS inside the filing, not facts about it. Kept
+      // short: these two render inline beside the form badge.
+      holders: "selling holders not parsed",
+      shares: "share count N/A",
+    },
+    checks,
+    asOf: fi?.covered_to ? instDate(fi.covered_to) : "N/A",
+    // Lock-up and expiry DATES live in exhibits, which are prose. Nothing to plot.
+    gantt: [],
+    ganttNote:
+      "No windows or expiries are plotted. A lock-up's length, an expiry date or a standstill " +
+      "term is stated in an exhibit to the filing, which is narrative and is not parsed — the " +
+      "filing index carries which forms exist and when, never what they say.",
+    supplyNote: [fi?.supply?.cannot, `Checked over ${window}, which is EDGAR's rolling recent window rather than this company's whole history`]
+      .filter(Boolean)
+      .map((t) => (t as string).trim().replace(/\.?$/, "."))
+      .join(" "),
+    insiderFilings: {
+      plans:
+        plans?.status === "ok" && plans.adopted_count != null
+          ? `${plans.adopted_count} Rule 10b5-1 arrangement${plans.adopted_count === 1 ? "" : "s"} adopted in the latest annual report`
+          : "N/A — Item 408(a) not tagged in this filer's latest annual report",
+      delinquent:
+        "N/A — Item 405 delinquent-filer disclosure is proxy narrative and is not parsed",
+    },
+    mechanics: {
+      confidential: "N/A — confidential-treatment requests are not ingested",
+      amendments:
+        act?.amended_share == null
+          ? "N/A"
+          : `${(act.amended_share * 100).toFixed(1)}% of indexed filings are amendments`,
+      indexEvent: "N/A — index membership is not an SEC filing",
+      lag: lag?.status === "ok" && lag.median_days != null ? `${lag.median_days} days median` : "N/A",
+      note: lag?.reason ?? "",
+    },
+    lagValues: lagDays,
+    lagMedian: lag?.median_days ?? 0,
+    lagNote:
+      lag?.status === "ok"
+        ? lag.cannot ?? ""
+        : lag?.reason ??
+          "Acceptance timestamps are not stored yet, so no arrival lag can be measured.",
+    amendRate:
+      act?.forms?.slice(0, 6).map((f) => ({ key: f.form, label: f.form, value: f.count })) ?? [],
+    amendNote:
+      "An amendment may be a correction or a routine refiling, and the filing index cannot tell " +
+      "them apart — a rate, not a quality measure.",
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -3875,9 +3988,21 @@ export const api = {
     return { steward: toInstSteward(bo) };
   },
 
-  /** §06 register limits & supply. Phase A: `/filing-index` supply events + acceptance lag. */
-  instLimits: (symbol: string) =>
-    resolve<InstLimits>({ limits: hub.instLimits(symbol) }),
+  /**
+   * §06 register limits & supply — REAL, on `/filing-index` (supply events + acceptance lag),
+   * `/filing-activity` (amendment rate) and `/trading-arrangements` (Rule 10b5-1 adoptions).
+   */
+  instLimits: async (symbol: string): Promise<InstLimits> => {
+    const enc = encodeURIComponent(symbol);
+    const [fi, act, plans] = await Promise.all([
+      getJson<FilingIndexResponse>(`/v1/companies/${enc}/filing-index?limit=1`).catch(() => null),
+      getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
+      getJson<TradingArrangementsResponse>(`/v1/companies/${enc}/trading-arrangements`).catch(
+        () => null,
+      ),
+    ]);
+    return { limits: toInstLimits(fi, act, plans) };
+  },
 };
 
 // ============================================================ payload shapes

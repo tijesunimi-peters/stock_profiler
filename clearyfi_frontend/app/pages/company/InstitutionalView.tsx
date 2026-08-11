@@ -1278,7 +1278,11 @@ export function InstitutionalView() {
               ⤡ Expand
             </button>
           </div>
-          <GanttChart rows={lim.gantt} today="2026-08-02" label="Windows and expiries ahead" />
+          {/* An empty gantt still reserves its full height, leaving a blank panel above the note
+              that explains why there is nothing to plot. Render the note alone instead. */}
+          {lim.gantt.length > 0 && (
+            <GanttChart rows={lim.gantt} today="2026-08-02" label="Windows and expiries ahead" />
+          )}
           <div className="hub-note">{lim.ganttNote}</div>
           <div className="hub-note">{lim.supplyNote}</div>
         </div>
@@ -1364,7 +1368,9 @@ export function InstitutionalView() {
                   Close
                 </button>
               </div>
-              <GanttChart rows={lim.gantt} today="2026-08-02" label="Windows and expiries, expanded" />
+              {lim.gantt.length > 0 && (
+                <GanttChart rows={lim.gantt} today="2026-08-02" label="Windows and expiries, expanded" />
+              )}
             </div>
           </div>
         )}
