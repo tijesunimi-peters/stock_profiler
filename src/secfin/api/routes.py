@@ -3045,6 +3045,11 @@ async def get_insider_summary(
         return summarize_insider_transactions(cik, rows)
 
 
+# Bounds the one-shot name lookup for peer labels. Well above any real SIC-2 group (the largest
+# in the corpus is ~600) -- it exists so a pathological group cannot turn a label join into an
+# unbounded read, not to select peers.
+_PEER_NAME_CAP = 5000
+
 _INSIDER_RATIO_CAVEATS = [
     "DERIVED from reported Forms 3/4/5 -- it is an aggregation of filings, not a reported figure.",
     "Open-market codes P and S only. Grants, exercises, gifts and tax withholding are excluded "
@@ -3120,37 +3125,47 @@ async def get_insider_peer_ratio(
     never run for this window, or when the company has no usable SIC — both distinct from a peer
     group that genuinely had no open-market activity.
     """
+    sic_digits = settings.secfin_peer_sic_digits
     async with SECClient() as client:
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
 
-    sic_digits = settings.secfin_peer_sic_digits
-    profile = profile_repo.get(cik)
-    if profile is None or not profile.sic or len(profile.sic) < sic_digits:
-        return {
-            "cik": cik,
-            "status": "na",
-            "reason": (
-                "This company has no SIC classification on file, so it has no peer group to be "
-                "placed in. That is a gap in our profile data, not a finding about its insiders."
-            ),
-            "peers": [],
-        }
+        profile = profile_repo.get(cik)
+        if profile is None or not profile.sic or len(profile.sic) < sic_digits:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    "This company has no SIC classification on file, so it has no peer group to "
+                    "be placed in. That is a gap in our profile data, not a finding about its "
+                    "insiders."
+                ),
+                "peers": [],
+            }
 
-    as_of = ratio_repo.latest_as_of(window_days)
-    if as_of is None:
-        return {
-            "cik": cik,
-            "status": "na",
-            "reason": (
-                f"The peer insider-ratio batch has not been run for a {window_days}-day window, "
-                "so we have not computed this comparison. That is not the same as finding no "
-                "insider activity."
-            ),
-            "peers": [],
-        }
+        as_of = ratio_repo.latest_as_of(window_days)
+        if as_of is None:
+            return {
+                "cik": cik,
+                "status": "na",
+                "reason": (
+                    f"The peer insider-ratio batch has not been run for a {window_days}-day "
+                    "window, so we have not computed this comparison. That is not the same as "
+                    "finding no insider activity."
+                ),
+                "peers": [],
+            }
 
-    peer_group = profile.sic[:sic_digits]
-    rows = ratio_repo.get_group(peer_group, as_of, window_days)
+        peer_group = profile.sic[:sic_digits]
+        rows = ratio_repo.get_group(peer_group, as_of, window_days)
+
+        # Labels for the dots, resolved in TWO bulk reads rather than per peer: one pass over the
+        # cached ticker map, and one indexed prefix scan for the names. A dot labelled
+        # "CIK 320193" identifies nothing, and a group runs to hundreds of them.
+        peer_tickers = await ticker_cache.tickers_for(client, [r.cik for r in rows])
+
+    names = {p.cik: p.name for p in profile_repo.sic_group_peers(cik, sic_digits, _PEER_NAME_CAP)}
+    names[cik] = profile.name
+
     focal = next((r for r in rows if r.cik == cik), None)
     values = sorted(r.net_ratio for r in rows)
 
@@ -3176,6 +3191,11 @@ async def get_insider_peer_ratio(
         "peers": [
             {
                 "cik": r.cik,
+                # A dot labelled "CIK 320193" identifies nothing. Ticker where the SEC map has
+                # one, registrant name otherwise, and the bare cik only when we have neither --
+                # same fallback order as the peer-overlap matrix.
+                "ticker": peer_tickers.get(r.cik),
+                "name": names.get(r.cik),
                 "net_ratio": r.net_ratio,
                 "bought": r.bought,
                 "sold": r.sold,

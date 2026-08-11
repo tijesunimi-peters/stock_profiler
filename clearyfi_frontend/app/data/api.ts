@@ -1331,7 +1331,14 @@ interface InsiderPeerRatioResponse {
   peer_group?: string;
   as_of?: string;
   window_days?: number;
-  peers: { cik: number; net_ratio: number; buy_count: number; sell_count: number }[];
+  peers: {
+    cik: number;
+    ticker: string | null;
+    name: string | null;
+    net_ratio: number;
+    buy_count: number;
+    sell_count: number;
+  }[];
   company_value?: number | null;
   company_reason?: string | null;
   quantiles?: { min: number; p25: number; median: number; p75: number; max: number } | null;
@@ -1363,6 +1370,7 @@ function toInsiderPeerRatio(res: InsiderPeerRatioResponse | null) {
         res?.reason ??
         "No peer comparison could be built for this company just now.",
       peers: [] as { id: string; label: string; value: number }[],
+      tickerById: {} as Record<string, string>,
       focal: null as number | null,
       quantiles: null,
     };
@@ -1373,9 +1381,19 @@ function toInsiderPeerRatio(res: InsiderPeerRatioResponse | null) {
 
   return {
     ok: true as const,
-    peers: res.peers
-      .filter((p) => p.cik !== undefined)
-      .map((p) => ({ id: String(p.cik), label: `CIK ${p.cik}`, value: p.net_ratio })),
+    // Label order: ticker, then registrant name, then the bare cik. A chart mark has room for
+    // "NVDA" and not for "NVIDIA CORPORATION", and a company we cannot name at all is still a
+    // real dot in the distribution — dropping it would understate the group.
+    peers: res.peers.map((p) => ({
+      id: String(p.cik),
+      label: p.ticker ?? p.name ?? `CIK ${p.cik}`,
+      value: p.net_ratio,
+    })),
+    // Only peers we can resolve to a SYMBOL are navigable: the router keys on ticker, so a
+    // cik would load a page whose every heading read "320193".
+    tickerById: Object.fromEntries(
+      res.peers.filter((p) => p.ticker).map((p) => [String(p.cik), p.ticker as string]),
+    ) as Record<string, string>,
     focal: res.company_value ?? null,
     quantiles: res.quantiles ?? null,
     note:

@@ -103,6 +103,32 @@ if (pr.status === "ok" && pr.peer_count) {
     document.querySelectorAll('[aria-label*="net-acquisition ratio"] circle, .ds-strip circle').length);
   ck(`B8c strip plots only computable peers (api ${pr.peer_count})`, dots > 0 && dots <= pr.peer_count + 2,
      `dots=${dots}`);
+  /* B8d peers are labelled by SYMBOL, never by a bare CIK — a dot reading "CIK 320193"
+     identifies nothing to a reader */
+  const withTicker = pr.peers.filter(x => x.ticker).length;
+  const titles = await p.evaluate(() =>
+    [...document.querySelectorAll('[aria-label*="net-acquisition ratio"] title, .ds-strip title')]
+      .map(t => t.textContent || ""));
+  ck(`B8d peers labelled by ticker/name, not bare CIK (${withTicker}/${pr.peer_count} have symbols)`,
+     titles.length > 0 && !titles.some(t => /^CIK \d+/.test(t.trim())),
+     `titles=${titles.length} sample=${JSON.stringify(titles[0] || "")}`);
+  /* B8e clicking a peer navigates to that peer. The strip only binds a click when onPick is
+     wired, so this fails loudly if the handler is dropped again. */
+  const clicked = await p.evaluate(() => {
+    const c = document.querySelector('[aria-label*="net-acquisition ratio"] circle, .ds-strip circle');
+    if (!c) return false;
+    c.dispatchEvent(new MouseEvent("click", { bubbles: true, view: window }));
+    return true;
+  });
+  await new Promise(r => setTimeout(r, 900));
+  const url = p.url();
+  ck("B8e clicking a peer navigates to that peer's insider view",
+     clicked && /\/company\/[A-Z.\-]+\/insider/i.test(url) && !url.includes(`/company/${TK}/insider?focal=${TK}`),
+     `url=${url}`);
+  // Return to the focal company so the remaining assertions read the right page.
+  await p.goto(`http://localhost:${PORT}/company/${TK}/insider?focal=${TK}`,{waitUntil:"networkidle0"});
+  await p.waitForFunction(()=>!!document.querySelector(".ia-tiles, .ds-state"),{timeout:90000});
+  await new Promise(r=>setTimeout(r,1000));
 } else {
   ck("B8 peer strip absent reads as 'not computed', never as no activity",
      /not been run|no SIC classification|no peer comparison/i.test(txt));
