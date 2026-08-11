@@ -186,21 +186,50 @@ const treemapDraw: DrawFn<{ leaves: TreemapLeaf[]; format: (v: number) => string
     })
     .on("mouseleave", () => readout?.hide());
 
-  // A label only goes inside a cell wide enough to hold it — a clipped label is worse than none.
+  /*
+   * A label only goes inside a cell wide enough to hold it — a clipped label is worse than none.
+   *
+   * That rule was enforced against a fixed 46px cell width, which is not the same test: a 60px
+   * cell cleared it and then drew "WELLINGTON MANAGEMENT GROUP" straight out of the tile, 163px
+   * past the right edge of the chart and 146px past the card. SVG text does not clip to its
+   * parent, so nothing hinted at it.
+   *
+   * The label is now MEASURED against the cell it has to sit in, and dropped when it does not
+   * fit. Nothing is lost by dropping one: every cell carries the full name and value in its
+   * <title> and in the hover readout.
+   */
+  const PAD = 6;
+  const fitsCell = (sel: d3.Selection<SVGTextElement, unknown, null, undefined>, maxW: number) => {
+    const node = sel.node();
+    const w = node?.getComputedTextLength?.() ?? 0;
+    if (w > maxW) {
+      sel.remove();
+      return false;
+    }
+    return true;
+  };
+
   cell.each(function (d: any) {
     const w = d.x1 - d.x0;
     const h = d.y1 - d.y0;
-    if (w < 46 || h < 24) return;
+    if (w < 46 || h < 24) return; // cheap pre-filter: too small for any label
     const g = d3.select(this);
-    sans(g.append("text").attr("x", 6).attr("y", 15).text(d.data.label), 11, 700).style(
+    const inner = w - PAD * 2;
+    const label = sans(g.append("text").attr("x", PAD).attr("y", 15).text(d.data.label), 11, 700).style(
       "fill",
       d.value > max * 0.55 ? "var(--bg-card)" : "var(--ink)",
-    );
-    if (h > 38)
-      mono(g.append("text").attr("x", 6).attr("y", 29).text(data.format(d.value)), 9).style(
+    ) as unknown as d3.Selection<SVGTextElement, unknown, null, undefined>;
+    // If the NAME does not fit, the value goes with it. A tile reading "369M SHARES" with no
+    // manager against it is a magnitude nobody can attribute — worse than an unlabelled
+    // rectangle, whose identity the hover readout and <title> still carry.
+    if (!fitsCell(label, inner)) return;
+    if (h > 38) {
+      const val = mono(g.append("text").attr("x", PAD).attr("y", 29).text(data.format(d.value)), 9).style(
         "fill",
         d.value > max * 0.55 ? "rgba(255,255,255,.8)" : "var(--mono-muted)",
-      );
+      ) as unknown as d3.Selection<SVGTextElement, unknown, null, undefined>;
+      fitsCell(val, inner);
+    }
   });
 
   cell.append("title").text((d: any) => `${d.data.label} — ${data.format(d.value)}`);
