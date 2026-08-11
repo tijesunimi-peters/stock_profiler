@@ -2783,11 +2783,22 @@ function toInstFlows(
 ): hub.InstFlows {
   const trans = (act?.transitions ?? []).filter((t) => !base || t.to_period <= base);
 
-  // Two bars per quarter — inflow above the axis, outflow below — but ONE label between them:
-  // the chart labels every row, so labelling both printed each quarter twice on the axis.
+  /*
+   * Two bars per quarter sharing ONE key, which is what puts them in one column.
+   *
+   * The chart positions every bar at its key's band and draws a label at that band's centre. With
+   * distinct keys the inflow and outflow of a quarter got adjacent bands, so each label sat under
+   * the up-bar while the matching down-bar hung to its right — Apple's -500M outflow for 2Q24
+   * rendered between the "2Q24" and "3Q24" ticks and read as belonging to neither. A shared key
+   * collapses them onto one band: added above the axis, reduced below, one tick underneath, which
+   * is what "shares added above the axis, reduced below" describes.
+   *
+   * The outflow row carries an empty label so the tick is drawn once rather than twice over
+   * itself.
+   */
   const flow = trans.flatMap((t) => [
-    { key: `${t.to_period}-in`, label: qLabel(t.to_period), value: (t.inflow_shares ?? 0) / 1e6 },
-    { key: `${t.to_period}-out`, label: "", value: -(t.outflow_shares ?? 0) / 1e6 },
+    { key: t.to_period, label: qLabel(t.to_period), value: (t.inflow_shares ?? 0) / 1e6 },
+    { key: t.to_period, label: "", value: -(t.outflow_shares ?? 0) / 1e6 },
   ]);
 
   const quarterTable = [...trans].reverse().slice(0, 6).map((t) => ({
