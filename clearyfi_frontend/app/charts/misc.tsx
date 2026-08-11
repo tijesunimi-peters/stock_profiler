@@ -524,10 +524,11 @@ export interface CalendarNotice {
   filled?: boolean;
 }
 
-const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => string }> = (
-  svg,
-  { d3, width, height, data, container },
-) => {
+const calendarDraw: DrawFn<{
+  notices: CalendarNotice[];
+  format: (v: number) => string;
+  magnitude: boolean;
+}> = (svg, { d3, width, height, data, container }) => {
   svg.selectAll("*").remove();
   container?.querySelectorAll(".chart-readout").forEach((n) => n.remove());
   const iw = width - 28;
@@ -542,10 +543,14 @@ const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => s
     .domain(d3.extent(data.notices, (n) => new Date(n.date)) as [Date, Date])
     .range([0, iw])
     .nice();
-  const r = d3
+  // With no magnitude to encode, every dot is the SAME small radius. Running the size scale over
+  // uniform values would map every notice to the MAXIMUM radius, so a calendar whose sizes we do
+  // not know would read as a calendar of unusually large ones.
+  const rScale = d3
     .scaleSqrt()
     .domain([0, d3.max(data.notices, (n) => n.size) ?? 1])
     .range([2, 13]);
+  const r = (n: CalendarNotice) => (data.magnitude ? rScale(n.size) : 4);
 
   const xAxis = g
     .append("g")
@@ -567,20 +572,33 @@ const calendarDraw: DrawFn<{ notices: CalendarNotice[]; format: (v: number) => s
     .join("circle")
     .attr("cx", (d) => x(new Date(d.date)))
     .attr("cy", (_d, i) => ih / 2 + ((i % 5) - 2) * 9)
-    .attr("r", (d) => r(d.size))
+    .attr("r", (d) => r(d))
     .style("fill", (d) => (d.filled === false ? "var(--bg-card)" : "var(--accent)"))
     .style("fill-opacity", (d) => (d.filled === false ? 1 : 0.45))
     .style("stroke", "var(--accent)")
     .style("stroke-width", 1)
     .on("mousemove", (event, d) => {
       const [px, py] = d3.pointer(event, container as any);
-      readout?.show(px, py, [d.label, d.date, data.format(d.size)]);
+      readout?.show(
+        px,
+        py,
+        data.magnitude ? [d.label, d.date, data.format(d.size)] : [d.label, d.date],
+      );
     })
     .on("mouseleave", () => readout?.hide())
     .append("title")
-    .text((d) => `${d.label} — ${d.date} · ${data.format(d.size)}`);
+    .text((d) =>
+      data.magnitude ? `${d.label} — ${d.date} · ${data.format(d.size)}` : `${d.label} — ${d.date}`,
+    );
 
-  mono(svg.append("text").attr("x", 14).attr("y", height - 4).text("area ∝ shares noticed"), 8.5);
+  mono(
+    svg
+      .append("text")
+      .attr("x", 14)
+      .attr("y", height - 4)
+      .text(data.magnitude ? "area ∝ shares noticed" : "one dot per notice · size not reported"),
+    8.5,
+  );
 };
 
 export function DotCalendar({
@@ -588,13 +606,17 @@ export function DotCalendar({
   format = (v) => String(Math.round(v)),
   height = 160,
   label,
+  magnitude = true,
 }: {
   notices: CalendarNotice[];
   format?: (v: number) => string;
   height?: number;
   label?: string;
+  /** False when only the DATES are known. Dots then share one small radius and the caption
+   *  stops claiming area encodes anything — see `calendarDraw`. */
+  magnitude?: boolean;
 }) {
-  const data = useMemo(() => ({ notices, format }), [notices, format]);
+  const data = useMemo(() => ({ notices, format, magnitude }), [notices, format, magnitude]);
   return <Chart draw={calendarDraw} data={data} height={height} label={label} />;
 }
 

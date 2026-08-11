@@ -303,7 +303,12 @@ src/secfin/
                                #   acceptanceDateTime, 8-K items). ONE walk, THREE consumers:
                                #   §06 supply events, §06 acceptance lag, and V3-P3's 8-K codes
     institutional_backfill.py  # bulk 13F ingest for one quarter (offline candidate discovery)
-    insider_backfill.py        # bulk-seed the insider-trades cache (M3 ownership cache-warming)
+    insider_backfill.py        # bulk-seed the insider-trades cache (M3 ownership cache-warming).
+                               #   `--stale-only` is the REPAIR mode: re-parses only the filings
+                               #   whose cached rows predate the current parser (NULL is_derivative,
+                               #   which the parser never writes). Targets accessions directly --
+                               #   `--refresh` is depth-bounded and stale filings sit up to 52 deep,
+                               #   so it costs ~148k fetches where this costs ~5k
     location_backfill.py       # backfill filing_manager_location onto cached 13F snapshots
                                #   (cover-page-only fetch; for the holder-geography choropleth)
     sic_backfill.py            # backfill cik->SIC into company_profiles (Metrics Phase 2)
@@ -431,6 +436,15 @@ python -m secfin.ingest.institutional_backfill --period YYYY-MM-DD
 # the bulk institutional_backfill skips already-cached accessions, so it can't do this).
 # Powers the holder-geography choropleth. --period is repeatable.
 python -m secfin.ingest.location_backfill --period 2026-03-31 --period 2026-06-30
+
+# REPAIR the insider cache after the parser learns a field. Re-parses ONLY the filings whose
+# cached rows predate it (NULL is_derivative -- the current parser always writes True/False, so a
+# NULL can only be an old row; transaction_code is NOT a valid marker, a Form 3 holding has none).
+# Prefer this over `--refresh`, which is depth-bounded: stale filings sit up to 52 deep, so
+# reaching them by depth costs ~148k document fetches against ~5k here.
+# ⚠️ A filing that aged out of EDGAR's rolling /submissions/ window can NEVER be repaired; the
+# run reports those as `aged_out` rather than counting them as done.
+python -m secfin.ingest.insider_backfill --stale-only
 
 # analytical extra (DuckDB, batch/analytical jobs only — never the live API)
 pip install -e ".[analytical]"

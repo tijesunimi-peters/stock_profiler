@@ -36,7 +36,6 @@
  */
 import * as surfaces from "./surfaces";
 import * as hub from "./hub";
-import * as insider from "./insider";
 import * as peers from "./peers";
 import * as proto from "./prototype";
 import * as qual from "./qualitative";
@@ -1261,6 +1260,405 @@ function toOfficerChanges(res: OfficerChangesResponse | null) {
       "Officer and director changes could not be read for this company just now.",
   };
 }
+
+/* ------------------------------------------------------------ §Insider activity, on real forms */
+
+interface InsiderTradeRow {
+  owner_name: string | null;
+  owner_relationship: string | null;
+  transaction_date: string | null;
+  security_title: string | null;
+  shares: number | null;
+  price_per_share: number | null;
+  acquired_disposed: string | null;
+  transaction_code: string | null;
+  ownership_type: string | null;
+  form_type: string | null;
+  accession: string | null;
+  filed: string | null;
+  is_holding: boolean | null;
+  is_derivative: boolean | null;
+  rule_10b5_1: boolean | null;
+}
+
+interface ProposedSaleNoticesResponse {
+  status: string;
+  reason: string | null;
+  cannot: string;
+  notices: { filed: string | null; form: string; accession: string }[];
+  count: number;
+  covered_from: string | null;
+  covered_to: string | null;
+  truncated: boolean;
+}
+
+/**
+ * Form 4 Table I codes, and the split the whole view argues.
+ *
+ * `side` is MECHANICAL -- which way shares moved, not whether anyone decided anything. Only P
+ * is a purchase with the filer's own money and only S is a decision to sell; A, M and F move
+ * shares as a consequence of a grant or a vesting date. Folding them into one "net insider
+ * buying" number is the most common way this data is misread, so the split is structural here.
+ */
+const TXN_CODES: Record<string, { label: string; short: string; side: "in" | "out"; what: string }> =
+  {
+    A: { label: "A · award or grant", short: "A · award", side: "in",
+         what: "Shares issued by the company under a plan. No purchase." },
+    M: { label: "M · derivative exercise", short: "M · exercise", side: "in",
+         what: "Options or units exercised into shares." },
+    P: { label: "P · open-market purchase", short: "P · purchase", side: "in",
+         what: "Bought with the filer's own money — the only acquisition that is a decision to buy." },
+    S: { label: "S · open-market sale", short: "S · sale", side: "out",
+         what: "Shares sold in the market." },
+    F: { label: "F · withheld for tax", short: "F · tax withheld", side: "out",
+         what: "Withheld by the issuer to cover tax at vesting. Not a decision to sell." },
+    D: { label: "D · disposition to issuer", short: "D · to issuer", side: "out",
+         what: "Returned to the company." },
+    G: { label: "G · gift", short: "G · gift", side: "out",
+         what: "Given away; no consideration received." },
+    J: { label: "J · other", short: "J · other", side: "out",
+         what: "The filer chose 'other' and explained it in a footnote we do not read." },
+  };
+
+const SPLIT_COLORS: Record<string, string> = {
+  A: "var(--in-2)", M: "var(--in-3)", P: "var(--in-1)",
+  S: "var(--out-1)", F: "var(--out-2)", D: "var(--out-3)", G: "var(--out-4)", J: "var(--out-5)",
+};
+
+/** Business days between two ISO dates, weekends excluded. Holidays are NOT — see `lagNote`. */
+function businessDaysBetween(a: string, b: string): number | null {
+  const t0 = Date.parse(`${a}T00:00:00Z`);
+  const t1 = Date.parse(`${b}T00:00:00Z`);
+  if (Number.isNaN(t0) || Number.isNaN(t1) || t1 < t0) return null;
+  let days = 0;
+  for (let t = t0; t < t1; t += 86400000) {
+    const d = new Date(t + 86400000).getUTCDay();
+    if (d !== 0 && d !== 6) days += 1;
+  }
+  return days;
+}
+
+/**
+ * §Insider activity, built from ONE real Section 16 ledger.
+ *
+ * **Which rows count, and why the exclusions are stated rather than silent.** An option
+ * exercise files TWO rows — the derivative giving up units and the non-derivative receiving
+ * shares — so counting both turns one event into two. `normalize/insider_summary.py` already
+ * solves this server-side and reports what it dropped; this applies the SAME filter (holdings
+ * out, derivative rows out) so the panels and the tally cannot disagree, and surfaces the
+ * counts rather than quietly shrinking the ledger.
+ *
+ * **The window is FILINGS, not days.** The design asked for "trailing 180 days"; the endpoint
+ * is bounded by filing count, which is six days at one filer and eight months at another. The
+ * masthead states the span the filings turned out to cover.
+ *
+ * **Latency is Form 4 only.** The two-business-day rule is Form 4's. A Form 3 is due within ten
+ * days of becoming an insider and a Form 5 within 45 days of fiscal year end, so binning all
+ * three together would draw a "late" filing that met its own deadline.
+ */
+function toInsiderActivity(
+  cik: number | null,
+  trades: InsiderTradeRow[] | null,
+  summary: InsiderSummaryResponse | null,
+  notices: ProposedSaleNoticesResponse | null,
+) {
+  const e = (form: string) =>
+    cik
+      ? `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=${encodeURIComponent(form)}&dateb=&owner=include&count=40`
+      : "https://www.sec.gov/edgar/searchedgar/companysearch";
+  const links = { forms4: e("4"), f144: e("144"), proxy: e("DEF 14A") };
+
+  const all = trades ?? [];
+  // The same exclusions insider_summary.py applies, counted so the view can name them.
+  const holdings = all.filter((r) => r.is_holding).length;
+  const derivative = all.filter((r) => !r.is_holding && r.is_derivative === true).length;
+  const rows = all.filter((r) => !r.is_holding && r.is_derivative !== true);
+  const uncoded = rows.filter((r) => !r.transaction_code).length;
+
+  if (!rows.length) {
+    return {
+      ok: false as const,
+      reason:
+        summary?.reason ??
+        "No Section 16 transaction rows could be read for this company just now.",
+      window: "no Form 3/4/5 filings read",
+      links,
+      tiles: [] as { k: string; v: string; sub: string }[],
+      rows: [] as InsiderLedgerRow[],
+      sharesSplit: [] as InsiderSplit[],
+      splitNote: "",
+      acqCount: 0,
+      dispCount: 0,
+      codeMix: [] as InsiderCodeMix[],
+      people: [] as InsiderPerson[],
+      peopleNote: "",
+      lagBins: [] as { label: string; n: number; median?: boolean }[],
+      medBd: 0,
+      lagNote: "",
+      ratio: { ok: false as const, note: "" },
+      f144: { ok: false as const, note: "", notices: [] as InsiderNotice[] },
+      forms: FORM_DUTIES,
+      limits: INSIDER_LIMITS,
+    };
+  }
+
+  const span =
+    summary?.window_start && summary?.window_end
+      ? `${humanDate(summary.window_start)} – ${humanDate(summary.window_end)}`
+      : "dates not reported";
+  const window = `${plural(summary?.filings ?? 0, "filing")} · ${span}`;
+
+  // ---------------------------------------------------------------- ledger rows
+  const ledger: InsiderLedgerRow[] = rows.map((r) => {
+    const code = r.transaction_code ?? "";
+    const def = TXN_CODES[code];
+    const bd =
+      r.form_type === "4" && r.transaction_date && r.filed
+        ? businessDaysBetween(r.transaction_date, r.filed)
+        : null;
+    const late = bd !== null && bd > 2;
+    return {
+      person: r.owner_name ?? "Name not reported",
+      role: r.owner_relationship ?? "relationship not reported",
+      code,
+      codeShort: def?.short ?? (code ? `${code} · not in Table I` : "code not reported"),
+      shares: r.shares ?? 0,
+      sharesLabel: r.shares === null ? "N/A" : `${Math.round(r.shares).toLocaleString()} sh`,
+      side: def?.side ?? (r.acquired_disposed === "A" ? "in" : "out"),
+      // The Rule 10b5-1 box is on the FILING and says a trade was pre-arranged — never when the
+      // plan was adopted, so no cooling-off period can be read from it (D-10b5-1).
+      planLabel:
+        r.rule_10b5_1 === true
+          ? "under a 10b5-1 plan"
+          : r.rule_10b5_1 === false
+            ? "no plan flagged"
+            : "plan box not on this form",
+      tDate: r.transaction_date ?? "",
+      fDate: r.filed ? humanDate(r.filed) : "N/A",
+      lagLabel: bd === null ? "—" : `${bd} bd${late ? " · late" : ""}`,
+      lagLate: late,
+    };
+  });
+
+  // ---------------------------------------------------------------- shares by code
+  const byCode = new Map<string, { n: number; sh: number }>();
+  for (const r of rows) {
+    const key = r.transaction_code ?? "?";
+    const cur = byCode.get(key) ?? { n: 0, sh: 0 };
+    cur.n += 1;
+    cur.sh += r.shares ?? 0;
+    byCode.set(key, cur);
+  }
+  const totalSh = [...byCode.values()].reduce((a, b) => a + b.sh, 0);
+  const sharesSplit: InsiderSplit[] = [...byCode.entries()]
+    .sort((a, b) => b[1].sh - a[1].sh)
+    .map(([code, v]) => ({
+      label: TXN_CODES[code]?.label ?? (code === "?" ? "code not reported" : `${code} · other`),
+      sh: v.sh,
+      pct: totalSh ? (v.sh / totalSh) * 100 : 0,
+      color: SPLIT_COLORS[code] ?? "var(--muted)",
+      shLabel: `${Math.round(v.sh).toLocaleString()} sh`,
+      pctLabel: totalSh ? `${((v.sh / totalSh) * 100).toFixed(1)}%` : "N/A",
+    }));
+
+  const maxSh = Math.max(...[...byCode.values()].map((v) => v.sh), 0);
+  const codeMix: InsiderCodeMix[] = [...byCode.entries()]
+    .sort((a, b) => b[1].sh - a[1].sh)
+    .map(([code, v]) => ({
+      code,
+      label: TXN_CODES[code]?.label ?? (code === "?" ? "code not reported" : `${code} · other`),
+      what:
+        TXN_CODES[code]?.what ??
+        (code === "?"
+          ? "These rows reached us without a Table I code."
+          : "Not one of the codes this view names."),
+      n: v.n,
+      shLabel: `${Math.round(v.sh).toLocaleString()} sh`,
+      w: `${maxSh ? (v.sh / maxSh) * 100 : 0}%`,
+      dim: TXN_CODES[code] ? "1" : "0.6",
+      note: `${plural(v.n, "row")}.`,
+    }));
+
+  const acqCount = rows.filter((r) => r.acquired_disposed === "A").length;
+  const dispCount = rows.filter((r) => r.acquired_disposed === "D").length;
+  const splitNote =
+    `Shares by Table I code over ${plural(rows.length, "transaction row")}. ` +
+    `${holdings} holding ${holdings === 1 ? "row was" : "rows were"} excluded (a Form 3 position is not a trade) and ` +
+    `${derivative} derivative ${derivative === 1 ? "row" : "rows"} — an exercise files two rows, and counting both doubles it.` +
+    (uncoded
+      ? ` ${plural(uncoded, "row")} carried no code and ${uncoded === 1 ? "is" : "are"} shown as such rather than assigned one.`
+      : "");
+
+  // ---------------------------------------------------------------- by person
+  const byPerson = new Map<string, { role: string; n: number; net: number; codes: Set<string> }>();
+  for (const r of rows) {
+    const name = r.owner_name ?? "Name not reported";
+    const cur = byPerson.get(name) ?? {
+      role: r.owner_relationship ?? "",
+      n: 0,
+      net: 0,
+      codes: new Set<string>(),
+    };
+    cur.n += 1;
+    cur.net += (r.acquired_disposed === "A" ? 1 : -1) * (r.shares ?? 0);
+    if (r.transaction_code) cur.codes.add(r.transaction_code);
+    byPerson.set(name, cur);
+  }
+  const people: InsiderPerson[] = [...byPerson.entries()]
+    .sort((a, b) => Math.abs(b[1].net) - Math.abs(a[1].net))
+    .map(([name, v]) => ({
+      name,
+      role: v.role,
+      n: plural(v.n, "row"),
+      codes: [...v.codes].sort().join(", ") || "none reported",
+      net: v.net,
+      netLabel: `${v.net > 0 ? "+" : v.net < 0 ? "−" : ""}${Math.abs(Math.round(v.net)).toLocaleString()} sh`,
+      arrow: v.net > 0 ? "▲" : v.net < 0 ? "▼" : "",
+    }));
+  const peopleNote =
+    "Net shares across every code, so a vesting and the shares withheld to pay its tax both " +
+    "count. A negative net is not necessarily selling — it is most often tax withholding.";
+
+  // ---------------------------------------------------------------- filing latency (Form 4)
+  const lags = ledger
+    .filter((r) => r.lagLabel !== "—")
+    .map((r) => Number.parseInt(r.lagLabel, 10))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  const medBd = lags.length ? lags[Math.floor(lags.length / 2)] : 0;
+  const lagCounts = new Map<number, number>();
+  for (const n of lags) lagCounts.set(n, (lagCounts.get(n) ?? 0) + 1);
+  const lagBins = [...lagCounts.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([d, n]) => ({ label: String(d), n, median: d === medBd }));
+  const lagNote = lags.length
+    ? `Transaction date to filing date, ${plural(lags.length, "Form 4 row")} only — the ` +
+      "two-business-day rule is Form 4's; a Form 3 has ten days and a Form 5 forty-five, so " +
+      "binning them together would call a timely filing late. Weekends are excluded, market " +
+      "holidays are not, so a row at 3 bd may have met the deadline."
+    : "No Form 4 row in this window carried both a transaction date and a filing date.";
+
+  // ---------------------------------------------------------------- peer ratio: not served
+  const ratio = {
+    ok: false as const,
+    note:
+      "A net-acquisition ratio against the peer set needs every peer's Section 16 ledger for the " +
+      "same window. No endpoint serves that today, so rather than compare this filer against " +
+      "numbers we would have to invent, the comparison is left unmade.",
+  };
+
+  // ---------------------------------------------------------------- Form 144
+  const f144: {
+    ok: boolean;
+    note: string;
+    notices: InsiderNotice[];
+    truncated?: boolean;
+  } =
+    notices?.status === "ok"
+      ? {
+          ok: true,
+          truncated: notices.truncated,
+          notices: notices.notices.map((n) => ({
+            date: n.filed ?? "",
+            form: n.form,
+            accession: n.accession,
+          })),
+          note:
+            `${plural(notices.count, "notice")} of proposed sale filed` +
+            (notices.covered_from && notices.covered_to
+              ? ` in the indexed window, ${humanDate(notices.covered_from)} – ${humanDate(notices.covered_to)}. `
+              : ". ") +
+            (notices.cannot ?? ""),
+        }
+      : {
+          ok: false,
+          notices: [],
+          note:
+            notices?.reason ??
+            "We have not indexed this company's filings, so we have not looked for a Form 144 — " +
+              "which is not the same as finding none.",
+        };
+
+  return {
+    ok: true as const,
+    reason: null as string | null,
+    window,
+    links,
+    tiles: [
+      {
+        k: "Transaction rows",
+        v: String(rows.length),
+        sub: `${holdings} holding + ${derivative} derivative excluded`,
+      },
+      {
+        k: "Acquisitions / dispositions",
+        v: `${acqCount} / ${dispCount}`,
+        sub: "direction of shares, not intent",
+      },
+      {
+        k: "Open-market (P/S)",
+        v:
+          summary
+            ? `${summary.open_market_purchases} / ${summary.open_market_sales}`
+            : "N/A",
+        sub: "the only rows that are decisions",
+      },
+      {
+        k: "Flagged 10b5-1",
+        v: summary?.plan_known
+          ? `${summary.plan_flagged} of ${summary.plan_known}`
+          : "N/A",
+        sub: summary?.plan_known ? "pre-arranged, adoption date not filed" : "no plan box on these forms",
+      },
+    ],
+    rows: ledger,
+    sharesSplit,
+    splitNote,
+    acqCount,
+    dispCount,
+    codeMix,
+    people,
+    peopleNote,
+    lagBins,
+    medBd,
+    lagNote,
+    ratio,
+    f144,
+    forms: FORM_DUTIES,
+    limits: INSIDER_LIMITS,
+  };
+}
+
+export interface InsiderLedgerRow {
+  person: string; role: string; code: string; codeShort: string;
+  shares: number; sharesLabel: string; side: "in" | "out"; planLabel: string;
+  tDate: string; fDate: string; lagLabel: string; lagLate: boolean;
+}
+export interface InsiderSplit {
+  label: string; sh: number; pct: number; color: string; shLabel: string; pctLabel: string;
+}
+export interface InsiderCodeMix {
+  code: string; label: string; what: string; n: number; shLabel: string; w: string;
+  dim: string; note: string;
+}
+export interface InsiderPerson {
+  name: string; role: string; n: string; codes: string; net: number; netLabel: string; arrow: string;
+}
+export interface InsiderNotice { date: string; form: string; accession: string }
+
+const FORM_DUTIES = [
+  { k: "Form 3", when: "10 days of becoming an insider", what: "Initial statement of ownership" },
+  { k: "Form 4", when: "2 business days", what: "A reportable transaction" },
+  { k: "Form 5", when: "45 days after fiscal year end", what: "Deferred or exempt transactions" },
+  { k: "Form 144", when: "at or before the sale order", what: "Notice of a PROPOSED sale" },
+];
+
+const INSIDER_LIMITS = [
+  "Whether a sale was a view on the company. Codes report mechanics, never motive.",
+  "When a Rule 10b5-1 plan was adopted. Form 4 flags that a trade was pre-arranged and no more.",
+  "What a Form 144 proposed. We index that one exists and its date; the shares and broker are in its contents, which we do not parse.",
+  "Anything about a holder who is not a Section 16 insider — this is officers, directors and 10% owners only.",
+];
 
 /* ------------------------------------------------------------ §05.4 insider transactions */
 
@@ -3747,11 +4145,26 @@ export const api = {
    * cannot say: the flag reports a trade was made UNDER a plan, never the plan's adoption date, so
    * no cooling-off window can be drawn from it (D-10b5-1).
    */
-  companyInsiderActivity: (symbol: string, _windowDays: number) =>
-    resolve<CompanyInsiderActivity>({
-      ledger: insider.insiderData(symbol),
-      form144: insider.f144Ledger(symbol),
-    }),
+  companyInsiderActivity: async (symbol: string, filings: number) => {
+    const enc = encodeURIComponent(symbol);
+    // Three calls, not one aggregate (operator ruling 4). They stay consistent because the
+    // ledger and the tally are the SAME filings — `/insider-summary` is the server-side count
+    // over exactly what `/insider-trades` returns at this limit, which is why both take it.
+    const [trades, summary, notices] = await Promise.all([
+      getJson<InsiderTradeRow[]>(`/v1/companies/${enc}/insider-trades?limit=${filings}`).catch(
+        () => null,
+      ),
+      getJson<InsiderSummaryResponse>(
+        `/v1/companies/${enc}/insider-summary?limit=${filings}`,
+      ).catch(() => null),
+      getJson<ProposedSaleNoticesResponse>(
+        `/v1/companies/${enc}/proposed-sale-notices?limit=400`,
+      ).catch(() => null),
+    ]);
+    return {
+      ledger: toInsiderActivity(summary?.cik ?? null, trades, summary, notices),
+    };
+  },
 
   /**
    * §Peer-relative. Phase A: `/peers` + `/peers/{metric}/distribution` +
@@ -4218,8 +4631,7 @@ export interface SectorFilings {
 }
 
 export interface CompanyInsiderActivity {
-  ledger: ReturnType<typeof insider.insiderData>;
-  form144: ReturnType<typeof insider.f144Ledger>;
+  ledger: ReturnType<typeof toInsiderActivity>;
 }
 
 export interface CompanyPeerRelative {

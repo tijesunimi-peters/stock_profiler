@@ -1,9 +1,10 @@
 /**
- * Company Hub → Insider activity, ported from the prototype.
+ * Company Hub → Insider activity, on real Forms 3/4/5.
  *
  * EVERY surface on this view reads ONE shared Section 16 ledger, so the tiles, the disposition
  * split, the code mix, the per-person rollup and the latency histogram cannot disagree. That is
- * enforced in `data/insider.ts` by construction: nothing below draws a second sample.
+ * enforced in `data/api.ts`'s `toInsiderActivity` by construction: one `/insider-trades` read,
+ * one set of exclusions, nothing below draws a second sample.
  *
  * The page's whole argument is in the split between what a filer DECIDED and what merely
  * HAPPENED to their holdings. Codes P and S are decisions; A, M and F are the mechanical
@@ -15,9 +16,7 @@ import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
 import { Histogram } from "../../charts/bars";
 import { DotCalendar } from "../../charts/misc";
-import { PeerStrip } from "../../charts/strips";
 import { useSelection } from "../../state";
-import { navigate } from "../../router";
 
 /** A link out to the form the panel reads. */
 function Src({ href, children }: { href: string; children: string }) {
@@ -29,21 +28,25 @@ function Src({ href, children }: { href: string; children: string }) {
 }
 
 /*
- * The window this view reads. A constant while the app carries no real period state; named so
- * Phase A threads the reader's selection through one place. `/insider-trades` bounds by FILING
- * COUNT rather than by days, so this becomes a `limit` there — a third period vocabulary, and
+ * The window this view reads, in FILINGS — not days.
+ *
+ * `/insider-trades` and `/insider-summary` are both bounded by filing count, and the two must be
+ * given the SAME bound or the ledger and the tally describe different sets. Forty filings is six
+ * days at one filer and eight months at another, which is why the masthead prints the span the
+ * filings turned out to cover instead of a promised window. A third period vocabulary, and
  * deliberately not conflated with the fiscal pair or the 13F quarter-end.
  */
-const INSIDER_WINDOW_DAYS = 180;
+const INSIDER_WINDOW_FILINGS = 40;
 
 export function InsiderView() {
   const sel = useSelection();
   const T = sel.focal;
-  const res = useApi(() => api.companyInsiderActivity(T, INSIDER_WINDOW_DAYS), [T]);
+  const res = useApi(() => api.companyInsiderActivity(T, INSIDER_WINDOW_FILINGS), [T]);
 
   if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
   if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's Section 16 filings." />;
   const d = res.data.ledger;
+  if (!d.ok) return <StateBlock variant="empty" copy={d.reason ?? "No Section 16 filings read."} />;
 
   return (
     <div className="ia">
@@ -108,22 +111,10 @@ export function InsiderView() {
             <span className="hub-panel-title">Net-acquisition ratio against the peer set</span>
             <span className="hub-hint">shares in ÷ shares out</span>
           </div>
-          <PeerStrip
-            variant="cloud"
-            peers={d.ratioDist.vals
-              .filter((v) => v.ticker !== T)
-              .map((v) => ({ id: v.ticker, label: v.ticker, value: v.val }))}
-            marks={[{ id: "foc", label: T, value: d.ratioDist.focalVal, kind: "focal" }]}
-            quantiles={{
-              lo: d.ratioDist.min, hi: d.ratioDist.max,
-              q1: d.ratioDist.q1, q3: d.ratioDist.q3, med: d.ratioDist.med,
-            }}
-            format={(v) => `${v.toFixed(2)}×`}
-            axisLabels={false}
-            onPick={(id) => navigate(sel.href(`/company/${id}/insider`, { focal: id }))}
-            label="Net-acquisition ratio across the peer set"
-          />
-          <div className="hub-note">{d.ratioNote}</div>
+          {/* The peer comparison needs every peer's Section 16 ledger over the same window, and
+              no endpoint serves that. An invented distribution would be indistinguishable from a
+              real one on screen, so the panel says what is missing instead of drawing it. */}
+          <StateBlock variant="empty" copy={d.ratio.note} />
           <div className="hub-label ia-mt">Filing latency</div>
           <Histogram
             bins={d.lagBins}
@@ -141,7 +132,9 @@ export function InsiderView() {
       <div className="p-card ia-mt-card">
         <div className="hub-panel-head">
           <span className="hub-panel-title">Transaction ledger</span>
-          <span className="hub-hint">nine most recent Form 4 filings · newest first</span>
+          <span className="hub-hint">
+            {d.rows.length} transaction rows · newest first
+          </span>
         </div>
         <div className="ia-ledger-head">
           <span>Person &amp; plan</span>
@@ -168,7 +161,8 @@ export function InsiderView() {
         ))}
         <div className="hub-note">
           Transaction date and filing date are both on the form; latency is the gap in business
-          days. Codes are the issuer’s own Table I entries, not our classification.
+          days, and is shown only for Form 4, whose deadline is two business days. Codes are the
+          filer’s own Table I entries, not our classification.
         </div>
       </div>
 
@@ -222,30 +216,34 @@ export function InsiderView() {
           <span className="hub-panel-title">Notices of proposed sale</span>
           <span className="hub-hint">Form 144 · Rule 10b5-1</span>
         </div>
-        <DotCalendar
-          notices={d.f144Cal.map((n, i) => ({
-            id: `${n.date}-${i}`,
-            date: n.date,
-            size: n.size,
-            label: `${n.person} · ${n.broker}`,
-            filled: n.plan,
-          }))}
-          format={(v) => `${Math.round(v).toLocaleString()} sh`}
-          height={200}
-          label="Form 144 notices by date and size"
-        />
-        <div className="hub-note">{d.f144Note}</div>
-        <div className="hub-label ia-mt">Most recent notices</div>
-        {d.notices.map((n, i) => (
-          <div className="ia-notice-row" key={`${n.person}${n.date}${i}`}>
-            <span className="ia-person">
-              <span className="ia-person-name">{n.person}</span>
-              <span className="ia-person-sub">{n.broker}</span>
-            </span>
-            <span className="hub-cell-mono ta-r">{n.shares}</span>
-            <span className="hub-cell-mono ta-r is-soft">{n.date}</span>
-          </div>
-        ))}
+        {/* Every dot is one notice, and every dot is the SAME SIZE — deliberately. We index that
+            a Form 144 was filed and on what date; the share count and the broker are its
+            contents, which we do not parse. A size-varying dot would claim a magnitude we do not
+            have. What remains is real and worth seeing: the cadence of proposed sales. */}
+        {d.f144.ok ? (
+          <>
+            <DotCalendar
+              notices={d.f144.notices.map((n, i) => ({
+                id: `${n.accession}-${i}`,
+                date: n.date,
+                size: 1,
+                label: `${n.form} filed ${n.date}`,
+                filled: true,
+              }))}
+              magnitude={false}
+              height={200}
+              label="Form 144 notices of proposed sale, by filing date"
+            />
+            <div className="hub-note">{d.f144.note}</div>
+            {d.f144.truncated ? (
+              <div className="hub-note">
+                Bounded to the most recent notices read; older ones in the window are not drawn.
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <StateBlock variant="empty" copy={d.f144.note} />
+        )}
       </div>
 
       {/* ---------------------------------------------------------------- forms + limits */}

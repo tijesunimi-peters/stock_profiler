@@ -1,4 +1,17 @@
 /**
+ * ⚠️ DEPRECATED (2026-08-11) — the Insider activity view no longer reads this module.
+ *
+ * `insiderData` and `f144Ledger` are SYNTHETIC. They were the accepted design's figures, and the
+ * view now builds the same surfaces from real Forms 3/4/5 in `data/api.ts`'s `toInsiderActivity`
+ * (`/insider-trades` + `/insider-summary`) and real Form 144 filing dates from
+ * `/proposed-sale-notices`. Nothing here should be wired into a view again.
+ *
+ * Kept rather than deleted, on the same terms as `surfaces.ts` and `metrics.ts`: `hub-catalog.ts`
+ * still re-exports `CODES` and the row TYPES from here, and the code definitions themselves are
+ * the honest Table I glossary the real adapter re-states. It goes when those references go.
+ *
+ * ---
+ *
  * Company Hub → Insider activity, ported from the prototype's `insiderData` and `f144Ledger`.
  *
  * EVERY figure on the view is read off ONE ledger of Section 16 filings for the issuer — the
