@@ -99,7 +99,10 @@ from secfin.config import settings
 from secfin.ingest.backfill import SOURCE as BULK_SOURCE
 from secfin.ingest.incremental import SOURCE as INCREMENTAL_SOURCE
 from secfin.sec.client import SECClient
-from secfin.sec.insider import fetch_insider_transactions_with_filings
+from secfin.sec.insider import (
+    fetch_insider_filings_by_accession,
+    fetch_insider_transactions_with_filings,
+)
 from secfin.storage.insider_repository import InsiderTransactionRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sqlite_insider_repository import SQLiteInsiderTransactionRepository
@@ -155,6 +158,76 @@ async def _process_candidate(
     if filings:
         repo.upsert_insider_transactions(cik, filings, transactions, refresh=refresh)
     return "fetched"
+
+
+async def run_stale_repair(db_path: str, start_after: int | None = None) -> dict[str, int]:
+    """Re-parse ONLY the filings whose cached rows predate the current parser.
+
+    `--refresh` is depth-bounded: it re-fetches an issuer's newest `--limit` filings, so
+    reaching a stale filing 52 deep means fetching 52 documents for every issuer that has
+    one. This drives off `stale_accessions()` instead and fetches exactly the stale filings
+    -- one `/submissions/` read per issuer plus one document per filing.
+
+    **A filing that no longer appears in `/submissions/` is counted, not silently dropped.**
+    EDGAR serves a rolling recent window, so a filing cached long ago can age out of it; its
+    rows then stay stale and no amount of re-running fixes them. That is a real limit of the
+    repair and the tally reports it as `aged_out` rather than letting the run claim success.
+    """
+    repo = SQLiteInsiderTransactionRepository(db_path)
+    tally = {"repaired": 0, "aged_out": 0, "failed": 0, "issuers": 0}
+    try:
+        by_issuer: dict[int, list[str]] = {}
+        for cik, accession in repo.stale_accessions():
+            if start_after is not None and cik <= start_after:
+                continue
+            by_issuer.setdefault(cik, []).append(accession)
+        wanted_total = sum(len(v) for v in by_issuer.values())
+        logger.info(
+            "insider stale repair: %d stale filings across %d issuers",
+            wanted_total,
+            len(by_issuer),
+        )
+        if not by_issuer:
+            return tally
+
+        async with SECClient() as client:
+            for i, (cik, accessions) in enumerate(sorted(by_issuer.items()), start=1):
+                try:
+                    filings, transactions = await fetch_insider_filings_by_accession(
+                        client, cik, accessions
+                    )
+                except Exception:
+                    logger.exception("failed to re-parse insider filings for CIK %d", cik)
+                    tally["failed"] += len(accessions)
+                    continue
+                if filings:
+                    # refresh=True is required: the default path skips an accession it has
+                    # already cached, which is exactly what left these rows stale.
+                    repo.upsert_insider_transactions(cik, filings, transactions, refresh=True)
+                tally["repaired"] += len(filings)
+                tally["aged_out"] += len(accessions) - len(filings)
+                tally["issuers"] += 1
+                if i % _PROGRESS_EVERY == 0:
+                    logger.info(
+                        "insider stale repair progress: %d/%d issuers (%d repaired, %d aged out,"
+                        " %d failed)",
+                        i,
+                        len(by_issuer),
+                        tally["repaired"],
+                        tally["aged_out"],
+                        tally["failed"],
+                    )
+        logger.info(
+            "insider stale repair done: %d filings re-parsed across %d issuers, %d no longer in"
+            " the submissions window, %d failed",
+            tally["repaired"],
+            tally["issuers"],
+            tally["aged_out"],
+            tally["failed"],
+        )
+        return tally
+    finally:
+        repo.close()
 
 
 async def run_insider_backfill(
@@ -245,6 +318,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "erring high silently skips issuers."
         ),
     )
+    p.add_argument(
+        "--stale-only",
+        action="store_true",
+        help=(
+            "Re-parse ONLY the filings whose cached rows predate the current parser (those "
+            "with a NULL is_derivative, which the current parser never writes). Targets "
+            "accessions directly instead of an issuer's newest --limit filings, which is the "
+            "difference between fetching one document per stale filing and fetching every "
+            "filing above it -- on the 2026-08-11 corpus, ~5k fetches against ~148k. Ignores "
+            "--limit and --refresh; implies replacement."
+        ),
+    )
     p.add_argument("--db-path", default=settings.secfin_db_path)
     return p
 
@@ -252,6 +337,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_arg_parser().parse_args(argv)
+    if args.stale_only:
+        asyncio.run(run_stale_repair(args.db_path, start_after=args.start_after))
+        return
     asyncio.run(
         run_insider_backfill(
             args.limit, args.db_path, refresh=args.refresh, start_after=args.start_after

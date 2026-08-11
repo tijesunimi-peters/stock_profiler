@@ -250,6 +250,16 @@ class SQLiteInsiderTransactionRepository(InsiderTransactionRepository):
         cols = [d[0] for d in cur.description]
         return [self._row_to_txn(dict(zip(cols, row, strict=True))) for row in cur.fetchall()]
 
+    def stale_accessions(self) -> list[tuple[int, str]]:
+        cur = self._conn.execute(
+            """
+            SELECT DISTINCT issuer_cik, accession FROM insider_transactions
+            WHERE is_derivative IS NULL
+            ORDER BY issuer_cik ASC, accession ASC
+            """
+        )
+        return [(int(r[0]), r[1]) for r in cur.fetchall()]
+
     def close(self) -> None:
         self._conn.close()
 

@@ -117,5 +117,24 @@ class InsiderTransactionRepository(ABC):
         """
 
     @abstractmethod
+    def stale_accessions(self) -> list[tuple[int, str]]:
+        """Every (issuer_cik, accession) whose cached rows predate the current parser.
+
+        The marker is `is_derivative IS NULL`, and the choice matters. `parse_ownership_xml`
+        sets that column unconditionally -- it is decided by WHICH TABLE the row sat in
+        (`nonDerivativeTable` vs `derivativeTable`), so every row the current parser writes
+        carries `True` or `False` and a NULL can only have come from an older one.
+
+        `transaction_code` is NOT a sound marker even though it went missing in the same
+        parser era: a Form 3 holding row legitimately has no transaction coding element, so
+        selecting on it would drag every genuine initial statement into the repair set and
+        re-fetch filings that were never stale.
+
+        Returned sorted by (cik, accession) so a run is deterministic and an interrupted one
+        resumes sensibly. This is an aggregate scan over the whole table, so it is for the
+        batch repair path only -- never a live request.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

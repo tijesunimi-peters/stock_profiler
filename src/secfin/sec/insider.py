@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Collection
 
 from secfin.normalize.schema import InsiderFilingMeta, InsiderTransaction
 from secfin.sec.client import SECClient
@@ -270,6 +271,48 @@ async def fetch_insider_transactions_with_filings(
     """
     payload = await client.get_json(client.submissions_url(cik))
     filings = _recent_filings(payload, INSIDER_FORMS)[:limit]
+
+    filing_meta: list[InsiderFilingMeta] = []
+    transactions: list[InsiderTransaction] = []
+    for f in filings:
+        doc = _raw_document_name(f["primaryDocument"])
+        url = client.filing_document_url(cik, f["accessionNumber"], doc)
+        xml_bytes = await client.get_bytes(url)
+        filing_meta.append(InsiderFilingMeta(f["accessionNumber"], f["filingDate"], f["form"]))
+        transactions.extend(
+            parse_ownership_xml(
+                xml_bytes,
+                form_type=f["form"],
+                filed=f["filingDate"],
+                accession=f["accessionNumber"],
+            )
+        )
+    return filing_meta, transactions
+
+
+async def fetch_insider_filings_by_accession(
+    client: SECClient, cik: int, accessions: Collection[str]
+) -> tuple[list[InsiderFilingMeta], list[InsiderTransaction]]:
+    """Fetch and parse ONLY the named accessions for one issuer.
+
+    Same output shape as `fetch_insider_transactions_with_filings`, but bounded by an explicit
+    set of filings rather than by "the newest N". That distinction is the whole point: a
+    re-parse repairing rows the parser once wrote without `transaction_code`/`is_derivative`
+    knows exactly WHICH filings are stale, and fetching the newest N to reach them is the
+    expensive way to do it. On the 2026-08-11 corpus the stale filings sat up to 52 deep, so
+    a depth-bounded refresh costs ~148k document fetches against ~5k for this path -- hours
+    versus minutes at the fair-access throttle.
+
+    Accessions absent from the issuer's `/submissions/` window are silently skipped: EDGAR
+    serves a ROLLING recent list, so a filing cached long ago can age out of it. The caller
+    sees which filings came back and can report the shortfall rather than assume completion.
+    """
+    wanted = set(accessions)
+    if not wanted:
+        return [], []
+
+    payload = await client.get_json(client.submissions_url(cik))
+    filings = [f for f in _recent_filings(payload, INSIDER_FORMS) if f["accessionNumber"] in wanted]
 
     filing_meta: list[InsiderFilingMeta] = []
     transactions: list[InsiderTransaction] = []
