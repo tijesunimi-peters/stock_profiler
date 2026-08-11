@@ -2763,6 +2763,17 @@ interface PeerOverlapResponse {
 
 interface RegisterShapeResponse {
   periods: string[];
+  turnover: {
+    status: string; formula: string; cannot: string;
+    to_period: string; from_period: string;
+    entrants: number; exits: number; retained: number;
+    prior_holder_count: number | null; turnover_pct: number | null;
+  };
+  retention: {
+    status: string; reason: string | null; formula: string; cannot: string; population: string;
+    periods: string[];
+    cohorts: { period: string; holder_count: number; survival: number[]; label?: string }[];
+  };
   tenure: {
     status: string; formula: string; cannot: string; newest_period: string;
     quarters_observed: number; median_quarters_held: number | null;
@@ -3056,6 +3067,134 @@ function toInstSteward(bo: BlockholdersResponse | null): hub.InstSteward {
           f.percent_of_class == null ? "no percentage stated" : `${f.percent_of_class.toFixed(2)}% of class`
         }`,
       })),
+    },
+  };
+}
+
+/**
+ * §05 holder behaviour.
+ *
+ * **Turnover is recomputed here rather than read off the endpoint**, and that is the whole point
+ * of this adapter. `-register-shape` anchors on the newest INGESTED quarter, which while a
+ * quarter is still being filed is a partial register: for Apple it reports 5,563 exits and
+ * `turnover_pct` 92.19%, a headline that reads as a catastrophic exodus when those managers have
+ * simply not filed yet. The same formula — (entrants + exits) / prior-quarter holder count — on
+ * the base quarter gives 9.1%.
+ *
+ * Tenure and its cohorts CANNOT be recomputed the same way (the endpoint does not expose the
+ * per-manager history), so they are reported as it computes them with the anchor named on the
+ * card, exactly as §03 does.
+ */
+function toInstBehavior(
+  base: string | null,
+  shape: RegisterShapeResponse | null,
+  act: ActivitySeriesResponse | null,
+  priorRegister: RegisterResponse | null,
+): hub.InstBehavior {
+  const trans = (act?.transitions ?? []).filter((t) => !base || t.to_period <= base);
+  const latest = trans[trans.length - 1];
+
+  // The endpoint's own formula, applied to a quarter whose filers are all in.
+  const priorCount =
+    priorRegister?.concentration?.holder_count ??
+    (latest ? latest.counts.added + latest.counts.reduced + latest.counts.exited : null);
+  const turnoverPct =
+    latest && priorCount
+      ? (100 * (latest.counts.new + latest.counts.exited)) / priorCount
+      : null;
+
+  const turnoverSeries = trans.map((t) => {
+    const prior = t.counts.added + t.counts.reduced + t.counts.exited;
+    return {
+      period: qLabel(t.to_period),
+      value: prior ? (100 * (t.counts.new + t.counts.exited)) / prior : 0,
+    };
+  });
+
+  const ten = shape?.tenure;
+  const ret = shape?.retention;
+  const anchoredOnFilling = !!(ten?.newest_period && base && ten.newest_period > base);
+  const anchorNote = anchoredOnFilling
+    ? ` Tenure figures are computed on ${instDate(ten?.newest_period)}, which is still being filed, so they describe the filers in so far.`
+    : "";
+
+  // Retention, truncated at the base quarter: the final column of every cohort is the drop into
+  // the filling quarter (Apple's cohorts all end at ~7% survival for that reason alone).
+  const retPeriods = (ret?.periods ?? []).filter((p) => !base || p <= base);
+  const cols = retPeriods.map((_p, i) => `+${i}Q`);
+  const rows = (ret?.cohorts ?? []).filter((c) => !base || c.period <= base).map((c) => qLabel(c.period));
+  const cells = (ret?.cohorts ?? [])
+    .filter((c) => !base || c.period <= base)
+    .flatMap((c) =>
+      cols.map((col, i) => ({
+        row: qLabel(c.period),
+        col,
+        // Only quarters that actually elapsed before the base are shown; beyond that a cohort has
+        // no observation, which is not the same as zero survival.
+        value: i < c.survival.length - 1 && c.survival[i] != null ? c.survival[i] * 100 : null,
+      })),
+    );
+
+  return {
+    turnover: turnoverPct == null ? "N/A" : `${turnoverPct.toFixed(1)}%`,
+    medianHold:
+      ten?.median_quarters_held == null
+        ? "N/A"
+        : `${ten.median_quarters_held} quarters${anchoredOnFilling ? " *" : ""}`,
+    turnoverSeries,
+    cohortHeat: { rows, cols, cells },
+    // Joined as sentences: the endpoint's `cannot` and `reason` are independent fragments and
+    // concatenating them raw produced "rather than a measurement of it. followed over the 9
+    // ingested quarter(s)... and no further The quarter now being filed".
+    cohortNote: [
+      ret?.cannot,
+      ret?.reason ? `Cohorts are ${ret.reason}` : null,
+      "The quarter now being filed is excluded: every cohort's survival collapses into it because most managers have not reported yet, not because they left.",
+    ]
+      .filter(Boolean)
+      .map((t) => (t as string).trim().replace(/\.?$/, "."))
+      .join(" "),
+    cohorts: (ten?.cohorts ?? []).map((c) => ({
+      k: c.label,
+      pct: `${(c.share_of_register * 100).toFixed(1)}%`,
+      pctN: c.share_of_register * 100,
+    })),
+    note: [
+      shape?.turnover?.cannot,
+      `Turnover is computed on ${instDate(base)} — the quarter the register is read at — rather than on the quarter still being filed`,
+      anchoredOnFilling
+        ? `Tenure figures are computed on ${instDate(ten?.newest_period)}, which is still being filed, so they describe the filers in so far`
+        : null,
+    ]
+      .filter(Boolean)
+      .map((t) => (t as string).trim().replace(/\.?$/, "."))
+      .join(" "),
+    // N-PORT is a fund-level monthly filing and is not ingested. Named, never estimated.
+    funds: [],
+    fundNote:
+      "Fund-level positions are reported on Form N-PORT, filed monthly by the fund rather than by " +
+      "the manager. N-PORT is not ingested, so no fund rows are shown — an absence of coverage, " +
+      "not a finding that no fund holds this issuer.",
+    calcs: {
+      turnover: {
+        formula: shape?.turnover?.formula ?? "(entrants + exits) / prior-quarter holder count",
+        note: shape?.turnover?.cannot ?? "",
+        inputs: [
+          { k: "Quarter", v: latest ? `${qLabel(latest.from_period)} → ${qLabel(latest.to_period)}` : "N/A" },
+          { k: "Entrants", v: latest ? latest.counts.new.toLocaleString() : "N/A" },
+          { k: "Exits", v: latest ? latest.counts.exited.toLocaleString() : "N/A" },
+          { k: "Prior holders", v: priorCount ? priorCount.toLocaleString() : "N/A" },
+        ],
+      },
+      persist: {
+        formula: ten?.formula ?? "",
+        note: `${ten?.cannot ?? ""}${anchorNote}`,
+        inputs: [
+          { k: "Quarters observed", v: String(ten?.quarters_observed ?? "N/A") },
+          { k: "Anchored on", v: instDate(ten?.newest_period) },
+          { k: "Median tenure", v: ten?.median_quarters_held == null ? "N/A" : `${ten.median_quarters_held} quarters` },
+        ],
+      },
     },
   };
 }
@@ -3690,9 +3829,32 @@ export const api = {
     return { flows: toInstFlows(base, act, reg, dom, peer, attribution, shape) };
   },
 
-  /** §05 register behaviour. Phase A: `-register-shape` (turnover + tenure + stable capital). */
-  instBehaviour: (symbol: string, _quarters: number) =>
-    resolve<InstBehaviour>({ behavior: hub.instBehavior(symbol) }),
+  /**
+   * §05 register behaviour — REAL, on `-register-shape` and `-activity-series`, with the prior
+   * quarter's `-register` for the turnover denominator.
+   */
+  instBehaviour: async (symbol: string): Promise<InstBehaviour> => {
+    const enc = encodeURIComponent(symbol);
+    const periodsRes = await getJson<PeriodsResponse>(`/v1/companies/${enc}/institutional-periods`);
+    const { base } = pickBasePeriod(periodsRes.periods, periodsRes.period_meta);
+    const prior = base ? periodsRes.periods[periodsRes.periods.indexOf(base) + 1] : undefined;
+    const [shape, act, priorReg] = await Promise.all([
+      base
+        ? getJson<RegisterShapeResponse>(
+            `/v1/companies/${enc}/institutional-register-shape?period=${base}`,
+          ).catch(() => null)
+        : null,
+      getJson<ActivitySeriesResponse>(
+        `/v1/companies/${enc}/institutional-activity-series?quarters=9`,
+      ).catch(() => null),
+      prior
+        ? getJson<RegisterResponse>(`/v1/companies/${enc}/institutional-register?period=${prior}`).catch(
+            () => null,
+          )
+        : null,
+    ]);
+    return { behavior: toInstBehavior(base, shape, act, priorReg) };
+  },
 
   /**
    * §04 stewardship. Phase A: `/beneficial-ownership`. The VOTING half needs N-PX, which is not

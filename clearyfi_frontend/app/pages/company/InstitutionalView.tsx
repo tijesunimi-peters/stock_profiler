@@ -126,7 +126,7 @@ export function InstitutionalView() {
   const snapshotRead = useApi(() => api.instRegisterSnapshot(T), [T]);
   const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
   const flowsRead = useApi(() => api.instFlows(T), [T]);
-  const behaviourRead = useApi(() => api.instBehaviour(T, INST_QUARTERS), [T]);
+  const behaviourRead = useApi(() => api.instBehaviour(T), [T]);
   const stewardRead = useApi(() => api.instStewardship(T), [T]);
   const limitsRead = useApi(() => api.instLimits(T), [T]);
 
