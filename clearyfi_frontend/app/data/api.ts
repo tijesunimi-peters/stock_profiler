@@ -551,9 +551,19 @@ interface BlockholdersResponse {
     status: string;
     reason: string | null;
     filings_read: number;
-    holders: { owner: string; form: string | null; percent_of_class: number | null; shares: number | null; filed: string | null; reporting_person_type: string | null }[];
+    holders: {
+      owner: string; form: string | null; percent_of_class: number | null; shares: number | null;
+      filed: string | null; reporting_person_type: string | null;
+      reporting_person_type_label?: string | null;
+    }[];
     exited: { owner: string; filed: string | null; percent_of_class: number | null }[];
   };
+  /** The raw filings behind `current` — the §04 strip needs the history, not just the latest. */
+  beneficial_ownership?: {
+    owner_name: string | null; form_type: string | null; percent_of_class: number | null;
+    shares_beneficially_owned: number | null; filed: string | null; event_date: string | null;
+    accession: string | null; reporting_person_type_label?: string | null;
+  }[];
 }
 
 interface ShareClassesResponse {
@@ -2954,6 +2964,102 @@ function toInstFlows(
   };
 }
 
+/**
+ * §04 stewardship — the beneficial-ownership half is real, the voting half is not ingested.
+ *
+ * **13D vs 13G is the one thing the filings state outright**, and it is the only activism signal
+ * here: a 13D is filed by a holder who may seek to influence control, a 13G by one asserting a
+ * passive stake. Everything the card would otherwise say about an activist campaign — board
+ * seats, standstill terms, the purpose behind a filing — is Item 4 NARRATIVE and is not parsed,
+ * so those read as absent rather than as zero.
+ *
+ * **Voting is empty by ruling (D-voting).** Manager-level votes live in N-PX, which is not
+ * ingested; the outcome figures on an 8-K Item 5.07 — say-on-pay support, turnout, withhold —
+ * are in the 8-K's body, which is narrative. The card says "not ingested yet", never "cannot be
+ * reported" and never a number.
+ */
+function toInstSteward(bo: BlockholdersResponse | null): hub.InstSteward {
+  const holders = bo?.current?.holders ?? [];
+  const filings = bo?.beneficial_ownership ?? [];
+
+  const blocks = holders.map((h) => ({
+    name: h.owner,
+    // Item 4 is the filing's stated purpose, in prose. Naming the source beats inventing a phrase.
+    purpose: h.reporting_person_type_label
+      ? `${h.reporting_person_type_label} · purpose is Item 4 narrative, not parsed`
+      : "purpose is Item 4 narrative, not parsed",
+    amended: h.filed
+      ? `${(h.form ?? "").includes("/A") ? "amendment" : "original"} filed ${instDate(h.filed)}`
+      : "filing date not stated",
+    form: h.form ?? "SC 13D/G",
+    pct: h.percent_of_class == null ? "N/A" : `${h.percent_of_class.toFixed(2)}%`,
+  }));
+
+  // One lane per owner, its filings in order. Only structured-XML 13D/G is parsed (~mid-2025 on),
+  // so a short lane is our coverage window and not the holder's whole history.
+  const byOwner = new Map<string, typeof filings>();
+  for (const f of filings) {
+    const k = f.owner_name || "unnamed filer";
+    byOwner.set(k, [...(byOwner.get(k) ?? []), f]);
+  }
+  const blockLanes = [...byOwner].slice(0, 8).map(([owner, rows]) => ({
+    id: owner,
+    label: owner,
+    events: rows
+      .filter((r) => r.filed)
+      .map((r, i) => ({
+        id: `${owner}-${i}`,
+        date: r.filed as string,
+        kind: (r.form_type ?? "").includes("13D") ? "13d" : "13g",
+        title: `${r.form_type ?? "SC 13D/G"} · ${
+          r.percent_of_class == null ? "no percentage stated" : `${r.percent_of_class.toFixed(2)}%`
+        }`,
+      })),
+  }));
+
+  const has13D = filings.some((f) => (f.form_type ?? "").includes("13D"));
+  const activistFilings = filings.filter((f) => (f.form_type ?? "").includes("13D"));
+  const activist = activistFilings[0];
+
+  const NOT_INGESTED =
+    "Manager-level voting is reported on Form N-PX, which is not ingested. The outcome figures " +
+    "on an 8-K Item 5.07 — say-on-pay support, turnout, withhold — are in the filing's body, " +
+    "which is narrative. Not reported here rather than estimated.";
+
+  return {
+    blocks,
+    blockLanes,
+    blockStripNote:
+      filings.length === 0
+        ? "No structured Schedule 13D or 13G is on file for this issuer. Only filings from the SEC's ~mid-2025 XML transition onward are parsed, so an empty strip is a coverage window, not a statement that nobody crossed 5%."
+        : `${filings.length} structured 13D/G filing${filings.length === 1 ? "" : "s"} parsed. Only filings from the SEC's ~mid-2025 XML transition onward are parsed, so this is a coverage window rather than the full history.`,
+    voting: { sayOnPay: "N/A", withhold: "N/A", turnout: "N/A", proposals: "N/A" },
+    sopSeries: [],
+    withholdSeries: [],
+    dissentSeries: [],
+    voteWeighted: { rows: [], dissentShares: "N/A", note: NOT_INGESTED },
+    activism: {
+      active: has13D,
+      holder: activist?.owner_name ?? "",
+      stake:
+        activist?.percent_of_class == null ? "N/A" : `${activist.percent_of_class.toFixed(2)}%`,
+      // Item 4 narrative — see the docstring.
+      seats: null,
+      standstill: "not parsed",
+      steps: activistFilings
+        .filter((f) => f.filed && f.percent_of_class != null)
+        .map((f) => ({ date: f.filed as string, value: f.percent_of_class as number })),
+      trail: activistFilings.map((f) => ({
+        form: f.form_type ?? "SC 13D",
+        date: instDate(f.filed),
+        what: `${f.reporting_person_type_label ?? "reporting person"} · ${
+          f.percent_of_class == null ? "no percentage stated" : `${f.percent_of_class.toFixed(2)}% of class`
+        }`,
+      })),
+    },
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -3593,8 +3699,19 @@ export const api = {
    * ingested -- it gets an honest "not ingested yet" empty state (D-voting, widened 2026-08-01),
    * never "cannot be reported" and never a fabricated figure.
    */
-  instStewardship: (symbol: string, _quarterEnd: string) =>
-    resolve<InstStewardship>({ steward: hub.instSteward(symbol) }),
+  /**
+   * §04 stewardship — REAL on `/beneficial-ownership`; the voting half is an honest empty state.
+   *
+   * No quarter is passed: a Schedule 13D/G reports a position as of its own event date, not as of
+   * a 13F quarter end, so pinning it to one would misdate every row.
+   */
+  instStewardship: async (symbol: string): Promise<InstStewardship> => {
+    const enc = encodeURIComponent(symbol);
+    const bo = await getJson<BlockholdersResponse>(
+      `/v1/companies/${enc}/beneficial-ownership?limit=60`,
+    ).catch(() => null);
+    return { steward: toInstSteward(bo) };
+  },
 
   /** §06 register limits & supply. Phase A: `/filing-index` supply events + acceptance lag. */
   instLimits: (symbol: string) =>

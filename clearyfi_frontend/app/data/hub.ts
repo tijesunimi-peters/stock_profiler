@@ -1716,7 +1716,8 @@ export interface InstSteward {
     active: boolean;
     holder: string;
     stake: string;
-    seats: number;
+    /** Null when unknown — board seats are 13D Item 4 narrative, and 0 would read as "none won". */
+    seats: number | null;
     standstill: string;
     steps: { date: string; value: number }[];
     trail: { form: string; date: string; what: string }[];

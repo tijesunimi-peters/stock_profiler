@@ -127,7 +127,7 @@ export function InstitutionalView() {
   const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
   const flowsRead = useApi(() => api.instFlows(T), [T]);
   const behaviourRead = useApi(() => api.instBehaviour(T, INST_QUARTERS), [T]);
-  const stewardRead = useApi(() => api.instStewardship(T, INST_QUARTER_END), [T]);
+  const stewardRead = useApi(() => api.instStewardship(T), [T]);
   const limitsRead = useApi(() => api.instLimits(T), [T]);
 
   const [openCalc, setOpenCalc] = useState<string | null>(null);
@@ -923,9 +923,13 @@ export function InstitutionalView() {
             </div>
           ))}
           {/* 13D vs 13G is a filing CHOICE, not a character judgment about the holder. */}
+          {/* The fixture quoted Item 4 purpose language; the parser does not read it, so the
+              rows say so and this note must not claim otherwise. */}
           <div className="hub-note">
-            13D and 13G are categorical filing choices, not a judgment about the holder. Purpose
-            language is quoted in condensed form from Item 4.
+            13D and 13G are categorical filing choices, not a judgment about the holder — a 13D
+            is filed by a holder who may seek to influence control, a 13G by one asserting a
+            passive stake. The stated purpose behind a filing is Item 4 narrative and is not
+            parsed, so it is named rather than summarised.
           </div>
         </div>
 
@@ -1037,8 +1041,12 @@ export function InstitutionalView() {
               <div className="inst-act-head">
                 <span className="hub-firm-name">{stew.activism.holder}</span>
                 <span className="hub-cell-mono">{stew.activism.stake} reported stake</span>
+                {/* Board seats and any standstill are 13D Item 4 narrative — rendering 0 seats
+                    would read as "sought none", which is a different claim from "not parsed". */}
                 <span className="hub-cell-mono is-soft">
-                  {stew.activism.seats} board seat(s) · standstill {stew.activism.standstill}
+                  {stew.activism.seats === null
+                    ? "board seats and standstill terms are Item 4 narrative — not parsed"
+                    : `${stew.activism.seats} board seat(s) · standstill ${stew.activism.standstill}`}
                 </span>
               </div>
               <StepChart
