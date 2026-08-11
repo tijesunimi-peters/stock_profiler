@@ -2488,7 +2488,10 @@ function toInstSnapshot(
       what: f.what ?? "position reported",
       shares: f.shares === null || f.shares === undefined ? "N/A" : usdCompact(f.shares).replace("$", ""),
       accepted: instDate(f.filed),
-      lagRule: f.form.startsWith("SC 13") ? "within 5 business days" : "within 2 business days",
+      // The per-form deadline is NOT stated per row: 13D and 13G share the "SC 13" prefix and have
+      // different deadlines, so a prefix test asserted the 13D rule over every 13G. The cadence
+      // table below states the rules once, where they can be qualified properly.
+      lagRule: "see the cadence table",
       applied: "not applied to the register — see the note",
     })),
     moved,
@@ -2502,9 +2505,28 @@ function toInstSnapshot(
           `${exited.toLocaleString()} exited and ${opened.toLocaleString()} opened a position this ` +
           `quarter — those report a position on one side only, so they are counted here rather ` +
           `than drawn against a zero nobody filed.`,
+    /*
+     * The only REGULATORY claims on this page — asserted, not derived from any filing, so they
+     * are stated conservatively.
+     *
+     * "45 days after year end" for a 13G was the pre-2024 rule. The SEC's 2023 amendments to
+     * Regulation 13D-G (compliance from late 2024, which is inside every window this page reads)
+     * moved 13G onto a quarterly cycle and shortened 13D. The sub-cases differ by filer type —
+     * qualified institutional versus passive versus exempt — so the rows name the cycle each form
+     * runs on rather than a single number that is wrong for some filers.
+     */
     cadence: [
       { form: "13F-HR", rule: "45 days after quarter end", role: "the register itself" },
-      { form: "SC 13D/G", rule: "5 business days (13D) / 45 days after year end (13G)", role: "5%+ stakes, between quarters" },
+      {
+        form: "SC 13D",
+        rule: "days after crossing 5% (shortened by the 2023 amendments)",
+        role: "5%+ stake where influence over control may be sought",
+      },
+      {
+        form: "SC 13G",
+        rule: "a quarterly cycle since the 2023 amendments; the deadline differs by filer type",
+        role: "5%+ stake reported as passive",
+      },
       { form: "Form 4", rule: "2 business days", role: "insider transactions, between quarters" },
     ],
     figs,
@@ -2856,12 +2878,34 @@ function toInstFlows(
     ],
   });
 
+  /*
+   * Domicile is a STACKED BAR, so it has to sum to the whole it claims to decompose.
+   *
+   * Showing the top eight places alone covered 70.8% of Apple's placed shares and 74.9% of
+   * Coca-Cola's — the remaining ~29% and ~25% simply vanished, under a bar a reader takes for a
+   * complete split. The rest is carried as one explicit segment rather than dropped.
+   */
   const dr = dom?.domicile;
-  const domicile = (dr?.rows ?? []).slice(0, 8).map((r) => ({
-    key: r.place,
-    label: r.place.replace("United States · ", ""),
-    share: r.weight * 100,
-  }));
+  const domRows = dr?.rows ?? [];
+  const TOP_PLACES = 8;
+  const shown = domRows.slice(0, TOP_PLACES);
+  const restWeight = domRows.slice(TOP_PLACES).reduce((a, r) => a + r.weight, 0);
+  const domicile = [
+    ...shown.map((r) => ({
+      key: r.place,
+      label: r.place.replace("United States · ", ""),
+      share: r.weight * 100,
+    })),
+    ...(restWeight > 0
+      ? [
+          {
+            key: "other",
+            label: `${domRows.length - TOP_PLACES} other places`,
+            share: restWeight * 100,
+          },
+        ]
+      : []),
+  ];
 
   const ov = peer?.overlap;
   const issuers = ov?.issuers ?? [];
@@ -2910,6 +2954,10 @@ function toInstFlows(
     : "";
 
   return {
+    // The Pareto draws the top 20 of a register in the thousands; without this its cumulative
+    // curve would reach 100% at the 20th manager.
+    registerTotalM:
+      reg?.total_reported_shares == null ? null : reg.total_reported_shares / 1e6,
     flow,
     quarterTable,
     pareto,

@@ -567,7 +567,7 @@ export function InstitutionalView() {
               {zoom === "flow" ? (
                 <DivergeChart rows={flows.flow} format={(v) => `${Math.round(v)}M`} height={420} label="Position changes, expanded" />
               ) : zoom === "pareto" ? (
-                <ParetoChart rows={flows.pareto} format={(v) => `${Math.round(v)}M`} height={440} label="Ranked manager share, expanded" />
+                <ParetoChart rows={flows.pareto} total={flows.registerTotalM ?? undefined} format={(v) => `${Math.round(v)}M`} height={440} label="Ranked manager share, expanded" />
               ) : zoom === "tree" ? (
                 <Treemap leaves={flows.treemap} format={(v) => `${Math.round(v)}M shares`} height={460} label="Manager share treemap, expanded" />
               ) : zoom === "upset" ? (
@@ -684,7 +684,7 @@ export function InstitutionalView() {
           </div>
           <div className="hub-hint">ranked manager share of the 13F-reported register · 1Q26</div>
           {holdView === "ranked" ? (
-            <ParetoChart rows={flows.pareto} format={(v) => `${Math.round(v)}M`} height={250} label="Ranked manager share" />
+            <ParetoChart rows={flows.pareto} total={flows.registerTotalM ?? undefined} format={(v) => `${Math.round(v)}M`} height={250} label="Ranked manager share" />
           ) : (
             <Treemap leaves={flows.treemap} format={(v) => `${Math.round(v)}M shares`} height={280} label="Manager share treemap" />
           )}
@@ -756,7 +756,9 @@ export function InstitutionalView() {
               <StackedBar parts={flows.domicile.map((d) => ({ key: d.key, label: d.label, share: d.share }))} />
               <div className="hub-note">
                 The cover-page address is where the filing entity sits, not where the capital
-                came from — a US-domiciled subsidiary of a foreign parent files as US.
+                came from — a US-domiciled subsidiary of a foreign parent files as US. Weights are
+                of shares held by filers we could place; the final segment groups every place
+                outside the largest eight so the bar sums to the whole.
               </div>
             </div>
 

@@ -1520,6 +1520,8 @@ export function instRegisterExtras(T: string): InstRegisterExtras {
 // ---------------------------------------------------------------- i3 · flows & concentration
 
 export interface InstFlows {
+  /** Reported shares across the WHOLE register, so a top-N Pareto can show a true cumulative. */
+  registerTotalM?: number | null;
   flow: { key: string; label: string; value: number }[];
   quarterTable: { q: string; added: string; reduced: string; addedSh: string; reducedSh: string }[];
   pareto: { key: string; label: string; value: number; prior?: number }[];

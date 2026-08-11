@@ -569,7 +569,7 @@ export interface ParetoRow {
   prior?: number;
 }
 
-const paretoDraw: DrawFn<{ rows: ParetoRow[]; format: (v: number) => string }> = (
+const paretoDraw: DrawFn<{ rows: ParetoRow[]; format: (v: number) => string; total?: number }> = (
   svg,
   { d3, still, width, height, data, container },
 ) => {
@@ -580,7 +580,15 @@ const paretoDraw: DrawFn<{ rows: ParetoRow[]; format: (v: number) => string }> =
   const g = svg.append("g").attr("transform", `translate(${M.left},${M.top})`);
 
   const rows = [...data.rows].sort((a, b) => b.value - a.value);
-  const total = rows.reduce((a, r) => a + r.value, 0) || 1;
+  /*
+   * The cumulative curve divides by the WHOLE, which is not always the rows drawn.
+   *
+   * Defaulting to the sum of `rows` makes the curve reach 100% at the last bar — fine when the
+   * rows are the whole population, and a false claim when they are a top-N. §03 passes the top 20
+   * of a 6,044-manager register, so the curve asserted that 20 managers are the entire register
+   * where the truth is nearer 57%. `data.total`, when given, is that denominator.
+   */
+  const total = data.total ?? (rows.reduce((a, r) => a + r.value, 0) || 1);
   const x = d3
     .scaleBand<string>()
     .domain(rows.map((r) => r.key))
@@ -686,13 +694,16 @@ export function ParetoChart({
   format = (v) => String(Math.round(v)),
   height = 240,
   label,
+  total,
 }: {
   rows: ParetoRow[];
   format?: (v: number) => string;
   height?: number;
   label?: string;
+  /** The population the cumulative curve is a share OF. Omit when `rows` are the whole. */
+  total?: number;
 }) {
-  const data = useMemo(() => ({ rows, format }), [rows, format]);
+  const data = useMemo(() => ({ rows, format, total }), [rows, format, total]);
   return <Chart draw={paretoDraw} data={data} height={height} label={label} />;
 }
 
