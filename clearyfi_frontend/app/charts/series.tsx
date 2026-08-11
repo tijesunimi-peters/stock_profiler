@@ -7,7 +7,8 @@
  */
 import { useMemo } from "react";
 import { Chart } from "./Chart";
-import { anim, attachReadout, clampX, edgeAnchor, gridStyle, makeReadout, mono, sans, type DrawFn } from "./kernel";
+import { anim, attachReadout, clampX, edgeAnchor, gridStyle, makeReadout, mono, sans, widestLabel,
+  type DrawFn } from "./kernel";
 
 export interface SeriesPoint {
   period: string;
@@ -85,15 +86,11 @@ const seriesDraw: DrawFn<SeriesData> = (svg, { d3, still, width, height, data, c
    * So the ticks are measured in this SVG, at the size `gridStyle` will draw them, and the margin
    * only ever GROWS from the shared default — no existing chart loses plot width.
    */
-  const probe = svg.append("g").style("opacity", 0);
-  let widest = 0;
-  for (const t of y.ticks(4)) {
-    const node = mono(probe.append("text").text(data.format(t as number)), 9).node() as
-      | SVGTextElement
-      | null;
-    widest = Math.max(widest, node?.getComputedTextLength?.() ?? 0);
-  }
-  probe.remove();
+  const widest = widestLabel(
+    svg,
+    y.ticks(4).map((t) => data.format(t as number)),
+    (t) => mono(t, 9),
+  );
   const left = Math.max(M.left, Math.ceil(widest) + 12);
 
   const iw = width - left - M.right;

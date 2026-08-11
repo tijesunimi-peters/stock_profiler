@@ -8,7 +8,19 @@
  */
 import { useMemo } from "react";
 import { Chart } from "./Chart";
-import { attachReadout, edgeAnchor, gridStyle, makeReadout, mono, placeLabel, sans, textWidth, type Box, type DrawFn } from "./kernel";
+import {
+  attachReadout,
+  edgeAnchor,
+  gridStyle,
+  makeReadout,
+  mono,
+  placeLabel,
+  sans,
+  textWidth,
+  widestLabel,
+  type Box,
+  type DrawFn,
+} from "./kernel";
 
 /**
  * Width of the widest row label, measured from the DOM.
@@ -53,7 +65,18 @@ const radarDraw: DrawFn<{ axes: string[]; series: RadarSeries[] }> = (
   svg.selectAll("*").remove();
   const cx = width / 2;
   const cy = height / 2 + 4;
-  const r = Math.min(width, height) / 2 - 46;
+  /*
+   * The radius leaves room for the axis labels it actually has.
+   *
+   * This reserved a flat 46px while placing labels at `r + 16` — so the real allowance was 30px,
+   * and "Health" on the composite-profile radar rendered 1.7px outside the card. Measured here so
+   * the ring shrinks instead of the text escaping; never smaller than the original reserve.
+   */
+  const axisReserve = Math.max(
+    46,
+    16 + Math.ceil(widestLabel(svg, data.axes ?? [], (t) => mono(t, 8.5))) + 6,
+  );
+  const r = Math.min(width, height) / 2 - axisReserve;
   const n = data.axes.length;
   const angle = (i: number) => (i / n) * Math.PI * 2 - Math.PI / 2;
   const rs = d3.scaleLinear().domain([0, 100]).range([0, r]);
@@ -669,7 +692,11 @@ const logDotsDraw: DrawFn<{
   format: (v: number) => string;
 }> = (svg, { d3, width, height, data }) => {
   svg.selectAll("*").remove();
-  const left = 118;
+  // Measured, not assumed — see `widestLabel`. Only ever grows from the design's 118px.
+  const left = Math.max(
+    118,
+    Math.ceil(widestLabel(svg, data.rows.map((r) => r.label), (t) => sans(t, 10.5, 500))) + 12,
+  );
   const iw = width - left - 62;
   const ih = height - 30;
   const g = svg.append("g").attr("transform", `translate(${left},8)`);

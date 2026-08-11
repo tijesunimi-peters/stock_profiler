@@ -8,7 +8,18 @@
  */
 import { useMemo } from "react";
 import { Chart } from "./Chart";
-import { anim, attachReadout, clampX, edgeAnchor, gridStyle, makeReadout, mono, sans, type DrawFn } from "./kernel";
+import {
+  anim,
+  attachReadout,
+  clampX,
+  edgeAnchor,
+  gridStyle,
+  makeReadout,
+  mono,
+  sans,
+  widestLabel,
+  type DrawFn,
+} from "./kernel";
 
 const M = { top: 14, right: 16, bottom: 28, left: 46 };
 
@@ -359,7 +370,11 @@ const eventStripDraw: DrawFn<{ lanes: EventLane[] }> = (
 ) => {
   svg.selectAll("*").remove();
   container?.querySelectorAll(".chart-readout").forEach((n) => n.remove());
-  const left = 96;
+  // Measured, not assumed — see `widestLabel`. Only ever grows from the design's 96px.
+  const left = Math.max(
+    96,
+    Math.ceil(widestLabel(svg, data.lanes.map((l) => l.label), (t) => sans(t, 10.5, 500))) + 12,
+  );
   const iw = width - left - 16;
   const ih = height - 30;
   const g = svg.append("g").attr("transform", `translate(${left},10)`);
@@ -709,13 +724,7 @@ const dumbbellDraw: DrawFn<{ rows: DumbbellRow[]; format: (v: number) => string 
    * is a label trimmed, and then the full identity stays reachable in the hover readout and in an
    * SVG <title>, so no filer is silently renamed into another.
    */
-  const probe = svg.append("g").style("opacity", 0);
-  let widest = 0;
-  for (const r of data.rows) {
-    const node = sans(probe.append("text").text(r.label), 10.5, 500).node() as SVGTextElement | null;
-    widest = Math.max(widest, node?.getComputedTextLength?.() ?? 0);
-  }
-  probe.remove();
+  const widest = widestLabel(svg, data.rows.map((r) => r.label), (t) => sans(t, 10.5, 500));
   const left = Math.min(Math.max(168, Math.ceil(widest) + 12), Math.max(120, Math.floor(width * 0.45)));
   const labelMax = left - 10;
   const iw = width - left - 54;
@@ -822,7 +831,11 @@ export interface GanttRow {
 /** Forward-time windows and expiries — lock-up ends, blackout windows, filing deadlines. */
 const ganttDraw: DrawFn<{ rows: GanttRow[]; today?: string }> = (svg, { d3, width, height, data }) => {
   svg.selectAll("*").remove();
-  const left = 132;
+  // Measured, not assumed — see `widestLabel`. Only ever grows from the design's 132px.
+  const left = Math.max(
+    132,
+    Math.ceil(widestLabel(svg, data.rows.map((r) => r.label), (t) => sans(t, 10.5, 500))) + 12,
+  );
   const iw = width - left - 18;
   const ih = height - 28;
   const g = svg.append("g").attr("transform", `translate(${left},8)`);

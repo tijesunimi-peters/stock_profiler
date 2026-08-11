@@ -79,6 +79,35 @@ export function textWidth(node: SVGTextElement | null): number {
 }
 
 /**
+ * The widest of `labels` as they will actually render, measured in this SVG.
+ *
+ * The companion to `textWidth` for LAYOUT rather than for one node: a category gutter or an axis
+ * margin has to be as wide as the widest thing it must hold, and a constant chosen against sample
+ * data is not that. Four charts learned this the hard way on real filings — a 168px dumbbell
+ * gutter against a 224px manager name, a 46px axis margin against a 36.7px tick with 6px of
+ * slack, a 46px treemap cell test standing in for measuring a 200px label. SVG text does not clip
+ * to its parent, so every one of them silently drew outside the chart.
+ *
+ * `style` must be the same styling the caller will apply when it really draws the label —
+ * `(s) => sans(s, 10.5, 500)` — or the measurement describes a different font than the one that
+ * ends up on screen. Returns 0 when nothing can be measured, so callers keep their own floor.
+ */
+export function widestLabel(
+  svg: d3.Selection<any, unknown, null, undefined>,
+  labels: string[],
+  style: (sel: d3.Selection<any, unknown, null, undefined>) => d3.Selection<any, unknown, null, undefined>,
+): number {
+  const probe = svg.append("g").style("opacity", 0);
+  let widest = 0;
+  for (const label of labels) {
+    const node = style(probe.append("text").text(label)).node() as SVGTextElement | null;
+    widest = Math.max(widest, textWidth(node));
+  }
+  probe.remove();
+  return widest;
+}
+
+/**
  * Edge anchoring, not width arithmetic. A centred label that would cross the canvas edge
  * switches its anchor and pins to the edge (RECONCILIATION §6.1).
  */
