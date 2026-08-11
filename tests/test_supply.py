@@ -7,7 +7,12 @@ having never read a filing index; every test below is about not doing that again
 
 from __future__ import annotations
 
-from secfin.normalize.supply import SUPPLY_ORDER, acceptance_lag, supply_events
+from secfin.normalize.supply import (
+    SUPPLY_ORDER,
+    acceptance_lag,
+    proposed_sale_notices,
+    supply_events,
+)
 from secfin.sec.filing_index import FilingIndexEntry, parse_filing_index
 
 
@@ -182,3 +187,63 @@ class TestAcceptanceLag:
         ])
         assert "45 days" in r.cannot
         assert "never complete before then" in r.cannot
+
+
+class TestProposedSaleNotices:
+    """Form 144s are a NOTICE of intent, and this reports only that one exists and its date.
+
+    `supply_events` already counts the category; this exists because a count cannot show cadence
+    and a dot calendar needs every date. The boundary is identical: existence and date, never the
+    shares, the broker, the seller, or whether the sale happened.
+    """
+
+    def test_returns_every_notice_newest_first(self):
+        entries = [
+            _e("144", "2026-01-05"),
+            _e("144", "2026-03-10"),
+            _e("144/A", "2026-02-01"),
+        ]
+
+        res = proposed_sale_notices(entries, indexed_count=40)
+
+        assert res.status == "ok"
+        assert res.count == 3
+        assert [n.filed for n in res.notices] == ["2026-03-10", "2026-02-01", "2026-01-05"]
+
+    def test_ignores_forms_that_are_not_a_144(self):
+        entries = [_e("144", "2026-01-05"), _e("4", "2026-01-06"), _e("S-3ASR", "2026-01-07")]
+
+        res = proposed_sale_notices(entries, indexed_count=40)
+
+        assert res.count == 1
+        assert [n.form for n in res.notices] == ["144"]
+
+    def test_no_notices_over_a_real_window_is_a_finding_scoped_to_that_window(self):
+        res = proposed_sale_notices(
+            [_e("4", "2026-01-06")],
+            indexed_count=40,
+            covered_from="2025-01-01",
+            covered_to="2026-01-06",
+        )
+
+        assert res.status == "ok"
+        assert res.count == 0
+        assert res.notices == []
+        # The zero is only meaningful with the window it was measured over.
+        assert res.covered_from == "2025-01-01"
+        assert "2025-01-01 to 2026-01-06" in res.population
+
+    def test_nothing_indexed_is_na_not_a_confident_zero(self):
+        """The rule this whole module exists for: we have not looked != we found none."""
+        res = proposed_sale_notices([], indexed_count=0)
+
+        assert res.status == "na"
+        assert res.reason is not None
+        assert res.count == 0
+
+    def test_cannot_refuses_the_two_readings_the_data_does_not_support(self):
+        res = proposed_sale_notices([_e("144", "2026-01-05")], indexed_count=40)
+
+        # A notice is not a completed sale, and a run of them is not a share count.
+        assert "not parse" in res.cannot
+        assert "shares" in res.cannot

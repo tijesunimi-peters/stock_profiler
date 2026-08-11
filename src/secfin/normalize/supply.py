@@ -166,6 +166,101 @@ def supply_events(
 
 
 @dataclass
+class ProposedSaleNotice:
+    """One Form 144, as the index describes it. Existence and date -- never the sale."""
+
+    filed: str | None
+    form: str
+    accession: str
+
+
+@dataclass
+class ProposedSaleNotices:
+    status: str  # "ok" | "na"
+    reason: str | None
+    formula: str
+    cannot: str
+    population: str
+    notices: list[ProposedSaleNotice] = field(default_factory=list)
+    count: int = 0
+    indexed_count: int = 0
+    covered_from: str | None = None
+    covered_to: str | None = None
+
+
+_NOTICE_CANNOT = (
+    "A Form 144 announces an INTENT to sell, and this reports only that one was filed and on "
+    "what date. The number of shares, the broker, the person selling and whether the sale ever "
+    "happened are all in the notice's contents, which this product does not parse -- so a dense "
+    "run of notices is not a measure of shares sold, and a notice with no matching Form 4 is not "
+    "evidence a sale was cancelled. An absence is only ever an absence over the indexed window."
+)
+
+
+def proposed_sale_notices(
+    entries: list[FilingIndexEntry],
+    *,
+    indexed_count: int,
+    covered_from: str | None = None,
+    covered_to: str | None = None,
+) -> ProposedSaleNotices:
+    """Every Form 144 in the indexed window, with its filing date.
+
+    `supply_events` already counts this category and names its newest filing; this returns the
+    DATES, which is what a reader needs to see cadence rather than a total. It is deliberately a
+    separate call and not a field on `SupplyCategory`: §06's supply card wants five categories at
+    a glance, and one filer's prospectus category alone runs to 22,317 filings -- putting every
+    date on every category would bloat that payload by orders of magnitude to serve one panel.
+
+    Same boundary as the rest of this module. A Form 144 is a NOTICE OF PROPOSED SALE: the shares,
+    the broker and the seller are its contents, and a proposed sale is not a completed one.
+    """
+    formula = (
+        "Form 144 and 144/A filings in the indexed window, newest first, by filing date; the "
+        "notice's contents are not read"
+    )
+    population = (
+        "filings in this company's indexed submissions window"
+        + (f", {covered_from} to {covered_to}" if covered_from and covered_to else "")
+    )
+
+    if indexed_count <= 0:
+        return ProposedSaleNotices(
+            status="na",
+            reason=(
+                "no filing index has been ingested for this company, so we have not looked -- "
+                "which is different from having looked and found no proposed-sale notice"
+            ),
+            formula=formula,
+            cannot=_NOTICE_CANNOT,
+            population=population,
+            indexed_count=0,
+            covered_from=covered_from,
+            covered_to=covered_to,
+        )
+
+    _, forms = SUPPLY_CATEGORIES["insider_notice"]
+    matched = [e for e in entries if e.form in forms]
+    matched.sort(key=lambda e: (e.filing_date or "", e.accession), reverse=True)
+
+    return ProposedSaleNotices(
+        status="ok",
+        reason=None,
+        formula=formula,
+        cannot=_NOTICE_CANNOT,
+        population=population,
+        notices=[
+            ProposedSaleNotice(filed=e.filing_date, form=e.form, accession=e.accession)
+            for e in matched
+        ],
+        count=len(matched),
+        indexed_count=indexed_count,
+        covered_from=covered_from,
+        covered_to=covered_to,
+    )
+
+
+@dataclass
 class AcceptanceLag:
     """How long after a period ended its filings were ACCEPTED by EDGAR."""
 

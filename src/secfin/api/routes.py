@@ -70,7 +70,12 @@ from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
 from secfin.normalize.manager_category import CATEGORY_LABELS, classify_manager_sic
 from secfin.normalize.attribution import share_attribution
 from secfin.normalize.overlap import peer_overlap
-from secfin.normalize.supply import acceptance_lag, supply_events
+from secfin.normalize.supply import (
+    SUPPLY_CATEGORIES,
+    acceptance_lag,
+    proposed_sale_notices,
+    supply_events,
+)
 from secfin.normalize.register import (
     ShareVector,
     composition,
@@ -3033,6 +3038,64 @@ async def get_insider_summary(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         rows = await _insider_transactions_for_cik(insider_repo, client, cik, limit)
         return summarize_insider_transactions(cik, rows)
+
+
+@public_router.get(
+    "/companies/{symbol}/proposed-sale-notices",
+    tags=["Insider Trades"],
+    summary="Form 144 notices of proposed sale: that they exist and when, never their contents",
+)
+async def get_proposed_sale_notices(
+    symbol: str,
+    limit: int = Query(400, ge=1, le=2000, description="Most recent notices to return"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> dict:
+    """Every Form 144 in this company's indexed window, with its filing date.
+
+    ## What a Form 144 is, and what it is not
+
+    It is a NOTICE OF PROPOSED SALE filed by a holder of restricted or control securities. It
+    announces an intention. It is not a trade, and it is not Section 16: the completed sale, if
+    it happens, shows up on a Form 4 with its own date and share count. A dense run of notices
+    is therefore not a measure of shares sold, and a notice with no matching Form 4 is not
+    evidence a sale was cancelled -- it may simply be outside the window, or never executed.
+
+    ## Existence and dates, never terms
+
+    The shares, the broker and the seller's name are the notice's CONTENTS, which this product
+    does not parse -- Form 144 is not in the structured-data scope (`docs/CLAUDE.md`, Track 1).
+    So this endpoint answers "was one filed, and when", nothing more, and `cannot` says so.
+
+    **Scoped to the indexed window.** `/submissions/` is EDGAR's rolling recent list, so `count:
+    0` means "none among the filings we indexed, which run from `covered_from` to `covered_to`" --
+    never "none ever". With nothing indexed at all the status is `"na"`, not a confident zero.
+
+    Cache-aside on the filing index (one `/submissions/` fetch on first view); a SQLite read after.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        await _ensure_filing_index(filing_repo, client, cik)
+
+    indexed = filing_repo.indexed_count(cik)
+    covered_from, covered_to = filing_repo.indexed_window(cik)
+    # Filtered in SQL by form rather than pulling the whole index: a prospectus-heavy filer's
+    # window runs to tens of thousands of rows and only the 144s are wanted here.
+    entries = filing_repo.get_filings(cik, list(SUPPLY_CATEGORIES["insider_notice"][1]), limit)
+
+    result = proposed_sale_notices(
+        entries,
+        indexed_count=indexed,
+        covered_from=covered_from,
+        covered_to=covered_to,
+    )
+    payload = asdict(result)
+    # The list is bounded; say so rather than letting a truncated calendar read as the whole
+    # window. `count` is what the filter matched WITHIN the rows read, so it cannot exceed limit.
+    payload["limit"] = limit
+    payload["truncated"] = len(entries) >= limit
+    payload["cik"] = cik
+    return payload
 
 
 @public_router.get(
