@@ -12,6 +12,7 @@ every company whose insiders did nothing at all. On the live corpus that is over
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -90,6 +91,50 @@ def test_count_in_group_includes_the_focal_company(tmp_path):
 
     assert repo.count_in_group("35", 2) == 3
     assert repo.count_in_group("60", 2) == 1
+    repo.close()
+
+
+def test_prune_keeps_the_newest_snapshots_and_drops_the_rest(tmp_path):
+    """A daily timer writes a full set of company rows per run and only the newest is served."""
+    repo = SQLiteInsiderPeerRatioRepository(str(tmp_path / "r.db"))
+    for day in ("2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"):
+        repo.bulk_upsert([_row(1, -1.0, as_of=day), _row(2, 1.0, as_of=day)])
+
+    deleted = repo.prune_snapshots(365, keep=2)
+
+    assert deleted == 4  # the two oldest days, two rows each
+    assert repo.latest_as_of(365) == "2026-08-04"
+    assert repo.get_group("35", "2026-08-03", 365)  # kept
+    assert repo.get_group("35", "2026-08-02", 365) == []  # pruned
+    repo.close()
+
+
+def test_prune_is_a_no_op_when_there_is_nothing_to_drop(tmp_path):
+    repo = SQLiteInsiderPeerRatioRepository(str(tmp_path / "r.db"))
+    repo.bulk_upsert([_row(1, -1.0)])
+    assert repo.prune_snapshots(365, keep=8) == 0
+    repo.close()
+
+
+def test_prune_refuses_to_keep_zero_snapshots(tmp_path):
+    """keep=0 would delete the only thing the endpoint can serve, leaving an N/A that looks
+    like a sector with no insider activity."""
+    repo = SQLiteInsiderPeerRatioRepository(str(tmp_path / "r.db"))
+    repo.bulk_upsert([_row(1, -1.0)])
+    with pytest.raises(ValueError):
+        repo.prune_snapshots(365, keep=0)
+    repo.close()
+
+
+def test_prune_does_not_touch_a_different_window(tmp_path):
+    repo = SQLiteInsiderPeerRatioRepository(str(tmp_path / "r.db"))
+    repo.bulk_upsert([_row(1, -1.0, as_of="2026-08-01"), _row(1, -1.0, as_of="2026-08-02")])
+    other = replace(_row(2, 1.0, as_of="2026-01-01"), window_days=90)
+    repo.bulk_upsert([other])
+
+    repo.prune_snapshots(365, keep=1)
+
+    assert repo.latest_as_of(90) == "2026-01-01"
     repo.close()
 
 

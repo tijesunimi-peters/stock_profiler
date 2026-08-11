@@ -1,0 +1,19 @@
+[Unit]
+Description=Compute secfin insider peer ratios once a day
+
+[Timer]
+# 05:30 UTC -- deliberately BEFORE secfin-incremental (06:00) and the backup (07:00), not
+# between them.
+#
+# The ordering that matters is against the BACKUP, not the ingest: this batch reads
+# `insider_transactions`, which the incremental job does not touch (that one fetches
+# companyfacts for 10-K/10-Q filers). Insider rows arrive through the API's cache-aside path
+# as companies are viewed, and through insider_backfill runs -- neither on this schedule. So
+# running after the ingest would buy nothing, while running before both leaves the 06:00 slot
+# free and still lands the fresh ratios inside the 07:00 backup.
+OnCalendar=*-*-* 05:30:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

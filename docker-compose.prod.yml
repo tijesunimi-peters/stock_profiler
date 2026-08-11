@@ -25,7 +25,11 @@
 
 services:
   api:
-    build: .
+    # Explicit target: the Dockerfile has an `analytics` stage after this one, and an
+    # untargeted build would take the LAST stage -- putting duckdb in the serving image.
+    build:
+      context: .
+      target: api
     environment:
       SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
       SECFIN_DB_PATH: "/app/data/secfin.db"
@@ -53,6 +57,23 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
+
+
+  # --- analytical batches (opt-in via profile; NEVER started by `docker compose up`) ---
+  # Same source, same volume, different image: the `analytics` build target adds duckdb, which
+  # the serving image deliberately does not carry. Run one explicitly, e.g.
+  #   docker compose --profile analytics run --rm analytics \
+  #     python -m secfin.analytical.insider_peer_ratio
+  analytics:
+    profiles: ["analytics"]
+    build:
+      context: .
+      target: analytics
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+    volumes:
+      - ${SECFIN_DATA_MOUNT:-secfin-data}:/app/data
 
   caddy:
     image: caddy:2-alpine

@@ -72,5 +72,16 @@ class InsiderPeerRatioRepository(ABC):
         """
 
     @abstractmethod
+    def prune_snapshots(self, window_days: int, keep: int) -> int:
+        """Drop all but the newest `keep` `as_of` snapshots for this window. Returns rows deleted.
+
+        Runs accumulate: each one writes a full set of company rows under a new `as_of`, and only
+        the newest is ever served. A daily timer would therefore add ~3k rows a day forever to
+        answer a question about one of them. Same reasoning as the backup job's `--keep`, and the
+        same reason it is a floor rather than "delete everything older": keeping a few lets an
+        operator see whether a run collapsed before it becomes the only copy.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

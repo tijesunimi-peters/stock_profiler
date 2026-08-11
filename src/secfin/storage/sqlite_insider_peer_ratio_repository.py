@@ -121,5 +121,25 @@ class SQLiteInsiderPeerRatioRepository(InsiderPeerRatioRepository):
         row = cur.fetchone()
         return row[0] if row and row[0] else None
 
+    def prune_snapshots(self, window_days: int, keep: int) -> int:
+        if keep < 1:
+            raise ValueError("keep must be at least 1 -- pruning every snapshot leaves nothing "
+                             "to serve")
+        cur = self._conn.execute(
+            "SELECT DISTINCT as_of FROM insider_peer_ratios WHERE window_days = ? "
+            "ORDER BY as_of DESC",
+            (window_days,),
+        )
+        all_as_of = [r[0] for r in cur.fetchall()]
+        doomed = all_as_of[keep:]
+        if not doomed:
+            return 0
+        placeholders = ",".join("?" for _ in doomed)
+        cur = self._conn.execute(
+            f"DELETE FROM insider_peer_ratios WHERE window_days = ? AND as_of IN ({placeholders})",
+            (window_days, *doomed),
+        )
+        return cur.rowcount or 0
+
     def close(self) -> None:
         self._conn.close()

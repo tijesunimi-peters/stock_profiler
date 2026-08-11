@@ -119,7 +119,9 @@ def compute_insider_peer_ratios(
     return out
 
 
-def run_insider_peer_ratio(db_path: str, sic_digits: int, window_days: int, as_of: str) -> int:
+def run_insider_peer_ratio(
+    db_path: str, sic_digits: int, window_days: int, as_of: str, keep_snapshots: int = 8
+) -> int:
     """Compute ratios (DuckDB) then upsert them (SQLite). Returns the row count.
 
     Unlike `sector_insider_flow`, this does NOT clear the table first: rows are keyed by
@@ -130,8 +132,11 @@ def run_insider_peer_ratio(db_path: str, sic_digits: int, window_days: int, as_o
     repo = SQLiteInsiderPeerRatioRepository(db_path)
     try:
         repo.bulk_upsert(rows)
+        pruned = repo.prune_snapshots(window_days, keep_snapshots)
     finally:
         repo.close()
+    if pruned:
+        logger.info("insider peer ratios: pruned %d rows from old snapshots", pruned)
     logger.info(
         "insider peer ratios done: %d company rows (SIC %d-digit, %d-day window ending %s)",
         len(rows),
@@ -165,6 +170,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         metavar="YYYY-MM-DD",
         help="Window end (default: today).",
     )
+    p.add_argument(
+        "--keep-snapshots",
+        type=int,
+        default=8,
+        help=(
+            "Dated snapshots to retain for this window (default: 8). Only the newest is ever "
+            "served; the rest exist so an operator can see whether a run collapsed."
+        ),
+    )
     p.add_argument("--db-path", default=settings.secfin_db_path)
     return p
 
@@ -177,6 +191,7 @@ def main(argv: list[str] | None = None) -> None:
         settings.secfin_peer_sic_digits,
         args.window_days,
         args.as_of or date.today().isoformat(),
+        keep_snapshots=args.keep_snapshots,
     )
 
 

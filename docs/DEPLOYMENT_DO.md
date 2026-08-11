@@ -25,7 +25,7 @@ in production and how do I touch it."
 | Stack | `docker compose -f docker-compose.prod.yml` : `api` (loopback-only :8000) + `caddy` (80/443), both `restart: unless-stopped` |
 | Data | SQLite in the `secfin-data` volume -- never re-backfilled on the droplet. Hydrated 2026-07-14 from the operator machine's seeded backup (695MB); re-hydrated 2026-07-16 with the 5-year deep seeding (**7.7GB**: 20 13F quarters / 50.2M holding rows, frames FY2021-FY2025, metrics for 8,917 CIKs). Disk after: ~20/48GB. |
 | Secrets | `/opt/secfin/.env` (mode 600): `SEC_USER_AGENT` (real contact address), `SECFIN_ADMIN_SECRET` (generated on-box with `openssl rand -hex 32`; exists nowhere else -- read it from that file if you need admin calls) |
-| Scheduled jobs | systemd timers via `deploy/install.sh`: `secfin-incremental.timer` 06:00 UTC, `secfin-backup.timer` 07:00 UTC (backups land in `/opt/secfin/data/backups` on the droplet's own disk -- off-droplet copy is an open decision, see §6) |
+| Scheduled jobs | systemd timers via `deploy/install.sh`: `secfin-insider-peer-ratio.timer` 05:30 UTC, `secfin-incremental.timer` 06:00 UTC, `secfin-backup.timer` 07:00 UTC (backups land in `/opt/secfin/data/backups` on the droplet's own disk -- off-droplet copy is an open decision, see §6) |
 | Verified | `scripts/verify_deployment.py --base-url https://api.clearyfi.com` from outside the host, **10/10**, 2026-07-14 |
 
 Pre-existing in the same DO account and **not part of this deployment**: a k8s
@@ -71,13 +71,18 @@ printf 'SEC_USER_AGENT="sec-financials-api <real-contact-email>"\nSECFIN_ADMIN_S
   "$(openssl rand -hex 32)" > .env && chmod 600 .env
 
 docker compose -f docker-compose.prod.yml build
+# The analytical batch image is a SEPARATE build target (it adds duckdb, which the serving
+# image deliberately does not carry) and sits behind a compose profile, so the line above
+# does not build it. The timer's runner self-heals by building on first fire, but doing it
+# here keeps that fire fast.
+docker compose -f docker-compose.prod.yml --profile analytics build analytics
 
 # Hydrate the DB from a backup uploaded to data/backups/secfin-latest.db
 # (695MB up from the operator machine; runbook §7 -- never re-backfill on the box)
 docker compose -f docker-compose.prod.yml run --rm api python -m secfin.storage.restore --latest
 
 docker compose -f docker-compose.prod.yml up -d     # api + caddy; certs issue on first start
-sudo ./deploy/install.sh                            # ingest + backup timers
+sudo ./deploy/install.sh                            # ingest + backup + insider-ratio timers
 ```
 
 Smoke checks that were run and should pass after any rebuild: `curl
