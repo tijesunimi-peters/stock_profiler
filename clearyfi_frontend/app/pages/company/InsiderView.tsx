@@ -15,6 +15,7 @@ import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
 import { Histogram } from "../../charts/bars";
+import { PeerStrip } from "../../charts/strips";
 import { DotCalendar } from "../../charts/misc";
 import { useSelection } from "../../state";
 
@@ -109,12 +110,42 @@ export function InsiderView() {
         <div className="p-card">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Net-acquisition ratio against the peer set</span>
-            <span className="hub-hint">shares in ÷ shares out</span>
+            <span className="hub-hint">open-market shares, −1 to +1</span>
           </div>
-          {/* The peer comparison needs every peer's Section 16 ledger over the same window, and
-              no endpoint serves that. An invented distribution would be indistinguishable from a
-              real one on screen, so the panel says what is missing instead of drawing it. */}
-          <StateBlock variant="empty" copy={d.ratio.note} />
+          {/* Two clusters, not a spread — see `toInsiderPeerRatio`. The cloud variant is the
+              honest mark here: a box would draw its whole interquartile range as a line on the
+              floor, because for most groups the 25th, 50th and 75th percentiles are all −1. */}
+          {d.ratio.ok ? (
+            <>
+              <PeerStrip
+                variant="cloud"
+                peers={d.ratio.peers}
+                marks={
+                  d.ratio.focal === null
+                    ? []
+                    : [{ id: "foc", label: T, value: d.ratio.focal, kind: "focal" }]
+                }
+                quantiles={
+                  d.ratio.quantiles
+                    ? {
+                        lo: d.ratio.quantiles.min, hi: d.ratio.quantiles.max,
+                        q1: d.ratio.quantiles.p25, q3: d.ratio.quantiles.p75,
+                        med: d.ratio.quantiles.median,
+                      }
+                    : undefined
+                }
+                format={(v) => v.toFixed(2)}
+                axisLabels={false}
+                label="Open-market insider net-acquisition ratio across the peer set"
+              />
+              {d.ratio.focalNote ? (
+                <div className="hub-note">{d.ratio.focalNote}</div>
+              ) : null}
+              <div className="hub-note">{d.ratio.note}</div>
+            </>
+          ) : (
+            <StateBlock variant="empty" copy={d.ratio.note} />
+          )}
           <div className="hub-label ia-mt">Filing latency</div>
           <Histogram
             bins={d.lagBins}

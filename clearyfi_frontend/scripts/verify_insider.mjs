@@ -85,9 +85,28 @@ ck(`B6 uncoded rows (${uncoded}) are shown as uncoded, never assigned a code`,
       does not apply to it */
 ck("B7 latency states it is Form 4 only", /Form 4 row/.test(txt) || /No Form 4 row/.test(txt));
 
-/* B8 the peer ratio is an honest empty state, not an invented distribution */
-ck("B8 peer ratio says what is missing instead of drawing it",
-   /no endpoint serves that today/i.test(txt));
+/* B8 the peer strip is drawn from the precomputed group, and its SHAPE is described honestly:
+      the distribution is two clusters, so a bare median of -1 would read as a broken chart */
+const pr = await g(`/v1/companies/${TK}/peers/insider-net-ratio`);
+if (pr.status === "ok" && pr.peer_count) {
+  const pctFloor = Math.round((pr.shape.at_floor / pr.peer_count) * 100);
+  ck(`B8 peer strip states the floor concentration (${pctFloor}% at -1 of ${pr.peer_count})`,
+     txt.includes(`${pctFloor}% of the ${pr.peer_count} peers`), `api=${pctFloor}%`);
+  /* B8b a peer with NO open-market row must not be plotted at 0.0 — absent is not balanced */
+  ck(`B8b peers without activity are counted, not plotted (${pr.peers_without_activity})`,
+     pr.peers_without_activity === 0
+       ? !/had no open-market row at all/.test(txt)
+       : txt.includes(`A further ${pr.peers_without_activity} companies`),
+     `api=${pr.peers_without_activity}`);
+  /* B8c the dot count on the strip equals the peers the API could compute a value for */
+  const dots = await p.evaluate(() =>
+    document.querySelectorAll('[aria-label*="net-acquisition ratio"] circle, .ds-strip circle').length);
+  ck(`B8c strip plots only computable peers (api ${pr.peer_count})`, dots > 0 && dots <= pr.peer_count + 2,
+     `dots=${dots}`);
+} else {
+  ck("B8 peer strip absent reads as 'not computed', never as no activity",
+     /not been run|no SIC classification|no peer comparison/i.test(txt));
+}
 
 /* B9 Form 144: count and window come from the index, and the panel refuses to imply size */
 if (f144.status === "ok") {

@@ -92,5 +92,15 @@ class SQLiteCompanyProfileRepository(CompanyProfileRepository):
         )
         return [CompanyProfile(**dict(zip(_ALL_COLUMNS, r, strict=True))) for r in cur.fetchall()]
 
+    def count_in_group(self, prefix: str, sic_digits: int) -> int:
+        prefix = (prefix or "").strip()[:sic_digits]
+        if not prefix:
+            return 0
+        cur = self._conn.execute(
+            "SELECT COUNT(*) FROM company_profiles WHERE sic LIKE ?", (prefix + "%",)
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else 0
+
     def close(self) -> None:
         self._conn.close()

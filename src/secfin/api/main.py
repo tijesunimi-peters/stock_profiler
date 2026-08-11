@@ -51,6 +51,9 @@ from secfin.storage.sqlite_sector_dupont_repository import SQLiteSectorDupontRep
 from secfin.storage.sqlite_sector_geographic_mix_repository import (
     SQLiteSectorGeographicMixRepository,
 )
+from secfin.storage.sqlite_insider_peer_ratio_repository import (
+    SQLiteInsiderPeerRatioRepository,
+)
 from secfin.storage.sqlite_sector_insider_flow_repository import (
     SQLiteSectorInsiderFlowRepository,
 )
@@ -195,6 +198,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # path shape; analytical/sector_insider_flow.py is the sole writer, so the live API never
     # touches DuckDB. See routes.get_sector_insider_flow_repo.
     app.state.sector_insider_flow_repo = SQLiteSectorInsiderFlowRepository(settings.secfin_db_path)
+    # Per-COMPANY insider ratios for the peer strip. Same deal: written by an offline DuckDB
+    # batch, read here as plain point lookups -- the request path never touches DuckDB.
+    app.state.insider_peer_ratio_repo = SQLiteInsiderPeerRatioRepository(settings.secfin_db_path)
     # Precomputed sector geographic mix (Sector Analytics v2, P6b) -- same read-only-on-the-serving-
     # path shape; analytical/sector_geographic_mix.py is the sole writer (a pure-Python offline batch
     # over dimensional_geo_facts -- no DuckDB on this path at all). See
@@ -224,6 +230,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.sector_theme_score_repo.close()
         app.state.sector_company_repo.close()
         app.state.sector_insider_flow_repo.close()
+        app.state.insider_peer_ratio_repo.close()
         app.state.sector_geographic_mix_repo.close()
 
 

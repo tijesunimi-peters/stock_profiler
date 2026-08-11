@@ -72,5 +72,18 @@ class CompanyProfileRepository(ABC):
         """
 
     @abstractmethod
+    def count_in_group(self, prefix: str, sic_digits: int) -> int:
+        """How many profiled companies share this SIC prefix, INCLUDING any focal company.
+
+        A count, not a list, because the caller wants a denominator. `sic_group_peers` cannot
+        supply one: it is bounded by `limit` and excludes the focal cik, so counting its result
+        would under-report a large group by exactly the amount that matters.
+
+        The honest use is to say how many peers a group has that a given measure could NOT be
+        computed for -- a strip drawn from 40 dots in a group of 122 must not imply the group is
+        40 companies large.
+        """
+
+    @abstractmethod
     def close(self) -> None:
         """Release the underlying connection."""

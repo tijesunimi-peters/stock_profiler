@@ -260,6 +260,8 @@ src/secfin/
     sqlite_sector_theme_score_repository.py  # sector_theme_scores + sector_theme_components tables
     sector_company_repository.py        # abstract per-company-in-sector value read (Company view)
     sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
+    insider_peer_ratio_repository.py    # abstract per-COMPANY open-market insider ratio (peer strip)
+    sqlite_insider_peer_ratio_repository.py  # insider_peer_ratios; keyed (cik, as_of, window_days)
     sector_insider_flow_repository.py   # abstract per-SIC-group trailing-window insider net buy/sell
     sqlite_sector_insider_flow_repository.py  # sector_insider_flow table (P6a)
     dimensional_repository.py           # abstract per-company ASC 280 facts for §03 (segments +
@@ -280,6 +282,13 @@ src/secfin/
     sector_theme_scores.py     # composite 0-100 theme scores from metric_distributions ->
                                #   sector_theme_scores (+ decomposition). PURE-PYTHON (input
                                #   already aggregated, no DuckDB); still offline, never live path
+    insider_peer_ratio.py      # PER-COMPANY open-market (P/S) net-acquisition ratio for the
+                               #   Insider view's peer strip. NOT a variant of sector_insider_flow:
+                               #   that stores ONE aggregate per group, a strip needs every
+                               #   company's own value. Ratio is (bought-sold)/(bought+sold) in
+                               #   SHARES, bounded [-1,+1] -- `bought/sold` is unbounded and
+                               #   undefined for the most common case (sold, never bought). A
+                               #   company with no open-market row gets NO row, never 0.0
     sector_insider_flow.py     # P6a: per-SIC-group trailing-window OPEN-MARKET (P/S) insider net
                                #   buy/sell over insider_transactions JOIN company_profiles ->
                                #   sector_insider_flow. DuckDB batch, offline, never live path
@@ -464,6 +473,13 @@ python -m secfin.analytical.sector_theme_scores
 # insider net buy/sell over the cached insider_transactions JOIN company_profiles. DuckDB batch
 # (needs the analytical extra), offline, never the live path. Writes sector_insider_flow.
 python -m secfin.analytical.sector_insider_flow --window-days 90   # --as-of YYYY-MM-DD (default today)
+
+# per-company open-market insider ratio for the Insider view's PEER STRIP. DuckDB batch (needs the
+# analytical extra), offline, never the live path. Writes insider_peer_ratios.
+# ⚠️ The distribution is BIMODAL, not a spread: on the 2026-08-11 corpus 81% of NVIDIA's peer group
+# sits at exactly -1 (sold, never bought) and 12% at +1, so quartiles collapse onto the floor. The
+# endpoint ships `shape` (at_floor/at_ceiling/between) because that, not the median, describes it.
+python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYYY-MM-DD
 
 # sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
 # 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly

@@ -1325,6 +1325,77 @@ const SPLIT_COLORS: Record<string, string> = {
   S: "var(--out-1)", F: "var(--out-2)", D: "var(--out-3)", G: "var(--out-4)", J: "var(--out-5)",
 };
 
+interface InsiderPeerRatioResponse {
+  status: string;
+  reason: string | null;
+  peer_group?: string;
+  as_of?: string;
+  window_days?: number;
+  peers: { cik: number; net_ratio: number; buy_count: number; sell_count: number }[];
+  company_value?: number | null;
+  company_reason?: string | null;
+  quantiles?: { min: number; p25: number; median: number; p75: number; max: number } | null;
+  shape?: { at_floor: number; at_ceiling: number; between: number };
+  peer_count?: number;
+  group_company_count?: number;
+  peers_without_activity?: number;
+}
+
+/**
+ * The peer strip: where this filer's open-market posture sits among its SIC group.
+ *
+ * **The distribution is bimodal and the copy has to say so.** 81% of NVIDIA's peer group sits at
+ * exactly −1 and 12% at exactly +1, because insiders routinely sell vested stock and rarely buy
+ * on the open market. Quartiles collapse onto the floor and describe almost nothing, so the note
+ * leads with the three concentration counts the endpoint sends and treats the median as a
+ * footnote. A reader who sees a median of −1 without that sentence would reasonably think the
+ * chart is broken.
+ *
+ * **A peer with no open-market row has no value and is NOT a dot.** It is reported as a count of
+ * peers the measure could not be computed for — plotting it at 0.0 would read as "balanced",
+ * which is the opposite of "did not trade".
+ */
+function toInsiderPeerRatio(res: InsiderPeerRatioResponse | null) {
+  if (!res || res.status !== "ok" || !res.peers?.length) {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No peer comparison could be built for this company just now.",
+      peers: [] as { id: string; label: string; value: number }[],
+      focal: null as number | null,
+      quantiles: null,
+    };
+  }
+  const shape = res.shape ?? { at_floor: 0, at_ceiling: 0, between: 0 };
+  const n = res.peer_count ?? res.peers.length;
+  const pct = (k: number) => (n ? `${Math.round((k / n) * 100)}%` : "N/A");
+
+  return {
+    ok: true as const,
+    peers: res.peers
+      .filter((p) => p.cik !== undefined)
+      .map((p) => ({ id: String(p.cik), label: `CIK ${p.cik}`, value: p.net_ratio })),
+    focal: res.company_value ?? null,
+    quantiles: res.quantiles ?? null,
+    note:
+      `${pct(shape.at_floor)} of the ${n} peers with open-market activity sold and never bought ` +
+      `(−1), ${pct(shape.at_ceiling)} bought and never sold (+1), and ${pct(shape.between)} did ` +
+      `both — so this is two clusters, not a spread, and the median of ` +
+      `${res.quantiles ? res.quantiles.median.toFixed(2) : "N/A"} sits inside the larger one. ` +
+      (res.peers_without_activity
+        ? `A further ${res.peers_without_activity} companies in SIC ${res.peer_group} had no ` +
+          "open-market row at all and are not plotted — absent, not balanced. "
+        : "") +
+      "Codes P and S only: grants, exercises and tax withholding are not decisions to trade.",
+    focalNote:
+      res.company_value === null || res.company_value === undefined
+        ? (res.company_reason ??
+          "This company has no open-market row in the window, so it is not on the strip.")
+        : null,
+  };
+}
+
 /** Business days between two ISO dates, weekends excluded. Holidays are NOT — see `lagNote`. */
 function businessDaysBetween(a: string, b: string): number | null {
   const t0 = Date.parse(`${a}T00:00:00Z`);
@@ -1361,6 +1432,7 @@ function toInsiderActivity(
   trades: InsiderTradeRow[] | null,
   summary: InsiderSummaryResponse | null,
   notices: ProposedSaleNoticesResponse | null,
+  peerRatio: InsiderPeerRatioResponse | null,
 ) {
   const e = (form: string) =>
     cik
@@ -1395,7 +1467,7 @@ function toInsiderActivity(
       lagBins: [] as { label: string; n: number; median?: boolean }[],
       medBd: 0,
       lagNote: "",
-      ratio: { ok: false as const, note: "" },
+      ratio: toInsiderPeerRatio(null),
       f144: { ok: false as const, note: "", notices: [] as InsiderNotice[] },
       forms: FORM_DUTIES,
       limits: INSIDER_LIMITS,
@@ -1538,14 +1610,8 @@ function toInsiderActivity(
       "holidays are not, so a row at 3 bd may have met the deadline."
     : "No Form 4 row in this window carried both a transaction date and a filing date.";
 
-  // ---------------------------------------------------------------- peer ratio: not served
-  const ratio = {
-    ok: false as const,
-    note:
-      "A net-acquisition ratio against the peer set needs every peer's Section 16 ledger for the " +
-      "same window. No endpoint serves that today, so rather than compare this filer against " +
-      "numbers we would have to invent, the comparison is left unmade.",
-  };
+  // ---------------------------------------------------------------- peer ratio
+  const ratio = toInsiderPeerRatio(peerRatio);
 
   // ---------------------------------------------------------------- Form 144
   const f144: {
@@ -4150,7 +4216,7 @@ export const api = {
     // Three calls, not one aggregate (operator ruling 4). They stay consistent because the
     // ledger and the tally are the SAME filings — `/insider-summary` is the server-side count
     // over exactly what `/insider-trades` returns at this limit, which is why both take it.
-    const [trades, summary, notices] = await Promise.all([
+    const [trades, summary, notices, peerRatio] = await Promise.all([
       getJson<InsiderTradeRow[]>(`/v1/companies/${enc}/insider-trades?limit=${filings}`).catch(
         () => null,
       ),
@@ -4160,9 +4226,12 @@ export const api = {
       getJson<ProposedSaleNoticesResponse>(
         `/v1/companies/${enc}/proposed-sale-notices?limit=400`,
       ).catch(() => null),
+      getJson<InsiderPeerRatioResponse>(
+        `/v1/companies/${enc}/peers/insider-net-ratio`,
+      ).catch(() => null),
     ]);
     return {
-      ledger: toInsiderActivity(summary?.cik ?? null, trades, summary, notices),
+      ledger: toInsiderActivity(summary?.cik ?? null, trades, summary, notices, peerRatio),
     };
   },
 

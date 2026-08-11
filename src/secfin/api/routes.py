@@ -184,6 +184,7 @@ from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
 from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRepository
+from secfin.storage.insider_peer_ratio_repository import InsiderPeerRatioRepository
 from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
     SectorLifecycleRepository,
@@ -411,6 +412,10 @@ def get_sector_theme_score_repo(request: Request) -> SectorThemeScoreRepository:
 
 def get_sector_insider_flow_repo(request: Request) -> SectorInsiderFlowRepository:
     return request.app.state.sector_insider_flow_repo
+
+
+def get_insider_peer_ratio_repo(request: Request) -> InsiderPeerRatioRepository:
+    return request.app.state.insider_peer_ratio_repo
 
 
 def get_sector_geographic_mix_repo(request: Request) -> SectorGeographicMixRepository:
@@ -3038,6 +3043,174 @@ async def get_insider_summary(
         cik = await _cik_from_symbol(client, ticker_cache, symbol)
         rows = await _insider_transactions_for_cik(insider_repo, client, cik, limit)
         return summarize_insider_transactions(cik, rows)
+
+
+_INSIDER_RATIO_CAVEATS = [
+    "DERIVED from reported Forms 3/4/5 -- it is an aggregation of filings, not a reported figure.",
+    "Open-market codes P and S only. Grants, exercises, gifts and tax withholding are excluded "
+    "because they are not decisions to buy or sell.",
+    "Shares, not dollars: many P/S rows carry no price, and counting shares keeps those rows in.",
+    "Most companies sit near -1. Insiders routinely sell vested stock and rarely buy on the open "
+    "market, so the distribution is genuinely one-sided.",
+    "A peer with no open-market row has NO ratio and is counted separately -- never shown as 0.0, "
+    "which would read as balanced rather than absent.",
+    "Says nothing about motive: a pre-arranged 10b5-1 sale and a discretionary one are both S.",
+]
+
+
+def _quantiles(values: list[float]) -> dict[str, float] | None:
+    """min / p25 / median / p75 / max over a SORTED list, or None when there is nothing to plot.
+
+    Nearest-rank, matching `analytical/peer_distribution.py`'s convention so a strip and a box
+    drawn from the same group cannot disagree about where the median sits.
+    """
+    if not values:
+        return None
+    n = len(values)
+    pick = lambda q: values[min(int(q * (n - 1) + 0.5), n - 1)]  # noqa: E731
+    return {
+        "min": values[0],
+        "p25": pick(0.25),
+        "median": pick(0.5),
+        "p75": pick(0.75),
+        "max": values[-1],
+    }
+
+
+@public_router.get(
+    "/companies/{symbol}/peers/insider-net-ratio",
+    tags=["Insider Trades"],
+    summary="Open-market insider net-acquisition ratio across the SIC peer group (DERIVED)",
+)
+async def get_insider_peer_ratio(
+    symbol: str,
+    window_days: int = Query(365, ge=30, le=1825, description="Trailing window the batch ran"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+    ratio_repo: InsiderPeerRatioRepository = Depends(get_insider_peer_ratio_repo),
+) -> dict:
+    """Every peer's open-market insider posture, so the focal company can be placed among them.
+
+    ## What the number is
+
+    `(shares bought − shares sold) / (shares bought + shares sold)` over open-market rows only,
+    bounded to [−1, +1]. **+1 is a window of pure buying, −1 pure selling, 0 balanced.**
+
+    Only codes **P** and **S** count. Grants, option exercises, gifts and tax withholding are
+    excluded, because only P and S are decisions — a ratio over every code would largely measure
+    how a company pays its officers. The consequence is worth stating plainly: **most companies
+    sit at or near −1**, because insiders routinely sell vested stock and rarely buy on the open
+    market. That is the real shape of the data, not a defect in it, and it is exactly why a
+    company anywhere above −1 is interesting.
+
+    Deliberately NOT `bought / sold`: that ratio is unbounded and undefined for a company whose
+    insiders only sold, which is the most common case in the corpus — the companies it drops are
+    the ones the strip exists to show.
+
+    ## What it cannot tell you
+
+    Not motive. A sale under a Rule 10b5-1 plan adopted a year earlier and a discretionary sale
+    are the same S. Not dollars — this counts SHARES, since many P/S rows carry no price, and a
+    share ratio keeps those rows in. Not a complete peer set: a peer with no open-market row in
+    the window has no value at all and is reported in `peers_without_activity`, never as a 0.0,
+    which would read as "balanced" rather than "did not trade".
+
+    A **precomputed** group lookup (`analytical/insider_peer_ratio.py` is the sole producer; the
+    live path never runs DuckDB — CLAUDE.md guardrail 6). `status` is `"na"` when the batch has
+    never run for this window, or when the company has no usable SIC — both distinct from a peer
+    group that genuinely had no open-market activity.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    sic_digits = settings.secfin_peer_sic_digits
+    profile = profile_repo.get(cik)
+    if profile is None or not profile.sic or len(profile.sic) < sic_digits:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": (
+                "This company has no SIC classification on file, so it has no peer group to be "
+                "placed in. That is a gap in our profile data, not a finding about its insiders."
+            ),
+            "peers": [],
+        }
+
+    as_of = ratio_repo.latest_as_of(window_days)
+    if as_of is None:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": (
+                f"The peer insider-ratio batch has not been run for a {window_days}-day window, "
+                "so we have not computed this comparison. That is not the same as finding no "
+                "insider activity."
+            ),
+            "peers": [],
+        }
+
+    peer_group = profile.sic[:sic_digits]
+    rows = ratio_repo.get_group(peer_group, as_of, window_days)
+    focal = next((r for r in rows if r.cik == cik), None)
+    values = sorted(r.net_ratio for r in rows)
+
+    # How many companies in the group have NO value at all. Without this the strip would imply
+    # the group is only as large as the dots on it.
+    group_size = profile_repo.count_in_group(peer_group, sic_digits)
+
+    return {
+        "cik": cik,
+        "status": "ok",
+        "reason": None,
+        "peer_group": peer_group,
+        "peer_basis": f"SIC {sic_digits}-digit",
+        "as_of": as_of,
+        "window_days": window_days,
+        "window_start": rows[0].window_start if rows else None,
+        "window_end": rows[0].window_end if rows else as_of,
+        "formula": (
+            "(open-market shares bought - shares sold) / (bought + sold), codes P and S only, "
+            "per company over the trailing window"
+        ),
+        "unit": "ratio in [-1, +1]",
+        "peers": [
+            {
+                "cik": r.cik,
+                "net_ratio": r.net_ratio,
+                "bought": r.bought,
+                "sold": r.sold,
+                "buy_count": r.buy_count,
+                "sell_count": r.sell_count,
+                "filer_count": r.filer_count,
+            }
+            for r in rows
+        ],
+        "company_value": focal.net_ratio if focal else None,
+        "company_reason": (
+            None
+            if focal
+            else (
+                "This company had no open-market (P/S) insider row in the window, so it has no "
+                "ratio. Its insiders may still have received grants or paid tax at vesting — "
+                "those are not decisions to buy or sell and do not count here."
+            )
+        ),
+        "quantiles": _quantiles(values),
+        # The distribution is BIMODAL, not a spread: on the 2026-08-11 corpus 81% of NVIDIA's
+        # peer group sits at exactly -1 and 12% at exactly +1, so quartiles collapse onto the
+        # floor and describe almost nothing. These three counts are the honest description of
+        # the shape, and they ride in the payload so a caller renders them rather than
+        # re-deriving the same three numbers from `peers` and possibly disagreeing.
+        "shape": {
+            "at_floor": sum(1 for v in values if v <= -0.999),
+            "at_ceiling": sum(1 for v in values if v >= 0.999),
+            "between": sum(1 for v in values if -0.999 < v < 0.999),
+        },
+        "peer_count": len(rows),
+        "group_company_count": group_size,
+        "peers_without_activity": max(group_size - len(rows), 0),
+        "caveats": _INSIDER_RATIO_CAVEATS,
+    }
 
 
 @public_router.get(
