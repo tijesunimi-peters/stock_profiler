@@ -2594,15 +2594,24 @@ function toInstRegister(
    * figures on the same population the §01 tiles and the top-ten denominator use, so the chart
    * agrees with the rest of the page by construction.
    */
-  const counts: number[] = [];
-  const sharesM: number[] = [];
+  /*
+   * A quarter whose register did not come back stays `null`.
+   *
+   * The nine reads are independent and each carries its own `.catch(() => null)`, so ONE 429 or
+   * dropped connection is enough. Coalescing that to 0 drew Apple's 3Q25 at 54 managers between
+   * neighbours of 5,635 and 6,138 — a quarter in which the stock read as unheld, caused by the
+   * transport rather than by any filing. The chart breaks its line on null instead.
+   */
+  const counts: (number | null)[] = [];
+  const sharesM: (number | null)[] = [];
   for (const p of chron) {
     const r = regByPeriod.get(p);
-    counts.push(r?.concentration?.holder_count ?? 0);
-    sharesM.push((r?.total_reported_shares ?? 0) / 1e6);
+    counts.push(r?.concentration?.holder_count ?? null);
+    sharesM.push(r?.total_reported_shares == null ? null : r.total_reported_shares / 1e6);
   }
-  const net =
-    counts.length > 1 ? counts[counts.length - 1] - counts[counts.length - 2] : null;
+  const last = counts[counts.length - 1];
+  const prev = counts[counts.length - 2];
+  const net = last != null && prev != null ? last - prev : null;
 
   // Manager mix over the same quarters. A category absent in a quarter contributes 0 for that
   // quarter, which is a real zero weight, not a missing one.

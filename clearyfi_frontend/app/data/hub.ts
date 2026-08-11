@@ -1197,8 +1197,13 @@ export const MIX_COLORS = ["var(--accent)", "var(--gaap-color)", "#A88C5F", "var
 
 export interface InstRegister {
   quarters: string[];
-  holderCounts: number[];
-  sharesM: number[];
+  /*
+   * `null` is a quarter whose register did not come back — the per-quarter reads are independent,
+   * so one can fail on its own. It is NOT a quarter in which nobody held the stock, and the chart
+   * breaks its line there rather than drawing that claim.
+   */
+  holderCounts: (number | null)[];
+  sharesM: (number | null)[];
   netHolders: string;
   mix: { periods: string[]; bands: { key: string; label: string; values: number[] }[] };
   mixLegend: { k: string; pct: string; pctN: number; prior: string; priorN: number; color: string }[];
