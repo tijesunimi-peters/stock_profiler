@@ -2722,6 +2722,227 @@ function toInstRegisterExtras(
   };
 }
 
+interface ActivitySeriesResponse {
+  transitions: {
+    from_period: string; to_period: string;
+    counts: { new: number; added: number; reduced: number; exited: number };
+    inflow_shares: number | null; outflow_shares: number | null; net_shares: number | null;
+  }[];
+}
+
+interface DomicileResponse {
+  period: string;
+  domicile: {
+    status: string; formula: string; cannot: string; population: string;
+    rows: { place: string; country: string; holder_count: number; shares: number; weight: number }[];
+    located_holder_count: number; unlocated_holder_count: number; coverage: number;
+  };
+}
+
+interface PeerOverlapResponse {
+  period: string;
+  overlap: {
+    status: string; formula: string; cannot: string; peer_basis: string;
+    issuers: { cik: number; label: string; name: string | null; holder_count: number; is_focus: boolean }[];
+    matrix: (number | null)[][];
+    combinations: { ciks: number[]; labels: string[]; manager_count: number }[];
+    combinations_truncated: boolean;
+    holders: { manager_cik: number; manager_name: string; weight: number; peers_held: number; peer_count: number }[];
+  };
+}
+
+interface RegisterShapeResponse {
+  periods: string[];
+  tenure: {
+    status: string; formula: string; cannot: string; newest_period: string;
+    quarters_observed: number; median_quarters_held: number | null;
+    cohorts: { label: string; min_quarters: number; holder_count: number; share_of_register: number }[];
+  };
+  stable_capital: {
+    status: string; formula: string; cannot: string;
+    stable_share: number | null; quarters_observed: number;
+  };
+}
+
+/**
+ * §03's flows, concentration, domicile and peer overlap.
+ *
+ * **The transition into the filling quarter is dropped.** `-activity-series`' newest entry for
+ * Apple reads `exited: 5,775` with an outflow of 2.72B shares — which is not an exodus, it is
+ * 5,775 managers that have not filed yet. Drawn, it is the loudest possible bar on the page and
+ * says the opposite of the truth.
+ */
+function toInstFlows(
+  base: string | null,
+  act: ActivitySeriesResponse | null,
+  reg: RegisterResponse | null,
+  dom: DomicileResponse | null,
+  peer: PeerOverlapResponse | null,
+  attribution: AttributionResponse | null,
+  shape: RegisterShapeResponse | null,
+): hub.InstFlows {
+  const trans = (act?.transitions ?? []).filter((t) => !base || t.to_period <= base);
+
+  // Two bars per quarter — inflow above the axis, outflow below — but ONE label between them:
+  // the chart labels every row, so labelling both printed each quarter twice on the axis.
+  const flow = trans.flatMap((t) => [
+    { key: `${t.to_period}-in`, label: qLabel(t.to_period), value: (t.inflow_shares ?? 0) / 1e6 },
+    { key: `${t.to_period}-out`, label: "", value: -(t.outflow_shares ?? 0) / 1e6 },
+  ]);
+
+  const quarterTable = [...trans].reverse().slice(0, 6).map((t) => ({
+    q: qLabel(t.to_period),
+    added: `${(t.counts.added + t.counts.new).toLocaleString()}`,
+    reduced: `${(t.counts.reduced + t.counts.exited).toLocaleString()}`,
+    addedSh: t.inflow_shares == null ? "" : `+${usdCompact(t.inflow_shares).replace("$", "")}`,
+    reducedSh: t.outflow_shares == null ? "" : `−${usdCompact(t.outflow_shares).replace("$", "")}`,
+  }));
+
+  const sv = reg?.share_vector ?? [];
+  const pareto = sv.slice(0, 20).map((h) => ({
+    key: String(h.manager_cik),
+    label: h.manager_name,
+    value: h.shares / 1e6,
+  }));
+  const treemap = sv.slice(0, 20).map((h) => ({
+    id: String(h.manager_cik),
+    label: h.manager_name,
+    value: h.shares / 1e6,
+    note: `${(h.weight * 100).toFixed(2)}% of the 13F register`,
+  }));
+
+  const con = reg?.concentration;
+  const calcBase = (formula?: string, note?: string) => ({
+    formula: formula ?? "",
+    note: note ?? "",
+    inputs: [
+      { k: "Population", v: con?.population ?? "N/A" },
+      { k: "Managers", v: con?.holder_count?.toLocaleString() ?? "N/A" },
+      { k: "Top 1 / 5 / 10", v: con
+        ? `${((con.top1_share ?? 0) * 100).toFixed(1)}% / ${((con.top5_share ?? 0) * 100).toFixed(1)}% / ${((con.top10_share ?? 0) * 100).toFixed(1)}%`
+        : "N/A" },
+    ],
+  });
+
+  const dr = dom?.domicile;
+  const domicile = (dr?.rows ?? []).slice(0, 8).map((r) => ({
+    key: r.place,
+    label: r.place.replace("United States · ", ""),
+    share: r.weight * 100,
+  }));
+
+  const ov = peer?.overlap;
+  const issuers = ov?.issuers ?? [];
+  const upsetSets = issuers.map((i) => ({ key: i.label, label: i.label }));
+  const upset = (ov?.combinations ?? []).map((c) => ({
+    members: c.labels,
+    size: c.manager_count,
+    note: `${c.manager_count.toLocaleString()} managers report ${c.labels.length === 1 ? "only this issuer" : "this exact combination"}`,
+  }));
+  const overlap = (ov?.holders ?? []).map((h) => ({
+    name: h.manager_name,
+    peers: h.peers_held,
+    of: h.peer_count,
+  }));
+  const matrix = {
+    rows: issuers.map((i) => i.label),
+    cols: issuers.map((i) => i.label),
+    cells: issuers.flatMap((r, ri) =>
+      issuers.map((c, ci) => ({
+        row: r.label,
+        col: c.label,
+        value: ov?.matrix?.[ri]?.[ci] == null ? null : (ov.matrix[ri][ci] as number) * 100,
+      })),
+    ),
+  };
+
+  // Share attribution as a residual: what the ingested filings do NOT place.
+  const at = attribution?.attribution;
+  const instRow = at?.rows.find((r) => r.key === "institutional");
+  const attributed = instRow?.share_of_outstanding ?? null;
+  const residual =
+    attributed === null
+      ? []
+      : [
+          { key: "attributed", label: "13F-reported", share: attributed * 100 },
+          { key: "residual", label: "Not attributed", share: Math.max(0, 100 - attributed * 100) },
+        ];
+
+  // Tenure and stable capital anchor on the NEWEST INGESTED quarter, which the endpoint reports
+  // and which is the still-filing one — so they describe a partial register. Said, not hidden.
+  const t = shape?.tenure;
+  const sc = shape?.stable_capital;
+  const anchoredOnFilling = !!(t?.newest_period && base && t.newest_period > base);
+  const shapeWarn = anchoredOnFilling
+    ? ` Computed on ${instDate(t?.newest_period)}, which is still being filed, so it describes the filers in so far — not the ${instDate(base)} register.`
+    : "";
+
+  return {
+    flow,
+    quarterTable,
+    pareto,
+    treemap,
+    lorenz: (con as unknown as { lorenz?: number[] })?.lorenz ?? [],
+    effective: con?.effective_holders == null ? "N/A" : con.effective_holders.toFixed(1),
+    hhi: con?.hhi == null ? "N/A" : Math.round(con.hhi).toLocaleString(),
+    gini: con?.gini == null ? "N/A" : con.gini.toFixed(3),
+    halfCount: con?.managers_for_half?.toLocaleString() ?? "N/A",
+    domicile,
+    upsetSets,
+    upset,
+    overlap,
+    matrix,
+    residual,
+    residualSeries: [],
+    /*
+     * `-register-shape` anchors on the newest INGESTED quarter whatever period is asked for, and
+     * that is the still-filing one: Apple's cohorts total 490 managers against a 6,044-manager
+     * register, because only the early filers are in. The figures are reported as the endpoint
+     * computes them and the anchor is named in the tile itself, not buried in a drawer — a bare
+     * "93.8% stable" over 817 filers reads as a fact about the register.
+     */
+    stable:
+      sc?.stable_share == null
+        ? "N/A"
+        : `${(sc.stable_share * 100).toFixed(1)}%${anchoredOnFilling ? " *" : ""}`,
+    tenureWeighted:
+      t?.median_quarters_held == null ? "N/A" : `${t.median_quarters_held} quarters median`,
+    // The label beneath this reads "reporting this issuer for the first time", so it takes the
+    // quarter these cohorts are measured over — not a count, and not a date pretending to be one.
+    firstQuarter: t?.newest_period
+      ? `${qLabel(t.newest_period)}${anchoredOnFilling ? " — still filing" : ""}`
+      : "N/A",
+    cohorts: (t?.cohorts ?? []).map((c) => ({
+      cohort: c.label,
+      share: `${(c.share_of_register * 100).toFixed(1)}%`,
+      weight: `${c.holder_count.toLocaleString()} managers`,
+    })),
+    calcs: {
+      eff: calcBase(con?.formula, con?.cannot),
+      hhi: calcBase(con?.formula, con?.cannot),
+      gini: calcBase(con?.formula, con?.cannot),
+      residual: {
+        formula: at?.formula ?? "",
+        note: at?.cannot ?? "",
+        inputs: [
+          { k: "Shares outstanding", v: at?.shares_outstanding ? usdCompact(at.shares_outstanding).replace("$", "") : "N/A" },
+          { k: "As of", v: instDate(at?.shares_outstanding_as_of) },
+          { k: "Rows add up?", v: at?.rows_are_additive ? "yes" : "NO — holders appear in more than one row" },
+        ],
+      },
+      stable: {
+        formula: sc?.formula ?? "",
+        note: `${sc?.cannot ?? ""}${shapeWarn}`,
+        inputs: [
+          { k: "Quarters observed", v: String(sc?.quarters_observed ?? "N/A") },
+          { k: "Anchored on", v: instDate(t?.newest_period) },
+          { k: "Median tenure", v: t?.median_quarters_held == null ? "N/A" : `${t.median_quarters_held} quarters` },
+        ],
+      },
+    },
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -3317,9 +3538,40 @@ export const api = {
     };
   },
 
-  /** §03 flows & concentration. Phase A: `-activity`, `-activity-series`, `-conviction`. */
-  instFlows: (symbol: string, _quarterEnd: string) =>
-    resolve<InstFlows>({ flows: hub.instFlows(symbol) }),
+  /**
+   * §03 flows & concentration — REAL, on `-activity-series`, `-register`, `-holder-domicile`,
+   * `-peer-overlap`, `-share-attribution` and `-register-shape`.
+   *
+   * Six reads, each allowed to fail alone: this section stacks five independent cards and one
+   * dead endpoint should cost one card, not the section.
+   */
+  instFlows: async (symbol: string): Promise<InstFlows> => {
+    const enc = encodeURIComponent(symbol);
+    const periodsRes = await getJson<PeriodsResponse>(`/v1/companies/${enc}/institutional-periods`);
+    const { base } = pickBasePeriod(periodsRes.periods, periodsRes.period_meta);
+    const q = base ? `?period=${base}` : "";
+    const [act, reg, dom, peer, attribution, shape] = await Promise.all([
+      getJson<ActivitySeriesResponse>(
+        `/v1/companies/${enc}/institutional-activity-series?quarters=9`,
+      ).catch(() => null),
+      base
+        ? getJson<RegisterResponse>(`/v1/companies/${enc}/institutional-register${q}`).catch(() => null)
+        : null,
+      base
+        ? getJson<DomicileResponse>(`/v1/companies/${enc}/institutional-holder-domicile${q}`).catch(() => null)
+        : null,
+      base
+        ? getJson<PeerOverlapResponse>(`/v1/companies/${enc}/institutional-peer-overlap${q}`).catch(() => null)
+        : null,
+      base
+        ? getJson<AttributionResponse>(`/v1/companies/${enc}/institutional-share-attribution${q}`).catch(() => null)
+        : null,
+      base
+        ? getJson<RegisterShapeResponse>(`/v1/companies/${enc}/institutional-register-shape${q}`).catch(() => null)
+        : null,
+    ]);
+    return { flows: toInstFlows(base, act, reg, dom, peer, attribution, shape) };
+  },
 
   /** §05 register behaviour. Phase A: `-register-shape` (turnover + tenure + stable capital). */
   instBehaviour: (symbol: string, _quarters: number) =>

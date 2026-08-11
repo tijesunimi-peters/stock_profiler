@@ -125,7 +125,7 @@ export function InstitutionalView() {
    */
   const snapshotRead = useApi(() => api.instRegisterSnapshot(T), [T]);
   const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
-  const flowsRead = useApi(() => api.instFlows(T, INST_QUARTER_END), [T]);
+  const flowsRead = useApi(() => api.instFlows(T), [T]);
   const behaviourRead = useApi(() => api.instBehaviour(T, INST_QUARTERS), [T]);
   const stewardRead = useApi(() => api.instStewardship(T, INST_QUARTER_END), [T]);
   const limitsRead = useApi(() => api.instLimits(T), [T]);
@@ -840,7 +840,11 @@ export function InstitutionalView() {
           <div className="p-card">
             <div className="hub-panel-head">
               <span className="hub-panel-title">Stable-capital share</span>
-            <span className="hub-hint">register weighted by holding tenure</span>
+            {/* The anchor is part of the claim: these are computed on the newest INGESTED quarter,
+                which while a quarter is still being filed is a partial register. */}
+            <span className="hub-hint">
+              register weighted by holding tenure · measured over {flows.firstQuarter}
+            </span>
           </div>
           <div className="inst-figs is-sm">
             <button
