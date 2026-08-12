@@ -92,6 +92,48 @@ const ev = aud.audit_events ?? {};
 const n402 = (ev.events ?? []).filter(e => e.item === "4.02").length;
 const n401 = (ev.events ?? []).filter(e => e.item === "4.01").length;
 const nLate = (ev.late_filings ?? []).length;
+/* ---- Percentile vs peers: real ranks, oriented, with the unscorable ones shown ---- */
+const tp = await g(`/v1/companies/${TK}/theme-percentiles?year=2026&period=Q1`);
+// Scoped to the RAIL. The rest of this view is still the prototype's — the distribution table
+// carries fabricated P-values and the shell's peer-set pill still reads "rank 5 / 62" from
+// hub.ts — so a page-wide scan would fail on surfaces this panel does not own. Narrow the
+// selector as each panel lands, never the assertion.
+const rail = await p.evaluate(() =>
+  (document.querySelector(".px-rail")?.innerText || "").replace(/\s+/g, " "));
+if (tp.status === "ok") {
+  const scored = tp.themes.filter(t => t.scored);
+  const unscored = tp.themes.filter(t => !t.scored);
+  /* C10 each scored theme's percentile is on screen */
+  ck(`C10 scored theme percentiles on screen (${scored.map(t=>`${t.key}:P${Math.round(t.percentile)}`).join(" ")})`,
+     scored.every(t => rail.includes(`P${Math.round(t.percentile)}`)),
+     `api=${JSON.stringify(scored.map(t=>t.percentile))}`);
+  /* C11 the two DEFERRED themes are RENDERED as unscored, not dropped. Dropping them leaves a
+     rail of five that looks complete. */
+  ck("C11 accounting quality & structure are shown but unscored",
+     /Accounting quality/i.test(rail) && /Structure/i.test(rail) && /not scored/i.test(rail));
+  /* C12 no fabricated composite rank survives — it was the literal "5 / 62" with a QoQ move */
+  ck("C12 the invented composite rank and QoQ move are gone",
+     !/up 3 spots QoQ/i.test(rail) && !/\b5 \/ 62\b/.test(rail));
+  /* C13 coverage travels with a scored theme: P over 2 of 6 metrics is not the same claim as
+     P over 6 of 6 */
+  const withCov = scored[0];
+  if (withCov) {
+    ck(`C13 coverage is stated (${withCov.covered} of ${withCov.total} metrics)`,
+       rail.includes(`${withCov.covered} of ${withCov.total} metrics`),
+       `api=${withCov.covered}/${withCov.total}`);
+  }
+  /* C14 the old fabricated constants are gone. CO_THEME_PCT was identical for every company:
+     prof 88, growth 76, health 64, cash 91, eff 58, acct 82, struct 70. */
+  const fabricated = ["P88","P76","P64","P91","P58","P82","P70"];
+  const realPcts = new Set(scored.map(t => `P${Math.round(t.percentile)}`));
+  ck("C14 no theme shows the old hardcoded percentile unless the API really says so",
+     fabricated.every(f => !rail.includes(f) || realPcts.has(f)),
+     `rail-fabricated=${fabricated.filter(f=>rail.includes(f)&&!realPcts.has(f))}`);
+} else {
+  ck("C10 no ranks reads as 'not computed', never as a bottom placing",
+     /cannot be placed against its peers|no peer ranks/i.test(txt));
+}
+
 ck(`C9 flags reflect the index (4.02=${n402} 4.01=${n401} 12b-25=${nLate})`,
    (n402 + n401 + nLate) === 0
      ? /No Item 4.02 restatement/i.test(txt)

@@ -70,6 +70,7 @@ from secfin.normalize.themes import DEFERRED_THEMES, THEME_LABELS, THEMES
 from secfin.normalize.manager_category import CATEGORY_LABELS, classify_manager_sic
 from secfin.normalize.attribution import share_attribution
 from secfin.normalize.overlap import peer_overlap
+from secfin.normalize.themes import company_theme_scores
 from secfin.normalize.supply import (
     SUPPLY_CATEGORIES,
     acceptance_lag,
@@ -3050,6 +3051,19 @@ async def get_insider_summary(
 # unbounded read, not to select peers.
 _PEER_NAME_CAP = 5000
 
+_THEME_PCT_CAVEATS = [
+    "DERIVED: a mean of peer percentiles, not a reported figure and not a score anyone files.",
+    "Peers are grouped by SIC industry code, which is coarse and dated.",
+    "Each constituent is oriented by favorability before averaging -- a stored percentile alone "
+    "is a position, not a judgement.",
+    "A theme is scored over the constituents that HAVE a rank; `covered`/`total` says how many, "
+    "and the missing ones are not imputed.",
+    "Accounting quality and Structure & activity are never scored -- the signals are not "
+    "ingested or are free text (see each theme's reason).",
+    "Peer count varies by metric: a company with no value for a metric is excluded from that "
+    "metric's ranking rather than counted as a low value.",
+]
+
 _INSIDER_RATIO_CAVEATS = [
     "DERIVED from reported Forms 3/4/5 -- it is an aggregation of filings, not a reported figure.",
     "Open-market codes P and S only. Grants, exercises, gifts and tax withholding are excluded "
@@ -3079,6 +3093,107 @@ def _quantiles(values: list[float]) -> dict[str, float] | None:
         "median": pick(0.5),
         "p75": pick(0.75),
         "max": values[-1],
+    }
+
+
+@public_router.get(
+    "/companies/{symbol}/theme-percentiles",
+    tags=["Financials"],
+    summary="One company's per-theme percentile within its SIC peer group (DERIVED)",
+)
+async def get_company_theme_percentiles(
+    symbol: str,
+    year: int = Query(..., description="Fiscal year, e.g. 2024"),
+    period: FiscalPeriod = Query("FY", description="FY, Q1, Q2, Q3, or Q4"),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    rank_repo: MetricRankRepository = Depends(get_metric_rank_repo),
+) -> dict:
+    """Where this company sits among its peers on each health theme.
+
+    ## What the number is
+
+    Each theme is a set of materialized metrics (`normalize/themes.py`, the same definitions the
+    sector scores use, so the two cannot drift). A company's per-metric percentile within its SIC
+    group comes from `metric_ranks`; this ORIENTS each one by favorability and averages them.
+
+    **Orientation is the whole point.** A stored percentile is a POSITION, not a judgement:
+    `percent_rank` of the value, so the most levered filer in a group scores 99 on
+    `debt_to_equity`. A lower-is-better metric therefore contributes `100 - percentile`, and only
+    then is the mean meaningful — averaging raw would score debt and liquidity in opposite
+    directions inside one "Financial health" figure.
+
+    ## What it will not do
+
+    **A theme is not rescaled to hide missing constituents.** Ranked on 2 of 6 gives a percentile
+    over those 2, with `covered`/`total` alongside; below two constituents it is `scored: false`
+    with a reason, never a number resting on one metric.
+
+    **Two themes are never scored.** Accounting quality and Structure & activity need
+    restatement / material-weakness / late-filing and S-1 / Form 15 / flow signals that are not
+    ingested or are Track 2 — `normalize/themes.DEFERRED_THEMES` records why, and they come back
+    `scored: false` rather than as a plausible number.
+
+    A **precomputed** read of `metric_ranks` (produced by `analytical/peer_ranks.py`), bounded to
+    one company and one period — a point read, never the DuckDB aggregation.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    rows = rank_repo.get_for_cik(cik, year, period)
+    if not rows:
+        return {
+            "cik": cik,
+            "fiscal_year": year,
+            "fiscal_period": period,
+            "status": "na",
+            "reason": (
+                "No peer ranks have been computed for this company in this period. That happens "
+                "when its SIC group was below the minimum size, when the metrics it needs were "
+                "not derivable from its filings, or when the ranking batch has not run for the "
+                "period -- none of which is a statement about the company."
+            ),
+            "themes": [],
+        }
+
+    ranks = {r.metric: r.percentile for r in rows if r.percentile is not None}
+    scores = company_theme_scores(ranks)
+    # Every rank row for one company/period shares a peer group; take it from the data rather
+    # than re-deriving it from the profile, so the group reported IS the one ranked against.
+    peer_groups = {r.peer_group for r in rows}
+    peer_counts = {r.peer_count for r in rows}
+
+    return {
+        "cik": cik,
+        "fiscal_year": year,
+        "fiscal_period": period,
+        "status": "ok",
+        "reason": None,
+        "peer_group": next(iter(peer_groups)) if len(peer_groups) == 1 else None,
+        "peer_basis": f"SIC {settings.secfin_peer_sic_digits}-digit",
+        # Peer count VARIES by metric -- a group of 175 on net_margin may be 128 on roe, because
+        # a company with no value is excluded from that metric's ranking (R7). One number here
+        # would be a fiction, so the range is reported.
+        "peer_count_min": min(peer_counts) if peer_counts else None,
+        "peer_count_max": max(peer_counts) if peer_counts else None,
+        "metrics_ranked": len(ranks),
+        "formula": (
+            "per-theme mean of its constituent metrics' peer percentiles, each oriented so that "
+            "higher always means more favourable"
+        ),
+        "themes": [
+            {
+                "key": t.key,
+                "label": t.label,
+                "scored": t.scored,
+                "percentile": t.percentile,
+                "covered": t.covered,
+                "total": t.total,
+                "components": [{"metric": m, "percentile": v} for m, v in t.components],
+                "reason": t.reason,
+            }
+            for t in scores
+        ],
+        "caveats": _THEME_PCT_CAVEATS,
     }
 
 

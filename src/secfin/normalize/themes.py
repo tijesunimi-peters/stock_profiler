@@ -20,6 +20,9 @@ materialized as empty rows. See `DEFERRED_THEMES`.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+
 from secfin.normalize.metrics import METRIC_DIRECTION
 
 # theme key -> (label, ordered constituent metric keys). Order matches the guide's scorecard.
@@ -88,3 +91,91 @@ _missing = sorted(
 )
 if _missing:  # pragma: no cover - a wiring error, surfaced immediately
     raise RuntimeError(f"themes.py: constituents missing a METRIC_DIRECTION entry: {_missing}")
+
+
+@dataclass
+class CompanyThemeScore:
+    """One theme's percentile for ONE company within its SIC peer group."""
+
+    key: str
+    label: str
+    scored: bool
+    #: 0-100, favorability-ORIENTED: 90 means "better than 90% of peers", never "high value".
+    percentile: float | None
+    #: Which constituents actually had a rank, and how many the theme defines.
+    covered: int
+    total: int
+    #: The constituent metrics that contributed, with their oriented percentiles.
+    components: list[tuple[str, float]]
+    reason: str | None = None
+
+
+def company_theme_scores(
+    ranks: Mapping[str, float], *, min_covered: int = 2
+) -> list[CompanyThemeScore]:
+    """Roll a company's per-metric peer percentiles up into per-theme percentiles.
+
+    `ranks` is metric key -> RAW percentile (0-100) from `metric_ranks`, which is a position, not
+    a judgement: `percent_rank` of the value, so a highly-levered filer scores 99 on
+    `debt_to_equity`. Every constituent is therefore ORIENTED here through
+    `metrics.higher_is_better` -- a lower-is-better metric contributes `100 - percentile` -- and
+    only after that is the mean meaningful. Averaging raw percentiles would score debt and
+    liquidity in opposite directions inside one "Financial health" number.
+
+    **Mean of the constituents that exist, with the coverage reported.** A theme is NOT rescaled
+    to pretend the missing ones were average: a company ranked on 2 of 6 profitability metrics
+    gets a percentile over those 2 and says so, and below `min_covered` it is `scored=False` with
+    a reason rather than a number built from one metric.
+
+    **The two DEFERRED_THEMES are returned unscored**, exactly as the sector endpoint returns
+    them -- never a fabricated value. That is the whole reason this function returns a list of
+    all seven rather than a dict of whatever it could compute: a caller iterating the result
+    cannot accidentally omit the two it cannot answer, and a reader sees that they were asked.
+
+    Pure: no DB, no network, no clock.
+    """
+    out: list[CompanyThemeScore] = []
+    for key, (label, metrics) in THEMES.items():
+        components: list[tuple[str, float]] = []
+        for m in metrics:
+            p = ranks.get(m)
+            if p is None:
+                continue
+            components.append((m, p if METRIC_DIRECTION[m] else 100.0 - p))
+        if len(components) < min_covered:
+            out.append(
+                CompanyThemeScore(
+                    key=key,
+                    label=label,
+                    scored=False,
+                    percentile=None,
+                    covered=len(components),
+                    total=len(metrics),
+                    components=components,
+                    reason=(
+                        f"Ranked on {len(components)} of this theme's {len(metrics)} metrics; "
+                        f"at least {min_covered} are needed before a percentile means anything."
+                    ),
+                )
+            )
+            continue
+        out.append(
+            CompanyThemeScore(
+                key=key,
+                label=label,
+                scored=True,
+                percentile=round(sum(v for _, v in components) / len(components), 1),
+                covered=len(components),
+                total=len(metrics),
+                components=components,
+            )
+        )
+
+    for key, (label, reason) in DEFERRED_THEMES.items():
+        out.append(
+            CompanyThemeScore(
+                key=key, label=label, scored=False, percentile=None,
+                covered=0, total=0, components=[], reason=reason,
+            )
+        )
+    return out

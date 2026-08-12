@@ -664,6 +664,73 @@ interface SegmentsResponse {
   }[];
 }
 
+interface ThemePercentilesResponse {
+  status: string;
+  reason: string | null;
+  peer_group: string | null;
+  peer_count_min: number | null;
+  peer_count_max: number | null;
+  metrics_ranked: number;
+  themes: {
+    key: string; label: string; scored: boolean; percentile: number | null;
+    covered: number; total: number; reason: string | null;
+  }[];
+}
+
+/**
+ * §Peer-relative's "Percentile vs peers" rail.
+ *
+ * **All seven themes were fabricated**, including the two this project has ruled unscorable:
+ * `CO_THEME_PCT` was a literal `{prof: 88, growth: 76, health: 64, cash: 91, eff: 58, acct: 82,
+ * struct: 70}`, identical for every company on the site.
+ *
+ * The five scorable ones now come from `metric_ranks` via `/theme-percentiles`, oriented by
+ * favorability server-side. Accounting quality and Structure & activity come back `scored:
+ * false` with the reason `normalize/themes.DEFERRED_THEMES` records, and are RENDERED as
+ * unscored rather than dropped — a reader should see that they were asked and could not be
+ * answered, which is different from a rail that quietly lists five themes.
+ *
+ * Coverage rides along: a theme scored on 2 of 6 constituents says so, because a percentile
+ * built from two metrics and one built from six are not the same claim.
+ */
+function toThemePercentiles(res: ThemePercentilesResponse | null) {
+  if (!res || res.status !== "ok") {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No peer ranks have been computed for this company, so it cannot be placed against its "
+          + "peers on any theme.",
+      themes: [] as {
+        key: string; label: string; scored: boolean; pct: number | null;
+        label_pct: string; coverage: string | null; reason: string | null;
+      }[],
+      peers: null as string | null,
+    };
+  }
+  return {
+    ok: true as const,
+    note: null as string | null,
+    peers:
+      res.peer_count_min && res.peer_count_max
+        ? res.peer_count_min === res.peer_count_max
+          ? `${res.peer_count_min} peers`
+          : // The count VARIES by metric -- a company with no value is excluded from that
+            // metric's ranking rather than counted low -- so one number would be a fiction.
+            `${res.peer_count_min}–${res.peer_count_max} peers, varying by metric`
+        : null,
+    themes: res.themes.map((t) => ({
+      key: t.key,
+      label: t.label,
+      scored: t.scored,
+      pct: t.percentile,
+      label_pct: t.scored && t.percentile !== null ? `P${Math.round(t.percentile)}` : "not scored",
+      coverage: t.scored ? `${t.covered} of ${t.total} metrics` : null,
+      reason: t.reason,
+    })),
+  };
+}
+
 /**
  * §Peer-relative's "Filing history & flags" chips.
  *
@@ -4379,15 +4446,18 @@ export const api = {
    * empty state. Grouped here anyway because they share the peer set, not because they share a
    * source.
    */
-  companyPeerRelative: async (symbol: string, _year: number, _fiscalPeriod: string) => {
+  companyPeerRelative: async (symbol: string, year: number, fiscalPeriod: string) => {
     const enc = encodeURIComponent(symbol);
     // §Segment & geographic mix is REAL (2026-08-12); every other surface on this view is still
     // the prototype's. Ported one panel at a time, the same way §01-§06 of the institutional
     // view were, so each lands with its own verification instead of one unreviewable sweep.
-    const [segments, activity, audit] = await Promise.all([
+    const [segments, activity, audit, themes] = await Promise.all([
       getJson<SegmentsResponse>(`/v1/companies/${enc}/segments`).catch(() => null),
       getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
       getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+      getJson<ThemePercentilesResponse>(
+        `/v1/companies/${enc}/theme-percentiles?year=${year}&period=${fiscalPeriod}`,
+      ).catch(() => null),
     ]);
     return {
       segmentMix: toSegmentMix(segments),
@@ -4395,9 +4465,9 @@ export const api = {
       // about a filer's form mix or about what their caps dropped.
       filingActivity: toFilingActivity(activity),
       filingFlags: toFilingFlags(audit),
+      themePercentiles: toThemePercentiles(themes),
       rows: peers.distRows(symbol),
       extras: peers.peerExtras(symbol),
-      themePercentiles: peers.CO_THEME_PCT,
       geographicMix: proto.GEO_MIX,
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
       subCounts: proto.SUB_COUNTS,
@@ -4857,7 +4927,7 @@ export interface CompanyPeerRelative {
   filingFlags: ReturnType<typeof toFilingFlags>;
   rows: ReturnType<typeof peers.distRows>;
   extras: ReturnType<typeof peers.peerExtras>;
-  themePercentiles: typeof peers.CO_THEME_PCT;
+  themePercentiles: ReturnType<typeof toThemePercentiles>;
   geographicMix: typeof proto.GEO_MIX;
   subCounts: typeof proto.SUB_COUNTS;
   basePeerCount: number;

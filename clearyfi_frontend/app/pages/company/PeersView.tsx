@@ -14,7 +14,7 @@
  * filer and the whole page recomputes.
  */
 import { useState } from "react";
-import { SECTOR_NAMES, THEMES } from "../../data/sector-catalog";
+import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
@@ -173,7 +173,6 @@ export function PeersView() {
   // cannot both claim the same id.
   const [openSpark, setOpenSpark] = useState<string | null>(null);
 
-  const subActive = sel.subIdx >= 0;
 
   /*
    * Two reads, and the SECOND is shared with the Company hub. `companyIdentity` is what supplies
@@ -196,7 +195,7 @@ export function PeersView() {
 
   const rows = peerRead.data.rows;
   const X = peerRead.data.extras;
-  const CO_THEME_PCT = peerRead.data.themePercentiles;
+  const tp = peerRead.data.themePercentiles;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
   const mix = peerRead.data.segmentMix;
@@ -229,30 +228,38 @@ export function PeersView() {
       <div className="px-split">
         {/* ---------------------------------------------------------------- sticky rail */}
         <div className="px-rail">
-          <div className="hub-label">Percentile vs peers</div>
-          {THEMES.map((t) => (
-            <div className="px-pct" key={t.id}>
-              <div className="px-pct-head">
-                <span className="px-pct-name">{t.name}</span>
-                <span className="px-pct-label">P{CO_THEME_PCT[t.id]}</span>
-              </div>
-              <div className="px-pct-track">
-                <div style={{ width: `${CO_THEME_PCT[t.id]}%` }} />
-              </div>
-            </div>
-          ))}
-          <div className="px-rank">
-            <div className="hub-label no-mb">Composite rank</div>
-            <button
-              type="button"
-              className="px-rank-v"
-              onClick={() => sel.set({ decomp: sel.decomp === "prof" ? null : "prof", expanded: "prof" })}
-              title="Open the decomposition"
-            >
-              {subActive ? `4 / ${peerRead.data.subCounts[sel.subIdx]}` : "5 / 62"}
-            </button>
-            <div className="px-rank-move">↑ up 3 spots QoQ</div>
+          <div className="hub-label">
+            Percentile vs peers{tp.peers ? ` · ${tp.peers}` : ""}
           </div>
+          {/* Rendered from the API's OWN theme list, including the two it cannot score. Dropping
+              those would leave a rail of five that looks complete; showing them unscored is the
+              difference between "we did not ask" and "we asked and the signal is not filed". */}
+          {tp.ok ? (
+            tp.themes.map((t) => (
+              <div className="px-pct" key={t.key}>
+                <div className="px-pct-head">
+                  <span className="px-pct-name">{t.label}</span>
+                  <span className={`px-pct-label${t.scored ? "" : " is-soft"}`} title={t.reason ?? ""}>
+                    {t.label_pct}
+                  </span>
+                </div>
+                {/* No track where there is no percentile: a zero-width bar beside "not scored"
+                    reads as a real bottom-of-the-group placing. */}
+                {t.scored && t.pct !== null ? (
+                  <div className="px-pct-track">
+                    <div style={{ width: `${t.pct}%` }} />
+                  </div>
+                ) : null}
+                {t.coverage ? <div className="hub-note">{t.coverage}</div> : null}
+              </div>
+            ))
+          ) : (
+            <StateBlock variant="empty" copy={tp.note ?? ""} />
+          )}
+          {/* Composite rank is NOT drawn. It was the literal string "5 / 62" with "↑ up 3 spots
+              QoQ" beneath it — a rank across peers we do not compute, and a quarter-on-quarter
+              move we do not store. Ranking the composite needs every peer's composite, which is
+              a batch that does not exist; until it does this stays absent rather than invented. */}
         </div>
 
         {/* ---------------------------------------------------------------- content */}
