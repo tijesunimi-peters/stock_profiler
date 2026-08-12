@@ -42,7 +42,7 @@ const holdings = trades.filter(r => r.is_holding).length;
 const deriv = trades.filter(r => !r.is_holding && r.is_derivative === true).length;
 
 await p.goto(`http://localhost:${PORT}/company/${TK}/insider?focal=${TK}`,{waitUntil:"networkidle0"});
-await p.waitForFunction(()=>!!document.querySelector(".ia-tiles, .ds-state"),{timeout:90000});
+await p.waitForFunction(()=>!!document.querySelector(".ia-tiles, .state"),{timeout:90000});
 await new Promise(r=>setTimeout(r,1200));
 const txt = await p.evaluate(()=>(document.body.innerText||"").replace(/\s+/g," "));
 

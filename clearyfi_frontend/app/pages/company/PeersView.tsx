@@ -197,11 +197,11 @@ export function PeersView() {
   const rows = peerRead.data.rows;
   const X = peerRead.data.extras;
   const CO_THEME_PCT = peerRead.data.themePercentiles;
-  const RECENT_FILINGS = peerRead.data.recentFilings;
-  const flags = peerRead.data.flags;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
   const mix = peerRead.data.segmentMix;
+  const act = peerRead.data.filingActivity;
+  const fflags = peerRead.data.filingFlags;
   /*
    * Picking a peer NAVIGATES rather than setting state. The path names the registrant and the
    * path wins (see `SelectionProvider`), so writing `?focal=` alone would change the query,
@@ -372,29 +372,60 @@ export function PeersView() {
             )}
           </div>
 
-          {/* filing history & flags */}
+          {/* Filing activity & flags — the FORM MIX over the indexed window, not a list of
+              recent filings. The index carries form, date and 8-K item codes; a per-filing
+              description is not in it, and the prototype's list was written rather than read.
+              What a filer files, and how often, is a real and comparable fact about how it
+              talks to the market. */}
           <div className="p-card hub-mt-lg">
             <div className="hub-panel-head is-split">
-              <span className="hub-panel-title">Filing history &amp; flags</span>
+              <span className="hub-panel-title">Filing activity &amp; flags</span>
               <div className="px-flags">
-                {flags.map((f) => (
+                {fflags.chips.map((c) => (
                   <span
-                    key={f.label}
+                    key={c.label}
                     className="qual-chip"
-                    style={{ color: f.color, background: f.bg, borderColor: f.border }}
+                    style={
+                      c.kind === "event"
+                        ? {
+                            color: "var(--ext-color)",
+                            background: "var(--ext-bg)",
+                            borderColor: "var(--ext-border)",
+                          }
+                        : {
+                            color: "var(--ink-soft)",
+                            background: "transparent",
+                            borderColor: "var(--border-strong)",
+                          }
+                    }
                   >
-                    {f.label}
+                    {c.label}
                   </span>
                 ))}
               </div>
             </div>
-            {RECENT_FILINGS.map((f) => (
-              <div className="px-filing-row" key={`${f.form}${f.date}${f.desc}`}>
-                <span className="px-filing-form">{f.form}</span>
-                <span className="px-filing-desc">{f.desc}</span>
-                <span className="hub-cell-mono ta-r is-soft">{f.date}</span>
-              </div>
-            ))}
+            {act.ok ? (
+              <>
+                <div className="hub-label">
+                  {act.indexed} filings indexed · {act.window}
+                </div>
+                {act.forms.map((f) => (
+                  <div className="px-filing-row" key={f.form}>
+                    <span className="px-filing-form">{f.form}</span>
+                    <span className="px-filing-desc" />
+                    <span className="hub-cell-mono ta-r is-soft">{f.count}</span>
+                  </div>
+                ))}
+                {act.formsRest ? <div className="hub-note">{act.formsRest}</div> : null}
+                <div className="hub-note">
+                  {act.amended} of them are amendments ({act.amendedPct}) — an amendment may be a
+                  correction or a routine refiling, and the index cannot tell them apart.
+                </div>
+              </>
+            ) : (
+              <StateBlock variant="empty" copy={act.reason} />
+            )}
+            <div className="hub-note">{fflags.note}</div>
           </div>
 
           {/* ---------------------------------------------------------------- beyond */}

@@ -20,7 +20,7 @@ const s=createServer(async(rq,rs)=>{const u=new URL(rq.url,`http://localhost:${P
   rs.writeHead(200,{"content-type":MIME[extname(f)]??"application/octet-stream"});rs.end(await readFile(f));});
 await new Promise(r=>s.listen(PORT,r));
 const g=(p)=>fetch(API+p,{headers:H}).then(r=>r.json());
-const b=await puppeteer.launch({args:["--no-sandbox","--disable-dev-shm-usage"]});
+const b=await puppeteer.launch({args:["--no-sandbox","--disable-dev-shm-usage"],protocolTimeout:420000});
 const p=await b.newPage(); await p.setViewport({width:1440,height:2600});
 let pass=0,fail=0;
 const ck=(n,ok,d="")=>{ok?(pass++,console.log(`  ✓ ${n}`)):(fail++,console.error(`  ✗ ${n}${d?` — ${d}`:""}`));};
@@ -29,7 +29,7 @@ for (const TK of (process.env.TICKERS||"AAPL").split(",")) {
 console.log(`\n── ${TK} ──`);
 const seg = await g(`/v1/companies/${TK}/segments`);
 await p.goto(`http://localhost:${PORT}/company/${TK}/peers?focal=${TK}`,{waitUntil:"networkidle0"});
-await p.waitForFunction(()=>!!document.querySelector(".px-mix, .ds-state"),{timeout:90000});
+await p.waitForFunction(()=>!!document.querySelector(".px-mix, .state"),{timeout:240000});
 await new Promise(r=>setTimeout(r,1200));
 const txt = await p.evaluate(()=>(document.body.innerText||"").replace(/\s+/g," "));
 
@@ -64,6 +64,41 @@ if (seg.status === "ok") {
   ck("C1 no segment facts reads as an absence in the tagging, not one segment",
      /absence in the tagged data|no ASC 280/i.test(txt));
 }
+
+/* ---- Filing activity & flags: the FORM MIX, not a written list of recent filings ---- */
+const act = await g(`/v1/companies/${TK}/filing-activity`);
+const aud = await g(`/v1/companies/${TK}/audit`);
+if (act.status === "ok") {
+  const top = act.forms[0];
+  ck(`C5 top form's count on screen (${top.form} ${top.count})`,
+     txt.includes(String(top.count)), `api=${top.form}:${top.count}`);
+  /* C6 the indexed window travels with the counts — a count without it compares a decade
+     against a year */
+  ck(`C6 the indexed filing count is stated (${act.indexed_filings})`,
+     txt.includes(String(act.indexed_filings)), `api=${act.indexed_filings}`);
+  /* C7 amendments are a RATE, never a quality score */
+  ck("C7 amendment rate is qualified as not-a-judgement",
+     /correction or a routine refiling/i.test(txt));
+}
+
+/* C8 no fabricated regulatory flag survives. "material weakness" is the Item 9A conclusion,
+   which is prose we do not parse — /audit returns icfr.status "na" — so it must never appear;
+   and nothing may assert "timely filer", which the old panel did for every company. */
+ck("C8 no unsourceable 'material weakness' or blanket 'timely filer' claim",
+   !/material weakness/i.test(txt) && !/timely filer/i.test(txt));
+
+/* C9 flags match the filing index */
+const ev = aud.audit_events ?? {};
+const n402 = (ev.events ?? []).filter(e => e.item === "4.02").length;
+const n401 = (ev.events ?? []).filter(e => e.item === "4.01").length;
+const nLate = (ev.late_filings ?? []).length;
+ck(`C9 flags reflect the index (4.02=${n402} 4.01=${n401} 12b-25=${nLate})`,
+   (n402 + n401 + nLate) === 0
+     ? /No Item 4.02 restatement/i.test(txt)
+     : (n402 ? /non-reliance 8-K/i.test(txt) : true)
+       && (n401 ? /auditor change/i.test(txt) : true)
+       && (nLate ? /late-filing notice/i.test(txt) : true),
+   `events=${JSON.stringify((ev.events||[]).map(e=>e.item))}`);
 }
 console.log(`\n${pass} passed, ${fail} failed`);
 await b.close(); s.close();

@@ -665,6 +665,67 @@ interface SegmentsResponse {
 }
 
 /**
+ * §Peer-relative's "Filing history & flags" chips.
+ *
+ * **What these replaced matters more than what they are.** `companyFlags` invented
+ * "restatement" and "material weakness" from a ticker seed, and asserted "timely filer" for
+ * EVERY company unconditionally. All three are regulatory claims about a real filer, and two of
+ * them were coin flips.
+ *
+ * What can be sourced, from the SAME filing index §06 reads:
+ *   - a restatement is an 8-K **Item 4.02** (non-reliance on previously issued statements),
+ *   - an auditor change is **Item 4.01**,
+ *   - a late filing is a **12b-25**.
+ *
+ * **"Material weakness" is NOT here and cannot be.** Whether internal control was effective is
+ * the Item 9A conclusion, which is prose — `/audit` returns `icfr.status = "na"` saying exactly
+ * that. A flag we cannot source does not get a quieter colour; it gets left out.
+ *
+ * And nothing claims "timely filer". The honest form of that is "no 12b-25 among the filings we
+ * indexed, which run from X to Y" — an absence over a WINDOW, which is what the empty state says.
+ */
+function toFilingFlags(res: AuditResponse | null) {
+  const ev = res?.audit_events;
+  if (!ev || ev.status !== "ok") {
+    return {
+      ok: false as const,
+      chips: [] as { label: string; kind: "event" | "quiet" }[],
+      note:
+        "This company's filing index has not been read, so no restatement, auditor change or "
+        + "late filing has been checked for — which is not the same as finding none.",
+    };
+  }
+
+  const chips: { label: string; kind: "event" | "quiet" }[] = [];
+  const restatements = (ev.events ?? []).filter((e) => e.item === "4.02");
+  const auditorChanges = (ev.events ?? []).filter((e) => e.item === "4.01");
+  if (restatements.length) {
+    chips.push({ label: plural(restatements.length, "non-reliance 8-K"), kind: "event" });
+  }
+  if (auditorChanges.length) {
+    chips.push({ label: plural(auditorChanges.length, "auditor change"), kind: "event" });
+  }
+  if ((ev.late_filings ?? []).length) {
+    chips.push({ label: plural(ev.late_filings.length, "late-filing notice"), kind: "event" });
+  }
+
+  const span =
+    ev.covered_from && ev.covered_to
+      ? `${humanDate(ev.covered_from)} – ${humanDate(ev.covered_to)}`
+      : "the indexed window";
+  return {
+    ok: true as const,
+    chips,
+    note: chips.length
+      ? `Item 4.01, 4.02 and 12b-25 filings among the ${ev.indexed_filings ?? 0} filings indexed for `
+        + `this company, ${span}. An item code says an event was REPORTED, never what it said.`
+      : `No Item 4.02 restatement, Item 4.01 auditor change or 12b-25 late-filing notice among `
+        + `the ${ev.indexed_filings ?? 0} filings indexed for this company, ${span}. That is an `
+        + `absence over that window, not over the company's history.`,
+  };
+}
+
+/**
  * §Peer-relative's "Segment & geographic mix" — the two stacked bars, from the SAME ASC 280
  * response §03 reads.
  *
@@ -4323,15 +4384,19 @@ export const api = {
     // §Segment & geographic mix is REAL (2026-08-12); every other surface on this view is still
     // the prototype's. Ported one panel at a time, the same way §01-§06 of the institutional
     // view were, so each lands with its own verification instead of one unreviewable sweep.
-    const segments = await getJson<SegmentsResponse>(
-      `/v1/companies/${enc}/segments`,
-    ).catch(() => null);
+    const [segments, activity, audit] = await Promise.all([
+      getJson<SegmentsResponse>(`/v1/companies/${enc}/segments`).catch(() => null),
+      getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
+      getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+    ]);
     return {
       segmentMix: toSegmentMix(segments),
+      // Reuses §Filings' adapter rather than a second one, so the two cards cannot disagree
+      // about a filer's form mix or about what their caps dropped.
+      filingActivity: toFilingActivity(activity),
+      filingFlags: toFilingFlags(audit),
       rows: peers.distRows(symbol),
       extras: peers.peerExtras(symbol),
-      flags: peers.companyFlags(symbol),
-      recentFilings: peers.RECENT_FILINGS,
       themePercentiles: peers.CO_THEME_PCT,
       geographicMix: proto.GEO_MIX,
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
@@ -4788,10 +4853,10 @@ export interface CompanyInsiderActivity {
 
 export interface CompanyPeerRelative {
   segmentMix: ReturnType<typeof toSegmentMix>;
+  filingActivity: ReturnType<typeof toFilingActivity>;
+  filingFlags: ReturnType<typeof toFilingFlags>;
   rows: ReturnType<typeof peers.distRows>;
   extras: ReturnType<typeof peers.peerExtras>;
-  flags: ReturnType<typeof peers.companyFlags>;
-  recentFilings: typeof peers.RECENT_FILINGS;
   themePercentiles: typeof peers.CO_THEME_PCT;
   geographicMix: typeof proto.GEO_MIX;
   subCounts: typeof proto.SUB_COUNTS;
