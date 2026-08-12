@@ -5,7 +5,15 @@ every period it can resolve, serializing the results so the analytical peer-rank
 (`analytical/peer_ranks.py`) has a flat cross-company table to aggregate. Pure/no-network: it
 only reads `raw_facts` and writes `metric_values`.
 
-Run: `python -m secfin.ingest.metrics_backfill [--limit N]`
+**Resuming an interrupted run (`--start-after`):** this job has no "already done" state of its
+own -- `metric_values` is written by earlier runs too, so "has rows" cannot distinguish a CIK
+this run finished from one it never reached. The walk is SORTED and ascending, which is the only
+reason a single CIK can stand in for "everything below here is done". A whole-market pass is
+~5.4 hours (16,920 CIKs at ~1.15s each, measured 2026-08-12), so restarting from zero after an
+interruption costs most of a working day; `backfill_restart.md` called this out after the power
+cut and this is that fix.
+
+Run: `python -m secfin.ingest.metrics_backfill [--limit N] [--start-after CIK]`
 """
 
 from __future__ import annotations
@@ -47,13 +55,27 @@ def _rows_for_cik(fact_repo: RawFactRepository, cik: int) -> list[MetricValueRow
     return rows
 
 
-def run_metrics_backfill(db_path: str, limit: int | None = None) -> None:
+def run_metrics_backfill(
+    db_path: str, limit: int | None = None, start_after: int | None = None
+) -> None:
     fact_repo = SQLiteRawFactRepository(db_path)
     value_repo = SQLiteMetricValueRepository(db_path)
     try:
         ciks = sorted(fact_repo.all_ciks())
         if limit is not None:
             ciks = ciks[:limit]
+        # AFTER --limit, so the two compose the way an operator reads them: "the first N CIKs,
+        # resuming partway through that same set". Applying it first would silently change which
+        # companies a --limit run covers.
+        if start_after is not None:
+            total = len(ciks)
+            ciks = [c for c in ciks if c > start_after]
+            logger.info(
+                "metrics backfill: resuming after CIK %d -- %d of %d skipped",
+                start_after,
+                total - len(ciks),
+                total,
+            )
         logger.info("metrics backfill: %d CIKs", len(ciks))
         total = 0
         for i, cik in enumerate(ciks, start=1):
@@ -73,13 +95,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
         description="Materialize per-company metric values from raw_facts (no network)."
     )
     p.add_argument("--limit", type=int, default=None, help="Only process the first N CIKs")
+    p.add_argument(
+        "--start-after",
+        type=int,
+        default=None,
+        metavar="CIK",
+        help=(
+            "Skip every candidate CIK <= this one. The walk is sorted ascending, so one CIK "
+            "stands in for 'everything below here is done'. Take the value from the DATA, not "
+            "from a progress line: re-running a CIK is an idempotent upsert, so erring LOW is "
+            "free, while erring high silently skips companies."
+        ),
+    )
+    p.add_argument("--db-path", default=settings.secfin_db_path)
     return p
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    args = build_arg_parser().parse_args()
-    run_metrics_backfill(settings.secfin_db_path, limit=args.limit)
+    args = build_arg_parser().parse_args(argv)
+    run_metrics_backfill(args.db_path, limit=args.limit, start_after=args.start_after)
 
 
 if __name__ == "__main__":
