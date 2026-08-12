@@ -392,7 +392,7 @@ export function peerExtras(F: string): PeerExtras {
 
 /** The five "beyond the financials" groups, in rail order. */
 export const PX_GROUPS = [
-  { key: "disclosure", label: "Disclosure behavior", id: "p1", n: "01", src: "filing metadata and footnote text — nothing here is a financial result" },
+  { key: "disclosure", label: "Disclosure behavior", id: "p1", n: "01", src: "filing metadata only — dates, forms and item codes, never a document's contents" },
   { key: "accounting", label: "Accounting choices", id: "p2", n: "02", src: "same GAAP, different elections" },
   { key: "governance", label: "Governance & people", id: "p3", n: "03", src: "proxy tables, auditor reports and Section 16 filings" },
   { key: "ownership", label: "Ownership shape", id: "p4", n: "04", src: "the same register measures, peer by peer" },

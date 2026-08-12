@@ -835,6 +835,169 @@ function toSparkline(
   };
 }
 
+interface DisclosureStatsResponse {
+  status: string;
+  reason: string | null;
+  peer_group: string | null;
+  group_company_count: number;
+  indexed_filings: number;
+  indexed_from: string | null;
+  indexed_to: string | null;
+  measures: {
+    key: string; label: string; unit: string; value: number | null;
+    peers: { cik: number; value: number }[];
+    peer_count: number;
+    quantiles: { min: number; p25: number; median: number; p75: number; max: number } | null;
+    note: string;
+  }[];
+}
+
+export interface BeyondRow {
+  key: string;
+  label: string;
+  /** False when nothing can be shown. `reason` then says why, in the filing's terms. */
+  available: boolean;
+  valueLabel: string;
+  peers: { id: string; label: string; value: number }[];
+  quantiles: { lo: number; hi: number; q1: number; med: number; q3: number } | null;
+  focalVal: number | null;
+  note: string;
+  reason: string | null;
+}
+
+/**
+ * §Peer-relative's "Beyond the financials" — five groups, and what each can honestly hold.
+ *
+ * `peerExtras` generated all of it from a twelve-ticker seed: filing lags, amendment counts,
+ * risk-factor word counts, audit fees, auditor tenure, re-segmentation events. Several of those
+ * describe things this product does not read at all.
+ *
+ * What the filing INDEX supports, and now does, with real peer distributions across the whole
+ * SIC group: filing lag, amendment rate, 12b-25 notices, Item 4.02 non-reliance. That needed a
+ * market-wide index — `--all-issuers` had never run (it sliced a set), so before this the group
+ * held 5 of 231 companies and any "distribution" would have been four other filers.
+ *
+ * What is FOCAL-ONLY, because the source is a 1.4-14.9 MB instance parsed once per company and
+ * the group is 2 of 231: the XBRL extension share, and the auditor floor. Shown as this filer's
+ * own figure with no strip, because a distribution over two companies is not one.
+ *
+ * What is NOT SOURCEABLE, and says so per row rather than disappearing: risk-factor and tax
+ * footnote word counts (Item 1A / the tax footnote are free text — Track 2), audit fees (the
+ * DEF 14A fee table is not parsed), critical audit matters (the auditor's narrative),
+ * re-segmentations (diffing a footnote across filings), and the ownership / obligations groups,
+ * whose signals live on the Institutional and Insider views rather than here.
+ */
+function toBeyondGroups(
+  stats: DisclosureStatsResponse | null,
+  audit: AuditResponse | null,
+  segments: SegmentsResponse | null,
+): { note: string; groups: Record<string, BeyondRow[]> } {
+  const dead = (key: string, label: string, reason: string): BeyondRow => ({
+    key, label, available: false, valueLabel: "not available", peers: [],
+    quantiles: null, focalVal: null, note: "", reason,
+  });
+
+  const fmt = (v: number, unit: string) =>
+    unit === "days" ? `${Math.round(v)}d` : unit === "percent" ? `${v.toFixed(1)}%` : String(Math.round(v));
+
+  const disclosure: BeyondRow[] = (stats?.status === "ok" ? stats.measures : []).map((m) => ({
+    key: m.key,
+    label: m.label,
+    available: m.value !== null,
+    valueLabel: m.value === null ? "N/A" : fmt(m.value, m.unit),
+    peers: m.peers.map((pp) => ({ id: String(pp.cik), label: `CIK ${pp.cik}`, value: pp.value })),
+    quantiles: m.quantiles
+      ? { lo: m.quantiles.min, hi: m.quantiles.max, q1: m.quantiles.p25,
+          med: m.quantiles.median, q3: m.quantiles.p75 }
+      : null,
+    focalVal: m.value,
+    note: `${m.note} ${m.peer_count} peers with a computable value.`,
+    reason: m.value === null ? "No filing in the indexed window carried both dates." : null,
+  }));
+
+  const ext = audit?.extension_tags;
+  const cont = audit?.auditor_continuity;
+  const segCount = segments?.status === "ok" ? segments.segments.length : null;
+
+  const note =
+      stats?.status === "ok"
+        ? `Peer figures are over each filer's own indexed window; this filer's runs ` +
+          `${stats.indexed_from} to ${stats.indexed_to} across ${stats.indexed_filings} filings. ` +
+          `EDGAR serves a rolling recent list, so those windows differ between companies.`
+        : (stats?.reason ??
+           "Filing-behaviour statistics have not been computed for this company.");
+  const groups: Record<string, BeyondRow[]> = {
+    disclosure: disclosure.length
+      ? disclosure
+      : [dead("filing_lag", "Filing behaviour",
+              "No filing-behaviour statistics have been computed for this company.")],
+    accounting: [
+      ext && ext.status === "ok" && typeof ext.share === "number"
+        ? {
+            key: "ext", label: "Custom XBRL elements", available: true,
+            valueLabel: `${(ext.share * 100).toFixed(1)}%`,
+            // No strip: the extension census needs a per-company instance parse, and the group
+            // holds 2 of 231. A cloud of two dots is not a distribution.
+            peers: [], quantiles: null, focalVal: ext.share * 100,
+            note:
+              `${ext.facts} of ${ext.total_facts} tagged facts use a filer-created element ` +
+              `(${ext.distinct} distinct). Heavy use makes a filer harder to compare, which is ` +
+              `itself the finding. No peer comparison: this needs the filing's XBRL instance ` +
+              `parsed per company, and only a handful in this group have been.`,
+            reason: null,
+          }
+        : dead("ext", "Custom XBRL elements",
+               "This filer's XBRL instance has not been parsed, so its extension share is unknown."),
+      segCount === null
+        ? dead("seg", "Reportable segments",
+               "No ASC 280 segment facts were found for this filer.")
+        : {
+            key: "seg", label: "Reportable segments", available: true,
+            valueLabel: String(segCount), peers: [], quantiles: null, focalVal: segCount,
+            note:
+              "Segment count is the filer's own judgement about how the business is managed, " +
+              "not a fixed taxonomy. No peer comparison: segment facts are ingested for a " +
+              "bounded set of quarters, not market-wide.",
+            reason: null,
+          },
+      dead("rfw", "Risk-factor length",
+           "Item 1A is free text. This product does not parse filing narrative (Track 2)."),
+      dead("txw", "Tax footnote length",
+           "The income-tax footnote is free text. This product does not parse filing narrative."),
+      dead("rsg", "Re-segmentations",
+           "Detecting a re-segmentation means diffing a footnote across filings — narrative, not tagged data."),
+    ],
+    governance: [
+      cont && cont.status === "ok" && cont.years
+        ? {
+            key: "aten", label: "Auditor, floor under tenure", available: true,
+            valueLabel: `${cont.auditor ?? "auditor not reported"} · ≥${cont.years.toFixed(1)}y`,
+            peers: [], quantiles: null, focalVal: cont.years,
+            note:
+              `A FLOOR, never a tenure: the tagged auditor plus the ABSENCE of an 8-K Item 4.01 ` +
+              `across the indexed window (${cont.indexed_from} onward). The real tenure may be ` +
+              `far longer — the window simply does not reach back further.`,
+            reason: null,
+          }
+        : dead("aten", "Auditor, floor under tenure",
+               "The indexed window is too short to put a floor under this filer's auditor tenure."),
+      dead("afr", "Audit fees over revenue",
+           "The DEF 14A audit-fee table is not parsed, so fees are unknown."),
+      dead("cam", "Critical audit matters",
+           "CAMs are the auditor's own narrative in the audit report — free text this product does not parse."),
+    ],
+    ownership: [
+      dead("own", "Ownership shape",
+           "Institutional and Section 16 ownership are reported in full on the Institutional and Insider activity views, against their own filings rather than as peer percentiles."),
+    ],
+    obligations: [
+      dead("obl", "Obligations & structure",
+           "Lease, debt and commitment ladders are reported on the company Overview from the filed footnote tables; no peer distribution is computed for them."),
+    ],
+  };
+  return { note, groups };
+}
+
 interface ThemePercentilesResponse {
   cik: number;
   status: string;
@@ -4629,10 +4792,11 @@ export const api = {
     // §Segment & geographic mix is REAL (2026-08-12); every other surface on this view is still
     // the prototype's. Ported one panel at a time, the same way §01-§06 of the institutional
     // view were, so each lands with its own verification instead of one unreviewable sweep.
-    const [segments, activity, audit, themes] = await Promise.all([
+    const [segments, activity, audit, disclosureStats, themes] = await Promise.all([
       getJson<SegmentsResponse>(`/v1/companies/${enc}/segments`).catch(() => null),
       getJson<FilingActivityResponse>(`/v1/companies/${enc}/filing-activity`).catch(() => null),
       getJson<AuditResponse>(`/v1/companies/${enc}/audit`).catch(() => null),
+      getJson<DisclosureStatsResponse>(`/v1/companies/${enc}/disclosure-stats`).catch(() => null),
       getJson<ThemePercentilesResponse>(
         `/v1/companies/${enc}/theme-percentiles?year=${year}&period=${fiscalPeriod}`,
       ).catch(() => null),
@@ -4683,8 +4847,8 @@ export const api = {
       filingActivity: toFilingActivity(activity),
       filingFlags: toFilingFlags(audit),
       themePercentiles: toThemePercentiles(themes),
+      beyond: toBeyondGroups(disclosureStats, audit, segments),
       distribution: toDistributionRows(themes?.cik ?? null, year, fiscalPeriod, distRows, Math.max(ranked.length - shown.length, 0)),
-      extras: peers.peerExtras(symbol),
       geographicMix: proto.GEO_MIX,
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
       subCounts: proto.SUB_COUNTS,
@@ -5142,8 +5306,8 @@ export interface CompanyPeerRelative {
   segmentMix: ReturnType<typeof toSegmentMix>;
   filingActivity: ReturnType<typeof toFilingActivity>;
   filingFlags: ReturnType<typeof toFilingFlags>;
-  extras: ReturnType<typeof peers.peerExtras>;
   themePercentiles: ReturnType<typeof toThemePercentiles>;
+  beyond: ReturnType<typeof toBeyondGroups>;
   distribution: ReturnType<typeof toDistributionRows>;
   geographicMix: typeof proto.GEO_MIX;
   subCounts: typeof proto.SUB_COUNTS;

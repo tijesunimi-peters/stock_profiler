@@ -65,6 +65,49 @@ if (seg.status === "ok") {
      /absence in the tagged data|no ASC 280/i.test(txt));
 }
 
+/* ---- Beyond the financials: real where the index supports it, named where it does not ---- */
+const ds = await g(`/v1/companies/${TK}/disclosure-stats`);
+await p.evaluate(() => {
+  // Open the first "beyond" group.
+  const a = [...document.querySelectorAll("a,button")].find(e => /disclosure behaviou?r/i.test(e.textContent||""));
+  if (a) a.dispatchEvent(new MouseEvent("click", {bubbles:true, view:window}));
+});
+await new Promise(r => setTimeout(r, 900));
+const beyond = await p.evaluate(() =>
+  ([...document.querySelectorAll(".p-card")].map(e=>e.innerText).join(" ")).replace(/\s+/g," "));
+
+if (ds.status === "ok") {
+  const lag = ds.measures.find(m => m.key === "filing_lag");
+  /* C22 the focal filing lag is on screen, from the index */
+  ck(`C22 filing lag on screen (${Math.round(lag.value)}d, ${lag.peer_count} peers)`,
+     beyond.includes(`${Math.round(lag.value)}d`), `api=${lag.value}`);
+  /* C23 the peer strip is drawn over the WHOLE group, not the handful the cache-aside path
+     happened to index — this is what --all-issuers unblocked */
+  ck(`C23 lag compares against the real group (${lag.peer_count} of ${ds.group_company_count})`,
+     lag.peer_count > 50, `peers=${lag.peer_count} group=${ds.group_company_count}`);
+  /* C24 the indexed window travels with the numbers */
+  // The window note sits ABOVE the group card, so it is asserted against the page, not the card.
+  const page = await p.evaluate(() => (document.body.innerText||"").replace(/\s+/g," "));
+  ck(`C24 the filer's indexed window is stated (${ds.indexed_from}..${ds.indexed_to})`,
+     page.includes(ds.indexed_from) && page.includes(ds.indexed_to));
+  /* C24b the group header must not claim we read documents */
+  ck("C24b the disclosure group says metadata only, not footnote text",
+     !/footnote text/i.test(page));
+}
+/* C25 rows that cannot be sourced NAME why rather than vanishing */
+await p.evaluate(() => {
+  const a = [...document.querySelectorAll("a,button")].find(e => /accounting choices/i.test(e.textContent||""));
+  if (a) a.dispatchEvent(new MouseEvent("click", {bubbles:true, view:window}));
+});
+await new Promise(r => setTimeout(r, 900));
+const acct = await p.evaluate(() =>
+  ([...document.querySelectorAll(".p-card")].map(e=>e.innerText).join(" ")).replace(/\s+/g," "));
+ck("C25 unsourceable rows stay visible and say why",
+   /Risk-factor length/i.test(acct) && /free text/i.test(acct) && /not available/i.test(acct));
+/* C26 no fabricated audit fee or word count survives */
+ck("C26 no invented audit-fee or word-count figure",
+   !/\d+\s*bps/i.test(acct) && !/\b\d{4,5}\s*words?\b/i.test(acct));
+
 /* ---- Filing activity & flags: the FORM MIX, not a written list of recent filings ---- */
 const act = await g(`/v1/companies/${TK}/filing-activity`);
 const aud = await g(`/v1/companies/${TK}/audit`);

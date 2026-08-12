@@ -15,7 +15,8 @@
  */
 import { useState } from "react";
 import { SECTOR_NAMES } from "../../data/sector-catalog";
-import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
+import { PX_GROUPS } from "../../data/hub-catalog";
+import type { BeyondRow } from "../../data/api";
 import { api, fmtMetric } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
@@ -24,143 +25,9 @@ import { SeriesChart, Sparkline } from "../../charts/series";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
-const Q_LABELS = ["−7", "−6", "−5", "−4", "−3", "−2", "−1", "now"];
-const LADDER_COLORS = ["var(--accent)", "var(--gaap-color)", "#A88C5F", "var(--border-strong)"];
 
-/**
- * The presence grid: which filers disclose which item.
- *
- * A filled cell means the item appears, nothing more — no ramp, because there is no magnitude.
- * The column floor is derived from the widest header token so labels never wrap, and the grid
- * scrolls sideways rather than compressing to illegibility.
- */
-function Presence({ table }: { table: PresenceTable }) {
-  const longest = Math.max(...table.cols.map((c) => c.length));
-  const minCol = Math.max(30, Math.ceil(longest * 5.4) + 8);
-  const grid = `72px repeat(${table.cols.length}, minmax(${minCol}px, 1fr))`;
-  const minWidth = 72 + table.cols.length * (minCol + 4);
-  return (
-    <div>
-      <div className="px-legend">
-        <span>
-          <i className="px-key is-on" />
-          disclosed
-        </span>
-        <span>
-          <i className="px-key" />
-          not disclosed
-        </span>
-        <span>focal filer in the first row</span>
-      </div>
-      <div className="px-scrollcue">
-        {table.cols.length} columns · scroll sideways for the rest →
-      </div>
-      <div className="px-scroll">
-        <div style={{ minWidth }}>
-          <div className="px-matrix-head" style={{ gridTemplateColumns: grid }}>
-            <span />
-            {table.cols.map((c) => (
-              <span key={c} title={c}>
-                {c}
-              </span>
-            ))}
-          </div>
-          {table.rows.map((r) => (
-            <div
-              className={`px-matrix-row${r.focal ? " is-focal" : ""}`}
-              key={r.label}
-              style={{ gridTemplateColumns: grid }}
-            >
-              <span className="px-matrix-label">{r.label}</span>
-              {r.cells.map((v, ci) => (
-                <span
-                  key={table.cols[ci]}
-                  className={`px-cell${v ? " is-on" : ""}`}
-                  title={`${table.cols[ci]} · ${v ? "disclosed" : "not disclosed"}`}
-                />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="hub-note">{table.note}</div>
-    </div>
-  );
-}
 
-/** One "beyond the financials" row: value, sparkline, peer cloud, and the source it came from. */
-function PxRow({
-  r, focal, open, onToggle, onPick,
-}: {
-  r: PeerXRow;
-  focal: string;
-  open: boolean;
-  onToggle: () => void;
-  onPick: (id: string) => void;
-}) {
-  return (
-    <div className="px-row">
-      <div className="px-row-head">
-        <span className="px-row-id">
-          <span className="px-row-name">{r.name}</span>
-          <span className="px-row-src">{r.src}</span>
-        </span>
-        <span className="px-row-right">
-          <button type="button" className="px-spark" onClick={onToggle} aria-expanded={open}>
-            <Sparkline points={r.spk.map((v, i) => ({ period: String(i), value: v }))} height={18} />
-            <span className="px-trend-label">{r.trendLabel}</span>
-          </button>
-          <span className="px-value">{r.valueLabel}</span>
-        </span>
-      </div>
-      <PeerStrip
-        variant="cloud"
-        peers={r.vals.filter((v) => v.ticker !== focal).map((v) => ({ id: v.ticker, label: v.ticker, value: v.val }))}
-        marks={[{ id: "foc", label: focal, value: r.focalVal, kind: "focal" }]}
-        quantiles={{ lo: r.min, hi: r.max, q1: r.q1, q3: r.q3, med: r.med }}
-        format={r.fmt}
-        axisLabels={false}
-        onPick={onPick}
-        label={`${r.name} across the peer set`}
-      />
-      <div className="hub-note">{r.note}</div>
-      {open && (
-        <div className="px-trend">
-          <div className="hub-label">Trailing eight quarters</div>
-          <SeriesChart
-            series={[
-              { id: r.id, label: r.name, kind: "focal", points: r.spk.map((v, i) => ({ period: Q_LABELS[i], value: v })) },
-            ]}
-            format={r.fmt}
-            height={150}
-            label={`${r.name} over eight quarters`}
-          />
-          <div className="px-trend-caption">{r.trendCaption}</div>
-        </div>
-      )}
-    </div>
-  );
-}
 
-/** The three accounting-election mixes share one row shape. */
-function MixRows({ rows }: { rows: { k: string; n: string; w: string; focal: boolean }[] }) {
-  return (
-    <>
-      {rows.map((m) => (
-        <div className="px-mix-row" key={m.k}>
-          <span className="px-mix-label">
-            {m.focal && <span className="px-thisfiler">this filer</span>}
-            <span>{m.k}</span>
-          </span>
-          <span className="px-mix-track">
-            <span style={{ width: m.w }} />
-          </span>
-          <span className="px-mix-n">{m.n}</span>
-        </div>
-      ))}
-    </>
-  );
-}
 
 /* Same fiscal key as the hub — see the note in HubOverview.tsx. */
 const PX_YEAR = 2026;
@@ -193,11 +60,10 @@ export function PeersView() {
     return <StateBlock variant="loading" copy="Reading this filer's peer set." />;
   }
 
-  const X = peerRead.data.extras;
+  const beyond = peerRead.data.beyond;
   const tp = peerRead.data.themePercentiles;
   const dist = peerRead.data.distribution;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
-  const groupRows: PeerXRow[] = X[group.key];
   const mix = peerRead.data.segmentMix;
   const act = peerRead.data.filingActivity;
   const fflags = peerRead.data.filingFlags;
@@ -456,7 +322,7 @@ export function PeersView() {
               obligations
             </span>
           </div>
-          <div className="hub-note">{X.peerNote}</div>
+          <div className="hub-note">{beyond.note}</div>
 
           <div className="p-card hub-mt-lg" id={group.id}>
             <div className="px-group-head">
@@ -465,121 +331,35 @@ export function PeersView() {
               <span className="hub-hint">{group.src}</span>
             </div>
 
-            {groupRows.map((r) => (
-              <PxRow
-                key={r.id}
-                r={r}
-                focal={T}
-                open={openSpark === `px:${r.id}`}
-                onToggle={() => setOpenSpark(openSpark === `px:${r.id}` ? null : `px:${r.id}`)}
-                onPick={pick}
-              />
-            ))}
-
-            {group.key === "accounting" && (
-              <>
-                <div className="px-sub">Non-GAAP adjustment breadth · which items each filer excludes</div>
-                <Presence table={X.nonGaap} />
-                <div className="px-sub">Effective-tax-rate drivers named</div>
-                <Presence table={X.taxDrivers} />
-                <div className="px-sub">Inventory costing · how many peers use each method</div>
-                <MixRows rows={X.inventory.rows} />
-                <div className="px-sub">Revenue disaggregation axis chosen</div>
-                <MixRows rows={X.revenue.rows} />
-                <div className="px-sub">Internal-use software policy</div>
-                <MixRows rows={X.software.rows} />
-                <div className="hub-note">
-                  Methods and axes are elections disclosed in the significant-accounting-policies
-                  footnote. A minority choice is not a worse choice — it makes the filer less
-                  directly comparable.
-                </div>
-              </>
-            )}
-
-            {group.key === "governance" && (
-              <>
-                <div className="px-sub">Critical audit matter topics across the peer set</div>
-                <Presence table={X.camTopics} />
-              </>
-            )}
-
-            {group.key === "ownership" && (
-              <>
-                <div className="px-sub">Shared-holder concentration across the peer set</div>
-                <div className="px-shared-head">
-                  <span className="px-shared-pct">{X.shared.pct}</span>
-                  <span className="hub-hint">
-                    of the peer set’s combined 13F-reported holdings sits with these ten managers
+            {/* A row either has a real figure or names why it has none. Nothing is dropped:
+                a panel that quietly stops asking a question reads as a panel with fewer
+                questions, not as one that could not answer them. */}
+            {(beyond.groups[group.key] ?? []).map((r: BeyondRow) => (
+              <div className="px-dist-row" key={r.key}>
+                <div className="px-dist-head">
+                  <span className="px-dist-name">
+                    <span>{r.label}</span>
+                  </span>
+                  <span className="px-row-right">
+                    <span className={`px-value${r.available ? "" : " is-soft"}`}>
+                      {r.valueLabel}
+                    </span>
                   </span>
                 </div>
-                {X.shared.managers.map((m) => (
-                  <div className="px-shared-row" key={m.name}>
-                    <span className="px-shared-name">{m.name}</span>
-                    <span className="px-mix-track">
-                      <span style={{ width: m.w }} />
-                    </span>
-                    <span className="hub-cell-mono ta-r">{m.pct}</span>
-                  </div>
-                ))}
-                <div className="hub-note">{X.shared.note}</div>
-              </>
-            )}
-
-            {group.key === "obligations" && (
-              <>
-                <div className="px-sub">Maturity-ladder shape · share of total principal by bucket</div>
-                <div className="px-legend">
-                  {X.ladderLabels.map((l, i) => (
-                    <span key={l}>
-                      <i className="px-key is-solid" style={{ background: LADDER_COLORS[i] }} />
-                      {l}
-                    </span>
-                  ))}
-                </div>
-                <div className="px-ladders">
-                  {X.ladder.map((row) => (
-                    <div className="px-ladder-row" key={row.ticker}>
-                      <span className={`px-ladder-tk${row.focal ? " is-focal" : ""}`}>{row.ticker}</span>
-                      <span className={`px-ladder-bar${row.focal ? " is-focal" : ""}`}>
-                        {row.segs.map((s, j) => (
-                          <span
-                            key={row.labels[j]}
-                            title={`${row.labels[j]} · ${s}%`}
-                            style={{ width: `${s}%`, background: LADDER_COLORS[j] }}
-                          />
-                        ))}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="hub-note">
-                  Each bar is one filer’s scheduled principal by maturity bucket, from the debt
-                  footnote. The focal filer is drawn heavier. Shape is the comparison; the amounts
-                  differ by orders of magnitude.
-                </div>
-
-                <div className="px-sub">EX-21 jurisdiction mix · this filer against the peer median</div>
-                {X.jurisdictions.map((j) => (
-                  <div className="px-jur-row" key={j.k}>
-                    <span className="px-jur-name">{j.k}</span>
-                    <span className="px-jur-track">
-                      <span className="px-jur-fill" style={{ width: j.w }} />
-                      <span className="px-jur-med" style={{ left: j.pw }} />
-                    </span>
-                    <span className="hub-cell-mono ta-r">{j.pct}</span>
-                    <span className="hub-cell-mono ta-r is-soft">med {j.medPct}</span>
-                  </div>
-                ))}
-                <div className="hub-note">
-                  Share of listed subsidiaries by jurisdiction of organisation; the tick is the
-                  peer median for that jurisdiction. EX-21 lists only subsidiaries the filer
-                  considers significant.
-                </div>
-
-                <div className="px-sub">Contingency language used</div>
-                <Presence table={X.contingency} />
-              </>
-            )}
+                {r.available && r.quantiles && r.focalVal !== null ? (
+                  <PeerStrip
+                    variant="cloud"
+                    peers={r.peers}
+                    marks={[{ id: "foc", label: T, value: r.focalVal, kind: "focal" }]}
+                    quantiles={r.quantiles}
+                    format={(v) => String(Math.round(v))}
+                    axisLabels={false}
+                    label={`${r.label} across the peer set`}
+                  />
+                ) : null}
+                <div className="hub-note">{r.available ? r.note : r.reason}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

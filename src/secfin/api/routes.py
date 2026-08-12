@@ -185,6 +185,7 @@ from secfin.storage.metric_value_repository import MetricValueRepository
 from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
 from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRepository
+from secfin.storage.disclosure_stat_repository import DisclosureStatRepository
 from secfin.storage.insider_peer_ratio_repository import InsiderPeerRatioRepository
 from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
@@ -417,6 +418,10 @@ def get_sector_insider_flow_repo(request: Request) -> SectorInsiderFlowRepositor
 
 def get_insider_peer_ratio_repo(request: Request) -> InsiderPeerRatioRepository:
     return request.app.state.insider_peer_ratio_repo
+
+
+def get_disclosure_stat_repo(request: Request) -> DisclosureStatRepository:
+    return request.app.state.disclosure_stat_repo
 
 
 def get_sector_geographic_mix_repo(request: Request) -> SectorGeographicMixRepository:
@@ -3051,6 +3056,16 @@ async def get_insider_summary(
 # unbounded read, not to select peers.
 _PEER_NAME_CAP = 5000
 
+_DISCLOSURE_CAVEATS = [
+    "DERIVED from the filing INDEX -- form, dates, acceptance stamp and 8-K item codes. No "
+    "document is read, so nothing here reports what a filing said.",
+    "Every number is scoped to EDGAR's rolling indexed window, which differs enormously between "
+    "filers; the focal company's window is reported and peers each carry their own.",
+    "Lag covers 10-K and 10-Q only -- forms whose deadlines make a lag meaningful.",
+    "Filing earlier is not better and an amendment is not an error; these describe behaviour.",
+    "A peer with no computable value is excluded from that measure rather than counted as zero.",
+]
+
 _THEME_PCT_CAVEATS = [
     "DERIVED: a mean of peer percentiles, not a reported figure and not a score anyone files.",
     "Peers are grouped by SIC industry code, which is coarse and dated.",
@@ -3093,6 +3108,123 @@ def _quantiles(values: list[float]) -> dict[str, float] | None:
         "median": pick(0.5),
         "p75": pick(0.75),
         "max": values[-1],
+    }
+
+
+@public_router.get(
+    "/companies/{symbol}/disclosure-stats",
+    tags=["Financials"],
+    summary="How this filer files, against its SIC peers (DERIVED from the filing index)",
+)
+async def get_disclosure_stats(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+    stat_repo: DisclosureStatRepository = Depends(get_disclosure_stat_repo),
+) -> dict:
+    """Filing BEHAVIOUR -- how a company files, not what it filed.
+
+    Four measures, all from the filing index and none from a document: the median lag from a
+    periodic report's period end to EDGAR acceptance, the share of indexed filings that are
+    amendments, the number of 12b-25 late notices, and the number of 8-K Item 4.02 non-reliance
+    filings.
+
+    ## What each one is not
+
+    **Lag is not virtue.** Filing early is a description of a filer's cadence, not a quality; the
+    measure exists so an unusual one stands out. It is computed over 10-K/10-Q only, because
+    their deadlines are what a lag means -- an 8-K is due four business days after an event and a
+    prospectus supplement has no period at all.
+
+    **An amendment rate is not an error rate.** The index cannot separate a correction from a
+    routine refiling, so this is a rate and nothing more.
+
+    **The window is EDGAR's rolling recent list and it differs enormously** -- Apple's index
+    reaches 2015, JPMorgan's covers about a year at 25,529 filings. Every peer carries its own
+    window and the response reports the focal company's, because a count over a decade and one
+    over a year are not comparable.
+
+    A **precomputed** group lookup (`analytical/disclosure_stats.py` is the sole producer). A
+    company or group with no row is `"na"` -- the batch has not covered it, which is not a
+    statement about how it files.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    sic_digits = settings.secfin_peer_sic_digits
+    profile = profile_repo.get(cik)
+    focal = stat_repo.get(cik)
+    if profile is None or not profile.sic or len(profile.sic) < sic_digits or focal is None:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": (
+                "No filing-behaviour statistics have been computed for this company. That "
+                "happens when it has no SIC classification on file or when the batch has not "
+                "covered it -- neither is a statement about how it files."
+            ),
+            "measures": [],
+        }
+
+    group = profile.sic[:sic_digits]
+    rows = stat_repo.get_group(group)
+
+    def measure(key: str, label: str, unit: str, get, note: str) -> dict:
+        vals = sorted(v for v in (get(r) for r in rows) if v is not None)
+        own = get(focal)
+        return {
+            "key": key,
+            "label": label,
+            "unit": unit,
+            "value": own,
+            # Peers are the companies with a COMPUTABLE value, not the group's membership: a
+            # filer whose index carries no period end has no lag, and counting it as zero would
+            # invent the fastest filer in the sector.
+            "peers": [
+                {"cik": r.cik, "value": get(r)} for r in rows if get(r) is not None
+            ],
+            "peer_count": len(vals),
+            "quantiles": _quantiles(vals),
+            "note": note,
+        }
+
+    return {
+        "cik": cik,
+        "status": "ok",
+        "reason": None,
+        "peer_group": group,
+        "peer_basis": f"SIC {sic_digits}-digit",
+        "group_company_count": profile_repo.count_in_group(group, sic_digits),
+        "indexed_filings": focal.indexed_filings,
+        "indexed_from": focal.indexed_from,
+        "indexed_to": focal.indexed_to,
+        "measures": [
+            measure(
+                "filing_lag", "Filing lag, periodic reports", "days",
+                lambda r: r.median_filing_lag_days,
+                "Median days from period end to EDGAR acceptance, over 10-K and 10-Q only. "
+                "Earlier is not better -- it describes this filer's cadence.",
+            ),
+            measure(
+                "amended_share", "Amended filings", "percent",
+                lambda r: None if r.amended_share is None else r.amended_share * 100,
+                "Share of indexed filings that amend something already filed. An amendment may "
+                "be a correction or a routine refiling; the index cannot tell them apart.",
+            ),
+            measure(
+                "late_notices", "Form 12b-25 late notices", "count",
+                lambda r: float(r.late_notice_count),
+                "A notice that the filer told the SEC it would miss a deadline. Scoped to the "
+                "indexed window, which differs between filers.",
+            ),
+            measure(
+                "non_reliance", "Item 4.02 non-reliance filings", "count",
+                lambda r: float(r.non_reliance_count),
+                "An 8-K saying previously issued statements should no longer be relied upon. "
+                "The item code says the event was reported, never what it said.",
+            ),
+        ],
+        "caveats": _DISCLOSURE_CAVEATS,
     }
 
 

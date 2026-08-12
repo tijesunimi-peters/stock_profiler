@@ -260,6 +260,8 @@ src/secfin/
     sqlite_sector_theme_score_repository.py  # sector_theme_scores + sector_theme_components tables
     sector_company_repository.py        # abstract per-company-in-sector value read (Company view)
     sqlite_sector_company_repository.py  # metric_values JOIN company_profiles (+ ranks); no new table
+    disclosure_stat_repository.py       # abstract per-company filing-behaviour stats (peer panel)
+    sqlite_disclosure_stat_repository.py  # disclosure_stats table; keyed by cik
     insider_peer_ratio_repository.py    # abstract per-COMPANY open-market insider ratio (peer strip)
     sqlite_insider_peer_ratio_repository.py  # insider_peer_ratios; keyed (cik, as_of, window_days)
     sector_insider_flow_repository.py   # abstract per-SIC-group trailing-window insider net buy/sell
@@ -282,6 +284,11 @@ src/secfin/
     sector_theme_scores.py     # composite 0-100 theme scores from metric_distributions ->
                                #   sector_theme_scores (+ decomposition). PURE-PYTHON (input
                                #   already aggregated, no DuckDB); still offline, never live path
+    disclosure_stats.py        # per-COMPANY filing BEHAVIOUR from the filing index (lag,
+                               #   amendment rate, 12b-25, Item 4.02) for §Peer-relative's
+                               #   "Beyond the financials". Lag over 10-K/10-Q ONLY -- an 8-K's
+                               #   deadline runs from an event, so including it measures filing
+                               #   MIX not timeliness. Every row carries its own indexed window
     insider_peer_ratio.py      # PER-COMPANY open-market (P/S) net-acquisition ratio for the
                                #   Insider view's peer strip. NOT a variant of sector_insider_flow:
                                #   that stores ONE aggregate per group, a strip needs every
@@ -435,7 +442,9 @@ python -m secfin.ingest.incremental
 # ⚠️ It indexes EDGAR's ROLLING recent window, not a company's whole history -- which is why
 # every consumer reports the window it looked at. "None on file" over a window is not "none ever".
 python -m secfin.ingest.filing_index_backfill --symbol AAPL
-python -m secfin.ingest.filing_index_backfill --all-issuers --limit 500
+python -m secfin.ingest.filing_index_backfill --all-issuers --limit 20000
+# ⚠️ --limit DEFAULTS TO 200 on --all-issuers, so a bare run indexes 200 companies and looks like
+# it worked. Pass a real cap. (--all-issuers was also dead until 2026-08-12: it sliced a set.)
 
 # bulk-ingest one quarter's 13F filings (offline candidate discovery from submissions.zip,
 # seeds the same HoldingsSnapshotRepository the manager endpoints read from)
@@ -480,6 +489,12 @@ python -m secfin.analytical.sector_insider_flow --window-days 90   # --as-of YYY
 # sits at exactly -1 (sold, never bought) and 12% at +1, so quartiles collapse onto the floor. The
 # endpoint ships `shape` (at_floor/at_ceiling/between) because that, not the median, describes it.
 python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYYY-MM-DD
+
+# per-company filing BEHAVIOUR for §Peer-relative's "Beyond the financials" (lag, amendment rate,
+# 12b-25 notices, Item 4.02). DuckDB batch over filing_index JOIN company_profiles -> disclosure_stats.
+# Requires the filing index to be backfilled market-wide first, or a "peer group" is whatever
+# handful the cache-aside path happened to index.
+python -m secfin.analytical.disclosure_stats
 
 # sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
 # 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly
