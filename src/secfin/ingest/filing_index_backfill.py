@@ -70,7 +70,7 @@ async def run(ciks: list[int], db_path: str) -> int:
     return written
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbol", action="append", default=[], help="ticker (repeatable)")
     ap.add_argument("--cik", action="append", type=int, default=[], help="CIK (repeatable)")
@@ -80,7 +80,7 @@ def main() -> None:
         help="every CIK with ingested XBRL facts (bounded by --limit)",
     )
     ap.add_argument("--limit", type=int, default=200, help="cap on --all-issuers")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     db_path = settings.secfin_db_path
     ciks: list[int] = list(args.cik)
@@ -95,7 +95,12 @@ def main() -> None:
     if args.all_issuers:
         facts: RawFactRepository = SQLiteRawFactRepository(db_path)
         try:
-            ciks.extend(facts.all_ciks()[: args.limit])
+            # SORT before slicing. `all_ciks()` returns a SET -- slicing one raises
+            # `TypeError: 'set' object is not subscriptable`, which is why --all-issuers has
+            # never run and `filing_index` holds only the companies the cache-aside path
+            # happened to index. Sorting also makes "the first N" a stable, resumable set
+            # rather than whatever order the set iterated in.
+            ciks.extend(sorted(facts.all_ciks())[: args.limit])
         finally:
             facts.close()
 
