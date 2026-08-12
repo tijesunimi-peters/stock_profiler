@@ -112,23 +112,20 @@ if (pr.status === "ok" && pr.peer_count) {
   ck(`B8d peers labelled by ticker/name, not bare CIK (${withTicker}/${pr.peer_count} have symbols)`,
      titles.length > 0 && !titles.some(t => /^CIK \d+/.test(t.trim())),
      `titles=${titles.length} sample=${JSON.stringify(titles[0] || "")}`);
-  /* B8e clicking a peer navigates to that peer. The strip only binds a click when onPick is
-     wired, so this fails loudly if the handler is dropped again. */
+  /* B8e the dots are INERT (operator, 2026-08-11: click-through read as confusing). Asserted
+     by clicking one and checking we did not move — a half-removed handler that still navigates
+     would otherwise be invisible until someone clicked it in the browser. */
   const clicked = await p.evaluate(() => {
     const c = document.querySelector('[aria-label*="net-acquisition ratio"] circle, .ds-strip circle');
-    if (!c) return false;
+    if (!c) return null;
+    const cursor = getComputedStyle(c).cursor;
     c.dispatchEvent(new MouseEvent("click", { bubbles: true, view: window }));
-    return true;
+    return cursor;
   });
   await new Promise(r => setTimeout(r, 900));
-  const url = p.url();
-  ck("B8e clicking a peer navigates to that peer's insider view",
-     clicked && /\/company\/[A-Z.\-]+\/insider/i.test(url) && !url.includes(`/company/${TK}/insider?focal=${TK}`),
-     `url=${url}`);
-  // Return to the focal company so the remaining assertions read the right page.
-  await p.goto(`http://localhost:${PORT}/company/${TK}/insider?focal=${TK}`,{waitUntil:"networkidle0"});
-  await p.waitForFunction(()=>!!document.querySelector(".ia-tiles, .ds-state"),{timeout:90000});
-  await new Promise(r=>setTimeout(r,1000));
+  ck("B8e peer dots are inert: clicking one does not navigate",
+     clicked !== null && clicked !== "pointer" && p.url().includes(`/company/${TK}/insider`),
+     `cursor=${clicked} url=${p.url()}`);
 } else {
   ck("B8 peer strip absent reads as 'not computed', never as no activity",
      /not been run|no SIC classification|no peer comparison/i.test(txt));

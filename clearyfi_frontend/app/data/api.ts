@@ -1370,7 +1370,6 @@ function toInsiderPeerRatio(res: InsiderPeerRatioResponse | null) {
         res?.reason ??
         "No peer comparison could be built for this company just now.",
       peers: [] as { id: string; label: string; value: number }[],
-      tickerById: {} as Record<string, string>,
       focal: null as number | null,
       quantiles: null,
     };
@@ -1389,11 +1388,7 @@ function toInsiderPeerRatio(res: InsiderPeerRatioResponse | null) {
       label: p.ticker ?? p.name ?? `CIK ${p.cik}`,
       value: p.net_ratio,
     })),
-    // Only peers we can resolve to a SYMBOL are navigable: the router keys on ticker, so a
-    // cik would load a page whose every heading read "320193".
-    tickerById: Object.fromEntries(
-      res.peers.filter((p) => p.ticker).map((p) => [String(p.cik), p.ticker as string]),
-    ) as Record<string, string>,
+
     focal: res.company_value ?? null,
     quantiles: res.quantiles ?? null,
     note:

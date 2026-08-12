@@ -18,7 +18,6 @@ import { Histogram } from "../../charts/bars";
 import { PeerStrip } from "../../charts/strips";
 import { DotCalendar } from "../../charts/misc";
 import { useSelection } from "../../state";
-import { navigate } from "../../router";
 
 /** A link out to the form the panel reads. */
 function Src({ href, children }: { href: string; children: string }) {
@@ -115,7 +114,11 @@ export function InsiderView() {
           </div>
           {/* Two clusters, not a spread — see `toInsiderPeerRatio`. The cloud variant is the
               honest mark here: a box would draw its whole interquartile range as a line on the
-              floor, because for most groups the 25th, 50th and 75th percentiles are all −1. */}
+              floor, because for most groups the 25th, 50th and 75th percentiles are all −1.
+              Dots are deliberately NOT clickable (operator, 2026-08-11): navigating away from a
+              distribution by clicking one of its points read as confusing rather than useful.
+              `PeerStrip` drops its click handler and its pointer cursor when `onPick` is absent,
+              so this is inert rather than dead-clicking. */}
           {d.ratio.ok ? (
             <>
               <PeerStrip
@@ -137,12 +140,6 @@ export function InsiderView() {
                 }
                 format={(v) => v.toFixed(2)}
                 axisLabels={false}
-                onPick={(id) => {
-                  // Silently ignore a peer we could not resolve to a symbol rather than
-                  // navigating to a page keyed on a bare CIK.
-                  const t = d.ratio.tickerById[id];
-                  if (t) navigate(sel.href(`/company/${t}/insider`, { focal: t }));
-                }}
                 label="Open-market insider net-acquisition ratio across the peer set"
               />
               {d.ratio.focalNote ? (
