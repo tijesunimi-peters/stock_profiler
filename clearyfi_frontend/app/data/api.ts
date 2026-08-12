@@ -665,6 +665,67 @@ interface SegmentsResponse {
 }
 
 /**
+ * §Peer-relative's "Segment & geographic mix" — the two stacked bars, from the SAME ASC 280
+ * response §03 reads.
+ *
+ * **Both bars are this company's own 10-K, which the panel header always claimed and the data
+ * did not.** The region bar was fed `geographicMix[sectorIdx]` — a SECTOR aggregate — under a
+ * header reading "ASC 280 · {ticker} 10-K", and its four labels (Americas / China / Rest of
+ * Asia / EMEA) were a fixed list, not the members the filer actually tagged. Apple tags three
+ * (US, CN, Other Countries); a fixed four-label axis cannot show that and would put a number
+ * against a region the filing never mentions. The segment bar was worse: `segmentChips` has
+ * been hardcoded `[]` since the P0 port, so it rendered nothing at all.
+ *
+ * **Shares are of the DISCLOSED splits and need not sum to consolidated revenue** — that is
+ * `normalize/segments.py`'s rule, not a rounding artefact, so the note says so rather than
+ * normalising the bars to 100%.
+ */
+function toSegmentMix(res: SegmentsResponse | null) {
+  const colour = (i: number) => proto.GEO_COLORS[i % proto.GEO_COLORS.length];
+  const band = (rows: { label: string; member: string; revenue_share: number | null }[]) =>
+    rows
+      // A member with no share cannot be given a width. Dropping it is wrong too — it would
+      // silently shrink the bar — so it is listed with an N/A share and no segment drawn.
+      .map((r, i) => ({
+        label: r.label || r.member,
+        share: r.revenue_share,
+        pct: r.revenue_share === null ? null : `${(r.revenue_share * 100).toFixed(1)}%`,
+        width: r.revenue_share === null ? "0%" : `${(r.revenue_share * 100).toFixed(2)}%`,
+        color: colour(i),
+      }));
+
+  if (!res || res.status !== "ok" || (!res.segments.length && !res.geography.length)) {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No ASC 280 segment or geographic facts were found for this filer, so neither split " +
+          "can be shown. That is an absence in the tagged data, not a company with one segment.",
+      segments: [] as ReturnType<typeof band>,
+      geography: [] as ReturnType<typeof band>,
+      fy: null as string | null,
+    };
+  }
+
+  const drawn = (rows: { revenue_share: number | null }[]) =>
+    rows.reduce((a, r) => a + (r.revenue_share ?? 0), 0);
+
+  return {
+    ok: true as const,
+    note:
+      `Shares are of the splits this filer DISCLOSED under ASC 280, off one revenue tag ` +
+      `(${res.revenue_tag ?? "tag not reported"}) in its FY${res.fiscal_year} filing. They need ` +
+      `not sum to consolidated revenue — segments cover ` +
+      `${(drawn(res.segments) * 100).toFixed(0)}% and regions ` +
+      `${(drawn(res.geography) * 100).toFixed(0)}% of it — and the members are the filer's own, ` +
+      "not a fixed list of regions.",
+    segments: band(res.segments),
+    geography: band(res.geography),
+    fy: res.fiscal_year ? `FY${res.fiscal_year}` : null,
+  };
+}
+
+/**
  * §03 — reportable segments and geography, from ASC 280 dimensional facts.
  *
  * **Companyfacts carries no dimensional data at all**, so this is the one section on the page that
@@ -4257,8 +4318,16 @@ export const api = {
    * empty state. Grouped here anyway because they share the peer set, not because they share a
    * source.
    */
-  companyPeerRelative: (symbol: string, _year: number, _fiscalPeriod: string) =>
-    resolve<CompanyPeerRelative>({
+  companyPeerRelative: async (symbol: string, _year: number, _fiscalPeriod: string) => {
+    const enc = encodeURIComponent(symbol);
+    // §Segment & geographic mix is REAL (2026-08-12); every other surface on this view is still
+    // the prototype's. Ported one panel at a time, the same way §01-§06 of the institutional
+    // view were, so each lands with its own verification instead of one unreviewable sweep.
+    const segments = await getJson<SegmentsResponse>(
+      `/v1/companies/${enc}/segments`,
+    ).catch(() => null);
+    return {
+      segmentMix: toSegmentMix(segments),
       rows: peers.distRows(symbol),
       extras: peers.peerExtras(symbol),
       flags: peers.companyFlags(symbol),
@@ -4268,7 +4337,8 @@ export const api = {
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
       subCounts: proto.SUB_COUNTS,
       basePeerCount: proto.BASE_PEER_COUNT,
-    }),
+    };
+  },
 
   // ========================================================== Manager altitude
 
@@ -4717,6 +4787,7 @@ export interface CompanyInsiderActivity {
 }
 
 export interface CompanyPeerRelative {
+  segmentMix: ReturnType<typeof toSegmentMix>;
   rows: ReturnType<typeof peers.distRows>;
   extras: ReturnType<typeof peers.peerExtras>;
   flags: ReturnType<typeof peers.companyFlags>;

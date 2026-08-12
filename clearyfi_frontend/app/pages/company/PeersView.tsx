@@ -14,7 +14,7 @@
  * filer and the whole page recomputes.
  */
 import { useState } from "react";
-import { GEO_COLORS, GEO_LABELS, SECTOR_NAMES, THEMES } from "../../data/sector-catalog";
+import { SECTOR_NAMES, THEMES } from "../../data/sector-catalog";
 import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
@@ -201,8 +201,7 @@ export function PeersView() {
   const flags = peerRead.data.flags;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
-  const geo = peerRead.data.geographicMix[sel.sectorIdx] ?? peerRead.data.geographicMix[0];
-  const segs = identity.data.segmentChips;
+  const mix = peerRead.data.segmentMix;
   /*
    * Picking a peer NAVIGATES rather than setting state. The path names the registrant and the
    * path wins (see `SelectionProvider`), so writing `?focal=` alone would change the query,
@@ -321,46 +320,56 @@ export function PeersView() {
             N/A · N/M filers (§9).
           </div>
 
-          {/* segment & geographic mix */}
+          {/* segment & geographic mix — BOTH bars are this filer's own ASC 280 facts. The
+              region bar previously drew a SECTOR aggregate against four fixed region names
+              under a header claiming this company's 10-K; the members are now the ones the
+              filer actually tagged, however many that is. */}
           <div className="p-card hub-mt-lg">
             <div className="hub-panel-head">
               <span className="hub-panel-title">Segment &amp; geographic mix</span>
-              <span className="hub-hint">ASC 280 · {T} 10-K</span>
+              <span className="hub-hint">
+                ASC 280 · {T} 10-K{mix.fy ? ` · ${mix.fy}` : ""}
+              </span>
             </div>
-            <div className="px-mix">
-              <div>
-                <div className="hub-label">By segment</div>
-                <div className="px-stackbar">
-                  {segs.map((s) => (
-                    <div key={s.label} style={{ width: s.pct, background: s.color }} />
+            {mix.ok ? (
+              <>
+                <div className="px-mix">
+                  {([
+                    ["By segment", mix.segments],
+                    ["By region", mix.geography],
+                  ] as const).map(([heading, band]) => (
+                    <div key={heading}>
+                      <div className="hub-label">{heading}</div>
+                      {band.length ? (
+                        <>
+                          <div className="px-stackbar">
+                            {band.map((b) => (
+                              <div key={b.label} style={{ width: b.width, background: b.color }} />
+                            ))}
+                          </div>
+                          <div className="px-legend-col">
+                            {band.map((b) => (
+                              <span key={b.label}>
+                                <i style={{ background: b.color }} />
+                                {b.label} <b>{b.pct ?? "N/A"}</b>
+                              </span>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="hub-note">
+                          This filer tagged no {heading === "By segment" ? "segment" : "geographic"}{" "}
+                          split under ASC 280.
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
-                <div className="px-legend-col">
-                  {segs.map((s) => (
-                    <span key={s.label}>
-                      <i style={{ background: s.color }} />
-                      {s.label} <b>{s.pct}</b>
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="hub-label">By region</div>
-                <div className="px-stackbar">
-                  {geo.map((v, i) => (
-                    <div key={GEO_LABELS[i]} style={{ width: `${v}%`, background: GEO_COLORS[i] }} />
-                  ))}
-                </div>
-                <div className="px-legend-col">
-                  {geo.map((v, i) => (
-                    <span key={GEO_LABELS[i]}>
-                      <i style={{ background: GEO_COLORS[i] }} />
-                      {GEO_LABELS[i]} <b>{v}%</b>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
+                <div className="hub-note">{mix.note}</div>
+              </>
+            ) : (
+              <StateBlock variant="empty" copy={mix.note} />
+            )}
           </div>
 
           {/* filing history & flags */}
