@@ -273,6 +273,7 @@ export function PeersView() {
             {dist.rows.length ? (
               dist.rows.map((r) => {
                 const f = (v: number) => fmtMetric(v, r.unit);
+                const open = openSpark === r.key;
                 return (
                   <div className="px-dist-row" key={r.key}>
                     <div className="px-dist-head">
@@ -283,6 +284,18 @@ export function PeersView() {
                         {r.lowerIsBetter && <span className="px-dirtag">lower is better</span>}
                       </span>
                       <span className="px-row-right">
+                        {r.spark ? (
+                          <button
+                            type="button"
+                            className="px-spark"
+                            onClick={() => setOpenSpark(open ? null : r.key)}
+                            aria-expanded={open}
+                            title="Expand this filer's trailing trend"
+                          >
+                            <Sparkline points={r.spark.points} height={18} />
+                            <span className="px-trend-label">{r.spark.label}</span>
+                          </button>
+                        ) : null}
                         <span className="px-value">{r.valueLabel}</span>
                       </span>
                     </div>
@@ -296,6 +309,25 @@ export function PeersView() {
                       label={`${r.name} across the peer set`}
                     />
                     <div className="hub-note">{r.peerCount} peers with a comparable value</div>
+                    {open && r.spark ? (
+                      <div className="px-trend">
+                        <div className="hub-label">Trailing {r.spark.points.length}-quarter trend</div>
+                        <SeriesChart
+                          series={[
+                            {
+                              id: r.key,
+                              label: r.name,
+                              kind: "focal",
+                              points: r.spark.points,
+                            },
+                          ]}
+                          format={f}
+                          height={150}
+                          label={`${r.name} over ${r.spark.points.length} quarters`}
+                        />
+                        <div className="px-trend-caption">{r.spark.caption}</div>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })

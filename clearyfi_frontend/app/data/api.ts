@@ -709,10 +709,13 @@ export function fmtMetric(v: number, unit: string): string {
  */
 function toDistributionRows(
   focalCik: number | null,
+  year: number,
+  fiscalPeriod: string,
   rows: {
     metric: string;
     values: SectorCompanyValuesResponse | null;
     dist: PeerDistributionResponse | null;
+    history: MetricHistoryResponse | null;
   }[],
   droppedCount: number,
 ) {
@@ -742,6 +745,7 @@ function toDistributionRows(
         .map((c) => ({ id: String(c.cik), label: c.name ?? `CIK ${c.cik}`, value: c.value })),
       quantiles: { lo: d.min, hi: d.max, q1: d.p25, med: d.median, q3: d.p75 },
       peerCount: d.peer_count,
+      spark: toSparkline(r.history, year, fiscalPeriod),
     }];
   });
 
@@ -763,6 +767,72 @@ interface PeerDistributionResponse {
     min: number; p25: number; median: number; p75: number; max: number;
     company_value: number | null;
   } | null;
+}
+
+/** Quarters of trailing history drawn per row. The design's "8q". */
+const PX_SPARK_QUARTERS = 8;
+
+/**
+ * The trailing trend beside each distribution row.
+ *
+ * **Nulls are carried, never dropped or zeroed.** A period the filer did not report enough to
+ * compute is `value: null` with a reason, and `sparkDraw`/`seriesDraw` both break the line at a
+ * null (`.defined()`). Filtering those points out instead would close the gap and draw a
+ * continuous trend across a period we cannot compute — the same fabrication as the 13F
+ * register's phantom zero, in a smaller frame.
+ *
+ * **The basis is stated because it VARIES by metric.** Flow metrics come back TTM and instant
+ * ones as-of, and the last point of this series is the same number the row's headline shows —
+ * verified against `metric_values` for gross_margin, roe and current_ratio, which is what makes
+ * putting them side by side honest.
+ */
+/** Sortable key for a fiscal period, so history can be cut at the period being displayed. */
+function periodOrder(year: number, period: string): number {
+  const q = period === "FY" ? 4 : Number(period.replace("Q", "")) || 0;
+  return year * 10 + q;
+}
+
+function toSparkline(
+  res: MetricHistoryResponse | null,
+  year: number,
+  fiscalPeriod: string,
+) {
+  if (!res || !res.points.length) return null;
+  // CUT AT THE DISPLAYED PERIOD. `/history` runs to the filer's latest quarter, which is not
+  // necessarily the one the table shows: Apple's history reaches 2026 Q3 at 48.7% while the row
+  // beside it reads 2026 Q1 at 47.3%. Leaving it uncut puts two different numbers for the same
+  // metric in the same row and lets the line imply movement past the period being compared.
+  const cutoff = periodOrder(year, fiscalPeriod);
+  const upto = res.points.filter(
+    (p) => periodOrder(p.fiscal_year, p.fiscal_period) <= cutoff,
+  );
+  if (!upto.length) return null;
+  const tail = upto.slice(-PX_SPARK_QUARTERS);
+  const drawn = tail.filter((p) => p.value !== null).length;
+  if (drawn < 2) return null;
+  const first = tail.find((p) => p.value !== null);
+  const last = [...tail].reverse().find((p) => p.value !== null);
+  const dir =
+    first && last && first.value !== null && last.value !== null
+      ? Math.abs(last.value - first.value) < Math.abs(first.value || 1) * 0.03
+        ? "→"
+        : last.value > first.value
+          ? "↑"
+          : "↓"
+      : "→";
+  return {
+    points: tail.map((p) => ({
+      period: `${p.fiscal_year} ${p.fiscal_period}`,
+      value: p.value,
+    })),
+    label: `${dir} ${tail.length}q`,
+    caption:
+      `${res.basis ?? "reported"} basis, ${res.restatement_basis ?? "as-restated"}, ` +
+      `${res.frequency ?? "quarterly"} — this filer only, not peers.` +
+      (drawn < tail.length
+        ? ` ${tail.length - drawn} of ${tail.length} quarters could not be computed and the line breaks there.`
+        : ""),
+  };
 }
 
 interface ThemePercentilesResponse {
@@ -2737,9 +2807,14 @@ interface MetricsResponse {
 }
 interface MetricHistoryResponse {
   metric: string; label: string; unit: string;
+  // `basis` VARIES by metric -- TTM for flows, as-of for instants -- and the peer-distribution
+  // sparkline states it, so it is not optional decoration.
+  basis?: string;
+  frequency?: string;
   restatement_basis?: string;
   points: {
     fiscal_year: number; fiscal_period: string; value: number | null; status: string;
+    reason?: string | null;
     period_end?: string | null;
   }[];
 }
@@ -4593,6 +4668,11 @@ export const api = {
             dist: await getJson<PeerDistributionResponse>(
               `/v1/companies/${enc}/peers/${m}/distribution?year=${year}&period=${fiscalPeriod}`,
             ).catch(() => null),
+            // Fetched with the row rather than on expand: the sparkline IS the expand control,
+            // so it has to be drawn before a reader can click it.
+            history: await getJson<MetricHistoryResponse>(
+              `/v1/companies/${enc}/metrics/${m}/history`,
+            ).catch(() => null),
           })),
         )
       : [];
@@ -4603,7 +4683,7 @@ export const api = {
       filingActivity: toFilingActivity(activity),
       filingFlags: toFilingFlags(audit),
       themePercentiles: toThemePercentiles(themes),
-      distribution: toDistributionRows(themes?.cik ?? null, distRows, Math.max(ranked.length - shown.length, 0)),
+      distribution: toDistributionRows(themes?.cik ?? null, year, fiscalPeriod, distRows, Math.max(ranked.length - shown.length, 0)),
       extras: peers.peerExtras(symbol),
       geographicMix: proto.GEO_MIX,
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.

@@ -194,6 +194,43 @@ if (tp.status === "ok") {
          body.includes(`P${inv}`) && !new RegExp(`${mm}[^P]*P${raw}\\b`).test(body),
          `raw=${raw} inverted=${inv}`);
     }
+    /* C20 the sparkline's LAST point is the row's headline value — they sit side by side, and
+       the history is TTM for flows and as-of for instants, so a basis mismatch would put two
+       different numbers for the same metric in the same row */
+    // Expand the first row before asserting on the trend it reveals.
+    await p.evaluate(() => {
+      const b = document.querySelector(".px-dist .px-spark");
+      if (b) b.dispatchEvent(new MouseEvent("click", { bubbles: true, view: window }));
+    });
+    await new Promise(r => setTimeout(r, 700));
+    const hist = await g(`/v1/companies/${TK}/metrics/${m}/history`);
+    // Independent expectation: the series must END at the period being displayed, so its last
+    // point is the history value AT 2026 Q1 -- not the filer's latest quarter, which for Apple
+    // is 2026 Q3 at a visibly different level.
+    const atPeriod = hist.points.find(x => x.fiscal_year === 2026 && x.fiscal_period === "Q1");
+    const latest = hist.points.filter(x => x.value !== null).slice(-1)[0];
+    if (atPeriod && atPeriod.value !== null && focal) {
+      ck(`C20 the row's value is the history AT the displayed period (${hist.basis} basis)`,
+         Math.abs(atPeriod.value - focal.value) < 1e-9,
+         `at2026Q1=${atPeriod.value} row=${focal.value}`);
+      /* C20b and the series is CUT there -- the drawn line must not run on to the filer's
+         latest quarter, which would show movement past the period being compared */
+      if (latest && Math.abs(latest.value - atPeriod.value) > 1e-9) {
+        const drawn = await p.evaluate(() =>
+          (document.querySelector(".px-trend")?.innerText || "").replace(/\s+/g, " "));
+        ck(`C20b the trend stops at the displayed period, not ${latest.fiscal_year} ${latest.fiscal_period}`,
+           !drawn.includes(`${latest.fiscal_year} ${latest.fiscal_period}`),
+           `latest=${latest.fiscal_year} ${latest.fiscal_period}`);
+      }
+    }
+    /* C21 the trend states its basis rather than implying a bare "8q" is comparable across
+       metrics */
+    const expanded = await p.evaluate(() =>
+      (document.querySelector(".px-trend")?.innerText || "").replace(/\s+/g, " "));
+    ck("C21 the expanded trend names its basis and scope",
+       /basis/i.test(expanded) && /this filer only, not peers/i.test(expanded),
+       `text=${expanded.slice(0,120)}`);
+
     /* C18 the table's rows are the RAIL's metrics — one set of metrics, not two */
     ck(`C18 table rows come from the scored themes (${shown.length} of ${ranked.length})`,
        shown.length > 0 && ranked.length >= shown.length);
