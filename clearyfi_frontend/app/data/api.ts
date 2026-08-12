@@ -664,7 +664,109 @@ interface SegmentsResponse {
   }[];
 }
 
+interface SectorCompanyValuesResponse {
+  group: string;
+  metric: string;
+  label: string;
+  unit: string;
+  higher_is_better: boolean | null;
+  fiscal_year: number | null;
+  companies: { cik: number; name: string | null; value: number; percentile: number | null }[];
+}
+
+/** How many metric rows the distribution table draws. Two reads per row, so this is a real
+ *  request budget, not a layout preference — and what it drops is named on screen. */
+const PX_METRIC_ROWS = 8;
+
+export function fmtMetric(v: number, unit: string): string {
+  if (unit === "ratio") return v.toFixed(2);
+  if (unit === "percent") return `${v.toFixed(1)}%`;
+  if (unit === "days") return `${Math.round(v)}d`;
+  if (unit === "times") return `${v.toFixed(2)}x`;
+  return usdCompact(v);
+}
+
+/**
+ * §Peer-relative's "Peer distribution" table — the panel the whole view is built around.
+ *
+ * One row per metric, each showing this filer's value, its position in the SIC group, and the
+ * group's spread. Every part of that was invented: `distRows` built a 12-company `PEERS` table
+ * from a ticker seed and drew the dots from it.
+ *
+ * **Row selection is DATA-DRIVEN, not a fixed list.** The rows are the constituents of the
+ * scored themes, in theme order, so this table and the rail beside it are the same metrics —
+ * a reader comparing "Profitability P93" against the rows underneath sees what built it.
+ *
+ * **The percentile is ORIENTED, and this is the same trap as the rail.** The endpoint returns a
+ * POSITION (`percent_rank` of the value) plus `higher_is_better`. For a lower-is-better metric
+ * the favourable end is the LOW one, so the displayed percentile is `100 - p`, and the row is
+ * tagged "lower is better" so the dot cloud is not misread. Showing the raw position beside a
+ * metric like debt-to-equity would rank the most levered filer as the best.
+ *
+ * **The dots are the peer group as filed.** `/sectors/{group}/{metric}/companies` returns every
+ * company with a comparable value and excludes N/A ones rather than plotting them at zero, so
+ * the cloud's size is the comparable population, not the group's membership.
+ */
+function toDistributionRows(
+  focalCik: number | null,
+  rows: {
+    metric: string;
+    values: SectorCompanyValuesResponse | null;
+    dist: PeerDistributionResponse | null;
+  }[],
+  droppedCount: number,
+) {
+  const out = rows.flatMap((r) => {
+    const v = r.values;
+    const d = r.dist?.distribution ?? null;
+    if (!v || !d) return [];
+    const focal = v.companies.find((c) => c.cik === focalCik);
+    if (!focal) return [];
+
+    const hib = v.higher_is_better !== false;
+    const oriented =
+      focal.percentile === null ? null : hib ? focal.percentile : 100 - focal.percentile;
+
+    return [{
+      key: r.metric,
+      name: v.label,
+      unit: v.unit,
+      lowerIsBetter: !hib,
+      focalVal: focal.value,
+      valueLabel:
+        `${fmtMetric(focal.value, v.unit)}` +
+        (oriented === null ? " · rank N/A" : ` · P${Math.round(oriented)}`),
+      // Every dot is a real filer; the label is its name because the endpoint has no ticker.
+      peers: v.companies
+        .filter((c) => c.cik !== focalCik)
+        .map((c) => ({ id: String(c.cik), label: c.name ?? `CIK ${c.cik}`, value: c.value })),
+      quantiles: { lo: d.min, hi: d.max, q1: d.p25, med: d.median, q3: d.p75 },
+      peerCount: d.peer_count,
+    }];
+  });
+
+  return {
+    rows: out,
+    note:
+      `Each dot is one filer's own reported value; companies with no comparable value are ` +
+      `excluded rather than plotted at zero. A percentile is a POSITION in the group — where a ` +
+      `lower value is more favourable the row says so and the percentile is inverted to match.` +
+      (droppedCount
+        ? ` ${plural(droppedCount, "further metric")} ranked for this filer ${droppedCount === 1 ? "is" : "are"} not listed.`
+        : ""),
+  };
+}
+
+interface PeerDistributionResponse {
+  distribution: {
+    metric: string; label: string; unit: string; peer_group: string; peer_count: number;
+    min: number; p25: number; median: number; p75: number; max: number;
+    company_value: number | null;
+  } | null;
+}
+
 interface ThemePercentilesResponse {
+  cik: number;
   status: string;
   reason: string | null;
   peer_group: string | null;
@@ -674,6 +776,7 @@ interface ThemePercentilesResponse {
   themes: {
     key: string; label: string; scored: boolean; percentile: number | null;
     covered: number; total: number; reason: string | null;
+    components: { metric: string; percentile: number }[];
   }[];
 }
 
@@ -4459,6 +4562,40 @@ export const api = {
         `/v1/companies/${enc}/theme-percentiles?year=${year}&period=${fiscalPeriod}`,
       ).catch(() => null),
     ]);
+
+    // The table's rows ARE the scored themes' constituents, in theme order, so the table and the
+    // rail beside it cannot show different metrics. Two reads per row, hence the cap.
+    const scoredThemes =
+      themes?.status === "ok" ? themes.themes.filter((t) => t.scored) : [];
+    const ranked = scoredThemes.flatMap((t) => t.components.map((c) => c.metric));
+    // ROUND-ROBIN across themes, not the first N in theme order. Taking the head of a flat list
+    // fills the whole table from profitability and growth and never reaches financial health or
+    // efficiency — so the table would silently describe two themes while the rail beside it
+    // showed five, and no lower-is-better metric would ever appear.
+    const shown: string[] = [];
+    for (let depth = 0; shown.length < PX_METRIC_ROWS; depth += 1) {
+      const before = shown.length;
+      for (const t of scoredThemes) {
+        const m = t.components[depth]?.metric;
+        if (m && !shown.includes(m)) shown.push(m);
+        if (shown.length >= PX_METRIC_ROWS) break;
+      }
+      if (shown.length === before) break; // every theme exhausted
+    }
+    const group = themes?.peer_group ?? null;
+    const distRows = group
+      ? await Promise.all(
+          shown.map(async (m) => ({
+            metric: m,
+            values: await getJson<SectorCompanyValuesResponse>(
+              `/v1/sectors/${group}/${m}/companies?year=${year}&period=${fiscalPeriod}`,
+            ).catch(() => null),
+            dist: await getJson<PeerDistributionResponse>(
+              `/v1/companies/${enc}/peers/${m}/distribution?year=${year}&period=${fiscalPeriod}`,
+            ).catch(() => null),
+          })),
+        )
+      : [];
     return {
       segmentMix: toSegmentMix(segments),
       // Reuses §Filings' adapter rather than a second one, so the two cards cannot disagree
@@ -4466,7 +4603,7 @@ export const api = {
       filingActivity: toFilingActivity(activity),
       filingFlags: toFilingFlags(audit),
       themePercentiles: toThemePercentiles(themes),
-      rows: peers.distRows(symbol),
+      distribution: toDistributionRows(themes?.cik ?? null, distRows, Math.max(ranked.length - shown.length, 0)),
       extras: peers.peerExtras(symbol),
       geographicMix: proto.GEO_MIX,
       // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
@@ -4925,9 +5062,9 @@ export interface CompanyPeerRelative {
   segmentMix: ReturnType<typeof toSegmentMix>;
   filingActivity: ReturnType<typeof toFilingActivity>;
   filingFlags: ReturnType<typeof toFilingFlags>;
-  rows: ReturnType<typeof peers.distRows>;
   extras: ReturnType<typeof peers.peerExtras>;
   themePercentiles: ReturnType<typeof toThemePercentiles>;
+  distribution: ReturnType<typeof toDistributionRows>;
   geographicMix: typeof proto.GEO_MIX;
   subCounts: typeof proto.SUB_COUNTS;
   basePeerCount: number;

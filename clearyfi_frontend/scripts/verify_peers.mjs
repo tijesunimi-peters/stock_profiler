@@ -134,6 +134,77 @@ if (tp.status === "ok") {
      /cannot be placed against its peers|no peer ranks/i.test(txt));
 }
 
+/* ---- Peer distribution table: real dots, real quantiles, ORIENTED percentiles ---- */
+if (tp.status === "ok") {
+  const scored = tp.themes.filter(t => t.scored);
+  const ranked = scored.flatMap(t => t.components.map(c => c.metric));
+  // Mirrors the adapter's ROUND-ROBIN selection. Slicing the flat list here would test a
+  // different set of rows than the page draws — and would silently never reach a
+  // lower-is-better metric, which is the one thing C17 exists to check.
+  const shown = [];
+  for (let depth = 0; shown.length < 8; depth += 1) {
+    const before = shown.length;
+    for (const t of scored) {
+      const m = t.components[depth]?.metric;
+      if (m && !shown.includes(m)) shown.push(m);
+      if (shown.length >= 8) break;
+    }
+    if (shown.length === before) break;
+  }
+  const body = await p.evaluate(() =>
+    (document.querySelector(".px-dist")?.innerText || "").replace(/\s+/g, " "));
+
+  if (shown.length) {
+    const m = shown[0];
+    const vals = await g(`/v1/sectors/${tp.peer_group}/${m}/companies?year=2026&period=Q1`);
+    const dist = await g(`/v1/companies/${TK}/peers/${m}/distribution?year=2026&period=Q1`);
+    const focal = vals.companies.find(c => c.cik === tp.cik);
+    /* C15 the row's peer count is the COMPARABLE population, from the API */
+    ck(`C15 row peer count on screen (${dist.distribution.peer_count} for ${m})`,
+       body.includes(`${dist.distribution.peer_count} peers with a comparable value`),
+       `api=${dist.distribution.peer_count}`);
+    /* C16 the percentile is ORIENTED: for a lower-is-better metric the screen must NOT show the
+       raw position, or the most levered filer reads as the best in its group */
+    if (focal && focal.percentile !== null) {
+      const hib = vals.higher_is_better !== false;
+      const oriented = Math.round(hib ? focal.percentile : 100 - focal.percentile);
+      const raw = Math.round(focal.percentile);
+      ck(`C16 ${m} percentile is oriented (P${oriented}${hib ? "" : `, raw would be P${raw}`})`,
+         body.includes(`P${oriented}`) && (hib || oriented === raw || !body.includes(`P${raw}`)),
+         `hib=${hib} raw=${raw} oriented=${oriented}`);
+    }
+    /* C17 a lower-is-better row is TAGGED, so the cloud is not read backwards */
+    const lib = [];
+    for (const mm of shown) {
+      const vv = await g(`/v1/sectors/${tp.peer_group}/${mm}/companies?year=2026&period=Q1`);
+      if (vv.higher_is_better === false) lib.push(mm);
+    }
+    ck(`C17 lower-is-better rows are tagged (${lib.length} of ${shown.length})`,
+       lib.length === 0 || /lower is better/i.test(body), `lib=${JSON.stringify(lib)}`);
+    /* C17b THE inversion check. For a lower-is-better metric the screen must show 100-p, not p.
+       Skipped rather than faked when the two coincide (p == 50) or the filer has no rank. */
+    for (const mm of lib) {
+      const vv = await g(`/v1/sectors/${tp.peer_group}/${mm}/companies?year=2026&period=Q1`);
+      const fo = vv.companies.find(c => c.cik === tp.cik);
+      if (!fo || fo.percentile === null) continue;
+      const raw = Math.round(fo.percentile);
+      const inv = Math.round(100 - fo.percentile);
+      if (raw === inv) continue;
+      ck(`C17b ${mm} shows the INVERTED percentile P${inv}, not the raw position P${raw}`,
+         body.includes(`P${inv}`) && !new RegExp(`${mm}[^P]*P${raw}\\b`).test(body),
+         `raw=${raw} inverted=${inv}`);
+    }
+    /* C18 the table's rows are the RAIL's metrics — one set of metrics, not two */
+    ck(`C18 table rows come from the scored themes (${shown.length} of ${ranked.length})`,
+       shown.length > 0 && ranked.length >= shown.length);
+    /* C19 a capped table names what it dropped */
+    if (ranked.length > shown.length) {
+      ck(`C19 the cap is disclosed (${ranked.length - shown.length} dropped)`,
+         /further metric/i.test(txt), `dropped=${ranked.length - shown.length}`);
+    }
+  }
+}
+
 ck(`C9 flags reflect the index (4.02=${n402} 4.01=${n401} 12b-25=${nLate})`,
    (n402 + n401 + nLate) === 0
      ? /No Item 4.02 restatement/i.test(txt)

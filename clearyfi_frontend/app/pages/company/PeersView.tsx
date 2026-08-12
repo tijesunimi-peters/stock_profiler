@@ -16,7 +16,7 @@
 import { useState } from "react";
 import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { PX_GROUPS, type PeerXRow, type PresenceTable } from "../../data/hub-catalog";
-import { api } from "../../data/api";
+import { api, fmtMetric } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
 import { PeerStrip } from "../../charts/strips";
@@ -193,9 +193,9 @@ export function PeersView() {
     return <StateBlock variant="loading" copy="Reading this filer's peer set." />;
   }
 
-  const rows = peerRead.data.rows;
   const X = peerRead.data.extras;
   const tp = peerRead.data.themePercentiles;
+  const dist = peerRead.data.distribution;
   const group = PX_GROUPS.find((g) => g.key === sel.pxGroup) ?? PX_GROUPS[0];
   const groupRows: PeerXRow[] = X[group.key];
   const mix = peerRead.data.segmentMix;
@@ -270,62 +270,43 @@ export function PeersView() {
           </div>
 
           <div className="p-card px-dist">
-            {rows.map((r) => {
-              const open = openSpark === r.key;
-              const f = (v: number) => `${v.toFixed(1)}${r.fmt === "%" ? "%" : r.fmt === "x" ? "x" : ""}`;
-              return (
-                <div className="px-dist-row" key={r.key}>
-                  <div className="px-dist-head">
-                    <span className="px-dist-name">
-                      <span>{r.name}</span>
-                      {r.dirTag && <span className="px-dirtag">lower is better</span>}
-                    </span>
-                    <span className="px-row-right">
-                      <button
-                        type="button"
-                        className="px-spark"
-                        onClick={() => setOpenSpark(open ? null : r.key)}
-                        aria-expanded={open}
-                      >
-                        <Sparkline points={r.spark.map((v, i) => ({ period: String(i), value: v }))} height={18} />
-                        <span className="px-trend-label">{r.trendLabel}</span>
-                      </button>
-                      <span className="px-value">{r.valueLabel}</span>
-                    </span>
-                  </div>
-                  <PeerStrip
-                    variant="cloud"
-                    peers={r.peers.map((p) => ({ id: p.ticker, label: p.ticker, value: p.val }))}
-                    marks={[{ id: "foc", label: T, value: r.focalVal, kind: "focal" }]}
-                    quantiles={{ lo: r.dist.min, hi: r.dist.max, q1: r.dist.q1, q3: r.dist.q3, med: r.dist.med }}
-                    format={f}
-                    axisLabels={false}
-                    onPick={pick}
-                    label={`${r.name} across the peer set`}
-                  />
-                  {open && (
-                    <div className="px-trend">
-                      <div className="hub-label">Trailing 8-quarter trend</div>
-                      <SeriesChart
-                        series={[
-                          { id: r.key, label: r.name, kind: "focal", points: r.spark.map((v, i) => ({ period: Q_LABELS[i], value: v })) },
-                        ]}
-                        format={f}
-                        height={150}
-                        label={`${r.name} over eight quarters`}
-                      />
-                      <div className="px-trend-caption">{r.trendCaption}</div>
+            {dist.rows.length ? (
+              dist.rows.map((r) => {
+                const f = (v: number) => fmtMetric(v, r.unit);
+                return (
+                  <div className="px-dist-row" key={r.key}>
+                    <div className="px-dist-head">
+                      <span className="px-dist-name">
+                        <span>{r.name}</span>
+                        {/* Without this tag the cloud is read backwards: the favourable end of a
+                            lower-is-better metric is the LEFT one. */}
+                        {r.lowerIsBetter && <span className="px-dirtag">lower is better</span>}
+                      </span>
+                      <span className="px-row-right">
+                        <span className="px-value">{r.valueLabel}</span>
+                      </span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                    <PeerStrip
+                      variant="cloud"
+                      peers={r.peers}
+                      marks={[{ id: "foc", label: T, value: r.focalVal, kind: "focal" }]}
+                      quantiles={r.quantiles}
+                      format={f}
+                      axisLabels={false}
+                      label={`${r.name} across the peer set`}
+                    />
+                    <div className="hub-note">{r.peerCount} peers with a comparable value</div>
+                  </div>
+                );
+              })
+            ) : (
+              <StateBlock
+                variant="empty"
+                copy="No metric has both a peer distribution and a value for this filer in this period, so there is nothing to place it against."
+              />
+            )}
           </div>
-          <div className="hub-note">
-            Click any peer dot to make it the focal filer. Click a sparkline to expand this
-            filer&apos;s trailing trend. Percentiles are favorability-adjusted (§5) and exclude
-            N/A · N/M filers (§9).
-          </div>
+          <div className="hub-note">{dist.note}</div>
 
           {/* segment & geographic mix — BOTH bars are this filer's own ASC 280 facts. The
               region bar previously drew a SECTOR aggregate against four fixed region names
