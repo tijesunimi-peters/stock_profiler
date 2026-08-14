@@ -495,11 +495,16 @@ python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYY
 # Requires the filing index to be backfilled market-wide first, or a "peer group" is whatever
 # handful the cache-aside path happened to index.
 python -m secfin.analytical.disclosure_stats
-# ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote. In production they
-# run as one script per chain (deploy/scripts/run-{peer-analytics,disclosure-stats}.sh), weekly,
-# because three independent timers could compute a distribution from a half-written
-# metric_values. Running them out of order is how metric_values went stale enough that 23 of 30
-# metrics had no peer distribution (found 2026-08-12).
+# ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote:
+#     metrics_backfill -> peer_distribution -> peer_ranks        (secfin-peer-analytics.timer,
+#                                                                 Sun 08:00 UTC, ~5.5 h)
+#     filing_index_backfill --all-issuers -> disclosure_stats    (secfin-disclosure-stats.timer,
+#                                                                 Sat 08:00 UTC, ~40 min)
+#   In production each chain is ONE sequential script (deploy/scripts/run-{peer-analytics,
+#   disclosure-stats}.sh) and a failed step stops it. Independent timers could compute a
+#   distribution from a half-written metric_values. Letting this chain go stale is how 23 of 30
+#   metrics ended up with no peer distribution at all (found 2026-08-12) -- nothing was broken,
+#   it had just never been re-run, and a stale derived table looks exactly like a working one.
 
 # sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
 # 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly

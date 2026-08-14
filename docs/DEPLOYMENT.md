@@ -214,15 +214,63 @@ mentioned here only because it's not a hard failure if you end up here.
 
 ## 8. Scheduled jobs
 
-Two recurring jobs, both already run manually in dev (docs/DEVELOPMENT.md §5, §7) and
-now wrapped as systemd timers under `deploy/`:
+Recurring jobs, all run manually in dev first (docs/DEVELOPMENT.md §5, §7) and wrapped as
+systemd timers under `deploy/`.
 
-- **Daily incremental ingest** (`secfin-incremental.timer` -> `.service`, 06:00 UTC) --
-  runs `python -m secfin.ingest.incremental` via the same image/command as dev.
-- **Scheduled backup** (`secfin-backup.timer` -> `.service`, 07:00 UTC, one hour after
-  the incremental job so the day's backup includes that day's newly-ingested data) --
-  runs `python -m secfin.storage.backup`, then prunes timestamped snapshots older than
+**Daily:**
+
+- **Insider peer ratios** (`secfin-insider-peer-ratio.timer`, 05:30 UTC) -- open-market
+  (P/S) net-acquisition ratio per company, for the Insider view's peer strip. Deliberately
+  BEFORE the ingest: it reads `insider_transactions`, which the incremental job does not
+  touch, so running after it would buy nothing while risking an overlap with the backup.
+- **Incremental ingest** (`secfin-incremental.timer`, 06:00 UTC) -- runs
+  `python -m secfin.ingest.incremental` via the same image/command as dev.
+- **Scheduled backup** (`secfin-backup.timer`, 07:00 UTC, one hour after the incremental
+  job so the day's backup includes that day's newly-ingested data) -- runs
+  `python -m secfin.storage.backup`, then prunes snapshots older than
   `SECFIN_BACKUP_RETENTION_DAYS` (default 14; never touches `secfin-latest.db`).
+  ⚠️ `deploy/install.sh` does NOT enable this one -- see "the backup timer" below.
+
+**Weekly, and each one is a CHAIN rather than a job.** Every step reads what the previous
+step wrote, so they are single sequential scripts and a failed step stops the chain:
+
+- **Peer analytics** (`secfin-peer-analytics.timer`, Sun 08:00 UTC, **~5.5 hours**) --
+  `metrics_backfill` -> `peer_distribution` -> `peer_ranks`, i.e. `raw_facts` ->
+  `metric_values` -> `metric_distributions` + `metric_ranks`.
+- **Disclosure stats** (`secfin-disclosure-stats.timer`, Sat 08:00 UTC, ~40 min) --
+  `filing_index_backfill --all-issuers` -> `disclosure_stats`.
+
+Both run on the `analytics` image, which adds `duckdb`; the serving image deliberately
+does not carry it, and both compose files pin `target: api` so a bare build cannot put it
+there. The runner builds the analytics image before running, because `docker compose build`
+only builds services in ACTIVE profiles and the deploy's bare build therefore skips it.
+
+**Why these are scheduled at all, and why as chains.** On 2026-08-12 `metric_values` was
+found to have been materialized *before* the whole-market companyfacts backfill landed the
+granular concepts: 2 of the 231 companies in Apple's SIC group had a current ratio, and 23
+of 30 metrics had no peer distribution at all. Nothing was broken -- the chain had simply
+never been re-run, and a stale derived table looks exactly like a working one. Re-running
+it moved Apple from 7 of 30 metrics to 27 of 27. Splitting a chain across independent
+timers would reintroduce a subtler version of the same failure: a distribution computed
+from a half-written `metric_values`.
+
+They are weekly rather than daily because re-materializing every company's metrics costs
+5.4 hours to reflect the handful of filers that filed since; the daily incremental keeps
+`raw_facts` current and these let the derived tables catch up. The windows sit after the
+06:00 ingest and 07:00 backup, on different days from each other, so the two long jobs
+never contend for the same database or the same SEC rate budget.
+
+**The backup timer.** `deploy/install.sh` enables every timer above EXCEPT
+`secfin-backup.timer`, which it only reports on. That timer was stopped and disabled
+deliberately (docs/DEPLOYMENT_DO.md 6) because each run writes a full multi-gigabyte
+snapshot to the droplet's own disk and filled it; the standing ruling is that off-droplet
+backups are wired first. Since the installer is idempotent and meant to be re-run after
+editing any unit, an unconditional `enable --now` would silently undo that ruling every
+time someone added a timer. Re-enable it deliberately once backups are wired:
+
+```bash
+systemctl enable --now secfin-backup.timer
+```
 
 **Why systemd timers instead of cron:** the VPS already runs systemd (true of every
 mainstream distro this runbook targets), so timers need no extra package, unlike cron
