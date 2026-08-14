@@ -23,6 +23,13 @@ fi
 mkdir -p "$LOG_DIR"
 chown secfin:secfin "$LOG_DIR"
 
+# A writable state dir for the timers. The `secfin` user's HOME is $APP_DIR, which is root-owned,
+# so `docker compose build` cannot create its config there -- the runners point DOCKER_CONFIG here
+# instead. Without it every timer that builds the analytics image fails before doing any work.
+STATE_DIR="${SECFIN_STATE_DIR:-/var/lib/secfin}"
+mkdir -p "$STATE_DIR"
+chown secfin:secfin "$STATE_DIR"
+
 # The timers run docker compose as the secfin user, and compose must read .env --
 # which the operator typically created as root with mode 600 (it holds
 # SECFIN_ADMIN_SECRET, so group/world bits stay off; ownership is the fix).

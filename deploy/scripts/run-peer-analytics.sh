@@ -27,6 +27,14 @@ COMPOSE_FILE="${SECFIN_COMPOSE_FILE:-docker-compose.prod.yml}"
 
 mkdir -p "$LOG_DIR"
 
+# The timers run as the unprivileged `secfin` user, whose HOME is the app directory
+# (`useradd --home-dir /opt/secfin`) -- and that directory is root-owned. `docker compose build`
+# wants to create a config dir under HOME and dies with "mkdir /opt/secfin/.docker: permission
+# denied" before it builds anything. Point Docker at a directory the user can actually write.
+# Found on the first production run, 2026-08-14.
+export DOCKER_CONFIG="${DOCKER_CONFIG:-${SECFIN_STATE_DIR:-/var/lib/secfin}/.docker}"
+mkdir -p "$DOCKER_CONFIG" 2>/dev/null || true
+
 if ! cd "$APP_DIR"; then
     echo "$(date -u +%FT%TZ) FAIL cannot cd to $APP_DIR" >>"$STATUS_FILE"
     exit 1
