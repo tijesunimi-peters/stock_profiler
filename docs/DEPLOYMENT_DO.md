@@ -25,8 +25,9 @@ in production and how do I touch it."
 | Stack | `docker compose -f docker-compose.prod.yml` : `api` (loopback-only :8000) + `caddy` (80/443), both `restart: unless-stopped` |
 | Data | SQLite in the `secfin-data` volume -- never re-backfilled on the droplet. Hydrated 2026-07-14 from the operator machine's seeded backup (695MB); re-hydrated 2026-07-16 with the 5-year deep seeding (**7.7GB**: 20 13F quarters / 50.2M holding rows, frames FY2021-FY2025, metrics for 8,917 CIKs). Disk after: ~20/48GB. |
 | Secrets | `/opt/secfin/.env` (mode 600): `SEC_USER_AGENT` (real contact address), `SECFIN_ADMIN_SECRET` (generated on-box with `openssl rand -hex 32`; exists nowhere else -- read it from that file if you need admin calls) |
-| Scheduled jobs | systemd timers via `deploy/install.sh`. Daily: `secfin-insider-peer-ratio.timer` 05:30 UTC, `secfin-incremental.timer` 06:00 UTC, `secfin-backup.timer` 07:00 UTC. Weekly: `secfin-disclosure-stats.timer` Sat 08:00 UTC (~40 min), `secfin-peer-analytics.timer` Sun 08:00 UTC (**~5.5 h** -- metrics -> distributions -> ranks, in that order) (backups land in `/opt/secfin/data/backups` on the droplet's own disk -- off-droplet copy is an open decision, see §6) |
-| Verified | `scripts/verify_deployment.py --base-url https://api.clearyfi.com` from outside the host, **10/10**, 2026-07-14 |
+| Scheduled jobs | **As deployed 2026-08-14, only two timers are ENABLED**: `secfin-insider-peer-ratio.timer` 05:30 UTC and `secfin-incremental.timer` 06:00 UTC. `secfin-peer-analytics.timer` (Sun 08:00) and `secfin-disclosure-stats.timer` (Sat 08:00) are **installed but disabled** pending a hand-measured run -- see §5b. `secfin-backup.timer` remains disabled (§6). ⚠️ `deploy/install.sh` uses `enable --now`, which would also START a chain; units were therefore copied and enabled selectively rather than by running it. |
+| Verified | `scripts/verify_deployment.py --base-url https://api.clearyfi.com` from outside the host, **11/11**, 2026-08-14 (was 10/10 on 2026-07-14) |
+| Images | `secfin-api` (272MB) serves; `secfin-analytics` (360MB) is a separate build target adding duckdb for batch jobs. Verified on-box: `import duckdb` succeeds in `analytics`, fails in `api`. |
 
 Pre-existing in the same DO account and **not part of this deployment**: a k8s
 cluster (`k8s-1-36-0-do-2-tor1-...`, one 2GB worker, ~$12/mo) and its two firewalls.
@@ -154,6 +155,46 @@ replica). `doctl compute droplet-action resize 584697256 --size <bigger> --wait`
 **Rebuild from nothing:** §2 provisioning → §3 first boot, hydrating from the
 newest backup in the operator machine's `./data/backups/` (or the droplet's
 `/opt/secfin/data/backups` if the volume died but the disk survived).
+
+## 5b. Deployed 2026-08-14 -- the peer/insider views and their batches
+
+Deployed master `bdb2f93` (27 commits). What changed on the droplet:
+
+- **A second image.** `docker-compose.prod.yml` now pins `target: api` for the serving image
+  and adds a profiled `analytics` service built from a new Dockerfile stage that installs
+  `.[analytical]`. The analytics stage is LAST in the Dockerfile, so an untargeted
+  `docker build .` would resolve to it and put duckdb in the serving image -- hence the explicit
+  target. `docker compose build` does NOT build profiled services, so the analytics image needs
+  its own `--profile analytics build analytics` (done here, and the timer runners self-heal by
+  building on first fire).
+- **Four new endpoints**: `/proposed-sale-notices`, `/peers/insider-net-ratio`,
+  `/theme-percentiles`, `/disclosure-stats`.
+- **Three new tables**, created lazily by their repositories: `insider_peer_ratios`,
+  `disclosure_stats`, plus the filing-index growth. No migration ran; nothing existing was
+  rewritten.
+
+**The two weekly chains are installed but NOT enabled, deliberately (operator, 2026-08-14).**
+They were sized on a 16-core workstation: `metrics_backfill` alone is ~5.4 h there, and
+`peer_ranks` runs DuckDB over millions of rows. This droplet is **1 vCPU / 1,967 MB / no swap**,
+and that single core also serves the API. Enabling them unattended risks a DuckDB OOM, or
+`metrics_backfill` exceeding `TimeoutStartSec=28800` and being killed mid-chain, while the API
+competes for the CPU. Measure each by hand first:
+
+```bash
+ssh root@143.198.37.67 'cd /opt/secfin && time ./deploy/scripts/run-disclosure-stats.sh'   # ~40 min on 16 cores
+ssh root@143.198.37.67 'cd /opt/secfin && time ./deploy/scripts/run-peer-analytics.sh'     # ~5.5 h on 16 cores
+# then, if the cost is acceptable:
+ssh root@143.198.37.67 'systemctl enable --now secfin-disclosure-stats.timer secfin-peer-analytics.timer'
+```
+
+Until they run, `/disclosure-stats` and `/peers/insider-net-ratio` return `status: "na"` with a
+reason saying the batch has not been run -- which is the designed behaviour, not a fault.
+
+**No backup was taken** (operator, 2026-08-14: still developing; `data/backups` was empty and
+stays empty, timer stays off). The code change is additive and does not migrate data, so the
+rollback is redeploying the previous tree; `secfin-api:rollback-jul17` is also still on the box.
+
+Disk after: **13G / 48G used**, unchanged by the deploy.
 
 ## 6. Monitoring & observability (as built, 2026-07-14)
 
