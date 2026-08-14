@@ -14,6 +14,7 @@ in production and how do I touch it."
 | Provider | DigitalOcean (`doctl` context on the operator's machine) |
 | Droplet | `secfin-api`, ID **584697256**, region TOR1 |
 | Size / image | `s-1vcpu-2gb` Basic ($12/mo, 1 vCPU / 2GB / 50GB SSD), `ubuntu-24-04-x64`, monitoring enabled, tag `secfin` |
+| Swap | **4 GB `/swapfile`** added 2026-08-14, persisted in `/etc/fstab`, `vm.swappiness=10` via `/etc/sysctl.d/60-secfin-swap.conf`. The box had NO swap: with 2 GB of RAM and DuckDB batch jobs, an out-of-memory condition kills a process outright, and the OOM killer picks by footprint -- which can be `secfin-api-1`, taking the live API down. Swap turns that into slowness instead. A mitigation, not a fix: if a batch genuinely needs >2 GB the answers are a larger droplet or a bounded job. |
 | Public IP | **143.198.37.67** |
 | Firewall | `secfin-api-fw` (applies by tag `secfin`): inbound TCP 22/80/443 from anywhere, all outbound. Nothing else reachable -- `:8000` confirmed closed from outside. |
 | SSH access | root, key `secfin-popos` (DO key ID 57796503 = the operator's `~/.ssh/id_ed25519.pub`) |
