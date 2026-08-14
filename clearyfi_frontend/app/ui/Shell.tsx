@@ -142,6 +142,26 @@ export interface PageShellProps {
   children: ReactNode;
 }
 
+/**
+ * Which entry in `PROVENANCE` this page is, derived from props the shell already has.
+ *
+ * Derived here rather than threaded through every caller: a disclosure that depends on nine pages
+ * remembering to pass a string is a disclosure that will be wrong on one of them. `undefined`
+ * means "not a named surface", which keeps the site-wide banner — the safe direction, because an
+ * unnamed page falls back to the broad warning rather than to silence.
+ */
+function bannerSurface(subject: string, activeView?: string): string | undefined {
+  if (subject === "company" && activeView === "overview") return "company overview";
+  if (subject === "sectors") {
+    // §Sector is plumbed and is deliberately NOT in `syntheticSurfaces`, so naming it here is what
+    // removes the banner from that page. Its two sibling views are still fixtures and still named.
+    if (activeView === "sector") return "sector";
+    if (activeView === "qualitative") return "qualitative";
+    if (activeView === "filings") return "filings";
+  }
+  return undefined;
+}
+
 export function PageShell({
   subject,
   activeAction,
@@ -202,9 +222,7 @@ export function PageShell({
         a disclosure that depends on nine pages remembering to pass a string is a disclosure that
         will be wrong on one of them.
       */}
-      <SyntheticBanner
-        surface={subject === "company" && activeView === "overview" ? "company overview" : undefined}
-      />
+      <SyntheticBanner surface={bannerSurface(subject, activeView)} />
       <Masthead title={title} subtitle={subtitle} meta={right ? [right] : undefined} />
       {controlBar}
       {/*
