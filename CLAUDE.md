@@ -495,6 +495,11 @@ python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYY
 # Requires the filing index to be backfilled market-wide first, or a "peer group" is whatever
 # handful the cache-aside path happened to index.
 python -m secfin.analytical.disclosure_stats
+# ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote. In production they
+# run as one script per chain (deploy/scripts/run-{peer-analytics,disclosure-stats}.sh), weekly,
+# because three independent timers could compute a distribution from a half-written
+# metric_values. Running them out of order is how metric_values went stale enough that 23 of 30
+# metrics had no peer distribution (found 2026-08-12).
 
 # sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
 # 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly

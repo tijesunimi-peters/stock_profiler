@@ -1,0 +1,17 @@
+[Unit]
+Description=Refresh secfin peer analytics weekly
+
+[Timer]
+# Sunday 08:00 UTC. The window is chosen around the DAILY timers, not for its own sake: this run
+# holds the DB for ~5.5 hours, and starting it after the 06:00 incremental and 07:00 backup have
+# finished keeps it clear of both, ending ~13:30 -- long before Monday's 05:30 insider-ratio job.
+#
+# Weekly, not daily: re-materializing every company's metrics costs 5.4 hours to reflect the
+# handful of filers that filed since. The daily incremental keeps raw_facts current; this makes
+# the derived tables catch up.
+OnCalendar=Sun *-*-* 08:00:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

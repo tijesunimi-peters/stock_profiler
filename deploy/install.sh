@@ -38,9 +38,11 @@ systemctl daemon-reload
 systemctl enable --now secfin-incremental.timer
 systemctl enable --now secfin-backup.timer
 systemctl enable --now secfin-insider-peer-ratio.timer
+systemctl enable --now secfin-peer-analytics.timer
+systemctl enable --now secfin-disclosure-stats.timer
 
 echo
 echo "Installed. Check status with:"
 echo "  systemctl list-timers 'secfin-*'"
 echo "  journalctl -u secfin-incremental.service --since today"
-echo "  tail -f $LOG_DIR/incremental.status $LOG_DIR/backup.status $LOG_DIR/insider-peer-ratio.status"
+echo "  tail -f $LOG_DIR/*.status"

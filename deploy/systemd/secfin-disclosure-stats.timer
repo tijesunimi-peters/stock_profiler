@@ -1,0 +1,13 @@
+[Unit]
+Description=Refresh secfin filing index and disclosure stats weekly
+
+[Timer]
+# Saturday 08:00 UTC -- a different day from the peer-analytics chain, so the two long jobs never
+# contend for the same DB or the same SEC rate budget. Same reasoning about the daily timers:
+# after the 06:00 ingest and 07:00 backup have finished.
+OnCalendar=Sat *-*-* 08:00:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
