@@ -75,6 +75,23 @@ class Settings(BaseSettings):
     # counted, never silently mis-summed. 1% by default.
     secfin_geo_mix_reconcile_tolerance: float = 0.01
 
+    # How long a SQLite writer WAITS for another writer's lock before giving up (storage/
+    # connection.py). WAL allows many readers with one writer; a second writer gets SQLITE_BUSY,
+    # and Python's sqlite3 default of 5 seconds is far too short for this deployment -- the API,
+    # the daily incremental ingest and the weekly analytics chains all write the same file.
+    #
+    # Found the expensive way (prod, 2026-08-14): `secfin-incremental.timer` fired at 06:02:13
+    # while the peer-analytics chain was materializing metrics, and 20 seconds later
+    # metrics_backfill died on "database is locked" -- discarding 76 minutes of work at 600 of
+    # 9,055 companies. Nothing was corrupted and nothing was misconfigured; the loser of a lock
+    # race simply was not told to wait.
+    #
+    # 120s is chosen against the LONGEST write transaction any job holds, not against a guess:
+    # the incremental ingest commits per company, and the batch upserts commit per chunk. A
+    # timeout is not a correctness fix -- two writers still serialize -- it is what turns a
+    # collision into a pause instead of a crash.
+    secfin_sqlite_busy_timeout_seconds: float = 120.0
+
     # Bulk backfill (src/secfin/ingest/backfill.py).
     secfin_bulk_data_dir: str = "./data/bulk"
     # 0 => auto-detect as max(1, cpu_count() - 1).

@@ -7,9 +7,9 @@ through this repo (NOT via DuckDB) so the write path stays on the operational st
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.storage.metric_distribution_repository import (
     MetricDistributionRepository,
     MetricDistributionRow,
@@ -48,10 +48,7 @@ ON CONFLICT (peer_group, fiscal_year, fiscal_period, metric) DO UPDATE SET
 class SQLiteMetricDistributionRepository(MetricDistributionRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
 
     def bulk_upsert(self, rows: list[MetricDistributionRow]) -> None:

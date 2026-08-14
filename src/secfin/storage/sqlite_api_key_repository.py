@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.auth.models import ApiKeyRecord, DailyCount, DailyTraffic, DailyUsage, OpsOverview
 from secfin.storage.api_key_repository import ApiKeyRepository
 
@@ -42,10 +43,7 @@ ON CONFLICT(api_key_id, usage_date) DO UPDATE SET request_count = request_count 
 class SQLiteApiKeyRepository(ApiKeyRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
 
     def create_key(

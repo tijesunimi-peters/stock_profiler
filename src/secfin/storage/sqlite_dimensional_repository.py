@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.storage.dimensional_repository import DimensionalFact, DimensionalRepository
 
 _SCHEMA = """
@@ -33,10 +33,7 @@ _COLS = "cik, accession, axis, member, tag, ddate, qtrs, value, unit, fiscal_yea
 class SQLiteDimensionalRepository(DimensionalRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
 
     def bulk_upsert(self, rows: list[DimensionalFact]) -> int:
