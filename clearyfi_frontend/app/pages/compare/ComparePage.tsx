@@ -22,7 +22,8 @@ import { MiniPairs, PairBars } from "../../ui/primitives";
 import { LogDots, RadarChart, ScatterPlot } from "../../charts/misc";
 import { PeerStrip } from "../../charts/strips";
 import { StackedColumns, stackRamp } from "../../charts/bars";
-import { SECTOR_ABBR, SECTOR_NAMES, SUB_NAMES, BASE_PEER_COUNT, SUB_COUNTS } from "../../data/prototype";
+import { SECTOR_ABBR, SECTOR_NAMES, BASE_PEER_COUNT, SUB_COUNTS } from "../../data/prototype";
+import { useSectorRoster } from "../../lib/useSectorRoster";
 import { SectorControlBar } from "../../ui/SectorControlBar";
 import { SectorRail } from "../sectors/SectorView";
 import { HubRail } from "../company/HubOverview";
@@ -58,16 +59,22 @@ export function ComparePage({ view }: { view: "sectors" | "companies" }) {
 
 function SectorComparePage() {
   const sel = useSelection();
-  const subActive = sel.subIdx >= 0;
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : BASE_PEER_COUNT;
+  /*
+   * The SHELL is real and the PANELS below are not, and that split is the honest state of this
+   * surface today. The control bar and the header name the SIC group the reader actually selected
+   * (`/v1/sectors`); the comparison panels still run on the prototype's eleven invented sectors and
+   * their own A/B pills. `PROVENANCE.syntheticSurfaces` still lists "compare", which is what makes
+   * the mixture legible rather than silent — and porting these panels is the next slice.
+   */
+  const { label } = useSectorRoster();
   return (
     <PageShell
       subject="sectors"
       activeAction="Compare"
       title="Sector analytics"
       subtitle="Built entirely from SEC-filed data · as of latest filing, not real-time"
-      right={SECTOR_NAMES[sel.sectorIdx] + (subActive ? ` · ${SUB_NAMES[sel.subIdx]}` : "")}
-      controlBar={<SectorControlBar peerCount={peerCount} />}
+      right={`${sel.sectorGroup} · ${label(sel.sectorGroup)}`}
+      controlBar={<SectorControlBar />}
       views={SECTOR_VIEWS}
       activeView=""
       onView={(v) => navigate(sel.href(`/sectors/${v}`))}

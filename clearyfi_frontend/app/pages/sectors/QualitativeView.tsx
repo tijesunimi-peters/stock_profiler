@@ -16,7 +16,8 @@ import { QUAL_THEMES, dirChip } from "../../data/sector-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
-import { GEO_COLORS, SECTOR_NAMES } from "../../data/sector-catalog";
+import { GEO_COLORS } from "../../data/sector-catalog";
+import { useSectorRoster } from "../../lib/useSectorRoster";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
@@ -94,24 +95,20 @@ const QUAL_PERIOD = "FY";
 export function QualitativeView() {
   const sel = useSelection();
   const [openTheme, setOpenTheme] = useState<string | null>(null);
-  const subActive = sel.subIdx >= 0;
 
   /*
-   * TWO reads, and they are different in KIND. `sectorOverview` supplies the peer counts (Track 1
-   * — filer counts come from `/sectors`); `sectorQualitative` supplies everything else on this
-   * page, almost all of which is Track 2 and will never have an endpoint behind it. Keeping them
-   * separate is what lets Phase A fill one and give the other honest empty states.
+   * TWO sources, and they are different in KIND. The roster supplies the filer count and the
+   * sector's name — Track 1, from `/v1/sectors`. `sectorQualitative` supplies everything else on
+   * this page, almost all of which is Track 2 and will never have an endpoint behind it. Keeping
+   * them separate is what lets one be real while the other keeps honest empty states.
    */
-  const overview = useApi(
-    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, QUAL_PERIOD),
-    [sel.sectorIdx, subActive, sel.subIdx],
-  );
-  const read = useApi(() => api.sectorQualitative(String(sel.sectorIdx), QUAL_PERIOD), [sel.sectorIdx]);
+  const { label, peerCount: rosterCount } = useSectorRoster();
+  const read = useApi(() => api.sectorQualitative(sel.sectorGroup, QUAL_PERIOD), [sel.sectorGroup]);
 
-  if (read.error || overview.error) {
-    return <StateBlock variant="error" copy={(read.error ?? overview.error)!.message} />;
+  if (read.error) {
+    return <StateBlock variant="error" copy={read.error.message} />;
   }
-  if (!read.data || !overview.data) {
+  if (!read.data) {
     return <StateBlock variant="loading" copy="Reading this sector's disclosure record." />;
   }
 
@@ -123,8 +120,10 @@ export function QualitativeView() {
     deficient: DEFICIENT, hcClimate: HC_CLIMATE, pickFilers,
   } = read.data;
 
-  const peerCount = subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount;
-  const sector = SECTOR_NAMES[sel.sectorIdx];
+  // Real, from the roster. `?? 0` is banned here for the same reason it is in the seam: no count
+  // is not zero filers, and every figure below is a share OF this number.
+  const peerCount = rosterCount(sel.sectorGroup);
+  const sector = label(sel.sectorGroup);
 
   const filingsHref = (theme: string) => {
     const base = sel.href("/sectors/filings");
@@ -148,7 +147,7 @@ export function QualitativeView() {
           <span className="qual-title">Qualitative disclosures</span>
         </div>
         <div className="qual-masthead-right">
-          <span className="qual-pill">{peerCount} filers · FY25 10-Ks</span>
+          <span className="qual-pill">{peerCount == null ? "filers N/A" : `${peerCount} filers`} · FY25 10-Ks</span>
           <span className="qual-sections">Item 1A · 3 · 1C · MD&amp;A</span>
         </div>
       </div>
@@ -240,7 +239,7 @@ export function QualitativeView() {
           <div className="qual-card is-warn">
             <div className="qual-side-head">
               <span className="qual-side-title">Going-concern watch</span>
-              <span className="qual-side-count">2 / {overview.data.basePeerCount}</span>
+              <span className="qual-side-count">2 / {peerCount ?? "N/A"}</span>
             </div>
             {GOING_CONCERN.map((g) => (
               <div className="qual-gc-row" key={g.filer}>

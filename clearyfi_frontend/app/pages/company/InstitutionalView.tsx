@@ -10,7 +10,6 @@ import { ChartCard, Disclosure, StateBlock, StatTile, StatTileRow, STANDARD_DISC
 import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
-import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { compact, humanDate } from "../../lib/format";
 import { CompositionStrip } from "@ds";
@@ -129,6 +128,8 @@ export function InstitutionalView() {
   const behaviourRead = useApi(() => api.instBehaviour(T), [T]);
   const stewardRead = useApi(() => api.instStewardship(T), [T]);
   const limitsRead = useApi(() => api.instLimits(T), [T]);
+  // Its own read, and deliberately a cheap one: the crumb needs the filer's SIC and nothing else.
+  const sector = useApi(() => api.companySector(T), [T]);
 
   const [openCalc, setOpenCalc] = useState<string | null>(null);
   const [formsOpen, setFormsOpen] = useState(false);
@@ -169,7 +170,11 @@ export function InstitutionalView() {
   return (
     <div className="hub">
       <div className="hub-crumb">
-        <span className="hub-crumb-sector">{SECTOR_NAMES[sel.sectorIdx]}</span>
+        {/* The FILER's own SEC-assigned industry, from its own EDGAR profile — the crumb used
+            to read the SECTOR SELECTOR's sector, which is a different company's industry. */}
+        <span className="hub-crumb-sector">
+          {sector.data?.label ?? sector.data?.sic ?? "SIC N/A"}
+        </span>
         <span className="hub-crumb-sep">›</span>
         <span className="hub-crumb-name">{FILER_BY_SYMBOL[sel.focal]?.name ?? sel.focal}</span>
         <span className="hub-crumb-ticker">{sel.focal}</span>
