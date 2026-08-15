@@ -62,8 +62,15 @@ run_step() {
     return "$code"
 }
 
-# ~5.4 hours over ~17k companies. `--start-after` exists for resuming an interrupted run by
-# hand; a weekly timer simply redoes it, which is cheaper than tracking a frontier across runs.
+# ⚠️ ~16 HOURS on the production droplet, not the ~5.4 h this comment used to claim. That figure
+# was measured on a 16-core workstation and never re-measured. The real rate on 1 vCPU is
+# 9.4 companies/min (600 companies in 64 min, observed 2026-08-14), so ~9,055 companies is ~16 h.
+# Sunday 08:00 therefore runs into roughly midnight Monday and CROSSES the 06:00 incremental.
+# That is now survivable rather than fatal: storage/connection.py gives every writer a 120s busy
+# timeout, so the collision that killed this chain on 2026-08-14 becomes a pause.
+#
+# `--start-after` exists for resuming an interrupted run by hand; a weekly timer simply redoes it,
+# which is cheaper than tracking a frontier across runs (operator, 2026-08-14).
 run_step "metrics_backfill"  python -m secfin.ingest.metrics_backfill   || exit $?
 run_step "peer_distribution" python -m secfin.analytical.peer_distribution || exit $?
 run_step "peer_ranks"        python -m secfin.analytical.peer_ranks     || exit $?

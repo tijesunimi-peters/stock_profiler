@@ -175,7 +175,8 @@ Deployed master `bdb2f93` (27 commits). What changed on the droplet:
   rewritten.
 
 **The two weekly chains are installed but NOT enabled, deliberately (operator, 2026-08-14).**
-They were sized on a 16-core workstation: `metrics_backfill` alone is ~5.4 h there, and
+They were sized on a 16-core workstation: `metrics_backfill` alone is ~5.4 h there -- and **~16 h
+here**, re-measured 2026-08-14 at 9.4 companies/min. And
 `peer_ranks` runs DuckDB over millions of rows. This droplet is **1 vCPU / 1,967 MB / no swap**,
 and that single core also serves the API. Enabling them unattended risks a DuckDB OOM, or
 `metrics_backfill` exceeding `TimeoutStartSec=28800` and being killed mid-chain, while the API
@@ -183,7 +184,7 @@ competes for the CPU. Measure each by hand first:
 
 ```bash
 ssh root@143.198.37.67 'cd /opt/secfin && time ./deploy/scripts/run-disclosure-stats.sh'   # ~40 min on 16 cores
-ssh root@143.198.37.67 'cd /opt/secfin && time ./deploy/scripts/run-peer-analytics.sh'     # ~5.5 h on 16 cores
+ssh root@143.198.37.67 'cd /opt/secfin && time ./deploy/scripts/run-peer-analytics.sh'     # ~16 h HERE (~5.5 h on 16 cores)
 # then, if the cost is acceptable:
 ssh root@143.198.37.67 'systemctl enable --now secfin-disclosure-stats.timer secfin-peer-analytics.timer'
 ```
@@ -196,6 +197,53 @@ stays empty, timer stays off). The code change is additive and does not migrate 
 rollback is redeploying the previous tree; `secfin-api:rollback-jul17` is also still on the box.
 
 Disk after: **13G / 48G used**, unchanged by the deploy.
+
+### 5c. The sector surface has NO producer scheduled here (found 2026-08-14)
+
+Every table behind `/v1/sectors*` is empty on this droplet, and this is not a fault of any
+deploy — those batches have never had a timer. Recorded here rather than fixed because the
+operator's call (2026-08-14) was to keep the sector work local for now.
+
+| Endpoint | Table | Producer | Timer? | Rows here |
+|---|---|---|---|---|
+| `/sectors` (the roster) | `sector_dupont` | `ingest.dupont_backfill` → `analytical.sector_dupont` | **none** | 0 (`dupont_components` does not exist) |
+| `/sectors/theme-scores` | `sector_theme_scores` | `analytical.sector_theme_scores` | **none** | 0 |
+| `/sectors/{g}/spreads` | `metric_distributions` | `analytical.peer_distribution` | yes — chain step 2 | **0** (see below) |
+| `/sectors/{g}/insider-flow` | `sector_insider_flow` | `analytical.sector_insider_flow` | **none** | 0 |
+| `/sectors/{g}/lifecycle` | `sector_lifecycle` | `ingest.lifecycle_backfill` → `analytical.sector_lifecycle` | **none** | 0 (`lifecycle_components` does not exist) |
+| `/sectors/{g}/geographic-mix` | `sector_geographic_mix` | DERA ingest → `analytical.sector_geographic_mix` | **none** | 0 (`dimensional_geo_facts` does not exist) |
+
+`metric_distributions` is empty for its own reason: the peer-analytics chain has **never reached
+step 2**. Its first hand-run (2026-08-14) died in step 1 on a SQLite lock, and the timer is still
+disabled pending measurement. `metric_ranks` has 262k rows from an older run, so the *company*
+peer-rank features work — it is the *sector* rollups that are absent.
+
+The order any fix has to follow, because each step reads what the previous wrote:
+
+```
+metrics_backfill -> peer_distribution -> sector_theme_scores
+dupont_backfill  -> sector_dupont          (independent; this one gates the ROSTER)
+lifecycle_backfill -> sector_lifecycle     (independent)
+sector_insider_flow                        (independent; reads insider_transactions)
+```
+
+`sector_dupont` is the one that matters first: with it empty, `/v1/sectors` returns zero groups,
+so there is nothing for a reader to navigate to and every other sector endpoint is unreachable
+through the UI.
+
+### 5d. A SQLite lock killed the first peer-analytics run (2026-08-14, fixed in code)
+
+`secfin-incremental.timer` fired at 06:02:13 while the chain was materializing metrics. At
+06:02:33 `metrics_backfill` raised `sqlite3.OperationalError: database is locked` and the chain
+stopped, discarding 76 minutes at company 600 of 9,055.
+
+Nothing was corrupted. WAL gives one writer, and this box has three by design — the API's
+cache-aside writes, the incremental ingest, and the analytics chains. `sqlite3.connect`'s
+`timeout=` **is** the busy timeout and defaults to 5 seconds; no repository ever passed it.
+`storage/connection.py` now centralizes the connect and sets 120s, so a collision is a pause.
+
+**Not yet deployed here.** Until it is, any batch that overlaps another writer can still die this
+way — including the 06:00 incremental, which the ~16-hour chain now certainly crosses.
 
 ## 6. Monitoring & observability (as built, 2026-07-14)
 

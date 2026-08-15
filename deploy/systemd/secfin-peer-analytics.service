@@ -8,7 +8,8 @@ Type=oneshot
 User=secfin
 WorkingDirectory=/opt/secfin
 ExecStart=/opt/secfin/deploy/scripts/run-peer-analytics.sh
-# The materialization step alone is ~5.4h over ~17k companies (measured 2026-08-12); the two
+# The materialization step alone is ~16h over ~9k companies on THIS droplet (9.4 companies/min,
+# measured 2026-08-14; the earlier ~5.4h figure was a 16-core workstation). The two
 # DuckDB steps after it are minutes. 8h leaves headroom for a slower droplet without letting a
 # wedged run sit through the following week.
 TimeoutStartSec=28800
