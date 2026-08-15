@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { FILINGS_PER_PAGE, FORM_TABS, QUAL_THEMES } from "../../data/sector-catalog";
-import { SECTOR_NAMES } from "../../data/sector-catalog";
+import { useSectorRoster } from "../../lib/useSectorRoster";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
@@ -26,28 +26,22 @@ export function FilingsView() {
   // A stale page number after a filter change reads as an empty result rather than as a filter.
   useEffect(() => setPage(0), [theme, form]);
 
-  const subActive = sel.subIdx >= 0;
   /*
-   * Two reads: the peer count is Track 1 (`/sectors`), the filings are the theme's own. Phase A
-   * can fill the filing METADATA from `/filing-index` — form, date, accession — but not the
-   * passage, which is filing text and stays Track 2.
+   * Two sources: the filer count and the sector's name are Track 1 (the roster, off `/v1/sectors`);
+   * the filings are the theme's own and are Track 2. `/filing-index` could fill the filing
+   * METADATA here — form, date, accession — but not the passage, which is filing text.
    */
-  const overview = useApi(
-    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, "FY"),
-    [sel.sectorIdx, subActive, sel.subIdx],
-  );
-  const peerCount = overview.data
-    ? (subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount)
-    : 0;
+  const { label, peerCount: rosterCount } = useSectorRoster();
+  const peerCount = rosterCount(sel.sectorGroup);
   const read = useApi(
-    () => api.sectorFilings(String(sel.sectorIdx), theme, peerCount),
-    [sel.sectorIdx, theme, peerCount],
+    () => api.sectorFilings(sel.sectorGroup, theme, peerCount ?? 0),
+    [sel.sectorGroup, theme, peerCount],
   );
 
-  if (overview.error || read.error) {
-    return <StateBlock variant="error" copy={(overview.error ?? read.error)!.message} />;
+  if (read.error) {
+    return <StateBlock variant="error" copy={read.error.message} />;
   }
-  if (!overview.data || !read.data) {
+  if (!read.data) {
     return <StateBlock variant="loading" copy="Reading filings for this theme." />;
   }
   const d = read.data.filings;
@@ -79,7 +73,7 @@ export function FilingsView() {
       </button>
 
       <div className="filings-crumb">
-        <span className="qual-crumb">{SECTOR_NAMES[sel.sectorIdx]}</span>
+        <span className="qual-crumb">{label(sel.sectorGroup)}</span>
         <span className="qual-sep">›</span>
         <span className="qual-crumb">Risk theme</span>
         <span className="qual-sep">›</span>

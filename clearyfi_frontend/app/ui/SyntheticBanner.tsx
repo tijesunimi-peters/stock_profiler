@@ -45,6 +45,17 @@ export function SyntheticBanner({ surface }: { surface?: string } = {}) {
    */
   const split = surface ? PROVENANCE.partialSurfaces[surface] : undefined;
 
+  /*
+   * A NAMED surface that is neither synthetic nor a mixture gets no banner at all — the same
+   * disappearance the empty-list check does, one surface at a time.
+   *
+   * This is the half the list-shrinking mechanism was missing. §Sector became real while the
+   * banner above it still said no figure on the page came from a filing, which is a false
+   * disclosure and worse than none: it teaches a reader to ignore the banner everywhere else,
+   * including on the eight surfaces where it is still true.
+   */
+  if (surface && !split && !surfaces.includes(surface)) return null;
+
   return (
     <div className="synth-banner" role="note">
       <span className="synth-banner-eyebrow">{split ? "Partly synthetic" : "Synthetic"}</span>

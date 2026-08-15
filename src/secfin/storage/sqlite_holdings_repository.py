@@ -5,9 +5,9 @@ Own connection to the same db file as the other repositories (fine under WAL mod
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.normalize.schema import (
     HoldingsSnapshot,
     InstitutionalHolding,
@@ -108,10 +108,7 @@ def _split_refs(s: str | None) -> list[int]:
 class SQLiteHoldingsSnapshotRepository(HoldingsSnapshotRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
         self._migrate()
 

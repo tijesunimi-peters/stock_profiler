@@ -234,7 +234,7 @@ systemd timers under `deploy/`.
 **Weekly, and each one is a CHAIN rather than a job.** Every step reads what the previous
 step wrote, so they are single sequential scripts and a failed step stops the chain:
 
-- **Peer analytics** (`secfin-peer-analytics.timer`, Sun 08:00 UTC, **~5.5 hours**) --
+- **Peer analytics** (`secfin-peer-analytics.timer`, Sun 08:00 UTC, **~16 hours on 1 vCPU**) --
   `metrics_backfill` -> `peer_distribution` -> `peer_ranks`, i.e. `raw_facts` ->
   `metric_values` -> `metric_distributions` + `metric_ranks`.
 - **Disclosure stats** (`secfin-disclosure-stats.timer`, Sat 08:00 UTC, ~40 min) --
@@ -255,7 +255,7 @@ timers would reintroduce a subtler version of the same failure: a distribution c
 from a half-written `metric_values`.
 
 They are weekly rather than daily because re-materializing every company's metrics costs
-5.4 hours to reflect the handful of filers that filed since; the daily incremental keeps
+~16 hours to reflect the handful of filers that filed since; the daily incremental keeps
 `raw_facts` current and these let the derived tables catch up. The windows sit after the
 06:00 ingest and 07:00 backup, on different days from each other, so the two long jobs
 never contend for the same database or the same SEC rate budget.

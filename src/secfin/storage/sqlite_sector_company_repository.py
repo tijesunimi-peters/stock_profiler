@@ -9,9 +9,9 @@ ingest/sic_backfill.py and analytical/peer_ranks.py respectively.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.storage.sector_company_repository import (
     CompanyMetricValueRow,
     SectorCompanyRepository,
@@ -37,10 +37,7 @@ ORDER BY mv.value
 class SQLiteSectorCompanyRepository(SectorCompanyRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         # The tables are created by their own repositories; ensure they exist so a fresh db doesn't
         # error on a read before any write path has run.
         self._conn.execute(

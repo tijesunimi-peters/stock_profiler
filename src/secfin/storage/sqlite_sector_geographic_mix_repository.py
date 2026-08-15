@@ -7,9 +7,9 @@ repo; the serving endpoint reads it as plain point lookups (no DuckDB on the req
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.storage.sector_geographic_mix_repository import (
     SectorGeographicMixRepository,
     SectorGeographicMixRow,
@@ -57,10 +57,7 @@ ON CONFLICT (peer_group, fiscal_year) DO UPDATE SET
 class SQLiteSectorGeographicMixRepository(SectorGeographicMixRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
 
     def bulk_upsert(self, rows: list[SectorGeographicMixRow]) -> None:

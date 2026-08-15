@@ -14,7 +14,6 @@
  * filer and the whole page recomputes.
  */
 import { useState } from "react";
-import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { PX_GROUPS } from "../../data/hub-catalog";
 import type { BeyondRow } from "../../data/api";
 import { api, fmtMetric } from "../../data/api";
@@ -48,10 +47,7 @@ export function PeersView() {
    * make impossible.
    */
   const peerRead = useApi(() => api.companyPeerRelative(T, PX_YEAR, PX_PERIOD), [T]);
-  const identity = useApi(
-    () => api.companyIdentity(T, sel.subIdx),
-    [T, sel.subIdx],
-  );
+  const identity = useApi(() => api.companyIdentity(T), [T]);
 
   if (peerRead.error || identity.error) {
     return <StateBlock variant="error" copy={(peerRead.error ?? identity.error)!.message} />;
@@ -78,7 +74,10 @@ export function PeersView() {
     <div className="px">
       <div className="qual-masthead">
         <div className="qual-masthead-left">
-          <span className="qual-crumb">{SECTOR_NAMES[sel.sectorIdx]}</span>
+          {/* The FILER's own SIC, from its own profile — not the sector selector's. */}
+          <span className="qual-crumb">
+            {identity.data.sector?.label ?? identity.data.sector?.sic ?? "No SIC on file"}
+          </span>
           <span className="qual-sep">›</span>
           <span className="ia-name">{T}</span>
           <span className="ia-ticker">{T}</span>

@@ -1,83 +1,93 @@
 /**
- * Altitude 1 — Sector, ported from the prototype's own markup, copy and figures.
+ * Altitude 1 — Sector, on real SEC data at SIC 2-digit.
  *
- * Three numbered scopes: 01 health scorecard (tiles → provisional note → peer strip → geo mix
- * and insider flow), 02 what drives it (decomposition → biggest shifts), 03 distribution
- * (one dispersion panel with a This-theme / All-metrics scope toggle).
+ * Three numbered scopes, keeping the prototype's structure: 01 health scorecard (tiles →
+ * normalization note → cross-sector strip → geo mix and insider flow), 02 what drives it
+ * (decomposition → biggest shifts), 03 distribution (spreads with a This-theme / All-metrics
+ * scope toggle).
  *
  * The scorecard's delta is PLAIN MONO TEXT with a direction glyph — not a colored chip. That is
  * the prototype's choice and it is the honesty rule working: no metric on this page is tinted
- * good or bad.
+ * good or bad. A theme score is a POSITION against other sectors, and the tiles say so.
+ *
+ * **What changed when the figures became real.** Every panel here had a synthetic twin, and three
+ * of them could not survive contact with the data:
+ *
+ *   * *Two themes have no score.* Accounting quality and Structure & activity come back
+ *     `scored: false` with the reason `normalize/themes.DEFERRED_THEMES` records. The prototype
+ *     gave them 81 and 62. They render as unscored tiles — asked, and not answerable.
+ *   * *The insider card's "1.4× net buy/sell" is not computable.* A buy/sell ratio is unbounded
+ *     and undefined where insiders sold and never bought, which is the ordinary case. The card
+ *     shows the net dollar figure and a composition bar.
+ *   * *The geographic mix has no ingest behind it.* It renders its reason, not a bar.
  */
-import { SectionHead } from "@ds";
-import { GEO_COLORS, GEO_LABELS, SECTOR_ABBR, SECTOR_NAMES, SUB_NAMES, THEMES, ord, rankOf, statusDot } from "../../data/sector-catalog";
+import { SectionHead, StateBlock } from "@ds";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
-import { StateBlock } from "@ds";
+import { useSectorRoster } from "../../lib/useSectorRoster";
 import { PeerStrip } from "../../charts/strips";
 import { useSelection } from "../../state";
+import { ord } from "../../data/sector-catalog";
 
-/* The sector altitude's fiscal key — same shape and same reason as the hub's. */
-const SECTOR_PERIOD = "FY";
+/**
+ * The strip's bars run 0–100 on a FIXED domain, not scaled to the tallest.
+ *
+ * A theme score is already an index — 50 is the cross-sector average and ±1σ is about 15 points —
+ * so normalizing to the maximum would redraw the same distribution as though the leader were
+ * perfect. The tallest bar on a tight theme should look short.
+ */
+const STRIP_HEIGHT_PX = 96;
+
+/** Percent of a whole, for the geo bar. Formatting, not arithmetic on a figure. */
+const pct1 = (v: number) => `${v.toFixed(1)}%`;
 
 export function SectorView() {
   const sel = useSelection();
-  const si = sel.sectorIdx;
-  const subActive = sel.subIdx >= 0;
+  const { roster, error: rosterError } = useSectorRoster();
 
   const read = useApi(
-    () => api.sectorOverview(String(si), subActive ? String(sel.subIdx) : null, SECTOR_PERIOD),
-    [si, subActive, sel.subIdx],
+    () => (roster ? api.sectorOverview(sel.sectorGroup, roster.fiscalYear) : new Promise<never>(() => {})),
+    [sel.sectorGroup, roster?.fiscalYear],
   );
+
+  if (rosterError) return <StateBlock variant="error" copy={rosterError.message} />;
   if (read.error) return <StateBlock variant="error" copy={read.error.message} />;
   if (!read.data) return <StateBlock variant="loading" copy="Reading this sector's aggregates." />;
 
-  const {
-    scores: SECTOR_SCORES, shifts: BIGGEST_SHIFTS, constituents: CONSTITUENTS,
-    events: EVENTS, insider: INSIDER, themeDrill: THEME_DRILL, delta: SEMI_DELTA,
-    geographicMix: GEO_MIX, subCounts: SUB_COUNTS, asOf: AS_OF,
-  } = read.data;
+  const d = read.data;
 
-  const n = SECTOR_NAMES.length;
-  const rankSuffix = subActive
-    ? `of ${SUB_COUNTS[sel.subIdx]} sub-industries`
-    : `of ${n} sectors`;
-  const et = THEMES.find((t) => t.id === sel.expanded) ?? THEMES[0];
+  if (!d.themes.length) {
+    return (
+      <StateBlock
+        variant="empty"
+        copy={
+          `No composite theme scores have been computed for SIC ${d.group}. A sector is scored only ` +
+          `when enough of its filers have materialized metrics to place it against the others.`
+        }
+      />
+    );
+  }
 
-  // ---------------------------------------------------------------- 02 decomposition
-  const decompTheme = sel.decomp;
-  const decomp = decompTheme
-    ? (() => {
-        const theme = THEMES.find((t) => t.id === decompTheme)!;
-        const cons = CONSTITUENTS[decompTheme];
-        const contribs = cons.map((c) => c[1] * c[2]);
-        const maxC = Math.max(...contribs);
-        const score = Math.round(contribs.reduce((a, b) => a + b, 0));
-        return {
-          title: `${theme.name} · ${score} composite`,
-          method:
-            "percentile-averaged, favorability-adjusted, vs 11 sectors — provisional weighting (§9)",
-          rows: cons.map((c, i) => ({
-            label: c[0],
-            weightLabel: `w ${c[1].toFixed(2)}`,
-            contribLabel: `+${contribs[i].toFixed(1)}`,
-            pct: Math.round((contribs[i] / maxC) * 100),
-          })),
-        };
-      })()
-    : null;
+  /*
+   * The focused theme comes from the URL, and the URL is not validated against the payload (see
+   * `state.tsx`) — so a link naming a theme this sector does not carry focuses the first one it
+   * does, rather than rendering an empty page.
+   */
+  const focused = d.themes.find((t) => t.key === sel.expanded) ?? d.themes[0];
+  const decomp = sel.decomp ? d.themes.find((t) => t.key === sel.decomp) ?? null : null;
+  const stripBars = d.strip[focused.key] ?? [];
 
   // ---------------------------------------------------------------- 03 dispersion
+  //
+  // "This theme" intersects the focused theme's constituents with the metrics that actually have a
+  // materialized five-number summary — ten of them. The intersection is genuinely empty for Cash &
+  // investment, and that scope reports "0 of 2" rather than silently widening to all metrics.
   const scopeAll = sel.drillScope === "all";
-  // "All metrics" takes the first tile of every theme — one row per theme, not every metric.
-  const drillSrc = scopeAll
-    ? THEMES.flatMap((t) => (THEME_DRILL[t.id] ?? []).slice(0, 1))
-    : (THEME_DRILL[sel.expanded] ?? []);
-  const drillHeading = scopeAll ? "All-metric spreads · sector-wide" : `${et.name} · constituents`;
-
-  const geo = GEO_MIX[si] ?? GEO_MIX[0];
-  const ins = INSIDER[si] ?? INSIDER[0];
-  const insGlyph = ins.dir === "up" ? "↑" : ins.dir === "down" ? "↓" : "→";
+  const themeMetrics = new Set(focused.constituents.map((c) => c.metric));
+  const drillSrc = scopeAll ? d.spreads : d.spreads.filter((m) => themeMetrics.has(m.metric));
+  const drillHeading = scopeAll
+    ? `All materialized spreads · ${d.spreads.length} metrics`
+    : `${focused.label} · ${drillSrc.length} of ${focused.constituents.length} constituents have a spread`;
 
   return (
     // The wrapper exists to scope this altitude's section-header scale (12/20) without
@@ -87,135 +97,189 @@ export function SectorView() {
       <SectionHead
         n="01"
         title="Health scorecard"
-        subtitle="Seven composite themes · percentile-averaged (provisional) · click a tile to focus it below; the peer strip shows where this sector stands"
+        subtitle="Seven composite themes · equal-weight mean of z-scored sector medians · click a tile to focus it below; the strip shows where this sector stands against every other"
       />
 
       <div className="scorecard">
-        {THEMES.map((t) => {
-          const score = SECTOR_SCORES[t.id][si];
-          const rank = rankOf(t.id, si);
-          const pctile = Math.round(((n - rank) / (n - 1)) * 100);
-          const d = si === 0 ? SEMI_DELTA[t.id] : 0;
-          const dGlyph = d > 0 ? "↑" : d < 0 ? "↓" : "→";
-          const on = sel.expanded === t.id;
+        {d.themes.map((t) => {
+          const on = focused.key === t.key;
+          const dGlyph = t.delta == null ? "" : t.delta > 0 ? "↑" : t.delta < 0 ? "↓" : "→";
           return (
             <div
-              key={t.id}
-              className={`score-tile${on ? " is-expanded" : ""}`}
+              key={t.key}
+              className={`score-tile${on ? " is-expanded" : ""}${t.scored ? "" : " is-unscored"}`}
               role="button"
               tabIndex={0}
-              onClick={() => sel.set({ expanded: t.id })}
-              onKeyDown={(e) => e.key === "Enter" && sel.set({ expanded: t.id })}
+              onClick={() => sel.set({ expanded: t.key })}
+              onKeyDown={(e) => e.key === "Enter" && sel.set({ expanded: t.key })}
             >
-              <div className="score-tile-name">{t.name}</div>
-              <div className="score-tile-row">
-                <button
-                  type="button"
-                  className="score-tile-value"
-                  onClick={(e) => {
-                    // stopPropagation so opening the decomposition does not also re-focus the
-                    // tile underneath it.
-                    e.stopPropagation();
-                    sel.set({ decomp: sel.decomp === t.id ? null : t.id, expanded: t.id });
-                  }}
-                  title="Open the decomposition"
-                >
-                  {score}
-                </button>
-                <span className="score-tile-delta">
-                  {dGlyph} {d > 0 ? "+" : ""}
-                  {d}
-                </span>
-              </div>
-              <div className="score-tile-pctile">{ord(pctile)} pctile · vs all sectors</div>
-              <div className="score-tile-rank">
-                {ord(rank)} {rankSuffix}
-              </div>
+              <div className="score-tile-name">{t.label}</div>
+              {t.scored && t.score != null ? (
+                <>
+                  <div className="score-tile-row">
+                    <button
+                      type="button"
+                      className="score-tile-value"
+                      onClick={(e) => {
+                        // stopPropagation so opening the decomposition does not also re-focus the
+                        // tile underneath it.
+                        e.stopPropagation();
+                        sel.set({ decomp: sel.decomp === t.key ? null : t.key, expanded: t.key });
+                      }}
+                      title="Open the decomposition"
+                    >
+                      {t.score}
+                    </button>
+                    {/* No delta is not a flat delta: a theme with no prior-year score says nothing. */}
+                    <span className="score-tile-delta">
+                      {t.delta == null ? "no prior FY" : `${dGlyph} ${t.delta > 0 ? "+" : ""}${t.delta}`}
+                    </span>
+                  </div>
+                  <div className="score-tile-pctile">
+                    {t.percentile == null ? "percentile N/A" : `${ord(Math.round(t.percentile))} pctile`} · vs all
+                    sectors
+                  </div>
+                  {/*
+                    `rank_of` is PER THEME and differs — 7th of 63 on financial health, 20th of 61
+                    on cash & investment — because a sector missing a constituent is not scored on
+                    that theme rather than scored low. A bare "20th" would flatten that away.
+                  */}
+                  <div className="score-tile-rank">
+                    {t.rank == null || t.rankOf == null
+                      ? "rank N/A"
+                      : `${ord(t.rank)} of ${t.rankOf} sectors scored`}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="score-tile-row">
+                    <span className="score-tile-value is-na">∅</span>
+                    <span className="score-tile-delta">not scored</span>
+                  </div>
+                  <div className="score-tile-unscored">{t.reason ?? "No score is computed for this theme."}</div>
+                </>
+              )}
             </div>
           );
         })}
       </div>
 
-      <div className="provisional-note">
-        ≈ Scores provisional — final weighting/normalization not defined (see methodology §9).
-        Every number is traceable and openable.
-      </div>
+      {/* The method, in the server's own words — not a placeholder standing in for one. */}
+      {d.normalization && <div className="provisional-note">≈ {d.normalization}</div>}
 
-      {/* Peer strip closes section 01: cross-sector standing on the focused theme. */}
+      {/* Strip closes section 01: cross-sector standing on the focused theme. */}
       <div className="p-card">
         <div className="p-card-head">
           <span className="p-card-title">Where this sector sits</span>
           <span className="p-card-hint">
-            {et.name.toLowerCase()} · {n} sectors · {AS_OF}
+            {focused.label.toLowerCase()} · {stripBars.length} sectors scored · FY {d.fiscalYear}
           </span>
         </div>
-        {/*
-          Read-only, as in the prototype. The strip's job is to place this sector among the
-          others on the focused theme; the sector selector in the control bar is the one place
-          that changes which sector you are reading, and having two would split that.
-        */}
-        <div className="peerstrip">
-          {SECTOR_SCORES[sel.expanded].map((v, i) => {
-            const max = Math.max(...SECTOR_SCORES[sel.expanded]);
-            return (
-              <div
-                key={SECTOR_ABBR[i]}
-                className={`peerstrip-bar${i === si ? " is-focal" : ""}`}
-                title={`${SECTOR_NAMES[i]} — ${v}`}
-              >
-                <span
-                  className="peerstrip-fill"
-                  style={{ height: `${Math.round((v / max) * 44)}px` }}
-                />
-                <span className="peerstrip-label">{SECTOR_ABBR[i]}</span>
-              </div>
-            );
-          })}
-        </div>
+        {stripBars.length ? (
+          <>
+            {/*
+              Read-only, as in the prototype. The strip's job is to place this sector among the
+              others on the focused theme; the sector selector in the control bar is the one place
+              that changes which sector you are reading, and having two would split that.
+            */}
+            <div className="peerstrip is-dense">
+              {stripBars.map((b) => (
+                <div
+                  key={b.group}
+                  className={`peerstrip-bar${b.group === d.group ? " is-focal" : ""}`}
+                  title={`${b.group} ${b.label} — ${b.score}`}
+                >
+                  <span
+                    className="peerstrip-fill"
+                    style={{ height: `${Math.round((b.score / 100) * STRIP_HEIGHT_PX)}px` }}
+                  />
+                  <span className="peerstrip-label">{b.group}</span>
+                </div>
+              ))}
+            </div>
+            <div className="drill-tile-caption">
+              One bar per SIC major group, tallest score first; this sector is accented. Bars run on
+              a fixed 0–100 scale, so a tight theme looks flat rather than being stretched to fill
+              the panel. A sector not scored on this theme has no bar — it is absent, not zero.
+            </div>
+          </>
+        ) : (
+          <StateBlock variant="empty" copy={`No sector is scored on ${focused.label.toLowerCase()}.`} />
+        )}
       </div>
 
       <div className="sector-split">
         <div className="p-card">
           <div className="p-card-head is-inline">
             <span className="p-card-title">Geographic revenue mix</span>
-            <span className="p-card-hint">ASC 280 segment disclosure · asset-weighted</span>
+            <span className="p-card-hint">ASC 280 segment disclosure · revenue-weighted</span>
           </div>
-          <div className="geo-bar">
-            {geo.map((v, i) => (
-              <div key={GEO_LABELS[i]} style={{ width: `${v}%`, background: GEO_COLORS[i] }} />
-            ))}
-          </div>
-          <div className="geo-legend">
-            {geo.map((v, i) => (
-              <span key={GEO_LABELS[i]} className="geo-legend-item">
-                <i style={{ background: GEO_COLORS[i] }} />
-                {GEO_LABELS[i]} <b>{v}%</b>
-              </span>
-            ))}
-          </div>
+          {d.geographic.ok ? (
+            <>
+              <div className="geo-bar">
+                {d.geographic.mix.map((m) => (
+                  <div key={m.key} className={`geo-seg is-${m.key}`} style={{ width: `${m.pct}%` }} />
+                ))}
+              </div>
+              <div className="geo-legend">
+                {d.geographic.mix.map((m) => (
+                  <span key={m.key} className="geo-legend-item">
+                    <i className={`geo-seg is-${m.key}`} />
+                    {m.label} <b>{pct1(m.pct)}</b>
+                  </span>
+                ))}
+              </div>
+              <div className="drill-tile-caption">
+                {d.geographic.companyCount} of {d.geographic.inScope} filers disclose a geographic
+                split
+                {d.geographic.coveredShare != null
+                  ? `, covering ${pct1(d.geographic.coveredShare * 100)} of the sector's revenue`
+                  : ""}
+                {d.geographic.excluded > 0
+                  ? ` · ${d.geographic.excluded} excluded because their splits did not reconcile to consolidated revenue`
+                  : ""}
+                .
+              </div>
+            </>
+          ) : (
+            <StateBlock variant="empty" copy={d.geographic.note} />
+          )}
         </div>
 
         <div className="p-card">
           <div className="p-card-head is-inline">
             <span className="p-card-title">Insider flow</span>
-            <span className="p-card-hint">Forms 3/4/5</span>
+            <span className="p-card-hint">Forms 3/4/5 · open-market only</span>
           </div>
-          <div className="insider-head">
-            <span className="insider-glyph">{insGlyph}</span>
-            <span className="insider-ratio">{ins.ratio.toFixed(1)}×</span>
-            <span className="p-card-hint">net buy/sell ($)</span>
-          </div>
-          <div className="insider-bar">
-            <div style={{ width: `${(ins.buyers / (ins.buyers + ins.sellers)) * 100}%` }} />
-            <div
-              className="is-sell"
-              style={{ width: `${(ins.sellers / (ins.buyers + ins.sellers)) * 100}%` }}
-            />
-          </div>
-          <div className="insider-basis">
-            {ins.buyers} buyers · {ins.sellers} sellers
-          </div>
-          <div className="insider-note">{ins.note}</div>
+          {d.insider.ok ? (
+            <>
+              <div className="insider-head">
+                <span className="insider-glyph">{d.insider.net > 0 ? "↑" : d.insider.net < 0 ? "↓" : "→"}</span>
+                <span className="insider-ratio">{d.insider.netLabel}</span>
+                <span className="p-card-hint">net, {d.insider.window ?? "trailing window"}</span>
+              </div>
+              <div className="insider-bar">
+                <div style={{ width: `${d.insider.buyShare}%` }} />
+                <div className="is-sell" style={{ width: `${100 - d.insider.buyShare}%` }} />
+              </div>
+              <div className="insider-basis">
+                {d.insider.buyCount} buys · {d.insider.sellCount} sells · {d.insider.filerCount} filers
+                across {d.insider.companyCount} companies
+              </div>
+              {/*
+                The single most important thing about this number, and the commonest way the data
+                is misread. Grants and tax withholding are not decisions to trade.
+              */}
+              <div className="insider-note">
+                Codes P and S only — grants, option exercises and tax withholding are excluded.
+                {d.insider.excluded > 0
+                  ? ` ${d.insider.excluded} transactions reported no price and are excluded, not counted as $0.`
+                  : ""}
+              </div>
+            </>
+          ) : (
+            <StateBlock variant="empty" copy={d.insider.note} />
+          )}
         </div>
       </div>
 
@@ -223,45 +287,83 @@ export function SectorView() {
       <SectionHead
         n="02"
         title="What drives it"
-        subtitle="Constituent decomposition of the focused theme · then the largest standardized moves vs the sector's own history"
+        subtitle="Constituent decomposition of the focused theme · then the themes that moved most against the prior fiscal year"
       />
 
-      {decomp && (
+      {decomp && decomp.scored && (
         <div className="p-card is-strong">
           <div className="decomp-head">
-            <div className="decomp-title">{decomp.title}</div>
+            <div className="decomp-title">
+              {decomp.label} · {decomp.score} composite
+            </div>
             <button type="button" className="decomp-close" onClick={() => sel.set({ decomp: null })}>
               − close
             </button>
           </div>
-          <div className="decomp-method">{decomp.method}</div>
-          {decomp.rows.map((r) => (
-            <div className="decomp-row" key={r.label}>
-              <span className="decomp-label">{r.label}</span>
-              <span className="decomp-weight">{r.weightLabel}</span>
-              <div className="contrib-bar">
-                <div style={{ width: `${r.pct}%` }} />
+          <div className="decomp-method">
+            equal-weight mean of {decomp.constituents.length} favourability-oriented z-scores, vs{" "}
+            {decomp.rankOf ?? "the"} scored sectors
+          </div>
+          {decomp.constituents.map((c) => {
+            const z = c.z;
+            /*
+             * The bar is |z| against the widest constituent in THIS theme, and the sign is carried
+             * by the row's direction glyph rather than by the bar's length. A z of -1.5 is a large
+             * contribution in the negative direction, and drawing it as a short bar would read as
+             * a small one.
+             */
+            const maxAbs = Math.max(...decomp.constituents.map((x) => Math.abs(x.z ?? 0)), 0.001);
+            return (
+              <div className="decomp-row" key={c.metric}>
+                <span className="decomp-label">
+                  {c.label}
+                  {!c.higherIsBetter && <span className="decomp-dir" title="lower is better">↓ better</span>}
+                </span>
+                <span className="decomp-weight">w {(1 / decomp.constituents.length).toFixed(2)}</span>
+                <div className="contrib-bar">
+                  <div
+                    className={z != null && z < 0 ? "is-neg" : ""}
+                    style={{ width: `${Math.round((Math.abs(z ?? 0) / maxAbs) * 100)}%` }}
+                  />
+                </div>
+                <span className="decomp-contrib">
+                  {z == null ? "N/A" : `${z > 0 ? "+" : ""}${z.toFixed(2)}σ`}
+                </span>
               </div>
-              <span className="decomp-contrib">{r.contribLabel}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       <div className="p-card">
         <div className="p-card-head is-inline">
           <span className="p-card-title">Biggest shifts</span>
-          <span className="p-card-hint">largest standardized change vs own history</span>
+          <span className="p-card-hint">theme score vs prior fiscal year</span>
         </div>
-        {BIGGEST_SHIFTS.map((s) => (
-          <div className="shift-row" key={s.name}>
-            <span className="shift-glyph">{s.glyph}</span>
-            <span className="shift-name">{s.name}</span>
-            {s.flag && <span className="shift-flag">{s.flagLabel}</span>}
-            <span className="shift-delta">{s.delta}</span>
-            <span className="shift-basis">{s.basis}</span>
-          </div>
-        ))}
+        {d.shifts.length ? (
+          d.shifts.map((s) => (
+            <div className="shift-row" key={s.key}>
+              <span className="shift-glyph">{s.delta! > 0 ? "↑" : "↓"}</span>
+              <span className="shift-name">{s.label}</span>
+              <span className="shift-delta">
+                {s.delta! > 0 ? "+" : ""}
+                {s.delta} pts
+              </span>
+              <span className="shift-basis">
+                now {s.score} · {s.rank != null && s.rankOf != null ? `${ord(s.rank)} of ${s.rankOf}` : "rank N/A"}
+              </span>
+            </div>
+          ))
+        ) : (
+          /*
+           * A real and unremarkable answer: a sector whose scores did not move. The prototype could
+           * not produce it, because its shifts were a fixed list.
+           */
+          <StateBlock
+            variant="empty"
+            copy="No theme score moved against the prior fiscal year, or no prior year is scored for this sector."
+          />
+        )}
       </div>
 
       {/* ================================================================ 03 */}
@@ -292,29 +394,58 @@ export function SectorView() {
             ))}
           </div>
         </div>
-        {drillSrc.map((m) => (
-          <div className="drill-tile" key={m.name}>
-            <div className="drill-tile-head">
-              <span className="drill-tile-name">{m.name}</span>
-              <span className="drill-tile-median">
-                median{" "}
-                {/days|cycle/.test(m.name)
-                  ? Math.round(m.median)
-                  : m.median % 1 === 0
-                    ? m.median
-                    : m.median.toFixed(1)}
-              </span>
-            </div>
-            <PeerStrip
-              variant="track"
-              quantiles={{ lo: m.lo, hi: m.hi, q1: m.q1, q3: m.q3, med: m.median }}
-              format={(v) => String(Math.round(v * 10) / 10)}
-              axisLabels={false}
-              label={`${m.name} across the peer set`}
-            />
-            <div className="drill-tile-caption">{m.caption}</div>
+        {/* The spread year is shown because it is PINNED to the roster's and could drift. */}
+        {d.spreadYear != null && d.spreadYear !== d.fiscalYear && (
+          <div className="drill-tile-caption">
+            ⚠ These spreads are FY {d.spreadYear}; the scorecard above is FY {d.fiscalYear}.
           </div>
-        ))}
+        )}
+        {drillSrc.length ? (
+          drillSrc.map((m) => {
+            const f = (v: number) => (m.unit === "ratio" ? v.toFixed(3) : String(Math.round(v)));
+            return (
+              <div className="drill-tile" key={m.metric}>
+                <div className="drill-tile-head">
+                  <span className="drill-tile-name">{m.label}</span>
+                  <span className="drill-tile-median">median {f(m.median)}</span>
+                </div>
+                {/*
+                 * The quartiles are PRINTED as well as drawn, because real spreads have real
+                 * outliers. Revenue growth in group 36 runs −0.41 to +9.8 against a median of
+                 * 0.06, so the middle half is a hairline on any axis wide enough to hold the
+                 * maximum. The band is still the right picture — it shows exactly that the
+                 * dispersion is one-sided — but a reader should not have to measure it.
+                 */}
+                <div className="drill-tile-quartiles">
+                  <span>min {f(m.lo)}</span>
+                  <span>p25 {f(m.q1)}</span>
+                  <span>p75 {f(m.q3)}</span>
+                  <span>max {f(m.hi)}</span>
+                </div>
+                <PeerStrip
+                  variant="track"
+                  quantiles={{ lo: m.lo, hi: m.hi, q1: m.q1, q3: m.q3, med: m.median }}
+                  format={(v) => (m.unit === "ratio" ? v.toFixed(2) : String(Math.round(v)))}
+                  axisLabels={false}
+                  label={`${m.label} across the peer set`}
+                />
+                <div className="drill-tile-caption">
+                  {m.peerCount} filers reported this for FY {d.spreadYear ?? d.fiscalYear}. A filer
+                  with no value is excluded, never counted low.
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <StateBlock
+            variant="empty"
+            copy={
+              scopeAll
+                ? `No metric has a materialized spread for SIC ${d.group} in FY ${d.fiscalYear}. A sector below the minimum group size is dropped rather than shown as sparse.`
+                : `None of ${focused.label}'s ${focused.constituents.length} constituents has a materialized five-number summary, so this theme has no spread to show. Switch to All metrics for the ones that do.`
+            }
+          />
+        )}
       </div>
     </div>
   );
@@ -323,33 +454,39 @@ export function SectorView() {
 /** The right rail for the sector altitude: snapshot · what's moving · how to read this. */
 export function SectorRail() {
   const sel = useSelection();
-  const subActive = sel.subIdx >= 0;
+  const { roster } = useSectorRoster();
   // Its own read: the rail rides every sector view, including the two this file does not render.
   const read = useApi(
-    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, SECTOR_PERIOD),
-    [sel.sectorIdx, subActive, sel.subIdx],
+    () => (roster ? api.sectorOverview(sel.sectorGroup, roster.fiscalYear) : new Promise<never>(() => {})),
+    [sel.sectorGroup, roster?.fiscalYear],
   );
-  const et = THEMES.find((t) => t.id === sel.expanded) ?? THEMES[0];
 
   if (read.error) return <StateBlock variant="error" copy={read.error.message} />;
   if (!read.data) return <StateBlock variant="loading" copy="Reading this sector's snapshot." />;
-  const { subCounts: SUB_COUNTS, asOf: AS_OF, events: EVENTS, basePeerCount } = read.data;
-
-  const peerCount = subActive ? SUB_COUNTS[sel.subIdx] : basePeerCount;
-  const right = SECTOR_NAMES[sel.sectorIdx] + (subActive ? ` · ${SUB_NAMES[sel.subIdx]}` : "");
+  const d = read.data;
+  const focused = d.themes.find((t) => t.key === sel.expanded) ?? d.themes[0] ?? null;
 
   const snapshot = [
-    { k: "Filers", v: `${peerCount}${subActive ? " · sub" : ""}` },
-    { k: "Period", v: AS_OF },
-    { k: "Coverage", v: "94% filed" },
-    { k: "Focused theme", v: et.name },
+    { k: "Filers", v: d.filerCount == null ? "N/A" : String(d.filerCount) },
+    { k: "Period", v: `FY ${d.fiscalYear}` },
+    { k: "Period end", v: d.periodEnd ?? "N/A" },
+    { k: "Basis", v: roster?.peerBasis ?? "SIC 2-digit" },
+    { k: "Focused theme", v: focused?.label ?? "—" },
   ];
 
   return (
     <>
       <div className="rail-card">
         <div className="rail-label">Sector snapshot</div>
-        <div className="rail-heading">{right}</div>
+        {/*
+          The OVERVIEW's label, not the roster's. Four groups have theme scores but no DuPont
+          aggregate, so they are absent from the navigable roster and reachable only by URL —
+          `label()` would call one of them "SIC 07" where the overview knows it is Agricultural
+          Services. Where both know it they agree, because both ultimately quote `group_label`.
+        */}
+        <div className="rail-heading">
+          {d.group} · {d.label}
+        </div>
         <div className="rail-rows">
           {snapshot.map((s) => (
             <div className="rail-row" key={s.k}>
@@ -360,32 +497,32 @@ export function SectorRail() {
         </div>
       </div>
 
-      {/* Walled off from the analytical panels: this carries EVENTS, they carry STATE. */}
+      {/*
+        The prototype's "What's moving" feed carried four invented filing events — "3 auditor
+        changes this quarter", that kind of thing — attributed to Track 2. There is no sector-grain
+        filing feed: `filing_index` is per company and nothing rolls 8-K item codes up to a SIC
+        group. The card keeps its place and says that, rather than being deleted (which would hide
+        that the question was asked) or filled (which is what it did before).
+      */}
       <div className="rail-card is-tint">
         <div className="rail-card-head">
           <span className="rail-title">What&apos;s moving</span>
-          <span className="rail-badge">Track 2</span>
+          <span className="rail-badge">not built</span>
         </div>
         <div className="rail-sub">Filing events · walled off from metrics</div>
-        {EVENTS.map((e) => {
-          const s = statusDot(e.sev);
-          return (
-            <div className="feed-row" key={e.title}>
-              <span className="feed-dot" style={{ background: s.dot, border: s.border }} />
-              <div>
-                <div className="feed-title">{e.title}</div>
-                <div className="feed-src">{e.source}</div>
-              </div>
-            </div>
-          );
-        })}
+        <div className="rail-note">
+          No filing-event feed exists at sector grain. The filing index is per company, and 8-K item
+          codes are not rolled up to a SIC group — so there is nothing to show here that would not
+          be assembled on the spot.
+        </div>
       </div>
 
       <div className="rail-card">
         <div className="rail-label">How to read this</div>
         <div className="rail-note">
-          Scores are a position vs other sectors, not a good/bad or buy verdict. Every number is
-          traceable — click a score to open its decomposition.
+          Scores are a position vs other sectors, not a good/bad or buy verdict. SIC 2-digit is
+          coarse — group 28 holds pharmaceuticals and biotech together, and semiconductors are about
+          a third of group 36. Every number is traceable: click a score to open its decomposition.
         </div>
         <a className="rail-link" href="/methodology">
           Methodology §9 ↗

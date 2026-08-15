@@ -84,7 +84,8 @@ docker compose --profile analytics run --rm analytics python -m secfin.analytica
 docker compose --profile analytics run --rm analytics python -m secfin.analytical.disclosure_stats
 ```
 
-`metrics_backfill` is ~5.4 hours whole-market and takes `--start-after <cik>` (sorted walk, so
+`metrics_backfill` is ~16 hours whole-market on the 1-vCPU droplet (9.4 companies/min, measured
+2026-08-14; ~5.4 h on a 16-core workstation) and takes `--start-after <cik>` (sorted walk, so
 one CIK stands for "everything below is done"). In production these run as two weekly chains —
 see docs/DEPLOYMENT.md §8; the commands above are the manual equivalents.
 

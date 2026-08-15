@@ -18,7 +18,6 @@ import {
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { SeriesChart, Sparkline } from "../../charts/series";
-import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
 
@@ -174,7 +173,6 @@ const STMT_TABS = [
 export function HubOverview() {
   const sel = useSelection();
   const T = sel.focal;
-  const subActive = sel.subIdx >= 0;
 
   /*
    * Seven reads, grouped by the BACKEND read pattern they will become — not by the section they
@@ -185,7 +183,7 @@ export function HubOverview() {
    * `/metrics` and `/statements` both REQUIRE a year, and a `FiscalPeriod` carries none of its own.
    * Passing it now is what stops Phase A having to re-thread it through every call site.
    */
-  const identity = useApi(() => api.companyIdentity(T, sel.subIdx), [T, sel.subIdx]);
+  const identity = useApi(() => api.companyIdentity(T), [T]);
   const financials = useApi(() => api.companyFinancials(T, HUB_YEAR, HUB_PERIOD), [T]);
   const footnotes = useApi(() => api.companyFootnotes(T, HUB_YEAR, HUB_PERIOD), [T]);
   const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T]);
@@ -205,7 +203,6 @@ export function HubOverview() {
   const [calc, setCalc] = useState<string | null>(null);
   const [tile, setTile] = useState<string | null>(null);
 
-  const sector = SECTOR_NAMES[sel.sectorIdx];
   const toggleCalc = (id: string) => setCalc((c) => (c === id ? null : id));
 
   /*
@@ -263,7 +260,10 @@ export function HubOverview() {
     <div className="hub">
       {/* breadcrumb */}
       <div className="hub-crumb">
-        <span className="hub-crumb-sector">{sector}</span>
+        {/* The FILER's own SEC-assigned industry, not the sector selector's. */}
+        <span className="hub-crumb-sector">
+          {identity.data.sector?.label ?? identity.data.sector?.sic ?? "No SIC on file"}
+        </span>
         <span className="hub-crumb-sep">›</span>
         <span className="hub-crumb-name">{T}</span>
         <span className="hub-crumb-ticker">{T}</span>

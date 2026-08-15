@@ -13,7 +13,6 @@ import { unitFmt } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
-import { SECTOR_NAMES } from "../../data/sector-catalog";
 import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { SeriesChart } from "../../charts/series";
 import { useSelection } from "../../state";
@@ -59,6 +58,8 @@ export function HistoryView() {
     () => Promise.all(picked.map((id) => api.companyMetricSeries(T, id, range, basis))),
     [T, picked.join("|"), range, basis],
   );
+  // Its own read, and deliberately a cheap one: the crumb needs the filer's SIC and nothing else.
+  const sector = useApi(() => api.companySector(T), [T]);
 
   if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
   if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's metric history." />;
@@ -133,7 +134,11 @@ export function HistoryView() {
   return (
     <div className="hub">
       <div className="hub-crumb">
-        <span className="hub-crumb-sector">{SECTOR_NAMES[sel.sectorIdx]}</span>
+        {/* The FILER's own SEC-assigned industry, from its own EDGAR profile — the crumb used
+            to read the SECTOR SELECTOR's sector, which is a different company's industry. */}
+        <span className="hub-crumb-sector">
+          {sector.data?.label ?? sector.data?.sic ?? "SIC N/A"}
+        </span>
         <span className="hub-crumb-sep">›</span>
         <span className="hub-crumb-name">{FILER_BY_SYMBOL[T]?.name ?? T}</span>
         <span className="hub-crumb-ticker">{T}</span>

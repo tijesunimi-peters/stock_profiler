@@ -6,10 +6,10 @@ sqlite_cusip_repository.py.
 
 from __future__ import annotations
 
-import sqlite3
 from collections.abc import Sequence
 from pathlib import Path
 
+from secfin.storage.connection import connect
 from secfin.sec.trading_arrangements import TradingArrangement
 from secfin.storage.trading_arrangement_repository import TradingArrangementRepository
 
@@ -59,10 +59,7 @@ def _int(flag: bool | None) -> int | None:
 class SQLiteTradingArrangementRepository(TradingArrangementRepository):
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self._db_path, isolation_level=None)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn = connect(self._db_path)
         self._conn.executescript(_SCHEMA)
 
     def replace_for_filing(

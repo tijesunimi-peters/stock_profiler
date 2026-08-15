@@ -17,9 +17,7 @@ import { SectorControlBar } from "../../ui/SectorControlBar";
 import { SectorRail, SectorView } from "./SectorView";
 import { QualitativeView } from "./QualitativeView";
 import { FilingsView } from "./FilingsView";
-import { SECTOR_NAMES, SUB_NAMES } from "../../data/sector-catalog";
-import { api } from "../../data/api";
-import { useApi } from "../../lib/useApi";
+import { useSectorRoster } from "../../lib/useSectorRoster";
 
 const VIEWS = [
   { value: "sector", label: "Sector" },
@@ -28,20 +26,12 @@ const VIEWS = [
 
 export function SectorPage({ view }: { view: string }) {
   const sel = useSelection();
-  const subActive = sel.subIdx >= 0;
   /*
-   * The page needs the filer count for its control bar, which belongs to the PAGE and not to any
-   * one view. A filer count is a Track 1 fact from `/sectors`, so it comes through the seam like
-   * everything else — falling back to 0 while in flight rather than to a plausible-looking
-   * constant, because a wrong count is worse than a briefly blank one.
+   * The page only needs the sector's NAME for its header; the control bar reads the roster itself.
+   * Both go through the same cached `useSectorRoster`, so the header and the dropdown cannot
+   * disagree about what SIC 36 is called.
    */
-  const overview = useApi(
-    () => api.sectorOverview(String(sel.sectorIdx), subActive ? String(sel.subIdx) : null, "FY"),
-    [sel.sectorIdx, subActive, sel.subIdx],
-  );
-  const peerCount = overview.data
-    ? (subActive ? overview.data.subCounts[sel.subIdx] : overview.data.basePeerCount)
-    : 0;
+  const { label } = useSectorRoster();
   const narrative = view === "qualitative" || view === "filings";
 
   return (
@@ -49,8 +39,8 @@ export function SectorPage({ view }: { view: string }) {
       subject="sectors"
       title="Sector analytics"
       subtitle="Built entirely from SEC-filed data · as of latest filing, not real-time"
-      right={SECTOR_NAMES[sel.sectorIdx] + (subActive ? ` · ${SUB_NAMES[sel.subIdx]}` : "")}
-      controlBar={<SectorControlBar peerCount={peerCount} />}
+      right={`${sel.sectorGroup} · ${label(sel.sectorGroup)}`}
+      controlBar={<SectorControlBar />}
       views={VIEWS}
       activeView={view}
       onView={(v) => navigate(sel.href(`/sectors/${v}`))}
@@ -60,7 +50,9 @@ export function SectorPage({ view }: { view: string }) {
       rightRail={<SectorRail />}
       disclosures={[
         STANDARD_DISCLOSURES.financials_floor,
-        "Composite theme scores are provisional: the rollup method is a placeholder and the weighting is an open decision. They are positions relative to other sectors, not grades.",
+        "Sectors are SIC major groups, the industry code the SEC assigns each filer — coarse and dated. Group 28 holds pharmaceuticals and biotech together; semiconductors are about a third of group 36. Treat a group as a starting axis, not ground truth.",
+        "Composite theme scores are an equal-weight mean of z-scored sector medians, mapped to 0–100 with 50 as the cross-sector average. They are positions relative to other sectors, not grades, and the weighting is an open decision.",
+        "Two of the seven themes — accounting quality, and structure & activity — are not scored, because the signals they need are not ingested. They are shown unscored rather than dropped.",
         "Percentiles are within the peer set unless labeled 'vs all sectors' — only the composite scorecard compares across sectors.",
         ...(narrative
           ? [

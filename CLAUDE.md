@@ -497,7 +497,7 @@ python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYY
 python -m secfin.analytical.disclosure_stats
 # ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote:
 #     metrics_backfill -> peer_distribution -> peer_ranks        (secfin-peer-analytics.timer,
-#                                                                 Sun 08:00 UTC, ~5.5 h)
+#                                                                 Sun 08:00 UTC, ~16 h on 1 vCPU)
 #     filing_index_backfill --all-issuers -> disclosure_stats    (secfin-disclosure-stats.timer,
 #                                                                 Sat 08:00 UTC, ~40 min)
 #   In production each chain is ONE sequential script (deploy/scripts/run-{peer-analytics,

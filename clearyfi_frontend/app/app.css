@@ -1787,6 +1787,35 @@
   color: var(--accent);
 }
 
+/* The SIC major-group code, carried beside every label — it is the identity in the URL and the API. */
+.sector-code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--mono-muted);
+  margin-right: 5px;
+}
+
+.sector-menu-item.is-active .sector-code {
+  color: var(--accent);
+}
+
+.sector-menu-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+/* The peer basis, stated where the prototype had a "pin to compare" button. */
+.ctrlbar-basis {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--mono-muted);
+}
+
+/* ⚠️ Dead with the sub-industry control — kept only until the compare port stops importing it. */
 .ctrlbar-subs {
   display: flex;
   flex-wrap: wrap;
@@ -1992,6 +2021,32 @@
   padding-top: 5px;
 }
 
+/*
+ * A theme with no score. It keeps the tile's shape and loses its emphasis: the ∅ is muted, the
+ * reason takes the space the rank line held. It must not read as a low score, so there is no
+ * number and no bar anywhere on it.
+ */
+.score-tile.is-unscored {
+  background: var(--bg-tint);
+  border-style: dashed;
+}
+
+.score-tile-value.is-na {
+  font-size: 22px;
+  color: var(--mono-muted);
+  border-bottom: none;
+  cursor: default;
+}
+
+.score-tile-unscored {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 1.45;
+  color: var(--mono-muted);
+  border-top: 1px solid var(--rule);
+  padding-top: 5px;
+}
+
 .provisional-note {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -2013,6 +2068,30 @@
   gap: 6px;
   height: 66px;
   padding-top: 0;
+}
+
+/*
+ * The dense variant: ~60 SIC major groups instead of the prototype's eleven sectors.
+ *
+ * Bars get a floor width and the row scrolls rather than compressing to hairlines, and the labels
+ * are the 2-digit codes — an abbreviation everyone can look up, unlike a truncated "Electronic &
+ * Other El…". The full name and score are on hover.
+ */
+.peerstrip.is-dense {
+  gap: 2px;
+  height: 124px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.peerstrip.is-dense .peerstrip-bar {
+  flex: 1 0 14px;
+  min-width: 14px;
+}
+
+.peerstrip.is-dense .peerstrip-label {
+  font-size: 7.5px;
+  letter-spacing: 0;
 }
 
 .peerstrip-bar {
@@ -2094,6 +2173,23 @@
   width: 9px;
   height: 9px;
   border-radius: 2px;
+}
+
+/*
+ * The three geography buckets are FIXED — `normalize/segment_geography.py` classifies every ASC
+ * 280 member into domestic, international or other, and there is no fourth. Naming them in CSS
+ * instead of passing colours through the payload keeps the seam free of presentation.
+ */
+.geo-seg.is-domestic {
+  background: var(--accent);
+}
+
+.geo-seg.is-international {
+  background: var(--gaap-color);
+}
+
+.geo-seg.is-other {
+  background: var(--border-strong);
 }
 
 .geo-legend-item b {
@@ -2228,6 +2324,26 @@
   border-right: 2px solid var(--accent);
 }
 
+/*
+ * A constituent BELOW the cross-sector average. The bar's length is |z| — the size of the
+ * contribution — and the sign lives in this muting and in the ±σ figure beside it. Drawing a
+ * −1.5σ constituent as a short bar would read as a small one, which is the opposite of true.
+ * It is not tinted red: nothing on this page is coloured good or bad.
+ */
+.contrib-bar > div.is-neg {
+  background: var(--bg-tint);
+  border-right: 2px dashed var(--mono-muted);
+}
+
+/* "lower is better", said in words next to the constituent it applies to. */
+.decomp-dir {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--mono-muted);
+  margin-left: 7px;
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------------------- shifts */
 
 .shift-row {
@@ -2341,6 +2457,17 @@
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-soft);
+}
+
+/* The five-number summary in figures, above the band that draws it. */
+.drill-tile-quartiles {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--mono-muted);
+  margin: 4px 0 2px;
 }
 
 .drill-tile-caption {

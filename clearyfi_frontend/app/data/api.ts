@@ -103,7 +103,9 @@ export const PROVENANCE = {
     "institutional",
     "insider activity",
     "peer-relative",
-    "sector",
+    // "sector" left this list when the sector altitude was plumbed onto /v1/sectors,
+    // /sectors/theme-scores, /spreads, /insider-flow and /geographic-mix. The two views BELOW it
+    // are still here: qualitative is Track 2 by ruling, and filings hangs off it.
     "qualitative",
     "filings",
     "manager",
@@ -4376,6 +4378,286 @@ function toInstLimits(
   };
 }
 
+/* ==================================================== the sector altitude, on real SIC groups
+ *
+ * **The vocabulary is SEC's own, not ours** (operator ruling, 2026-08-14: "go with 2-digit").
+ *
+ * The prototype navigated eleven hand-named sectors — Semiconductors, Software, Biotech, Pharma
+ * and so on. None of them exists in the filing record. What exists is the SIC code EDGAR assigns
+ * each filer, and every materialized table in this project (`metric_ranks`, `metric_distributions`,
+ * `sector_theme_scores`, `sector_dupont`, `sector_insider_flow`) is keyed on its 2-digit major
+ * group. So the nav names what the data is grouped by, and the names come from the API's
+ * `group_label` rather than a list we would then have to defend.
+ *
+ * The cost is visible on the page and is stated there rather than hidden: SIC 2-digit puts
+ * pharmaceuticals and biotech in ONE group (28), and semiconductors are about a third of group 36.
+ * A curated vocabulary would name those precisely and cover roughly half the market; a finer SIC
+ * grain would need every table above re-materialized. Neither is free, and the honest version of
+ * a coarse group is a coarse label — which is what `group_label` gives.
+ *
+ * **There is no sub-industry.** The prototype's sub-industry pills had counts (14, 9, 17…) drawn
+ * from nothing; at 2-digit there is no finer peer set materialized, so the control is gone rather
+ * than present-and-inert. `Selection.subIdx` survives for URL compatibility and is never read here.
+ */
+
+interface SectorListResponse {
+  fiscal_year: number;
+  fiscal_period: string;
+  peer_basis: string;
+  caveats: string[];
+  sectors: { group: string; group_label: string; peer_count: number }[];
+}
+
+interface SectorThemeScoresResponse {
+  fiscal_year: number;
+  fiscal_period: string;
+  peer_basis: string;
+  normalization: string;
+  caveats: string[];
+  sectors: {
+    group: string;
+    group_label: string;
+    themes: {
+      theme: string;
+      theme_label: string;
+      scored: boolean;
+      score: number | null;
+      percentile: number | null;
+      rank: number | null;
+      rank_of: number | null;
+      delta_vs_prior_fy: number | null;
+      constituents: {
+        metric: string; label: string; higher_is_better: boolean;
+        median: number | null; oriented_z: number | null;
+      }[];
+      reason: string | null;
+    }[];
+  }[];
+}
+
+interface SectorSpreadsResponse {
+  group: string;
+  group_label: string;
+  fiscal_year: number;
+  fiscal_period: string;
+  metrics: {
+    metric: string; label: string; unit: string; peer_count: number;
+    min: number; p25: number; median: number; p75: number; max: number;
+  }[];
+}
+
+interface SectorInsiderFlowResponse {
+  group: string;
+  group_label: string;
+  as_of: string | null;
+  window: { days: number; start: string; end: string; label: string } | null;
+  unit: string;
+  net: number | null;
+  buys: number | null;
+  sells: number | null;
+  buy_count: number;
+  sell_count: number;
+  filer_count: number;
+  company_count: number;
+  excluded_no_price_count: number;
+  has_data: boolean;
+  reason?: string | null;
+}
+
+interface SectorGeographicMixResponse {
+  group: string;
+  group_label: string;
+  fiscal_year: number | null;
+  has_data: boolean;
+  mix: { domestic: number; international: number; other: number } | null;
+  company_count: number;
+  companies_in_scope: number;
+  excluded_unreconciled_count: number;
+  revenue_covered_share: number | null;
+  as_of: string | null;
+  reason?: string | null;
+}
+
+/** One scorecard tile. An unscored theme keeps its identity and carries WHY, never a number. */
+export interface SectorThemeTile {
+  key: string;
+  label: string;
+  scored: boolean;
+  score: number | null;
+  percentile: number | null;
+  rank: number | null;
+  rankOf: number | null;
+  delta: number | null;
+  reason: string | null;
+  constituents: { metric: string; label: string; higherIsBetter: boolean; z: number | null }[];
+}
+
+/**
+ * The scorecard, its decomposition and the cross-sector strip — all from `/sectors/theme-scores`.
+ *
+ * ONE read for all three because they are one claim seen at three distances: a tile's score, the
+ * constituents that produced it, and where that score sits among the other sectors. Drawn from
+ * separate reads they could disagree about the same number.
+ *
+ * **`rank_of` is per theme and is not decoration.** A sector ranks 7th of 63 on financial health
+ * and 20th of 61 on cash & investment, because a sector missing a constituent is not scored on
+ * that theme at all rather than scored low. Rendering a bare "20th" would flatten that away.
+ *
+ * **Weights are equal and are shown as such.** The server's normalization is an equal-weight mean
+ * of oriented z-scores, so a constituent's weight is 1/n — not the 0.25/0.30 the prototype drew,
+ * which implied a weighting scheme nobody has decided. `oriented_z` already carries favourability
+ * (a lower-is-better metric is flipped server-side), so the view never re-orients it.
+ */
+function toSectorThemes(res: SectorThemeScoresResponse | null, group: string) {
+  const sector = res?.sectors.find((s) => s.group === group) ?? null;
+  const tiles: SectorThemeTile[] = (sector?.themes ?? []).map((t) => ({
+    key: t.theme,
+    label: t.theme_label,
+    scored: t.scored,
+    score: t.score,
+    percentile: t.percentile,
+    rank: t.rank,
+    rankOf: t.rank_of,
+    delta: t.delta_vs_prior_fy,
+    reason: t.reason,
+    constituents: t.constituents.map((c) => ({
+      metric: c.metric,
+      label: c.label,
+      higherIsBetter: c.higher_is_better,
+      z: c.oriented_z,
+    })),
+  }));
+  /*
+   * The strip, per theme: every sector that IS scored on it. A sector missing from a theme's bar
+   * set was not scored on that theme -- it is absent from the strip rather than drawn at zero,
+   * which would read as "worst" instead of "not asked".
+   */
+  const strip: Record<string, { group: string; label: string; score: number }[]> = {};
+  for (const s of res?.sectors ?? []) {
+    for (const t of s.themes) {
+      if (!t.scored || t.score == null) continue;
+      (strip[t.theme] ??= []).push({ group: s.group, label: s.group_label, score: t.score });
+    }
+  }
+  for (const k of Object.keys(strip)) strip[k].sort((a, b) => b.score - a.score);
+  return {
+    tiles,
+    strip,
+    normalization: res?.normalization ?? null,
+    /*
+     * "Biggest shifts" is the period-over-period move of each SCORED theme -- the only shift this
+     * project actually computes. The prototype's version ranked invented per-metric moves against
+     * an invented history; `delta_vs_prior_fy` is a real move of a real score against the prior
+     * fiscal year, and it is labelled as that rather than as "vs own history".
+     */
+    shifts: tiles
+      .filter((t) => t.scored && t.delta != null && t.delta !== 0)
+      .sort((a, b) => Math.abs(b.delta!) - Math.abs(a.delta!)),
+  };
+}
+
+/**
+ * §03's dispersion panels, from `/sectors/{group}/spreads`.
+ *
+ * Scoped two ways, and the "this theme" scope has a real empty case worth keeping. Only ten
+ * metrics have materialized five-number summaries, and a theme's constituents are a different
+ * list: financial health matches all four of its own, profitability three of six, and **cash &
+ * investment none at all** — its constituents (FCF margin, OCF growth) have no distribution
+ * materialized. That scope reports "0 of 2" and says so, rather than falling back to the
+ * all-metrics view and looking like it answered.
+ */
+function toSectorSpreads(res: SectorSpreadsResponse | null) {
+  return (res?.metrics ?? []).map((m) => ({
+    metric: m.metric,
+    label: m.label,
+    unit: m.unit,
+    peerCount: m.peer_count,
+    lo: m.min,
+    q1: m.p25,
+    median: m.median,
+    q3: m.p75,
+    hi: m.max,
+  }));
+}
+
+/**
+ * The insider-flow card, from `/sectors/{group}/insider-flow`.
+ *
+ * **The prototype's "1.4× net buy/sell" is not computable and is not here.** A buy/sell ratio is
+ * unbounded and undefined in the ordinary case — a sector where insiders sold and never bought —
+ * and group 36 is close to it: $119M bought against $3.78B sold. The card shows the NET dollar
+ * figure the endpoint returns and a bar of the two sides, which stays readable at that spread.
+ *
+ * Open-market (codes P and S) only, which is the endpoint's own filter and the single most
+ * important thing about the number: grants and tax withholding are not decisions to trade, and
+ * folding them in is the commonest way this data is misread. Transactions with no reported price
+ * are excluded and counted, because a sale at an unstated price is not a sale of $0.
+ */
+function toSectorInsider(res: SectorInsiderFlowResponse | null) {
+  if (!res || !res.has_data || res.net == null || res.buys == null || res.sells == null) {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No open-market insider transactions are cached for this sector over the window.",
+    };
+  }
+  const gross = res.buys + res.sells;
+  return {
+    ok: true as const,
+    net: res.net,
+    netLabel: usdCompact(res.net),
+    buys: res.buys,
+    sells: res.sells,
+    // Share of the GROSS dollar flow, so the bar is a composition and not a ratio. `gross === 0`
+    // cannot reach here (has_data would be false), but the guard keeps this from ever dividing
+    // by zero into a NaN width.
+    buyShare: gross > 0 ? (res.buys / gross) * 100 : 0,
+    buyCount: res.buy_count,
+    sellCount: res.sell_count,
+    filerCount: res.filer_count,
+    companyCount: res.company_count,
+    excluded: res.excluded_no_price_count,
+    window: res.window?.label ?? null,
+    asOf: res.as_of,
+  };
+}
+
+/**
+ * The geographic-mix card, from `/sectors/{group}/geographic-mix`.
+ *
+ * Today this returns `has_data: false` for every group, and that is not a bug: the mix is built
+ * from ASC 280 geography facts in `dimensional_geo_facts`, which the DERA quarterly ingest fills,
+ * and that ingest has not been run over this volume. The card says so. It is left in place rather
+ * than removed because the endpoint is real and lights up when the ingest runs — an empty state
+ * with a reason is a different thing from a panel that was quietly deleted.
+ */
+function toSectorGeographic(res: SectorGeographicMixResponse | null) {
+  if (!res || !res.has_data || !res.mix) {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No ASC 280 geographic revenue splits have been ingested for this sector's filers, so no "
+          + "domestic/international mix can be reported.",
+    };
+  }
+  return {
+    ok: true as const,
+    mix: [
+      { key: "domestic", label: "Domestic", pct: res.mix.domestic * 100 },
+      { key: "international", label: "International", pct: res.mix.international * 100 },
+      { key: "other", label: "Other / unallocated", pct: res.mix.other * 100 },
+    ],
+    companyCount: res.company_count,
+    inScope: res.companies_in_scope,
+    excluded: res.excluded_unreconciled_count,
+    coveredShare: res.revenue_covered_share,
+    fiscalYear: res.fiscal_year,
+    asOf: res.as_of,
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -4456,7 +4738,21 @@ export const api = {
    *
    * The peer-set pill is still a fixture: it needs `/peers`, which is the next slice.
    */
-  companyIdentity: async (symbol: string, subIdx: number): Promise<CompanyIdentity> => {
+  /**
+   * Just the filer's SEC-assigned industry — one `/profile` read.
+   *
+   * Split out of `companyIdentity` because three views need only the breadcrumb and `identity`
+   * costs four endpoints, one of which fetches filing documents. A crumb is not worth an EX-21
+   * parse.
+   */
+  companySector: async (symbol: string): Promise<CompanySector> => {
+    const p = await getJson<ProfileResponse>(`/v1/companies/${encodeURIComponent(symbol)}/profile`);
+    return p.sic
+      ? { sic: p.sic, label: p.sic_description ?? null, group: p.sic.padStart(4, "0").slice(0, 2) }
+      : null;
+  },
+
+  companyIdentity: async (symbol: string): Promise<CompanyIdentity> => {
     const enc = encodeURIComponent(symbol);
     /*
      * Two reads. The subsidiary one is allowed to FAIL WITHOUT TAKING THE CARD WITH IT: it is the
@@ -4477,7 +4773,20 @@ export const api = {
       profile: profileRows(p, audit),
       links: edgarLinks(p.cik),
       segmentChips: [],
-      contextPill: hub.hubContextPill(subIdx >= 0, proto.SUB_COUNTS[subIdx] ?? 0),
+      /*
+       * The filer's OWN industry, from its own profile.
+       *
+       * This used to be `hubContextPill`, which returned the literal "SIC 3674 · rank 5 / 62" for
+       * every company on the site — a fabricated classification and a fabricated rank. The SIC is
+       * real and comes from EDGAR; the rank does not appear because placing a company among its
+       * peers is a different read, and a number with no source behind it is what this replaced.
+       */
+      sector: p.sic
+        ? { sic: p.sic, label: p.sic_description ?? null, group: p.sic.padStart(4, "0").slice(0, 2) }
+        : null,
+      contextPill: p.sic
+        ? `SIC ${p.sic}${p.sic_description ? ` · ${p.sic_description}` : ""}`
+        : "No SIC on this filer's EDGAR record",
       bizText: identitySentence(p),
       structure: subsidiaryStructure(subs),
     };
@@ -4888,33 +5197,77 @@ export const api = {
   // ========================================================== Sector altitude
 
   /**
-   * The sector overview. Phase A: `/sectors/{group}` + `/sectors/theme-scores` +
+   * The navigable sectors: `/v1/sectors`, which is the universe every other sector read is keyed
+   * on. Cached for the session because it is the app's NAV VOCABULARY — a dropdown that re-fetched
+   * on every route change would make the sector list flicker between identical answers.
+   *
+   * `/sectors` rather than `/sectors/theme-scores` (which knows four more groups) on purpose: this
+   * list is what the app offers to navigate to, and a group with no DuPont aggregate has no filer
+   * count and no §01 to show. The four extra groups reappear in the cross-sector strip, which is
+   * about where a sector STANDS rather than where a reader can GO.
+   */
+  sectorRoster: async (): Promise<SectorRoster> => {
+    const res = await getJson<SectorListResponse>("/v1/sectors");
+    return {
+      groups: res.sectors
+        .map((s) => ({ group: s.group, label: s.group_label, peerCount: s.peer_count }))
+        .sort((a, b) => a.group.localeCompare(b.group)),
+      fiscalYear: res.fiscal_year,
+      fiscalPeriod: res.fiscal_period,
+      peerBasis: res.peer_basis,
+    };
+  },
+
+  /**
+   * One sector, everything §01–§03 shows: `/sectors/theme-scores` + `/sectors/{group}` +
    * `/sectors/{group}/spreads` + `/sectors/{group}/insider-flow` + `/sectors/{group}/geographic-mix`.
    *
-   * One group because they share a peer set and a period, and because the page shows them
-   * together — a scorecard whose insider strip came from a different quarter than its spreads
+   * One payload because they share a peer set and a period, and because the page shows them
+   * together — a scorecard whose insider card came from a different quarter than its spreads
    * would be a page contradicting itself.
    *
-   * NOTE what the real endpoints will and will not carry. `geographicMix` is ASC 280 (V5: the
-   * `Geographical` axis, ~52% of annual filers), so it arrives with a coverage figure and a real
-   * chance of being `N/A` for a sector. `insider` is OPEN-MARKET (P/S) only — grants and tax
-   * withholding are excluded on purpose, because folding them in is the commonest way this data
-   * is misread.
+   * **The spread year is PINNED to the roster's**, not left to default. `/sectors` resolves the
+   * latest WELL-COVERED annual year (2025 today) while `/sectors/spreads` defaults to the latest
+   * MATERIALIZED one (2026, on 31 filers against 2025's 213). Left alone, §01 and §03 would
+   * describe different years on one screen and nothing on the page would say so.
+   *
+   * Each read is independently `.catch(() => null)` and each adapter has an empty state, because
+   * these endpoints fail independently in practice: geographic-mix has no ingest behind it yet,
+   * and lifecycle/spreads go quiet for a group that missed the minimum size. One 404 must not
+   * blank the four panels that did answer.
    */
-  sectorOverview: (_sectorId: string, _sub: string | null, _fiscalPeriod: string) =>
-    resolve<SectorOverview>({
-      scores: proto.SECTOR_SCORES,
-      shifts: proto.BIGGEST_SHIFTS,
-      constituents: proto.CONSTITUENTS,
-      events: proto.EVENTS,
-      insider: proto.INSIDER,
-      themeDrill: proto.THEME_DRILL,
-      delta: proto.SEMI_DELTA,
-      geographicMix: proto.GEO_MIX,
-      subCounts: proto.SUB_COUNTS,
-      basePeerCount: proto.BASE_PEER_COUNT,
-      asOf: proto.AS_OF,
-    }),
+  sectorOverview: async (group: string, fiscalYear: number): Promise<SectorOverview> => {
+    const g = encodeURIComponent(group);
+    const [scores, dupont, spreads, insider, geo] = await Promise.all([
+      getJson<SectorThemeScoresResponse>("/v1/sectors/theme-scores").catch(() => null),
+      getJson<{ group: string; group_label: string; points: { fiscal_year: number; peer_count: number; period_end: string | null }[] }>(
+        `/v1/sectors/${g}`,
+      ).catch(() => null),
+      getJson<SectorSpreadsResponse>(`/v1/sectors/${g}/spreads?year=${fiscalYear}&period=FY`).catch(() => null),
+      getJson<SectorInsiderFlowResponse>(`/v1/sectors/${g}/insider-flow`).catch(() => null),
+      getJson<SectorGeographicMixResponse>(`/v1/sectors/${g}/geographic-mix`).catch(() => null),
+    ]);
+    const themes = toSectorThemes(scores, group);
+    // The filer count is the one for the YEAR the page is describing, not the newest point --
+    // /sectors' own series carries barely-filed recent years (group 36: 213 filers in 2025, 10 in
+    // 2023's partial). Picking by year keeps "N filers" and "FY N" the same claim.
+    const point = dupont?.points?.find((p) => p.fiscal_year === fiscalYear) ?? null;
+    return {
+      group,
+      label: dupont?.group_label ?? scores?.sectors.find((s) => s.group === group)?.group_label ?? `SIC ${group}`,
+      fiscalYear,
+      themes: themes.tiles,
+      strip: themes.strip,
+      shifts: themes.shifts,
+      normalization: themes.normalization,
+      spreads: toSectorSpreads(spreads),
+      spreadYear: spreads?.fiscal_year ?? null,
+      insider: toSectorInsider(insider),
+      geographic: toSectorGeographic(geo),
+      filerCount: point?.peer_count ?? null,
+      periodEnd: point?.period_end ?? null,
+    };
+  },
 
   /**
    * The qualitative altitude. **Track 2 — no endpoint will ever back most of this.**
@@ -5147,11 +5500,23 @@ export const api = {
 // Named so views type against the SEAM rather than against `hub.ts` -- that is what makes the
 // Phase A swap invisible to them.
 
+/** A filer's own SEC-assigned industry: 4-digit SIC, its description, and the 2-digit peer group. */
+export type CompanySector = { sic: string; label: string | null; group: string } | null;
+
 export interface CompanyIdentity {
   /** `reason` is present only where a row is unsourceable for a NAMED reason, not merely absent. */
   profile: { k: string; v: string; reason?: string }[];
   links: ReturnType<typeof hub.hubLinks>;
   segmentChips: ReturnType<typeof hub.hubSegmentChips>;
+  /**
+   * The filer's own SEC-assigned industry: the 4-digit SIC, its description, and the 2-digit major
+   * group that is this product's peer set. `null` when EDGAR holds no SIC for the filer.
+   *
+   * It belongs to the COMPANY, not to the sector selector. Every company breadcrumb used to read
+   * `SECTOR_NAMES[sel.sectorIdx]` — the sector the reader last picked on a different page — so
+   * NVIDIA's crumb said "Banks" if you had been looking at banks.
+   */
+  sector: CompanySector;
   contextPill: string;
   bizText: string;
   /** `subCount`/`offshore` are null when unknown — never 0, which would read as "none". */
@@ -5260,18 +5625,30 @@ export interface ManagerRoster {
   roster: typeof mgr.MANAGER_ROSTER;
 }
 
+/** The navigable SIC 2-digit groups, with the year the roster's filer counts belong to. */
+export interface SectorRoster {
+  groups: { group: string; label: string; peerCount: number }[];
+  fiscalYear: number;
+  fiscalPeriod: string;
+  peerBasis: string;
+}
+
 export interface SectorOverview {
-  scores: typeof proto.SECTOR_SCORES;
-  shifts: typeof proto.BIGGEST_SHIFTS;
-  constituents: typeof proto.CONSTITUENTS;
-  events: typeof proto.EVENTS;
-  insider: typeof proto.INSIDER;
-  themeDrill: typeof proto.THEME_DRILL;
-  delta: typeof proto.SEMI_DELTA;
-  geographicMix: typeof proto.GEO_MIX;
-  subCounts: typeof proto.SUB_COUNTS;
-  basePeerCount: number;
-  asOf: typeof proto.AS_OF;
+  group: string;
+  label: string;
+  fiscalYear: number;
+  themes: SectorThemeTile[];
+  /** Per theme, every sector scored on it — the cross-sector strip. Keyed by theme id. */
+  strip: Record<string, { group: string; label: string; score: number }[]>;
+  shifts: SectorThemeTile[];
+  normalization: string | null;
+  spreads: ReturnType<typeof toSectorSpreads>;
+  /** The year the spreads actually came back for — shown, so §01 and §03 cannot silently differ. */
+  spreadYear: number | null;
+  insider: ReturnType<typeof toSectorInsider>;
+  geographic: ReturnType<typeof toSectorGeographic>;
+  filerCount: number | null;
+  periodEnd: string | null;
 }
 
 export interface SectorQualitative {

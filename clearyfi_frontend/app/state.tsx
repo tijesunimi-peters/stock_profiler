@@ -1,6 +1,9 @@
 /**
  * The single selection store, matching the prototype's own state shape (HANDOFF §6):
- * `{ view, sectorIdx, subIdx, expanded, decomp, drillScope, focal, manager, compareA, compareB }`.
+ * `{ view, sectorGroup, subIdx, expanded, decomp, drillScope, focal, manager, compareA, compareB }`.
+ *
+ * `sectorGroup` was `sectorIdx` until the sector port: the prototype indexed a list of invented
+ * sector names, and the real identity is the SIC code EDGAR assigns. See the field's own note.
  *
  * Two properties are load-bearing:
  *
@@ -13,22 +16,47 @@
  */
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useLocation } from "./router";
-import { SECTOR_NAMES, SUB_NAMES, THEMES, type ThemeId } from "./data/prototype";
+import { SUB_NAMES } from "./data/prototype";
 
 export interface Selection {
-  /** Index into `SECTOR_NAMES`. The prototype indexes sectors; so does this. */
-  sectorIdx: number;
-  /** Index into `SUB_NAMES`, or `-1` for the whole sector. */
+  /**
+   * The SIC 2-digit major group, as EDGAR writes it — `"36"`, `"73"`, `"28"`. A CODE, not an
+   * index (operator ruling 2026-08-14).
+   *
+   * It used to index a hand-written `SECTOR_NAMES` of eleven invented sectors, which meant the URL
+   * `?sector=3` named a different industry the moment that list was reordered. The code is the
+   * identity the API is keyed on, so a link survives any change to how the list is presented.
+   *
+   * A string because `"01"` and `"07"` are real groups and a number would eat the leading zero.
+   * NOT validated against a list here: the roster is fetched, so an unknown code reaches the
+   * view and renders as a named empty state rather than being silently rewritten to another
+   * sector's page.
+   */
+  sectorGroup: string;
+  /**
+   * ⚠️ Vestigial: index into `SUB_NAMES`, or `-1`.
+   *
+   * There is no sub-industry at SIC 2-digit — the prototype's six pills and their filer counts had
+   * no source, and no finer peer set is materialized. Kept only so an old link carrying `?sub=`
+   * still parses; nothing reads it. Delete when the compare surface stops being synthetic.
+   */
   subIdx: number;
-  /** The scorecard tile in focus — drives decomposition, dispersion and the peer strip. */
-  expanded: ThemeId;
+  /**
+   * The scorecard tile in focus — drives decomposition, dispersion and the peer strip.
+   *
+   * A plain string: theme identity is the API's (`normalize/themes.py` owns the list and
+   * `/sectors/theme-scores` returns it), so a closed union here would have to be kept in sync by
+   * hand and would reject a theme the server added. A URL naming a theme the payload does not
+   * carry focuses the first one it does, rather than rendering nothing.
+   */
+  expanded: string;
   /**
    * The theme whose decomposition panel is open, or `null`.
    *
    * Opens on the focused theme by default — a score that ships without a visible decomposition
    * is exactly the opaque number the honesty rules exist to prevent (00 §9a).
    */
-  decomp: ThemeId | null;
+  decomp: string | null;
   /** `theme` | `all` — the dispersion scope toggle. */
   drillScope: "theme" | "all";
   /** Focal company ticker. */
@@ -56,10 +84,9 @@ export interface SelectionApi extends Selection {
   /**
    * ⚠️ DEPRECATED shims — no view reads these any more (P0b). Do not add a new caller.
    *
-   * They translated the prototype's state vocabulary into the pre-port catalog's: `sectorIdx`
-   * (a number) into `sectorId` (a string), plus two constants standing in for state the ported
-   * views do not carry. Every view now reads through `data/api.ts`, so nothing here is load-
-   * bearing.
+   * They stood in for state the ported views do not carry. Every view now reads through
+   * `data/api.ts`, so nothing here is load-bearing. `sectorId` (the prototype's `"semis"` /
+   * `"pharma"` catalog ids) went with the sector port — SIC groups have no such vocabulary.
    *
    * Kept rather than deleted (operator, 2026-08-02) because `period` is the honest record of a
    * problem Phase A has to solve: it is pinned to "2026-Q1" and the real API speaks THREE period
@@ -68,19 +95,12 @@ export interface SelectionApi extends Selection {
    * exists yet.
    */
   period: string;
-  sectorId: string;
   subIndustry: string | null;
   focalTicker: string;
 }
 
-/** Maps the prototype's sector index onto the pre-port catalog id. ⚠️ Deprecated with the shims above. */
-const LEGACY_SECTOR_IDS = [
-  "semis", "software", "hardware", "biotech", "pharma",
-  "banks", "retail", "energy", "utilities", "semis", "telecom",
-];
-
 const KEYS: Record<keyof Selection, string> = {
-  sectorIdx: "sector",
+  sectorGroup: "sector",
   subIdx: "sub",
   expanded: "theme",
   decomp: "decomp",
@@ -94,10 +114,15 @@ const KEYS: Record<keyof Selection, string> = {
   pxGroup: "px",
 };
 
-const NUMERIC: (keyof Selection)[] = ["sectorIdx", "subIdx", "managerCik", "compareA", "compareB"];
+const NUMERIC: (keyof Selection)[] = ["subIdx", "managerCik", "compareA", "compareB"];
 
 const DEFAULTS: Selection = {
-  sectorIdx: 0,
+  /*
+   * SIC 36 — Electronic & Other Electrical Equipment. The nearest real group to the prototype's
+   * opening "Semiconductors", and honestly not the same thing: semiconductors are about a third
+   * of it. It is a default, not a claim; the control bar names what the group actually is.
+   */
+  sectorGroup: "36",
   subIdx: -1,
   // The prototype opens on Growth, which is also the spec's suggested default.
   expanded: "growth",
@@ -152,7 +177,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       return raw as Selection[K];
     };
     const next: Selection = {
-      sectorIdx: get("sectorIdx"),
+      sectorGroup: get("sectorGroup"),
       subIdx: get("subIdx"),
       expanded: get("expanded"),
       decomp: get("decomp"),
@@ -165,11 +190,16 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       compareY: get("compareY"),
       pxGroup: get("pxGroup"),
     };
-    // Guard against a hand-edited URL naming something that does not exist.
-    if (next.sectorIdx < 0 || next.sectorIdx >= SECTOR_NAMES.length) next.sectorIdx = 0;
+    /*
+     * Guard a hand-edited URL, but only where a LOCAL list is the authority.
+     *
+     * The sector group and the theme id are NOT checked here: both are the API's vocabulary now,
+     * and validating them against a copy in the client would mean rewriting `?sector=99` to group
+     * 36 and quietly showing a reader a different industry than the link named. An unknown code
+     * goes to the view, which fetches, gets nothing back and says so.
+     */
+    if (!/^\d{1,2}$/.test(next.sectorGroup)) next.sectorGroup = DEFAULTS.sectorGroup;
     if (next.subIdx < -1 || next.subIdx >= SUB_NAMES.length) next.subIdx = -1;
-    if (!THEMES.some((t) => t.id === next.expanded)) next.expanded = DEFAULTS.expanded;
-    if (next.decomp && !THEMES.some((t) => t.id === next.decomp)) next.decomp = null;
     return next;
   }, [query, pathFocal]);
 
@@ -216,7 +246,6 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
       set,
       href,
       period: "2026-Q1",
-      sectorId: LEGACY_SECTOR_IDS[selection.sectorIdx] ?? "semis",
       subIndustry: null,
       focalTicker: selection.focal,
     }),
