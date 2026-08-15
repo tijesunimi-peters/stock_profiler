@@ -4469,7 +4469,17 @@ interface SectorGeographicMixResponse {
   group_label: string;
   fiscal_year: number | null;
   has_data: boolean;
-  mix: { domestic: number; international: number; other: number } | null;
+  /**
+   * Both forms, and the distinction is load-bearing: `domestic` is DOLLARS, `domestic_share` is
+   * the fraction. Declaring only the first is how the first cut of this adapter read
+   * `mix.domestic * 100` — $113bn as a percentage — and drew three equal segments with a legend of
+   * nonsense. It type-checked and looked like a chart. `verify_sectors.mjs` E2 measures the
+   * rendered segment widths against the API's shares, which is what caught it.
+   */
+  mix: {
+    domestic: number; international: number; other: number;
+    domestic_share: number; international_share: number; other_share: number;
+  } | null;
   company_count: number;
   companies_in_scope: number;
   excluded_unreconciled_count: number;
@@ -4644,10 +4654,12 @@ function toSectorGeographic(res: SectorGeographicMixResponse | null) {
   }
   return {
     ok: true as const,
+    // The SHARE fields, not the dollar ones. The server computes the shares (and guards the
+    // divide-by-zero), so taking them is reshaping; dividing the dollars here would be deriving.
     mix: [
-      { key: "domestic", label: "Domestic", pct: res.mix.domestic * 100 },
-      { key: "international", label: "International", pct: res.mix.international * 100 },
-      { key: "other", label: "Other / unallocated", pct: res.mix.other * 100 },
+      { key: "domestic", label: "Domestic", pct: res.mix.domestic_share * 100 },
+      { key: "international", label: "International", pct: res.mix.international_share * 100 },
+      { key: "other", label: "Other / unallocated", pct: res.mix.other_share * 100 },
     ],
     companyCount: res.company_count,
     inScope: res.companies_in_scope,

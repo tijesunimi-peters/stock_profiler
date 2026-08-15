@@ -212,7 +212,21 @@ export function SectorView() {
         <div className="p-card">
           <div className="p-card-head is-inline">
             <span className="p-card-title">Geographic revenue mix</span>
-            <span className="p-card-hint">ASC 280 segment disclosure · revenue-weighted</span>
+            {/*
+              The mix's OWN fiscal year, which is not guaranteed to be the scorecard's. The batch
+              writes one row per group for whichever annual basis it was last run on, and the DERA
+              quarterly ZIPs it reads land a fiscal year at a time — so a group whose filers report
+              on a different calendar can carry a different year from §01. Same class of silent
+              mismatch as the spreads year, and named the same way rather than assumed away.
+            */}
+            <span className="p-card-hint">
+              ASC 280 · revenue-weighted
+              {d.geographic.ok && d.geographic.fiscalYear != null
+                ? ` · FY ${d.geographic.fiscalYear}${
+                    d.geographic.fiscalYear !== d.fiscalYear ? " ⚠ not the scorecard's year" : ""
+                  }`
+                : ""}
+            </span>
           </div>
           {d.geographic.ok ? (
             <>

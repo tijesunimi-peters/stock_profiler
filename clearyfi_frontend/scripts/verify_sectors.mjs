@@ -149,13 +149,50 @@ if (flow.has_data) {
 
 /* ---------------------------------------------------------------- E geographic mix */
 if (geo.has_data) {
-  ck(`E1 the domestic share ${(geo.mix.domestic*100).toFixed(1)}% is rendered`,
-     txt.includes(`${(geo.mix.domestic*100).toFixed(1)}%`));
+  /* E1 the three shares are the API's, to the decimal the panel prints */
+  for (const k of ["domestic", "international", "other"]) {
+    const pct = `${(geo.mix[`${k}_share`]*100).toFixed(1)}%`;
+    ck(`E1 ${k} share ${pct} is rendered`, txt.includes(pct), `api=${pct}`);
+  }
+  /* E2 the bar's segment widths track the shares -- a legend that agrees with the API above a bar
+     that doesn't is the failure this catches */
+  const segs = await p.$$eval(".geo-bar > div", els =>
+    els.map(e => ({ cls: e.className, w: parseFloat(getComputedStyle(e).width) })));
+  const totalW = segs.reduce((a, x) => a + x.w, 0);
+  ck(`E2 the bar has one segment per bucket (${segs.length})`, segs.length === 3);
+  for (const [i, k] of ["domestic", "international", "other"].entries()) {
+    const want = geo.mix[`${k}_share`] * 100;
+    const got = totalW > 0 ? (segs[i].w / totalW) * 100 : 0;
+    ck(`E2 ${k} segment is ${want.toFixed(1)}% of the bar`, Math.abs(got - want) < 1.0,
+       `dom=${got.toFixed(1)}%`);
+  }
+  /* E3 COVERAGE rides with the figure. A mix built from 90 of 191 filers covering 42% of the
+     sector's revenue is not the sector's mix, and the panel has to say so beside it. */
+  ck(`E3 the filer coverage (${geo.company_count} of ${geo.companies_in_scope}) is on the page`,
+     txt.includes(`${geo.company_count} of ${geo.companies_in_scope} filers`));
+  ck(`E3b the revenue covered (${(geo.revenue_covered_share*100).toFixed(1)}%) is on the page`,
+     txt.includes(`${(geo.revenue_covered_share*100).toFixed(1)}%`));
+  if (geo.excluded_unreconciled_count > 0) {
+    ck(`E3c the ${geo.excluded_unreconciled_count} unreconciled exclusions are reported`,
+       txt.includes(`${geo.excluded_unreconciled_count} excluded`));
+  }
+  /* E4 the mix's own fiscal year is named, and flagged when it is not the scorecard's */
+  ck(`E4 the mix names its fiscal year (FY ${geo.fiscal_year})`,
+     txt.includes(`FY ${geo.fiscal_year}`));
+  if (geo.fiscal_year !== YEAR) {
+    ck("E4b a mix from a different year than the scorecard is flagged",
+       /not the scorecard's year/.test(txt), `mix=${geo.fiscal_year} scorecard=${YEAR}`);
+  }
 } else {
-  ck("E1 the un-ingested geographic mix renders its reason, not an empty bar",
+  ck("E1 a group with no usable mix renders its reason, not an empty bar",
      /No ASC 280 geographic revenue splits/.test(txt));
   const segs = await p.$$eval(".geo-bar", e => e.length);
   ck("E2 no geo bar is drawn when there is no mix", segs === 0, `dom=${segs} bars`);
+  /* E3 a group DROPPED for being below the minimum must not be distinguishable from one with no
+     data at all -- both are "we cannot characterise this sector", and inventing a third state
+     would invite a reader to treat the thin one as almost-good-enough. */
+  ck("E3 a below-minimum group reads as N/A, not as a partial answer",
+     !/1 of \d+ filers/.test(txt) && !/below the minimum/i.test(txt));
 }
 
 /* ---------------------------------------------------------------- F distribution */

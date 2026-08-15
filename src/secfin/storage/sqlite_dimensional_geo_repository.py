@@ -85,6 +85,23 @@ class SQLiteDimensionalGeoRepository(DimensionalGeoRepository):
         )
         return [_from_db(r) for r in cur.fetchall()]
 
+    def latest_well_covered_fiscal_year(self) -> int | None:
+        # Coverage is counted in COMPANIES, not rows: a filer that splits revenue eight ways
+        # contributes eight rows, so a row count would let a few verbose filers stand in for
+        # a year's breadth.
+        row = self._conn.execute(
+            """
+            WITH per AS (
+                SELECT fiscal_year, COUNT(DISTINCT cik) AS c
+                FROM dimensional_geo_facts
+                GROUP BY fiscal_year
+            )
+            SELECT MAX(fiscal_year) FROM per
+            WHERE c >= 0.5 * (SELECT MAX(c) FROM per)
+            """
+        ).fetchone()
+        return row[0] if row and row[0] is not None else None
+
     def fiscal_years(self) -> list[int]:
         cur = self._conn.execute(
             "SELECT DISTINCT fiscal_year FROM dimensional_geo_facts ORDER BY fiscal_year DESC"

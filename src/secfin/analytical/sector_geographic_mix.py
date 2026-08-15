@@ -91,7 +91,12 @@ def _company_mixes(rows: list[DimensionalGeoRow]) -> dict[int, _CompanyMix]:
 
 
 def compute_sector_geographic_mix(
-    db_path: str, fiscal_year: int, sic_digits: int, reconcile_tolerance: float, as_of: str
+    db_path: str,
+    fiscal_year: int,
+    sic_digits: int,
+    reconcile_tolerance: float,
+    as_of: str,
+    min_companies: int,
 ) -> list[SectorGeographicMixRow]:
     """Roll up per-company geo splits into per-SIC-group revenue-weighted mixes (no writes)."""
     geo_repo: DimensionalGeoRepository = SQLiteDimensionalGeoRepository(db_path)
@@ -141,8 +146,20 @@ def compute_sector_geographic_mix(
 
     out: list[SectorGeographicMixRow] = []
     for group in sorted(covered):
-        if covered[group] == 0:
-            continue  # no covered company -> no row -> honest N/A at the endpoint
+        # A group needs `secfin_peer_min_size` COVERED companies, not one.
+        #
+        # This floor was missing until 2026-08-15, and the first real ingest showed exactly why:
+        # SIC 60 (Depository Institutions) had ONE reconciling filer out of 55 in scope, covering
+        # 5.5% of the group's revenue, and its split was published as "the sector's geographic
+        # mix". Every sibling sector batch applies this same minimum, and every sector endpoint's
+        # caveats already promise it in these words -- "Only groups meeting the minimum size are
+        # shown; a smaller group is dropped, not shown as sparse or zero."
+        #
+        # Dropping is right rather than annotating: a coverage note under a confident-looking bar
+        # is read after the bar, if at all. `revenue_covered_share` still rides on the groups that
+        # DO clear the floor, because clearing it is not the same as being well covered.
+        if covered[group] < min_companies:
+            continue  # too thin to characterise a sector -> no row -> honest N/A at the endpoint
         scope_rev = in_scope_rev[group]
         out.append(
             SectorGeographicMixRow(
@@ -163,11 +180,16 @@ def compute_sector_geographic_mix(
 
 
 def run_sector_geographic_mix(
-    db_path: str, fiscal_year: int, sic_digits: int, reconcile_tolerance: float, as_of: str
+    db_path: str,
+    fiscal_year: int,
+    sic_digits: int,
+    reconcile_tolerance: float,
+    as_of: str,
+    min_companies: int,
 ) -> int:
     """Compute the mix then replace `sector_geographic_mix` wholesale. Returns the row count."""
     rows = compute_sector_geographic_mix(
-        db_path, fiscal_year, sic_digits, reconcile_tolerance, as_of
+        db_path, fiscal_year, sic_digits, reconcile_tolerance, as_of, min_companies
     )
     repo = SQLiteSectorGeographicMixRepository(db_path)
     try:
@@ -176,10 +198,11 @@ def run_sector_geographic_mix(
     finally:
         repo.close()
     logger.info(
-        "sector geographic mix done: %d group rows (FY%d, SIC %d-digit)",
+        "sector geographic mix done: %d group rows (FY%d, SIC %d-digit, min %d covered filers)",
         len(rows),
         fiscal_year,
         sic_digits,
+        min_companies,
     )
     return len(rows)
 
@@ -193,7 +216,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--fiscal-year",
         type=int,
         default=None,
-        help="Annual basis to roll up (default: the latest fiscal year ingested).",
+        help="Annual basis to roll up (default: the latest WELL-COVERED fiscal year ingested -- "
+        "the newest year is always a thin leading edge, see the repository).",
     )
     p.add_argument("--sic-digits", type=int, default=None, help="Override SIC grouping granularity")
     return p
@@ -206,20 +230,24 @@ def main() -> None:
     if fiscal_year is None:
         geo_repo = SQLiteDimensionalGeoRepository(settings.secfin_db_path)
         try:
-            years = geo_repo.fiscal_years()
+            # NOT `fiscal_years()[0]`. The newest year present is always a thin leading edge of
+            # early-FYE filers -- on the 2026-08-15 ingest that was 54 companies against FY2025's
+            # 3,546 -- and rolling those up would have published a 54-company figure as the
+            # market's. Same rule as /v1/sectors' own year default.
+            fiscal_year = geo_repo.latest_well_covered_fiscal_year()
         finally:
             geo_repo.close()
-        if not years:
+        if fiscal_year is None:
             raise SystemExit(
                 "no dimensional geo facts ingested -- run "
                 "`python -m secfin.ingest.dimensional_backfill --quarter …` first"
             )
-        fiscal_year = years[0]
     run_sector_geographic_mix(
         settings.secfin_db_path,
         fiscal_year=fiscal_year,
         sic_digits=args.sic_digits or settings.secfin_peer_sic_digits,
         reconcile_tolerance=settings.secfin_geo_mix_reconcile_tolerance,
+        min_companies=settings.secfin_peer_min_size,
         as_of=date.today().isoformat(),
     )
 

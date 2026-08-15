@@ -54,6 +54,20 @@ class DimensionalGeoRepository(ABC):
         """All geo + consolidated rows for one annual basis (the rollup batch's input)."""
 
     @abstractmethod
+    def latest_well_covered_fiscal_year(self) -> int | None:
+        """The latest annual basis with enough filers to characterise a sector, or None.
+
+        NOT simply the newest year present. The DERA quarterly ZIPs land a fiscal year gradually --
+        a 10-K for FY2025 filed by a March-FYE company arrives a year after a December-FYE one --
+        so the newest year in this table is always a thin leading edge. Measured on the 2026-08-15
+        ingest of 2025q3+2025q4+2026q1: FY2025 had 3,546 companies and FY2026 had **54**. Defaulting
+        to "latest" would have rolled 54 companies up into a figure labelled as the market's.
+
+        Same rule and the same reason as `SectorDupontRepository.latest_fy_year`: the newest year
+        whose coverage is at least half the best-covered year's.
+        """
+
+    @abstractmethod
     def fiscal_years(self) -> list[int]:
         """Distinct fiscal years materialized, descending (latest first)."""
 

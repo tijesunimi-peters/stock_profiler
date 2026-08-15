@@ -260,7 +260,8 @@ def test_batch_revenue_weighted_reconcile_and_coverage(tmp_path):
     rows = {
         r.peer_group: r
         for r in compute_sector_geographic_mix(
-            db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24"
+            db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24",
+            min_companies=1,
         )
     }
     assert set(rows) == {"35"}  # D (no profile) excluded; no crash
@@ -300,7 +301,8 @@ def test_batch_group_with_no_coverage_is_absent_not_zero(tmp_path):
         )
     run_dimensional_backfill(db, [zpath])
     rows = compute_sector_geographic_mix(
-        db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24"
+        db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24",
+        min_companies=1,
     )
     assert rows == []  # absent, not a zero row
 
@@ -311,7 +313,8 @@ def test_run_batch_recomputes_and_replaces(tmp_path):
     db = str(tmp_path / "run.db")
     _seed_batch_db(db)
     n = run_sector_geographic_mix(
-        db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24"
+        db, fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24",
+        min_companies=1,
     )
     assert n == 1
     repo = SQLiteSectorGeographicMixRepository(db)
@@ -393,3 +396,85 @@ def test_endpoint_empty_is_honest_na_never_zero(tmp_path, monkeypatch):
     assert body["revenue_covered_share"] is None
     assert body["derived"] is True
     assert body["caveats"]  # caveats still carried on the empty state
+
+
+# --------------------------------------------------------------------------------------
+# the two guards the first real ingest (2026-08-15) showed were missing
+# --------------------------------------------------------------------------------------
+
+
+def test_a_group_below_the_minimum_is_dropped_not_published(tmp_path):
+    """One filer's split is not a sector's geographic mix.
+
+    Found on the first real DERA ingest: SIC 60 (Depository Institutions) had ONE reconciling
+    filer out of 55 in scope, covering 5.5% of the group's revenue, and the endpoint served its
+    domestic/international split as the sector's. Every sibling sector batch applies
+    `secfin_peer_min_size`, and every sector endpoint's caveats already promise it.
+    """
+    from secfin.analytical.sector_geographic_mix import compute_sector_geographic_mix
+
+    db = str(tmp_path / "floor.db")
+    _seed_batch_db(db)  # group "35" has exactly 2 covered companies
+
+    kw = dict(fiscal_year=2025, sic_digits=2, reconcile_tolerance=0.01, as_of="2026-07-24")
+    assert [r.peer_group for r in compute_sector_geographic_mix(db, min_companies=2, **kw)] == ["35"]
+    # One more than it has -> dropped entirely, rather than published with a coverage footnote.
+    assert compute_sector_geographic_mix(db, min_companies=3, **kw) == []
+
+
+def test_the_default_year_is_the_well_covered_one_not_the_newest(tmp_path):
+    """The newest fiscal year present is always a thin leading edge of early-FYE filers.
+
+    DERA lands a fiscal year gradually -- a March-FYE company's 10-K for a year arrives about
+    twelve months after a December-FYE one's. On the 2026-08-15 ingest FY2026 held 54 companies
+    against FY2025's 3,546, so `fiscal_years()[0]` would have rolled 54 companies up and labelled
+    the result FY2026.
+    """
+    db = str(tmp_path / "years.db")
+    repo = SQLiteDimensionalGeoRepository(db)
+    try:
+        rows = []
+        # 10 companies on the well-covered year, 1 on the newer thin edge.
+        for cik in range(1, 11):
+            rows.append(DimensionalGeoRow(
+                cik=cik, accession=f"a-{cik}", form="10-K", fiscal_year=2025, tag="Revenues",
+                ddate="20251231", qtrs=4, member="US", value=100.0, unit="USD", is_consolidated=False,
+            ))
+        rows.append(DimensionalGeoRow(
+            cik=99, accession="a-99", form="10-K", fiscal_year=2026, tag="Revenues",
+            ddate="20260331", qtrs=4, member="US", value=100.0, unit="USD", is_consolidated=False,
+        ))
+        repo.bulk_upsert(rows)
+        assert repo.fiscal_years() == [2026, 2025]          # newest first, as before
+        assert repo.latest_well_covered_fiscal_year() == 2025  # but the default skips the edge
+    finally:
+        repo.close()
+
+
+def test_well_covered_year_is_counted_in_companies_not_rows(tmp_path):
+    """A filer that splits revenue eight ways files eight rows.
+
+    Counting rows would let a handful of verbose filers stand in for a year's breadth -- here one
+    company with 12 rows must not outweigh six companies with one row each.
+    """
+    db = str(tmp_path / "rows.db")
+    repo = SQLiteDimensionalGeoRepository(db)
+    try:
+        rows = [
+            DimensionalGeoRow(
+                cik=99, accession="a-99", form="10-K", fiscal_year=2026, tag="Revenues",
+                ddate="20260331", qtrs=4, member=f"M{i}", value=10.0, unit="USD", is_consolidated=False,
+            )
+            for i in range(12)
+        ]
+        rows += [
+            DimensionalGeoRow(
+                cik=cik, accession=f"a-{cik}", form="10-K", fiscal_year=2025, tag="Revenues",
+                ddate="20251231", qtrs=4, member="US", value=100.0, unit="USD", is_consolidated=False,
+            )
+            for cik in range(1, 7)
+        ]
+        repo.bulk_upsert(rows)
+        assert repo.latest_well_covered_fiscal_year() == 2025
+    finally:
+        repo.close()
