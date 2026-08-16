@@ -231,6 +231,25 @@ sector_insider_flow                        (independent; reads insider_transacti
 so there is nothing for a reader to navigate to and every other sector endpoint is unreachable
 through the UI.
 
+**Measured cost, on the operator's 16-core box (2026-08-16)** — the droplet has 1 vCPU, so read
+these as a floor, not an estimate for here:
+
+| Step | Wall clock | Wrote |
+|---|---|---|
+| `ingest.dupont_backfill` | **1h 45m** over 16,920 CIKs | `dupont_components` 31,418 → 280,871 rows |
+| `analytical.sector_dupont` | seconds | `sector_dupont` 562 → 4,214 rows |
+| `ingest.dimensional_backfill` (3 DERA quarters) | ~1 min | 9,173 geo rows + 24,161 §03 facts |
+| `analytical.sector_geographic_mix` | seconds | 35 group rows |
+| `analytical.sector_theme_scores` | seconds | 22,746 score + 91,309 component rows |
+
+Only the first is expensive, and it is the one nothing schedules. Its staleness is invisible from
+the outside: the roster still serves, just with fewer groups and fewer filers. Refreshing it took
+the local roster from 59 groups / 3,265 filers to **62 / 4,345**, and FY2023 from 189 companies to
+4,973 — nothing had broken, it had simply never been re-run.
+
+⚠️ `sector_dupont` and `sector_lifecycle` need the **analytics** image (DuckDB); running them on
+`api` fails with `ModuleNotFoundError: No module named 'duckdb'`.
+
 ### 5d. A SQLite lock killed the first peer-analytics run (2026-08-14, fixed in code)
 
 `secfin-incremental.timer` fired at 06:02:13 while the chain was materializing metrics. At

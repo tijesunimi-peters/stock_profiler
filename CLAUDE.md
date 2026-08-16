@@ -473,10 +473,30 @@ python -m secfin.ingest.sic_backfill          # cik -> SIC into company_profiles
 python -m secfin.ingest.metrics_backfill      # materialize metrics into metric_values (no network)
 python -m secfin.analytical.peer_ranks        # DuckDB: percentile/z-score -> metric_ranks
 
+# SECTOR ROSTER -- the chain that gates every sector page. `/v1/sectors` reads sector_dupont, and
+# with that table empty the endpoint returns ZERO groups: there is nothing for a reader to navigate
+# to and every other sector endpoint becomes unreachable through the UI. Two steps, in order.
+#   1) per-company DuPont legs from raw_facts (pure, no network, ~1h45m over 16,920 CIKs on a
+#      16-core box; a company/period is written only when ALL FOUR legs are present)
+#   2) the per-SIC-group asset-weighted aggregate. NEEDS THE ANALYTICAL EXTRA -- run it on the
+#      `analytics` image, not `api`, or it dies on `ModuleNotFoundError: No module named 'duckdb'`.
+# ⚠️ Letting step 1 go stale is invisible: the roster still serves, just with fewer groups and
+# fewer filers. Measured 2026-08-16 -- a refresh took dupont_components from 31,418 rows to
+# 280,871 and the roster from 59 groups / 3,265 filers to 62 / 4,345, with FY2023 going from 189
+# companies to 4,973. Nothing was broken; it had simply never been re-run.
+python -m secfin.ingest.dupont_backfill       # -> dupont_components (no network)
+python -m secfin.analytical.sector_dupont     # DuckDB: -> sector_dupont (the roster)
+
 # composite sector theme scores (sector-overview redesign, Phase 0): reads metric_distributions
 # (materialized by peer_distribution) and z-scores per-sector medians across sectors. PURE PYTHON
 # (no DuckDB / no analytical extra) -- still an offline batch, never the live path.
 python -m secfin.analytical.sector_theme_scores
+
+# sector asset-lifecycle (DIO/DSO/DPO/CCC). Same two-step shape as the DuPont chain above, and the
+# same gotcha -- step 2 needs the analytical extra. NOT RUN on any volume yet, so
+# `/v1/sectors/{group}/lifecycle` returns an empty series everywhere.
+python -m secfin.ingest.lifecycle_backfill    # -> lifecycle_components (no network)
+python -m secfin.analytical.sector_lifecycle  # DuckDB: -> sector_lifecycle
 
 # sector insider flow (Sector Analytics v2, P6a): per-SIC-group trailing-window OPEN-MARKET (P/S)
 # insider net buy/sell over the cached insider_transactions JOIN company_profiles. DuckDB batch
