@@ -327,26 +327,24 @@ app.include_router(admin_router, prefix="/v1")
 app.include_router(internal_router, prefix="/v1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if APP_DIR.is_dir():
-    # Hashed filenames, so these are immutable and safe to serve directly.
-    app.mount("/app/assets", StaticFiles(directory=APP_DIR / "assets"), name="app-assets")
+    # Hashed filenames, so these are immutable and safe to serve directly. At `/assets` rather
+    # than `/app/assets` since the app moved to the root (operator ruling, 2026-08-17).
+    app.mount("/assets", StaticFiles(directory=APP_DIR / "assets"), name="app-assets")
 
 
 @app.get("/app", include_in_schema=False)
 @app.get("/app/{path:path}", include_in_schema=False)
-async def react_app(path: str = "") -> FileResponse:
-    """The SPA shell for every /app route.
+async def app_prefix_redirect(path: str = "", request: Request = None):  # type: ignore[assignment]
+    """`/app/...` -> the same path at the root.
 
-    A catch-all, because the client owns routing: `/app/company/AAPL/insider` is a real address a
-    reader can paste, and the server has no business validating a view slug the client resolves.
-    The same reasoning the server-rendered `company_hub_view` already documents.
-
-    Declared AFTER `/app/assets` is mounted so a real asset is served as itself rather than being
-    swallowed by this fallback.
+    The app shipped under `/app` for one deploy (2026-08-17) before the ruling that it is the only
+    frontend. Anything linked or bookmarked in that window keeps working, and 301 tells caches and
+    crawlers the root is canonical -- there must not be two URLs serving the same view.
     """
-    index = APP_DIR / "index.html"
-    if not index.is_file():
-        raise HTTPException(status_code=404, detail="The app bundle is not present in this build.")
-    return FileResponse(index)
+    target = f"/{path}" if path else "/sectors"
+    if request is not None and request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(target, status_code=301)
 
 
 @app.get("/", include_in_schema=False)
@@ -414,59 +412,80 @@ async def favicon_svg() -> FileResponse:
     return FileResponse(STATIC_DIR / "favicon.svg")
 
 
+# ---------------------------------------------------------------------------------------------
+# THE DATA APP. One frontend now (operator ruling, 2026-08-17): the React app in
+# `clearyfi_frontend` serves every data surface, and the server-rendered shells it replaced
+# (company.html, sector-analytics.html, manager.html, compare.html, screen.html) are no longer
+# routed to. Their files stay in `static/` for one release as a rollback, and the roadmap that
+# retires them is docs/ROADMAP_UI.md.
+#
+# What did NOT move, deliberately: `/` and the prose, legal and reference pages below. The React
+# app has no landing page -- its router redirects `/` to `/sectors` -- and it links OUT to
+# `/methodology` and `/docs`. Handing it the front door would replace the page that explains what
+# the product IS with a data view.
+#
+# Every route here serves the SAME shell, and none validates its path segments: the CLIENT owns
+# routing, so an unknown view slug must fall back to the app's default view rather than 404 --
+# the rule the server-rendered shells already followed.
+# ---------------------------------------------------------------------------------------------
+
+
+def _spa() -> FileResponse:
+    """The SPA shell, or a 404 when this build has no bundle (see APP_DIR)."""
+    index = APP_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="The app bundle is not present in this build.")
+    return FileResponse(index)
+
+
 @app.get("/company/{symbol}", include_in_schema=False)
-async def company_hub(symbol: str) -> FileResponse:
-    # The company hub shell; company.js reads {symbol} from the path and calls the v1 API.
-    return FileResponse(STATIC_DIR / "company.html")
-
-
 @app.get("/company/{symbol}/{view}", include_in_schema=False)
-async def company_hub_view(symbol: str, view: str) -> FileResponse:
-    # URL-as-state (V3-P2): the active view is part of the path, so a view is linkable and the
-    # browser Back button walks views. Serves the SAME shell as the bare route -- the CLIENT owns
-    # view resolution, so {view} is deliberately NOT validated here: an unknown slug must fall back
-    # to the default view in shell.js, and a server-side 404 would contradict that.
-    return FileResponse(STATIC_DIR / "company.html")
+async def company_app(symbol: str, view: str = "") -> FileResponse:
+    return _spa()
 
 
 @app.get("/manager/{cik}", include_in_schema=False)
-async def manager_profile(cik: str) -> FileResponse:
-    # The 13F manager profile shell; manager.js reads {cik} from the path and calls the v1 API.
-    return FileResponse(STATIC_DIR / "manager.html")
+@app.get("/manager/{cik}/{view}", include_in_schema=False)
+async def manager_app(cik: str, view: str = "") -> FileResponse:
+    return _spa()
 
 
 @app.get("/compare", include_in_schema=False)
-async def company_comparison() -> FileResponse:
-    # The multi-company comparison shell; compare.js reads ?symbols=&year= and calls the v1 API.
-    return FileResponse(STATIC_DIR / "compare.html")
+@app.get("/compare/{view}", include_in_schema=False)
+async def compare_app(view: str = "") -> FileResponse:
+    return _spa()
 
 
 @app.get("/screen", include_in_schema=False)
-async def screening() -> FileResponse:
-    # The cross-company screening shell; screen.js reads the query and calls /v1/screen + /concepts.
-    return FileResponse(STATIC_DIR / "screen.html")
+async def screen_app() -> FileResponse:
+    return _spa()
 
 
 @app.get("/sectors", include_in_schema=False)
-async def sector_overview() -> FileResponse:
-    # M2 routing swap (2026-07-24, ROADMAP_SECTOR_MIGRATION.md): /sectors is the canonical sector
-    # page and serves the Sector Analytics app (#app + sectorapp.js). The pre-v2 single-sector page
-    # and its /sectors-legacy rollback route were deleted in V3-P2 (M3 of the migration).
-    return FileResponse(STATIC_DIR / "sector-analytics.html")
+async def sectors_app() -> FileResponse:
+    return _spa()
+
+
+# The two URL vocabularies for a sector differ, so the old links are TRANSLATED rather than served.
+#
+# The server-rendered app put the SIC group in the PATH (`/sectors/36/sector`); the React app puts
+# the view in the path and the group in the query (`/sectors/sector?sector=36`). Serving the shell
+# at the old shape would have silently dropped the group -- React's router reads segment 1 as a
+# VIEW, `36` is not one, so it would fall back to the default view and a different sector. A
+# bookmark that quietly changes which industry it shows is worse than one that 404s.
+_SECTOR_VIEWS = {"sector", "qualitative", "filings"}
 
 
 @app.get("/sectors/{group}", include_in_schema=False)
-async def sector_overview_group(group: str) -> FileResponse:
-    # URL-as-state (V3-P2): the selected SIC peer group is part of the path. Same shell as the bare
-    # route; sectorapp.js derives the selection from it instead of ?group= + localStorage.
-    return FileResponse(STATIC_DIR / "sector-analytics.html")
-
-
 @app.get("/sectors/{group}/{view}", include_in_schema=False)
-async def sector_overview_group_view(group: str, view: str) -> FileResponse:
-    # As above, plus the active view. {view} is NOT validated server-side for the same reason as
-    # /company/{symbol}/{view}: the client resolves an unknown slug to the default view.
-    return FileResponse(STATIC_DIR / "sector-analytics.html")
+async def sectors_legacy_group(group: str, view: str = "sector", request: Request = None):  # type: ignore[assignment]
+    # `/sectors/sector` is already the NEW shape (a view, not a group) -- serve it as-is.
+    if group in _SECTOR_VIEWS:
+        return _spa()
+    target = f"/sectors/{view if view in _SECTOR_VIEWS else 'sector'}?sector={quote(group)}"
+    if request is not None and request.url.query:
+        target = f"{target}&{request.url.query}"
+    return RedirectResponse(target, status_code=301)
 
 
 @app.get("/privacy", include_in_schema=False)

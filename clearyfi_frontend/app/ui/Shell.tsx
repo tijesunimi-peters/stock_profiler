@@ -256,12 +256,28 @@ export function PageShell({
         body
       )}
       {disclosures?.length ? <Disclosure items={disclosures} /> : null}
+      {/*
+        The legal and support links are a LAUNCH REQUIREMENT, not decoration: the disclaimer and
+        the support channel have to be reachable from every page footer (LAUNCH_READINESS §6, and
+        `tests/test_static_pages.py` asserts it). They lived only on the server-rendered pages
+        until this app took over every data surface (2026-08-17) — at which point every company,
+        sector, manager and compare page would have lost them.
+
+        Plain anchors, deliberately: these leave the app for server-rendered pages, so they must
+        be real navigations rather than client-side routes.
+      */}
       <div className="page-foot">
         <span>ClearyFi · public SEC data, cleaned &amp; queryable</span>
         <a href="/coverage">/coverage ↗</a>
         <a href="/docs">/docs ↗</a>
+        <a href="/methodology">Sources &amp; methodology</a>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="https://github.com/clearyfi/support/issues" target="_blank" rel="noopener">
+          Support
+        </a>
         <span className="page-foot-spacer" />
-        <span>Data, not investment advice.</span>
+        <a href="/disclaimer">Data, not investment advice</a>
       </div>
     </AppShell>
   );

@@ -3,15 +3,17 @@
 # Node never reaches the runtime image -- the thing that serves requests stays a slim Python
 # image with no JS toolchain in it.
 #
-# `CLEARYFI_BASE=/app/` is passed explicitly rather than left to the config's NODE_ENV default,
-# because the mount point is a DEPLOYMENT fact and belongs where the deployment is described.
+# `CLEARYFI_BASE` is passed explicitly rather than defaulted, because the mount point is a
+# DEPLOYMENT fact and belongs where the deployment is described. `/` since 2026-08-17: this is the
+# only frontend app now. It was `/app/` for exactly one deploy, while it sat alongside the
+# server-rendered UI.
 FROM node:22-slim AS frontend
 WORKDIR /build
 # Manifests first: `npm ci` is the expensive layer and only needs to re-run when deps change.
 COPY clearyfi_frontend/package.json clearyfi_frontend/package-lock.json ./
 RUN npm ci
 COPY clearyfi_frontend/ ./
-RUN npm run build && CLEARYFI_BASE=/app/ npm run app:build
+RUN npm run build && CLEARYFI_BASE=/ npm run app:build
 
 
 FROM python:3.11-slim AS api

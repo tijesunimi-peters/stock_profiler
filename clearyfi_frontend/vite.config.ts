@@ -18,8 +18,9 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
  */
 export default defineConfig({
   /*
-   * Where the built app is mounted in production. `/app/` because the server-rendered site already
-   * owns `/`, `/company/:symbol` and `/sectors`; this ships ALONGSIDE it rather than over it.
+   * Where the built app is mounted. The ROOT since 2026-08-17: this is the only frontend app now,
+   * so it owns /company, /sectors, /manager and /compare outright. It shipped under `/app` for one
+   * deploy while it sat alongside the server-rendered UI; that prefix is a 301 to the root.
    *
    * DEFAULTS TO `/`, and the deployment passes `CLEARYFI_BASE=/app/` explicitly (see the
    * Dockerfile's frontend stage). Keying it off NODE_ENV instead would have been a trap: `vite

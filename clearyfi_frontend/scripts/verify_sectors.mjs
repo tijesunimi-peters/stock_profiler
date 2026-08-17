@@ -363,6 +363,29 @@ ck(`I7 all ${hrefs.length} EDGAR source links use CIK ${padded}`,
    `saw ${[...new Set(hrefs.map(h=>(h.match(/CIK=(\d+)/)||[])[1]))].join(",")}`);
 ck("I7b none points at CIK 0000000000", !hrefs.some(h => h.includes("CIK=0000000000")));
 
+/* ---------------------------------------------------------------- J the legal footer
+ *
+ * A LAUNCH REQUIREMENT (LAUNCH_READINESS §6), and it moved when this app took over every data
+ * surface on 2026-08-17: `tests/test_static_pages.py` can only assert it for server-rendered
+ * pages, because the app's footer is rendered client-side. So it is asserted here instead --
+ * moved, not dropped. Before the move, every company/sector/manager/compare page would have
+ * silently lost the disclaimer and the support channel. */
+console.log(`\n── legal footer ──`);
+for (const route of ["/sectors/sector", "/company/AAPL/insider"]) {
+  await p.goto(`http://localhost:${PORT}${route}`,{waitUntil:"domcontentloaded"});
+  await p.waitForSelector(".page-foot",{timeout:240000});
+  const foot = await p.$eval(".page-foot", e => e.outerHTML);
+  for (const [label, needle] of [
+    ["disclaimer", 'href="/disclaimer"'],
+    ["support channel", "github.com/clearyfi/support"],
+    ["privacy policy", 'href="/privacy"'],
+    ["terms", 'href="/terms"'],
+    ["methodology", 'href="/methodology"'],
+  ]) {
+    ck(`J1 ${route}: footer links the ${label}`, foot.includes(needle));
+  }
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await b.close(); s.close();
 process.exit(fail ? 1 : 0);

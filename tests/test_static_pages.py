@@ -30,6 +30,21 @@ _EXPECTED_TIER_STRINGS = [
 _PLANNED_PRICES = ["$19/mo", "$79/mo"]
 
 
+def _fake_bundle(tmp_path, monkeypatch) -> None:
+    """Point `APP_DIR` at a stand-in bundle.
+
+    The real one is produced by the Dockerfile's Node stage, which the test image does not run --
+    so these tests assert the ROUTING (same shell, nothing validated, redirects translated), which
+    is the server's half of the contract. What the app then renders is the frontend harness's job.
+    """
+    from secfin.api import main as main_mod
+
+    d = tmp_path / "bundle"
+    (d).mkdir(parents=True, exist_ok=True)
+    (d / "index.html").write_text("<!doctype html><title>app shell</title>")
+    monkeypatch.setattr(main_mod, "APP_DIR", d)
+
+
 def _client(tmp_path, monkeypatch) -> TestClient:
     monkeypatch.setattr(settings, "secfin_db_path", str(tmp_path / "test.db"))
     from secfin.api.main import app
@@ -101,8 +116,12 @@ def test_methodology_page_states_source_and_not_covered(tmp_path, monkeypatch):
 
 def test_disclaimer_is_reachable_from_every_page_footer(tmp_path, monkeypatch):
     # Guardrail 2: the disclaimer must be linked from the footer, not just exist.
+    #
+    # `/explorer` left this list on 2026-08-17 for the same reason as the support test below: it
+    # 301s into the React app, whose footer is rendered client-side. `/coverage` replaces it and
+    # gained a footer in the same change -- it had none.
     with _client(tmp_path, monkeypatch) as client:
-        for path in ("/", "/guide", "/explorer"):
+        for path in ("/", "/guide", "/coverage", "/methodology"):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert '/disclaimer' in resp.text, f"{path} footer is missing a /disclaimer link"
@@ -126,19 +145,6 @@ def test_favicon_serves_for_default_browser_requests(tmp_path, monkeypatch):
     assert ico.content[:4] == b"\x00\x00\x01\x00"  # ICO magic bytes
     assert svg.status_code == 200
     assert "svg" in svg.headers["content-type"]
-
-
-def test_sectors_serves_the_v2_app(tmp_path, monkeypatch):
-    # M2 routing swap: /sectors is canonical and now serves the v2 Sector Analytics app
-    # (sector-analytics.html: #app shell + sectorapp.js), NOT the old sectors.js page.
-    with _client(tmp_path, monkeypatch) as client:
-        resp = client.get("/sectors")
-    assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
-    body = resp.text
-    assert 'id="app"' in body
-    assert "/static/sectorapp.js" in body
-    assert "/static/sectors.js" not in body  # must be the app shell, not the old page
 
 
 def test_sector_analytics_redirects_to_sectors_preserving_params(tmp_path, monkeypatch):
@@ -178,38 +184,91 @@ def test_sectors_legacy_is_gone(tmp_path, monkeypatch):
 # to the subject's default view, and a server-side 404 would contradict that.
 
 
-def test_company_view_paths_serve_the_company_shell(tmp_path, monkeypatch):
-    with _client(tmp_path, monkeypatch) as client:
-        bare = client.get("/company/AAPL")
-        for view in ("fundamentals", "statements", "insider", "institutional", "beneficial"):
-            resp = client.get(f"/company/AAPL/{view}")
-            assert resp.status_code == 200, view
-            assert "text/html" in resp.headers["content-type"]
-            assert resp.text == bare.text, f"/company/AAPL/{view} must serve the same shell"
+def test_data_routes_serve_the_react_app_shell(tmp_path, monkeypatch):
+    """One frontend (operator ruling, 2026-08-17): every data surface is the React app.
 
-
-def test_company_unknown_view_still_serves_the_shell(tmp_path, monkeypatch):
-    # AC-21: the client falls back to the default view. The server must NOT 404 here.
-    with _client(tmp_path, monkeypatch) as client:
-        resp = client.get("/company/AAPL/nonsense")
-    assert resp.status_code == 200
-    assert "/static/company.js" in resp.text
-
-
-def test_sector_group_and_view_paths_serve_the_sector_app(tmp_path, monkeypatch):
+    The server-rendered shells (`company.html`, `sector-analytics.html`, `manager.html`,
+    `compare.html`, `screen.html`) are no longer routed to. What each of these routes must do is
+    serve the SAME shell and validate NOTHING about the path -- the client owns routing, so an
+    unknown view has to fall back to the app's default rather than 404.
+    """
+    _fake_bundle(tmp_path, monkeypatch)
     with _client(tmp_path, monkeypatch) as client:
         bare = client.get("/sectors")
-        for path in ("/sectors/35", "/sectors/35/sector", "/sectors/35/compare", "/sectors/35/xx"):
+        assert bare.status_code == 200
+        for path in (
+            "/sectors/sector", "/sectors/qualitative",
+            "/company/AAPL", "/company/AAPL/insider", "/company/AAPL/nonsense",
+            "/manager/102909", "/manager/102909/footprint",
+            "/compare", "/compare/sectors", "/screen",
+        ):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert resp.text == bare.text, f"{path} must serve the same shell"
+
+
+def test_a_build_without_the_bundle_404s_rather_than_crashing(tmp_path, monkeypatch):
+    """`APP_DIR` is optional: a checkout that has never run the frontend build must still start,
+    and `pytest`/`uvicorn --reload` must work on it. The data routes 404 there, which is honest --
+    the page genuinely is not in this build."""
+    with _client(tmp_path, monkeypatch) as client:
+        assert client.get("/sectors").status_code == 404
+        assert client.get("/").status_code == 200  # the server-rendered front door is unaffected
+
+
+def test_legacy_sector_group_urls_redirect_with_the_group_preserved(tmp_path, monkeypatch):
+    """The two URL vocabularies differ, so old links are TRANSLATED rather than served.
+
+    The server-rendered app put the SIC group in the PATH (`/sectors/36/sector`); the React app
+    puts the view in the path and the group in the query. Serving the shell at the old shape would
+    have dropped the group silently -- React reads segment 1 as a VIEW, `36` is not one, so it
+    would show a DIFFERENT sector. A bookmark that quietly changes which industry it shows is
+    worse than one that fails.
+    """
+    _fake_bundle(tmp_path, monkeypatch)
+    with _client(tmp_path, monkeypatch) as client:
+        r = client.get("/sectors/36", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/sectors/sector?sector=36"
+
+        r = client.get("/sectors/36/qualitative", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/sectors/qualitative?sector=36"
+
+        # An unknown view falls back to the default one rather than 404ing the bookmark.
+        r = client.get("/sectors/36/xx", follow_redirects=False)
+        assert r.headers["location"] == "/sectors/sector?sector=36"
+
+        # The NEW shape is a view, not a group -- it must be served, not redirected.
+        assert client.get("/sectors/sector", follow_redirects=False).status_code == 200
+
+
+def test_the_app_prefix_from_the_one_prefixed_deploy_redirects_to_the_root(tmp_path, monkeypatch):
+    """The app shipped under `/app` for a single deploy before the ruling that it is the only
+    frontend. Those links keep working, and 301 tells caches the root is canonical -- two URLs
+    serving one view is the thing to avoid."""
+    _fake_bundle(tmp_path, monkeypatch)
+    with _client(tmp_path, monkeypatch) as client:
+        r = client.get("/app/company/AAPL/insider", follow_redirects=False)
+        assert r.status_code == 301
+        assert r.headers["location"] == "/company/AAPL/insider"
+        r = client.get("/app", follow_redirects=False)
+        assert r.headers["location"] == "/sectors"
 
 
 def test_support_channel_is_reachable_from_every_page_footer(tmp_path, monkeypatch):
     # LAUNCH_READINESS §6: the feedback/support channel (GitHub issues) must be
     # linked from docs and the site footer -- assert the link, not just the page.
     with _client(tmp_path, monkeypatch) as client:
-        for path in ("/", "/guide", "/explorer", "/privacy", "/terms", "/methodology"):
+        # `/explorer` left this list on 2026-08-17: it 301s into the React app, whose footer is
+        # rendered client-side and so is not in the served HTML. The same guarantee is asserted
+        # against the app in `clearyfi_frontend/scripts/verify_sectors.mjs` (section J) -- moved,
+        # not dropped, because the requirement is that a READER can always reach support.
+        #
+        # `/coverage` JOINED it, and had no footer at all until this was checked: it and
+        # `/components` were the only public pages without one, so the guarantee had a hole that
+        # testing `/explorer` (which redirected elsewhere) never revealed.
+        for path in ("/", "/guide", "/coverage", "/privacy", "/terms", "/methodology"):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert "github.com/clearyfi/support" in resp.text, (
