@@ -482,7 +482,7 @@ export function SectorRail() {
 
   const snapshot = [
     { k: "Filers", v: d.filerCount == null ? "N/A" : String(d.filerCount) },
-    { k: "Period", v: `FY ${d.fiscalYear}` },
+    { k: "Period", v: d.fiscalYear ? `FY ${d.fiscalYear}` : "N/A" },
     { k: "Period end", v: d.periodEnd ?? "N/A" },
     { k: "Basis", v: roster?.peerBasis ?? "SIC 2-digit" },
     { k: "Focused theme", v: focused?.label ?? "—" },

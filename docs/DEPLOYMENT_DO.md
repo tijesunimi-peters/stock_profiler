@@ -266,6 +266,45 @@ backup at this DB size, on a 48 GB disk (34 G used after). `secfin_backup_retent
 **7**, which cannot fit. `secfin-backup.timer` is still disabled, so this is latent — but lower
 the retention before ever enabling it. Same shape as the 2026-07-21 disk-fill in §6b.
 
+### 5f. Deploy 2026-08-17 (second) — one frontend: React at the root
+
+Operator ruling: the React app is the only frontend app. It now serves **`/company/*`,
+`/sectors/*`, `/manager/*`, `/compare*` and `/screen`** at the root; the server-rendered shells
+(`company.html`, `sector-analytics.html`, `manager.html`, `compare.html`, `screen.html`) are no
+longer routed to. Their files stay in `static/` for one release as the rollback.
+
+**`/` did not move.** The React app has no landing page — its router redirects `/` to `/sectors` —
+so handing it the front door would have replaced the page explaining what the product is with a
+data view that is currently EMPTY here (§5c). `/`, `/guide`, `/coverage`, `/methodology`,
+`/privacy`, `/terms`, `/disclaimer`, `/components` and `/docs` stay server-rendered.
+
+Verified from outside after the deploy:
+
+| | |
+|---|---|
+| Front door | `/` still the marketing page, title unchanged |
+| Prose / legal / reference | all 8 → 200 |
+| App routes | all 7 → 200, `/assets/*` → 200 |
+| `/sectors/36` | 301 → `/sectors/sector?sector=36` (group PRESERVED) |
+| `/app/company/AAPL/insider` | 301 → `/company/AAPL/insider` |
+| `verify_deployment.py` | **11/11** |
+| Driven browser | company page shows a real `LAST FILED 4 · 13 Aug 2026`, no synthetic banner, complete legal footer, zero failed requests |
+
+**Two things the swap would have broken, fixed in the same change:**
+
+* The **legal footer** (disclaimer / privacy / terms / support) lived only on server-rendered
+  pages. Every data page would have lost it. It is in the app's shell now and asserted on both
+  sides — `test_static_pages.py` for server pages, `verify_sectors.mjs` §J for the app.
+* **Sector bookmarks** would have shown a DIFFERENT industry: React reads path segment 1 as a
+  view, so `/sectors/36/...` fell back to the default view and lost the group. Hence the 301.
+
+`/coverage` and `/components` also had no footer at all — the only public pages without one — and
+now do.
+
+⚠️ **`/sectors` renders an honest empty state in production** ("No composite theme scores have
+been computed for SIC 36"), because none of the sector tables have a producer scheduled here.
+See §5c. The company views are fully populated; the filing index is backfilled.
+
 ### 5c. The sector surface has NO producer scheduled here (found 2026-08-14)
 
 Every table behind `/v1/sectors*` is empty on this droplet, and this is not a fault of any

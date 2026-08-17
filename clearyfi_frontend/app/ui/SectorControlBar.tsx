@@ -90,7 +90,13 @@ export function SectorControlBar() {
       <div className="ctrlbar-meta">
         {/* `?? 0` is banned in the seam and the same rule holds here: no count is not zero filers. */}
         <span>{filers == null ? "filers N/A" : `${filers} filers`}</span>
-        <span>{roster ? `FY ${roster.fiscalYear}` : "—"}</span>
+        {/*
+          `/v1/sectors` returns `fiscal_year: 0` when nothing has been materialized -- it is the
+          "no year" sentinel, not a year. Rendering it raw put "FY 0" on the live page next to an
+          honest "no scores computed" empty state, which undercuts it: a reader who sees one
+          nonsense figure stops believing the careful ones beside it.
+        */}
+        <span>{roster?.fiscalYear ? `FY ${roster.fiscalYear}` : "period N/A"}</span>
         <span className="ctrlbar-spacer" />
         <span className="legend-chips">
           <span className="lc lc-ok">● OK</span>
