@@ -317,10 +317,19 @@ reconstruction silently dropped it.
 the next `up -d` moved production onto the **pre-migration named volume** — the copy §7 says was
 "retained as the rollback".
 
-| | raw_facts | api_keys | size |
-|---|---:|---:|---:|
-| Volume `/mnt/secfin_data_vol/data` (correct) | **64,657,414** | 60 | 34.2 GB |
-| named volume `secfin_secfin-data` (served for ~50 min) | 4,805,056 | 59 | 9.2 GB |
+| table | Volume `/mnt/secfin_data_vol/data` (correct) | named volume (served ~50 min) |
+|---|---:|---:|
+| `raw_facts` | **64,657,414** | 4,805,056 |
+| `filing_index` | **4,684,555** | **1,000** |
+| `metric_values` | 2,719,004 | 1,738,360 |
+| `api_keys` | 60 | 59 |
+| size | 34.2 GB | 9.2 GB |
+
+**`filing_index` is the one to learn from.** While on the stale copy, `GET
+/companies/AAPL/filings` returned `indexed_filings: 1000` — which looks exactly right, because
+Apple really does have about a thousand indexed filings. It was the ENTIRE TABLE. A per-company
+figure can be indistinguishable from a whole-database figure, and that is precisely the reading
+that was taken as confirmation the deploy had worked.
 
 The site stayed up and served correct-looking answers the whole time, which is what made it hard
 to see: the stale DB is a real database, just a 13×-smaller one from before the granular
