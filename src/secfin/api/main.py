@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -65,6 +65,18 @@ from secfin.storage.sqlite_sector_theme_score_repository import (
 )
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# The built React app (`clearyfi_frontend`), mounted at /app.
+#
+# ALONGSIDE the server-rendered site, not over it: `/`, `/company/{symbol}` and `/sectors` are live
+# routes below, and mounting the SPA at the root would silently take over pages that already work.
+# Under a prefix, shipping it is additive and rolling it back is deleting two routes.
+#
+# The directory is OPTIONAL. It is produced by a Node build stage that only the deployment image
+# runs, so a plain `pip install -e .` checkout has no `app/` here -- and must still start. Every
+# route below checks `APP_DIR.is_dir()` and 404s rather than raising at import time, which is what
+# keeps `pytest` and `uvicorn --reload` working on a tree that has never run `npm run app:build`.
+APP_DIR = Path(__file__).parent / "app"
 
 # Rendered as the overview on the Swagger UI (`/docs`) landing page. Narrative
 # quickstart/error-code/tier content lives on the static `/guide` page instead (see
@@ -314,6 +326,27 @@ app.include_router(admin_router, prefix="/v1")
 # docs/ROADMAP_DATA_DEPTH.md Phase 1.
 app.include_router(internal_router, prefix="/v1")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if APP_DIR.is_dir():
+    # Hashed filenames, so these are immutable and safe to serve directly.
+    app.mount("/app/assets", StaticFiles(directory=APP_DIR / "assets"), name="app-assets")
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/{path:path}", include_in_schema=False)
+async def react_app(path: str = "") -> FileResponse:
+    """The SPA shell for every /app route.
+
+    A catch-all, because the client owns routing: `/app/company/AAPL/insider` is a real address a
+    reader can paste, and the server has no business validating a view slug the client resolves.
+    The same reasoning the server-rendered `company_hub_view` already documents.
+
+    Declared AFTER `/app/assets` is mounted so a real asset is served as itself rather than being
+    swallowed by this fallback.
+    """
+    index = APP_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="The app bundle is not present in this build.")
+    return FileResponse(index)
 
 
 @app.get("/", include_in_schema=False)

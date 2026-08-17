@@ -22,9 +22,36 @@ export interface Location {
 
 const LocationCtx = createContext<Location>({ path: "/", query: new URLSearchParams() });
 
+/**
+ * Where this app is mounted, without a trailing slash — `""` in dev, `"/app"` in production.
+ *
+ * The app ships ALONGSIDE the server-rendered site rather than replacing it: `/company/:symbol`
+ * and `/sectors` are live routes there, so mounting at the root would silently take over pages
+ * that already work. Under a prefix, shipping it is additive and rolling it back is removing one
+ * route.
+ *
+ * Comes from Vite's `base`, so the build config is the single source of truth and this cannot
+ * drift from where the assets actually land.
+ *
+ * Only `navigate()` and `Link` apply it. A PLAIN `<a href="/methodology">` is a link OUT of this
+ * app to a server-rendered page and must stay absolute — prefixing those would break every
+ * cross-link to the rest of the site.
+ */
+export const BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
+
+/** An in-app path (`/company/AAPL`) as a real URL (`/app/company/AAPL`). */
+export function withBase(path: string): string {
+  if (!BASE || !path.startsWith("/")) return path;
+  return path === "/" ? BASE || "/" : `${BASE}${path}`;
+}
+
 function read(): Location {
+  let path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (BASE && (path === BASE || path.startsWith(`${BASE}/`))) {
+    path = path.slice(BASE.length) || "/";
+  }
   return {
-    path: window.location.pathname.replace(/\/+$/, "") || "/",
+    path,
     query: new URLSearchParams(window.location.search),
   };
 }
@@ -51,9 +78,11 @@ export function useLocation(): Location {
 
 /** Push a new URL. `replace` keeps the entry count down for same-view state changes. */
 export function navigate(href: string, opts: { replace?: boolean } = {}): void {
+  // Callers pass IN-APP paths (`sel.href("/sectors/sector")`); the address bar needs the mount.
+  const target = withBase(href);
   const current = `${window.location.pathname}${window.location.search}`;
-  if (href === current) return;
-  window.history[opts.replace ? "replaceState" : "pushState"]({}, "", href);
+  if (target === current) return;
+  window.history[opts.replace ? "replaceState" : "pushState"]({}, "", target);
   window.dispatchEvent(new Event("cf:navigate"));
   // The prototype's `window.scrollTo({behavior:'smooth'})` was a no-op in its runtime;
   // `scrollingElement.scrollTop` worked. Both are fine here — keep the plain one.
@@ -74,7 +103,8 @@ export function Link({
 } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "onClick">) {
   return (
     <a
-      href={href}
+      /* The REAL url, so middle-click, cmd-click and "copy link" all land somewhere that exists. */
+      href={withBase(href)}
       className={className}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;

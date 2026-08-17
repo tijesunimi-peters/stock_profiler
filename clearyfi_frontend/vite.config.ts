@@ -17,6 +17,21 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
  *                       them first so the two never drift.
  */
 export default defineConfig({
+  /*
+   * Where the built app is mounted in production. `/app/` because the server-rendered site already
+   * owns `/`, `/company/:symbol` and `/sectors`; this ships ALONGSIDE it rather than over it.
+   *
+   * DEFAULTS TO `/`, and the deployment passes `CLEARYFI_BASE=/app/` explicitly (see the
+   * Dockerfile's frontend stage). Keying it off NODE_ENV instead would have been a trap: `vite
+   * build` sets NODE_ENV=production itself, so a plain `npm run app:build` on a workstation would
+   * silently emit `/app/`-prefixed assets and every verify harness -- which serves `app-dist` at
+   * the root -- would 404 on them. The mount point is a deployment fact, so the deployment states
+   * it. `CLEARYFI_BASE=/` is also the switch to flip if this app ever becomes the site.
+   *
+   * `router.tsx` reads the same value back through `import.meta.env.BASE_URL`, so the mount point
+   * is configured once and the router cannot disagree with where the assets landed.
+   */
+  base: process.env.CLEARYFI_BASE ?? "/",
   root: resolve(ROOT, "app"),
   plugins: [react()],
   resolve: {

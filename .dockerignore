@@ -18,3 +18,10 @@ data
 .DS_Store
 .idea
 .vscode
+
+# The frontend's build inputs and outputs. `node_modules` is ~400 MB of host-platform binaries and
+# would be COPIED OVER the image's own `npm ci` result; `app-dist` is a stale local build that
+# would shadow the one the frontend stage produces. Both must come from the build, not the host.
+clearyfi_frontend/node_modules
+clearyfi_frontend/app-dist
+clearyfi_frontend/dist
