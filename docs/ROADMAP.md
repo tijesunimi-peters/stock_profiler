@@ -572,7 +572,12 @@ listing/ranking — are done, verified against real SEC data end-to-end. What's 
 project-wide is the pre-launch checklist below and the deliberately-deferred Track 2
 items, neither of which is more Track-1 feature work.
 
-## Candidate data source — Form 144 (insider proposed sales) [Track 1, not started]
+## Candidate data source — Form 144 (insider proposed sales) [Track 1, PARTLY SHIPPED]
+
+> ⚠️ **Re-headed 2026-08-17.** The index-based half shipped on 2026-08-13:
+> `GET /companies/{symbol}/proposed-sale-notices` reports which 144/144-A filings EXIST and
+> when, scoped to the indexed window — no document is fetched or parsed, so it carries no
+> shares, broker or person. The four boxes below all need an actual PARSER and remain open.
 
 A new structured-form ingest that extends the Milestone-2 ownership/insider family. Form 144
 is the insider's **notice of a proposed sale** of restricted stock — an "insider about to sell

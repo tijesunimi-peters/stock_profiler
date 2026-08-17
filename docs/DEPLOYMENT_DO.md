@@ -305,6 +305,46 @@ now do.
 been computed for SIC 36"), because none of the sector tables have a producer scheduled here.
 See §5c. The company views are fully populated; the filing index is backfilled.
 
+### 5g. 🔴 `.env` holds a COMPOSE-level variable that `docker inspect` cannot show you
+
+**2026-08-17, and it is the second failure from one root cause.** After `--delete-excluded` removed
+`/opt/secfin/.env` (§5e), it was reconstructed from `docker inspect secfin-api-1`'s environment —
+which looked complete and was not. `SECFIN_DATA_MOUNT` is interpolated into the compose
+`volumes:` block, **not passed to the container**, so it does not appear in `.Config.Env` and the
+reconstruction silently dropped it.
+
+`docker-compose.prod.yml` reads `${SECFIN_DATA_MOUNT:-secfin-data}`, so the default took over and
+the next `up -d` moved production onto the **pre-migration named volume** — the copy §7 says was
+"retained as the rollback".
+
+| | raw_facts | api_keys | size |
+|---|---:|---:|---:|
+| Volume `/mnt/secfin_data_vol/data` (correct) | **64,657,414** | 60 | 34.2 GB |
+| named volume `secfin_secfin-data` (served for ~50 min) | 4,805,056 | 59 | 9.2 GB |
+
+The site stayed up and served correct-looking answers the whole time, which is what made it hard
+to see: the stale DB is a real database, just a 13×-smaller one from before the granular
+re-ingest. Nothing detected it — not `/health`, not `verify_deployment.py` 11/11, not a browser.
+It surfaced only because a documentation sweep read §7 and asked whether the mount matched.
+
+**No customer data was lost.** The two keys the stale copy had that the Volume did not were both
+`verify-deploy-*@example.com` — created by `verify_deployment.py`'s own signup during that window.
+
+**Rules this leaves behind:**
+
+1. **Never reconstruct `.env` from a container.** It cannot contain compose-level variables. If
+   `.env` is ever lost again, rebuild it from `.env.example` + `docker-compose.prod.yml`'s
+   `${...}` references, and check EVERY one — including those in `volumes:`, `ports:` and
+   `build:`, which never reach the container.
+2. **Verify the MOUNT after any recreate**, not just health:
+   `docker inspect secfin-api-1 --format '{{range .Mounts}}{{.Source}}{{println}}{{end}}'`
+   must show `/mnt/secfin_data_vol/data`. A row count is the cheap confirmation — `raw_facts`
+   should be tens of millions, not ~4.8 M.
+3. `verify_deployment.py` passes against BOTH databases. It checks that data is served, never that
+   it is the CURRENT data. Worth an assertion on a row-count floor or a known recent filing.
+
+A timestamped `.env.bak-*` is written on the droplet before any future edit to it.
+
 ### 5c. The sector surface has NO producer scheduled here (found 2026-08-14)
 
 Every table behind `/v1/sectors*` is empty on this droplet, and this is not a fault of any

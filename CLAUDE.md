@@ -129,7 +129,9 @@ Base host for structured data: `https://data.sec.gov`
 ## Repository layout
 
 Everything below is implemented unless noted. See `docs/ROADMAP.md` for what's shipped
-per milestone and what's still open.
+per milestone and what's still open. **`docs/TASKS.md` is the consolidated index of every
+open item** across all the roadmaps, launch docs and the production runbook — start there when
+looking for what is left, then read the owning file for the reasoning.
 
 ```
 src/secfin/
