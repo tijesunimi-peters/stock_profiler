@@ -112,15 +112,51 @@ returns real data from outside; `curl http://143.198.37.67:8000/health` from out
 
 ```bash
 # From the operator machine, repo root:
-rsync -az --exclude data/ --exclude .env --exclude __pycache__ \
-      --exclude .pytest_cache --exclude .ruff_cache \
+rsync -az --exclude /data/ --exclude .env --exclude __pycache__ \
+      --exclude .pytest_cache --exclude .ruff_cache --exclude .git/ \
+      --exclude 'clearyfi_frontend/node_modules' --exclude 'clearyfi_frontend/app-dist' \
+      --exclude 'clearyfi_frontend/dist' \
       ./ root@143.198.37.67:/opt/secfin/
 ssh root@143.198.37.67 \
   'cd /opt/secfin && docker compose -f docker-compose.prod.yml build && docker compose -f docker-compose.prod.yml up -d'
 ```
 
+> ### ⛔ NEVER add `--delete-excluded` to that rsync
+>
+> It deletes the EXCLUDED paths at the destination -- which is precisely `.env` and `data/`.
+> Done on 2026-08-17: it removed `/opt/secfin/.env` (SEC_USER_AGENT, admin secret, rate limits)
+> and `/opt/secfin/data/`. The site never went down, because the running container holds its
+> environment in memory and the SQLite DB lives in the named `secfin-data` volume rather than in
+> `./data` -- so nothing was lost and nothing was served wrong. But between that moment and the
+> repair, ANY container restart would have failed to start, and the first symptom was the build
+> refusing to interpolate `SEC_USER_AGENT`.
+>
+> `.env` was reconstructed from `docker inspect secfin-api-1`'s own environment, verified
+> byte-identical on all four values. That recovery only worked because the container was still
+> running. **If it had been restarted first, the admin secret would have been gone.**
+>
+> The excludes above are a keep-out list, not a clean-up list. `--delete` and `--delete-excluded`
+> both have no business here: the droplet's tree is allowed to hold files the repo does not.
+>
+> ### ⛔ And the exclude is `/data/`, ANCHORED
+>
+> rsync patterns without a leading slash match at ANY DEPTH. `--exclude data/` -- which this
+> runbook carried until 2026-08-17 -- was correct while `./data/` was the only such directory in
+> the repo. The React frontend has `clearyfi_frontend/app/data/`, which is its entire data layer
+> (`api.ts`, the fixtures, the catalogs), and that pattern silently excluded it too. The build then
+> failed with `Could not resolve "./data/prototype" from "app/state.tsx"` -- a confusing error whose
+> real cause was three directories away, in the transfer.
+>
+> The leading slash anchors the pattern to the transfer root, so it means "the `data/` beside
+> `docker-compose.prod.yml`" and nothing else.
+
+The frontend excludes matter for a different reason: `node_modules` is ~400 MB of host-platform
+binaries and `app-dist` is a local build, and both are produced inside the image by the
+Dockerfile's `frontend` stage. Sending them wastes the transfer and risks shadowing the build.
+
 A few seconds of downtime while the `api` container recreates -- known and accepted
-(runbook §12). The image bakes in `src/`, so the `build` is not optional.
+(runbook §12). The image bakes in `src/` **and now the built SPA**, so the `build` is not
+optional -- and the build stage runs `npm ci` + `vite build` on the droplet's single core.
 
 **Check the scheduled jobs** (first fires: 2026-07-15 06:00/07:00 UTC):
 
@@ -197,6 +233,38 @@ stays empty, timer stays off). The code change is additive and does not migrate 
 rollback is redeploying the previous tree; `secfin-api:rollback-jul17` is also still on the box.
 
 Disk after: **13G / 48G used**, unchanged by the deploy.
+
+### 5e. Deploy 2026-08-17 — the React app ships at /app, and two rsync traps
+
+**What went live.** The SQLite busy timeout (120s, `storage/connection.py`), the new
+`GET /v1/companies/{symbol}/filings`, the geographic-mix floors, and — for the first time — the
+built React frontend, mounted at **`/app`**.
+
+`/app` and not `/` deliberately: `/`, `/company/{symbol}` and `/sectors` are live server-rendered
+routes and the SPA's router claims exactly those paths. Under a prefix the deploy is additive and
+the rollback is deleting two routes in `api/main.py`. Verified after: `/`, `/company/AAPL`,
+`/sectors`, `/guide`, `/coverage`, `/docs` all still 200, and `verify_deployment.py` 11/11.
+
+The image now has a Node build stage. On this droplet it cost **32 s** with the `npm ci` layer
+warm and never touched swap — cheaper than feared, but it does mean a frontend change now
+requires a rebuild here, not just an rsync.
+
+**Two rsync traps, both hit on the way in. Both are written up at §5's deploy command; read that
+before running it.**
+
+1. `--delete-excluded` deleted `/opt/secfin/.env` and `data/`. Recovered from the running
+   container's own environment — which only worked *because* it was still running.
+2. `--exclude data/` is UNANCHORED and also matched `clearyfi_frontend/app/data/`, the frontend's
+   whole data layer, so the build failed on a missing module three directories from the real
+   cause. The runbook had carried that unanchored pattern since 2026-07-14; it is `/data/` now.
+
+**A backup was taken first** (operator, 2026-08-17, reversing the 2026-08-14 skip):
+`data/backups/secfin-20260817T045227Z.db`, 9.2 GB, 1 m 23 s.
+
+⚠️ `storage/backup.py` writes the timestamped copy **and** `secfin-latest.db` — 18.4 GB per
+backup at this DB size, on a 48 GB disk (34 G used after). `secfin_backup_retention` defaults to
+**7**, which cannot fit. `secfin-backup.timer` is still disabled, so this is latent — but lower
+the retention before ever enabling it. Same shape as the 2026-07-21 disk-fill in §6b.
 
 ### 5c. The sector surface has NO producer scheduled here (found 2026-08-14)
 
