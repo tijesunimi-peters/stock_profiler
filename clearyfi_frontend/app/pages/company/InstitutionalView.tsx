@@ -10,7 +10,6 @@ import { ChartCard, Disclosure, StateBlock, StatTile, StatTileRow, STANDARD_DISC
 import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
-import { FILER_BY_SYMBOL } from "../../data/catalog";
 import { compact, humanDate } from "../../lib/format";
 import { CompositionStrip } from "@ds";
 import { SeriesChart, Sparkline, StackedAreaChart, StepChart } from "../../charts/series";
@@ -128,12 +127,19 @@ export function InstitutionalView() {
   const behaviourRead = useApi(() => api.instBehaviour(T), [T]);
   const stewardRead = useApi(() => api.instStewardship(T), [T]);
   const limitsRead = useApi(() => api.instLimits(T), [T]);
-  // Its own read, and deliberately a cheap one: the crumb needs the filer's SIC and nothing else.
-  const sector = useApi(() => api.companySector(T), [T]);
+  // Its own read: the crumb needs the filer's name and SIC, and the source links need its CIK.
+  const basics = useApi(() => api.companyBasics(T), [T]);
 
   const [openCalc, setOpenCalc] = useState<string | null>(null);
   const [formsOpen, setFormsOpen] = useState(false);
-  const cik = FILER_BY_SYMBOL[sel.focal]?.cik ?? 0;
+  /*
+   * The filer's REAL CIK, for the eight EDGAR source links below.
+   *
+   * This was `FILER_BY_SYMBOL[sel.focal]?.cik ?? 0` — a hard-coded table of fourteen semiconductor
+   * tickers — so every "check this on EDGAR" link on this page pointed at CIK 0000000000 for any
+   * other company. The read is in the gate below, so by the time these render the CIK is real.
+   */
+  const cik = basics.data?.cik ?? 0;
   // One overlay for both expandable charts in this section — same pattern as Financial history.
   const [zoom, setZoom] = useState<null | "register" | "mgrGrid" | "flow" | "pareto" | "tree" | "upset">(null);
   const [holdView, setHoldView] = useState<"ranked" | "treemap">("ranked");
@@ -149,10 +155,13 @@ export function InstitutionalView() {
 
   // Gate after every hook. See the note in HubOverview: per-section paint is a Phase A decision,
   // where the latency is real enough to measure.
-  const reads = [snapshotRead, seriesRead, flowsRead, behaviourRead, stewardRead, limitsRead];
+  // `basics` joins the gate because the CIK it carries builds eight EDGAR source links. Rendering
+  // before it lands would paint links to CIK 0000000000 for a beat — briefly wrong is still wrong,
+  // and a reader who clicks in that beat lands nowhere.
+  const reads = [snapshotRead, seriesRead, flowsRead, behaviourRead, stewardRead, limitsRead, basics];
   const failed = reads.find((r) => r.error);
   if (failed) return <StateBlock variant="error" copy={failed.error!.message} />;
-  if (!snapshotRead.data || !seriesRead.data || !flowsRead.data || !behaviourRead.data || !stewardRead.data || !limitsRead.data) {
+  if (!snapshotRead.data || !seriesRead.data || !flowsRead.data || !behaviourRead.data || !stewardRead.data || !limitsRead.data || !basics.data) {
     return <StateBlock variant="loading" copy="Reading this issuer's 13F register." />;
   }
 
@@ -173,10 +182,11 @@ export function InstitutionalView() {
         {/* The FILER's own SEC-assigned industry, from its own EDGAR profile — the crumb used
             to read the SECTOR SELECTOR's sector, which is a different company's industry. */}
         <span className="hub-crumb-sector">
-          {sector.data?.label ?? sector.data?.sic ?? "SIC N/A"}
+          {basics.data?.sector?.label ?? basics.data?.sector?.sic ?? "SIC N/A"}
         </span>
         <span className="hub-crumb-sep">›</span>
-        <span className="hub-crumb-name">{FILER_BY_SYMBOL[sel.focal]?.name ?? sel.focal}</span>
+        {/* EDGAR's own registrant name, not a fourteen-ticker lookup table. */}
+        <span className="hub-crumb-name">{basics.data?.name ?? sel.focal}</span>
         <span className="hub-crumb-ticker">{sel.focal}</span>
         <span className="hist-crumb-view">Institutional ownership</span>
         <span className="hub-crumb-spacer" />

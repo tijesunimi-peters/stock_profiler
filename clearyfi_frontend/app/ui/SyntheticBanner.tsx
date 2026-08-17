@@ -32,6 +32,12 @@
  */
 import { PROVENANCE } from "../data/api";
 
+/** "a, b and c" — an Oxford-less list, so a four-item disclosure reads as a sentence. */
+function listPhrase(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 export function SyntheticBanner({ surface }: { surface?: string } = {}) {
   const surfaces = PROVENANCE.syntheticSurfaces;
   // The whole point: no surfaces left, no banner. Not hidden, not greyed — absent.
@@ -62,8 +68,9 @@ export function SyntheticBanner({ surface }: { surface?: string } = {}) {
       <span className="synth-banner-copy">
         {split ? (
           <>
-            Sections {split.real.join(" and ")} are read from SEC filings. Every other figure on
-            this page is generated from the ticker and is stable, plausible, and wrong.
+            {/* `join(" and ")` produced "01 and 02 and 03 and 05". A list is a list. */}
+            Sections {listPhrase(split.real)} are read from SEC filings. Every other figure on this
+            page is generated from the ticker and is stable, plausible, and wrong.
           </>
         ) : (
           <>

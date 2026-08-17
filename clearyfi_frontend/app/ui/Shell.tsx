@@ -151,7 +151,17 @@ export interface PageShellProps {
  * unnamed page falls back to the broad warning rather than to silence.
  */
 function bannerSurface(subject: string, activeView?: string): string | undefined {
-  if (subject === "company" && activeView === "overview") return "company overview";
+  if (subject === "company") {
+    // Named per VIEW, because they are plumbed per view. `overview` is a mixture and is listed in
+    // `partialSurfaces`; the other four are real and are named here so the banner disappears from
+    // them — it was telling readers that nothing on the insider, institutional, peer-relative and
+    // history pages came from a filing, which was false for all four.
+    if (activeView === "overview") return "company overview";
+    if (activeView === "insider") return "insider activity";
+    if (activeView === "institutional") return "institutional";
+    if (activeView === "peers") return "peer-relative";
+    if (activeView === "history") return "financial history";
+  }
   if (subject === "sectors") {
     // §Sector is plumbed and is deliberately NOT in `syntheticSurfaces`, so naming it here is what
     // removes the banner from that page. Its two sibling views are still fixtures and still named.

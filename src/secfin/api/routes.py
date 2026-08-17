@@ -4000,6 +4000,120 @@ async def get_filing_activity(
     }
 
 
+# How many indexed filings the timeline route will return at most. A cap, not a window: the rows
+# behind it run to 1,001 for Apple, and a rail that rendered all of them would be a scroll, not a
+# summary. Every response reports `returned` against `indexed_filings` so the reader can see it is
+# a slice -- the same "name the residual" rule /filing-activity applies to its form counts.
+_FILINGS_PAGE_MAX = 200
+_FILINGS_PAGE_DEFAULT = 25
+
+
+@public_router.get(
+    "/companies/{symbol}/filings",
+    tags=["Financials"],
+    summary="The company's indexed filings, newest first (form, dates, accession, 8-K items)",
+)
+async def get_company_filings(
+    symbol: str,
+    limit: int = Query(
+        _FILINGS_PAGE_DEFAULT, ge=1, le=_FILINGS_PAGE_MAX, description="Rows to return, newest first"
+    ),
+    form: str | None = Query(
+        None, description="Restrict to one form type, exactly as EDGAR writes it (e.g. `8-K`)"
+    ),
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+) -> dict:
+    """One row per filing, newest first -- the per-filing view of the same index
+    `/filing-activity` counts and `/filing-index` aggregates.
+
+    **This is metadata about filings, never their contents.** Form, filing date, EDGAR acceptance
+    timestamp, the period reported on, the accession, and 8-K item CODES. What an 8-K said is
+    prose; `item_labels` names the KIND of event reported and stops there.
+
+    Added 2026-08-17 because nothing exposed these rows. The store has had them since
+    `ingest/filing_index_backfill.py`, and both sibling endpoints read them -- but only in
+    aggregate, so a caller wanting "what did this company file, and when" had no answer and the
+    frontend was drawing an invented timeline instead. A fabricated filing history is worse than
+    an absent one: it is a checkable claim about a real filer, and it was wrong (a September-FYE
+    company shown filing 10-Ks in April).
+
+    **Scoped to the indexed window, which is EDGAR's rolling recent list rather than a company's
+    whole history.** `covered_from`/`covered_to` travel with every response, and `returned`
+    against `indexed_filings` says how much of it this page is. "Nothing on file" here only ever
+    means "nothing among the filings we indexed, over the window we name".
+
+    Built cache-aside: the first view of a company indexes it, then this is a SQLite read.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+        indexed = await _ensure_filing_index(filing_repo, client, cik)
+
+    if not indexed:
+        return {
+            "cik": cik,
+            "status": "na",
+            "reason": (
+                "This company's filing index could not be built, so we have not looked at what "
+                "it files. That is not the same as finding nothing."
+            ),
+            "indexed_filings": 0,
+            "covered_from": None,
+            "covered_to": None,
+            "returned": 0,
+            "filings": [],
+            "caveats": _FILINGS_CAVEATS,
+        }
+
+    covered_from, covered_to = filing_repo.indexed_window(cik)
+    entries = filing_repo.get_filings(cik, [form] if form else None, limit)
+    return {
+        "cik": cik,
+        "status": "ok",
+        "reason": None,
+        "indexed_filings": indexed,
+        "covered_from": covered_from,
+        "covered_to": covered_to,
+        "form": form,
+        "returned": len(entries),
+        "filings": [
+            {
+                "accession": e.accession,
+                "form": e.form,
+                "filed": e.filing_date,
+                # When EDGAR ACCEPTED it, which is not the filing date -- the two differ, and the
+                # lag between them is what /filing-index measures.
+                "accepted": e.acceptance_datetime,
+                # The period the filing REPORTS on. Null for forms that report on an event rather
+                # than a period (an 8-K has none), and that null is a fact, not a gap.
+                "report_date": e.report_date,
+                "items": [c.strip() for c in (e.items or "").split(",") if c.strip()],
+                # Labels for the codes we name; an unnamed code still appears in `items` above
+                # rather than being dropped, so the two lists can legitimately differ in length.
+                "item_labels": [
+                    _NAMED_8K_ITEMS[c.strip()]
+                    for c in (e.items or "").split(",")
+                    if c.strip() in _NAMED_8K_ITEMS
+                ],
+            }
+            for e in entries
+        ],
+        "caveats": _FILINGS_CAVEATS,
+    }
+
+
+_FILINGS_CAVEATS = [
+    "These are filings EDGAR's ROLLING index lists for this company, not its whole filing "
+    "history -- the window is reported and differs by filer from one year to a decade.",
+    "Metadata only. Form, dates, accession and 8-K item CODES; no filing document is fetched or "
+    "parsed, so nothing here says what a filing contained.",
+    "`filed` is the filing date and `accepted` is EDGAR's acceptance timestamp; they differ, and "
+    "neither is the period the filing reports on (`report_date`, null for event-driven forms).",
+    "An amendment is its own filing with its own accession -- it appears as a separate row and "
+    "does not rewrite the one it amends.",
+]
+
+
 # On public_router, not `router`: §04's blockholder card calls this client-side, and CLAUDE.md is
 # explicit that gating an endpoint our own UI depends on just breaks that UI -- the same mistake
 # that produced the insider-trades and metric-periods 401s.

@@ -42,6 +42,16 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
    * those views in P0b; naming it rather than leaving it to be rediscovered.
    */
   const overview = useApi(() => api.company(symbol, period, sel.subIndustry), [symbol, period, sel.subIndustry]);
+  /*
+   * The entity bar's "Last filed", from the filer's own index. Its own read rather than a field on
+   * `overview`, because `overview` is still the synthetic fixture and this cell has to stop being.
+   *
+   * Shares `companyFilingEvents` with the timeline rail deliberately: "the newest indexed filing"
+   * and "the top of the timeline" are the same filing, and the old page computed them from two
+   * unrelated fixtures that could — and did — disagree about the same company.
+   */
+  const filings = useApi(() => api.companyFilingEvents(symbol), [symbol]);
+  const latest = filings.data?.ok ? filings.data.latest : null;
 
   // Both long views carry a jump list; each addresses its own section ordinals.
   const railSections = view === "overview" ? HUB_SECTIONS : view === "institutional" ? INST_SECTIONS : [];
@@ -110,15 +120,28 @@ export function CompanyPage({ symbol, view }: { symbol: string; view: string }) 
             cells={[
               { label: "Company", value: o.filer.symbol, primary: true, mono: true },
               { label: "Peer set", value: o.sector.label },
-              { label: "Period", value: "Q1 FY26", mono: true },
+              /*
+               * "Last filed" is the newest row of THIS filer's index. It used to be
+               * `latestFilingFor()` — a form picked from ["10-Q","10-K"] by ticker hash and a date
+               * offset 18–44 days off a hard-coded period end. It rendered "10-K · 19 Apr 2026"
+               * for Apple, whose fiscal year ends 26 September and whose newest indexed filing is
+               * 11 Aug 2026. A wrong date is worse than none, so `null` while the read is in
+               * flight and an explicit N/A when there is no index — never a plausible guess.
+               */
               {
                 label: "Last filed",
-                value: `${o.latestFiling.form} · ${humanDate(o.latestFiling.filed)}`,
+                value: filings.data
+                  ? latest
+                    ? `${latest.form}${latest.filed ? ` · ${humanDate(latest.filed)}` : ""}`
+                    : "N/A — not indexed"
+                  : null,
                 mono: true,
               },
             ]}
             /* The bar's standing caveat: these are as-filed values, and an amendment does not
-               reach back and change them. */
+               reach back and change them. The PERIOD cell is gone with the same broom — it was
+               the literal string "Q1 FY26" on every company, every view, regardless of what the
+               filer's fiscal calendar or the page's data actually was. */
             note="Facts as filed · not restated for later amendments"
           />
           </>

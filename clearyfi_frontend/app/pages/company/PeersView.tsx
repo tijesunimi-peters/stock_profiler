@@ -86,7 +86,14 @@ export function PeersView() {
           <span className="hub-crumb-pill">
             {identity.data.contextPill}
           </span>
-          <span className="qual-sections">10-Q · Q1 FY26</span>
+          {/*
+            The period this view actually queried, from its own constants -- not a claim about
+            which FORM the numbers came from. It read "10-Q · Q1 FY26", asserting a source form
+            nothing here checks: a company's Q1 figures can equally come from a 10-K's comparative
+            columns or a 10-Q/A, and the peer metrics are materialized rather than read off one
+            filing. The period is a real property of the request; the form was decoration.
+          */}
+          <span className="qual-sections">{PX_PERIOD} FY{String(PX_YEAR).slice(-2)} basis</span>
         </div>
       </div>
 

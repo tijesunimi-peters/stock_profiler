@@ -98,14 +98,18 @@ export const PROVENANCE = {
     },
   } as Record<string, { real: string[]; synthetic: string[] }>,
   syntheticSurfaces: [
+    // `company overview` is the only company view left, and it is a MIXTURE -- see
+    // `partialSurfaces` below, which names which of its sections are real.
     "company overview",
-    "financial history",
-    "institutional",
-    "insider activity",
-    "peer-relative",
-    // "sector" left this list when the sector altitude was plumbed onto /v1/sectors,
-    // /sectors/theme-scores, /spreads, /insider-flow and /geographic-mix. The two views BELOW it
-    // are still here: qualitative is Track 2 by ruling, and filings hangs off it.
+    /*
+     * Four company views left this list on 2026-08-17: financial history, institutional, insider
+     * activity and peer-relative. Their BODIES had been real for a while; what kept them here was
+     * the shared page chrome -- an entity bar whose "Last filed" was picked by ticker hash, and a
+     * rail drawing nine invented filings. Both now read /companies/{symbol}/filings.
+     *
+     * "sector" left when the sector altitude was plumbed. The two views BELOW it stay: qualitative
+     * is Track 2 by ruling, and filings hangs off it.
+     */
     "qualitative",
     "filings",
     "manager",
@@ -4670,6 +4674,87 @@ function toSectorGeographic(res: SectorGeographicMixResponse | null) {
   };
 }
 
+/**
+ * How many indexed filings the timeline rail asks for.
+ *
+ * A cap, and it is DISCLOSED rather than hidden — the rail prints "N of M indexed" using the
+ * endpoint's own `indexed_filings`. The fixture this replaced said "9 of 9 filings shown" for a
+ * company with 1,001, which is the exact failure mode a silent cap produces: a slice that reads
+ * as a whole.
+ */
+const FILINGS_RAIL_LIMIT = 60;
+
+interface FilingsResponse {
+  cik: number;
+  status: string;
+  reason: string | null;
+  indexed_filings: number;
+  covered_from: string | null;
+  covered_to: string | null;
+  returned: number;
+  filings: {
+    accession: string;
+    form: string;
+    filed: string | null;
+    accepted: string | null;
+    report_date: string | null;
+    items: string[];
+    item_labels: string[];
+  }[];
+}
+
+/**
+ * The filing timeline, and the "last filed" the entity bar shows.
+ *
+ * Ordering is the API's (newest first, `filing_date DESC, accession DESC`) and is not re-sorted
+ * here — two filings on the same day are ordered by accession, which is the only tiebreak that
+ * reflects the sequence EDGAR assigned.
+ *
+ * `latest` is the first row rather than a separate read: "the newest indexed filing" and "the top
+ * of the timeline" must be the same filing, and computing them independently is how the old bar
+ * came to disagree with the old rail about the same company.
+ */
+function toFilingTimeline(res: FilingsResponse | null) {
+  if (!res || res.status !== "ok" || !res.filings.length) {
+    return {
+      ok: false as const,
+      note:
+        res?.reason ??
+        "No filing index has been built for this company, so its filing history cannot be shown. "
+          + "That is not the same as finding no filings.",
+      rows: [] as {
+        accession: string; form: string; filed: string | null; accepted: string | null;
+        reportDate: string | null; items: string[]; labels: string[];
+      }[],
+      latest: null as { form: string; filed: string | null } | null,
+      indexed: 0,
+      window: null as string | null,
+    };
+  }
+  const rows = res.filings.map((f) => ({
+    accession: f.accession,
+    form: f.form,
+    filed: f.filed,
+    accepted: f.accepted,
+    reportDate: f.report_date,
+    items: f.items,
+    labels: f.item_labels,
+  }));
+  return {
+    ok: true as const,
+    note: null as string | null,
+    rows,
+    latest: { form: rows[0].form, filed: rows[0].filed },
+    indexed: res.indexed_filings,
+    // The window travels with the list, because "nothing on file" here only ever means "nothing
+    // among the filings we indexed" and the windows differ by filer from a year to a decade.
+    window:
+      res.covered_from && res.covered_to
+        ? `${humanDate(res.covered_from)} – ${humanDate(res.covered_to)}`
+        : null,
+  };
+}
+
 export const api = {
   /**
    * The global topbar typeahead — the ONE read here that hits a real endpoint on a page whose
@@ -4751,17 +4836,30 @@ export const api = {
    * The peer-set pill is still a fixture: it needs `/peers`, which is the next slice.
    */
   /**
-   * Just the filer's SEC-assigned industry — one `/profile` read.
+   * The page-furniture facts about a filer — CIK, name, SIC — in one `/profile` read.
    *
-   * Split out of `companyIdentity` because three views need only the breadcrumb and `identity`
+   * Split out of `companyIdentity` because several views need only the breadcrumb and `identity`
    * costs four endpoints, one of which fetches filing documents. A crumb is not worth an EX-21
    * parse.
+   *
+   * **The CIK is here because eight EDGAR source links depended on a hard-coded table.**
+   * `FILER_BY_SYMBOL[symbol]?.cik ?? 0` resolved against fourteen semiconductor tickers, so every
+   * "check this on EDGAR" link on the Institutional view pointed at CIK 0000000000 for any company
+   * outside that demo universe — Apple included. Those links are the page's whole argument, that a
+   * reader can go and check us; a link that lands nowhere is worse than no link.
+   *
+   * The NAME is here for the same reason: the crumb fell back to the ticker for anyone off the
+   * list, so Apple's institutional page was headed "AAPL" where NVIDIA's said "NVIDIA Corp".
    */
-  companySector: async (symbol: string): Promise<CompanySector> => {
+  companyBasics: async (symbol: string): Promise<CompanyBasics> => {
     const p = await getJson<ProfileResponse>(`/v1/companies/${encodeURIComponent(symbol)}/profile`);
-    return p.sic
-      ? { sic: p.sic, label: p.sic_description ?? null, group: p.sic.padStart(4, "0").slice(0, 2) }
-      : null;
+    return {
+      cik: p.cik,
+      name: p.name,
+      sector: p.sic
+        ? { sic: p.sic, label: p.sic_description ?? null, group: p.sic.padStart(4, "0").slice(0, 2) }
+        : null,
+    };
   },
 
   companyIdentity: async (symbol: string): Promise<CompanyIdentity> => {
@@ -5060,9 +5158,30 @@ export const api = {
     } as CompanyDisclosure;
   },
 
-  /** The filing-timeline rail. Phase A: `/filing-index` -- ONE walk, several consumers. */
-  companyFilingEvents: (symbol: string) =>
-    resolve<CompanyFilingEvents>({ timeline: hub.hubData(symbol).timeline }),
+  /**
+   * The filing-timeline rail AND the entity bar's "Last filed" cell — `/companies/{s}/filings`.
+   *
+   * **What this replaced was the worst figure on the site.** `hub.hubData().timeline` invented
+   * nine filings — form, date, description, 8-K item — captioned "every form as filed · 9 of 9
+   * filings shown", and the entity bar drew a "Last filed" from a second, unrelated fixture. Apple
+   * has 1,001 indexed filings, and the invented ones had it filing 10-Ks in April against a
+   * 26 September fiscal year end. Not a missing value: a checkable claim about a real company,
+   * confidently wrong, on every company page including the four that were otherwise entirely real.
+   *
+   * One read serves both because they are the same fact at two sizes — the newest row IS "last
+   * filed". Fetched separately from either view's payload because the rail and the bar belong to
+   * the PAGE and ride all five views.
+   *
+   * `desc` is gone and does not come back. The fixture wrote prose ("Annual report · FY25",
+   * "officer transition"); what the index holds is a form code and 8-K item codes, and the item
+   * LABEL is the closest honest thing to a description. What a filing said is Track 2.
+   */
+  companyFilingEvents: async (symbol: string): Promise<CompanyFilingEvents> => {
+    const res = await getJson<FilingsResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/filings?limit=${FILINGS_RAIL_LIMIT}`,
+    ).catch(() => null);
+    return toFilingTimeline(res);
+  },
 
   /**
    * §Insider activity. Phase A: `/companies/{symbol}/insider-trades`.
@@ -5170,10 +5289,9 @@ export const api = {
       themePercentiles: toThemePercentiles(themes),
       beyond: toBeyondGroups(disclosureStats, audit, segments),
       distribution: toDistributionRows(themes?.cik ?? null, year, fiscalPeriod, distRows, Math.max(ranked.length - shown.length, 0)),
-      geographicMix: proto.GEO_MIX,
-      // Peer-set size belongs with the peer payload — it is what "rank 4 of N" is counting.
-      subCounts: proto.SUB_COUNTS,
-      basePeerCount: proto.BASE_PEER_COUNT,
+      // `geographicMix`, `subCounts` and `basePeerCount` used to ride here from `prototype.ts`.
+      // Nothing rendered them — they were left behind by the sector port, and a synthetic field
+      // travelling unread in a real payload is one refactor away from being drawn.
     };
   },
 
@@ -5515,6 +5633,13 @@ export const api = {
 /** A filer's own SEC-assigned industry: 4-digit SIC, its description, and the 2-digit peer group. */
 export type CompanySector = { sic: string; label: string | null; group: string } | null;
 
+/** CIK, registrant name and industry — the page furniture, from the filer's own EDGAR profile. */
+export interface CompanyBasics {
+  cik: number;
+  name: string | null;
+  sector: CompanySector;
+}
+
 export interface CompanyIdentity {
   /** `reason` is present only where a row is unsourceable for a NAMED reason, not merely absent. */
   profile: { k: string; v: string; reason?: string }[];
@@ -5624,9 +5749,7 @@ export interface CompanyDisclosure {
   changes: ReturnType<typeof toFilingChanges>;
 }
 
-export interface CompanyFilingEvents {
-  timeline: hub.HubData["timeline"];
-}
+export type CompanyFilingEvents = ReturnType<typeof toFilingTimeline>;
 
 export type ManagerProfile = mgr.ManagerData & {
   quarters: typeof mgr.MANAGER_QUARTERS;
@@ -5698,9 +5821,6 @@ export interface CompanyPeerRelative {
   themePercentiles: ReturnType<typeof toThemePercentiles>;
   beyond: ReturnType<typeof toBeyondGroups>;
   distribution: ReturnType<typeof toDistributionRows>;
-  geographicMix: typeof proto.GEO_MIX;
-  subCounts: typeof proto.SUB_COUNTS;
-  basePeerCount: number;
 }
 
 export interface InstRegisterSnapshot {

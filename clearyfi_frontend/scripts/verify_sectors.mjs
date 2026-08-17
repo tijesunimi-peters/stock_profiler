@@ -292,6 +292,77 @@ ck("H2 it is not the selected sector's label", !/Depository Institutions/.test(c
 ck(`H3 the context pill carries the real SIC ${prof.sic}, not the hardcoded 3674/62 rank`,
    ctxt.includes(`SIC ${prof.sic}`) && !/rank 5 \/ 62/.test(ctxt));
 
+/* ---------------------------------------------------------------- I the shared company chrome
+ *
+ * The entity bar and the filing-timeline rail belong to the PAGE, not to any view, so they ride
+ * all five. Both were synthetic until 2026-08-17: "Last filed" was a form picked by ticker hash
+ * with a date offset 18-44 days, and the rail drew nine invented filings captioned "9 of 9". */
+console.log(`\n── company chrome ──`);
+const fl = await g("/v1/companies/AAPL/filings?limit=60");
+for (const view of ["overview", "insider", "institutional"]) {
+  await p.goto(`http://localhost:${PORT}/company/AAPL/${view}`,{waitUntil:"domcontentloaded"});
+  await p.waitForSelector(".shell-entity",{timeout:240000});
+  await p.waitForFunction(()=>!/Reading this filer/.test(document.body.innerText),{timeout:240000});
+  await new Promise(r=>setTimeout(r,900));
+  const t = await p.evaluate(()=>(document.body.innerText||"").replace(/\s+/g," "));
+
+  /* I1 "Last filed" is the newest INDEXED filing's form, not a hash pick */
+  const newest = fl.filings[0];
+  ck(`I1 ${view}: last filed is the real newest indexed filing (${newest.form})`,
+     new RegExp(`Last filed ${newest.form.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}`, "i").test(t),
+     `api=${newest.form} ${newest.filed}`);
+  /* I1b the fabricated pairing is gone. Apple's FYE is 26 Sep, so an April 10-K was impossible. */
+  ck(`I1b ${view}: the invented "10-K · 19 Apr 2026" is gone`, !/19 Apr 2026/.test(t));
+  /* I2 the hard-coded period CELL is gone -- scoped to the entity bar, not the page.
+     "Q1 FY26" legitimately appears elsewhere as a statement COLUMN header: those come from
+     `income.columns`, and Apple's Q1 FY2026 really did end 2025-12-27. Grepping the whole page
+     failed on that real label, which is a bad assertion, not a bug. */
+  const barText = await p.$eval(".shell-entity", e => e.innerText.replace(/\s+/g," "));
+  ck(`I2 ${view}: the entity bar's hard-coded "Q1 FY26" period cell is gone`,
+     !/Q1 FY26/.test(barText), barText.slice(0, 90));
+  /* I3 the rail counts the INDEX, not the slice it drew */
+  ck(`I3 ${view}: the rail names the indexed total (${fl.indexed_filings})`,
+     t.includes(`${fl.indexed_filings.toLocaleString()} indexed`),
+     `api=${fl.indexed_filings}`);
+  ck(`I3b ${view}: the fixture's "9 of 9 filings shown" is gone`, !/9 of 9 filings shown/.test(t));
+  /* I4 the rail's rows are the API's, in the API's order */
+  ck(`I4 ${view}: the rail's newest row is ${newest.filed} ${newest.form}`,
+     t.includes(`${newest.filed} ${newest.form}`), `api=${newest.filed} ${newest.form}`);
+  /* I5 an 8-K's description is its ITEM LABEL, never invented prose */
+  const withItems = fl.filings.find(f => f.item_labels.length);
+  if (withItems) {
+    ck(`I5 ${view}: 8-K description is the item label ("${withItems.item_labels[0]}")`,
+       t.includes(withItems.item_labels[0]), `api=${withItems.item_labels.join(" · ")}`);
+  }
+  ck(`I5b ${view}: the fixture's invented descriptions are gone`,
+     !/officer transition|Annual report · FY25/.test(t));
+}
+
+/* I6 the banner is gone from the four plumbed views and still correct on the mixture */
+for (const [view, want] of [["insider", false], ["institutional", false], ["peers", false],
+                            ["history", false], ["overview", true]]) {
+  await p.goto(`http://localhost:${PORT}/company/AAPL/${view}`,{waitUntil:"domcontentloaded"});
+  await p.waitForSelector(".shell-entity",{timeout:240000});
+  await new Promise(r=>setTimeout(r,700));
+  const has = await p.$$eval(".synth-banner", e => e.length > 0);
+  ck(`I6 ${view}: synthetic banner ${want ? "still shown (it is a mixture)" : "gone (the view is real)"}`,
+     has === want);
+}
+/* I6b the surviving banner reads as a list, not "01 and 02 and 03 and 05" */
+const btxt = await p.evaluate(()=>document.querySelector(".synth-banner")?.innerText ?? "");
+ck("I6b the partly-synthetic banner reads as a list", !/and 02 and/.test(btxt), btxt.slice(0,80));
+
+/* I7 the EDGAR source links carry the filer's REAL cik, not the 14-ticker table's 0 */
+await p.goto(`http://localhost:${PORT}/company/AAPL/institutional`,{waitUntil:"domcontentloaded"});
+await p.waitForSelector(".inst-link",{timeout:240000});
+const hrefs = await p.$$eval(".inst-link", els => els.map(e => e.getAttribute("href")));
+const aaplProfile = await g("/v1/companies/AAPL/profile");
+const padded = String(aaplProfile.cik).padStart(10, "0");
+ck(`I7 all ${hrefs.length} EDGAR source links use CIK ${padded}`,
+   hrefs.length > 0 && hrefs.every(h => h.includes(`CIK=${padded}`)),
+   `saw ${[...new Set(hrefs.map(h=>(h.match(/CIK=(\d+)/)||[])[1]))].join(",")}`);
+ck("I7b none points at CIK 0000000000", !hrefs.some(h => h.includes("CIK=0000000000")));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 await b.close(); s.close();
 process.exit(fail ? 1 : 0);

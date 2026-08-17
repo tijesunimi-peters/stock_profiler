@@ -1792,24 +1792,45 @@ export { HUB_SECTIONS };
  */
 export function HubRail() {
   const sel = useSelection();
-  // Its own read: the rail rides EVERY hub view, including the four this task does not touch, so
-  // it cannot depend on the Overview's payload. Phase A: `/filing-index` — one walk, several
-  // consumers (this rail, §05.1, §06.4–6.6, §08.4/8.6).
+  /*
+   * Its own read: the rail rides EVERY company view, so it cannot depend on any one view's
+   * payload. `/companies/{symbol}/filings` — the same index §05.1, §06.4–6.6 and §08.4/8.6 read
+   * in aggregate, now exposed per filing.
+   *
+   * What this replaced: nine INVENTED filings captioned "every form as filed · 9 of 9 filings
+   * shown", for filers with up to 1,001 real indexed ones.
+   */
   const res = useApi(() => api.companyFilingEvents(sel.focal), [sel.focal]);
   const [filter, setFilter] = useState("all");
 
   if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
   if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's filing index." />;
-  const timeline = res.data.timeline;
+  const d = res.data;
 
-  const forms = ["all", ...Array.from(new Set(timeline.map((e) => e.form)))];
-  const rows = filter === "all" ? timeline : timeline.filter((e) => e.form === filter);
+  if (!d.ok) {
+    return (
+      <div className="rail-card">
+        <div className="rail-label">Filing timeline</div>
+        <StateBlock variant="empty" copy={d.note} />
+      </div>
+    );
+  }
+
+  const forms = ["all", ...Array.from(new Set(d.rows.map((e) => e.form)))];
+  const rows = filter === "all" ? d.rows : d.rows.filter((e) => e.form === filter);
 
   return (
     <div className="rail-card">
       <div className="rail-label">Filing timeline</div>
+      {/*
+        The caption names the SLICE, not a total. The rail holds the newest `FILINGS_RAIL_LIMIT`
+        of an index that runs to four figures, and the old one said "9 of 9" — a cap presented as
+        a complete history. Both the fetched count and the indexed count are shown, plus the
+        window, because an index is EDGAR's rolling recent list rather than a filer's whole past.
+      */}
       <div className="hub-hint hub-mb-sm">
-        every form as filed · {rows.length} of {timeline.length} filings shown
+        newest {rows.length} shown · {d.indexed.toLocaleString()} indexed
+        {d.window ? ` · ${d.window}` : ""}
       </div>
       <div className="hub-tl-filters">
         {forms.map((f) => (
@@ -1824,12 +1845,19 @@ export function HubRail() {
         ))}
       </div>
       {rows.map((e) => (
-        <div className="hub-tl-row" key={`${e.date}${e.form}${e.desc}`}>
+        /* Accession is the row identity — two filings can share a date and a form. */
+        <div className="hub-tl-row" key={e.accession}>
           <span className="hub-tl-dot" />
           <div className="hub-tl-body">
-            <span className="hub-tl-date">{e.date}</span>
+            <span className="hub-tl-date">{e.filed ?? "date N/A"}</span>
             <span className="hub-tl-form">{e.form}</span>
-            <span className="hub-tl-desc">{e.desc}</span>
+            {/*
+              The 8-K item LABEL, where there is one. The fixture wrote prose descriptions
+              ("Annual report · FY25"); what the index holds is item codes, and their labels say
+              WHICH KIND of event was reported. What the filing said is Track 2 and stays absent —
+              a form with no items simply has no description rather than an invented one.
+            */}
+            {e.labels.length > 0 && <span className="hub-tl-desc">{e.labels.join(" · ")}</span>}
           </div>
         </div>
       ))}
