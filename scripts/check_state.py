@@ -40,11 +40,23 @@ Each of those is a state question with a cheap answer, asked by nobody. This ask
 check nobody can afford to run is a check nobody runs. FLOOR therefore uses `max(rowid)`, which is
 an index lookup and instant.
 
-`max(rowid)` is an UPPER BOUND on the row count, not the count -- deletes leave gaps. That is a
-real approximation and it is stated in the output. It is sound for the question being asked here:
-FLOOR exists to catch a database that is an order of magnitude wrong, and these tables are
-append/upsert with no delete path. It would NOT be sound for a check that had to be exact, and no
-check here is.
+`max(rowid)` is an UPPER BOUND on the row count, not the count -- a rowid is never reused, so any
+table written by delete-then-insert inflates without bound. That is a real approximation, it is
+stated in the output, and it is NOT uniformly safe:
+
+    api_keys       56          max(rowid)         56    1.00x   <- FLOOR uses these
+    filing_index    7,577,506  max(rowid)  7,577,506    1.00x
+    metric_values  17,702,852  max(rowid) 17,702,852    1.00x
+    company_profiles    8,935  max(rowid)  2,131,882     239x   <- NOT floored, for this reason
+    disclosure_stats    8,727  max(rowid)  2,131,882     244x
+
+The FLOOR tables are upserted in place (`ON CONFLICT DO UPDATE`), so their rowids are stable and
+measured at exactly 1.00x. `company_profiles` and `disclosure_stats` are REPLACED wholesale by
+their batches, which burns rowids every run -- they are deliberately absent from FLOORS and only
+ever tested for existence, where inflation cannot mislead.
+
+Verified 2026-08-18, not assumed. Before adding a table to FLOORS, measure its inflation: a
+replace-written table would pass a floor it should fail.
 
 Run it inside the container that serves, so it reads through the same mount the API does -- that is
 half the point:
