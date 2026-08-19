@@ -101,5 +101,29 @@ services:
       - ./data/e2e-shots:/out
     command: node headless_check.js
 
+  # JupyterLab against the local database. DEV ONLY -- see the Dockerfile's `notebook` stage for
+  # the three mechanisms that keep it out of production, and tests/test_compose_shape.py for the
+  # two of them that are asserted rather than trusted.
+  notebook:
+    profiles: ["notebook"]
+    build:
+      context: .
+      target: notebook
+    ports:
+      # 127.0.0.1 ONLY. The `api` service binds 0.0.0.0 because Caddy fronts it in prod; nothing
+      # fronts this, it has no auth beyond Jupyter's token, and it holds an open handle to a
+      # 59 GB database. It has no business being reachable off the machine.
+      - "127.0.0.1:8888:8888"
+    environment:
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+    volumes:
+      # READ-ONLY. The API and the batch jobs contend for the single SQLite write lock; a notebook
+      # holding a write connection open while you think about the next cell is a real hazard, and
+      # `:ro` makes it Docker's problem rather than something to remember.
+      - secfin-data:/app/data:ro
+      # Notebooks live on the host so they survive the container and can be gitignored.
+      - ./notebooks:/app/notebooks
+    working_dir: /app/notebooks
+
 volumes:
   secfin-data:

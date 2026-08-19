@@ -55,3 +55,19 @@ CMD ["uvicorn", "secfin.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 FROM api AS analytics
 RUN pip install --no-cache-dir ".[analytical]"
 CMD ["python", "-c", "import duckdb; print('analytical image; run a batch module explicitly')"]
+
+
+# --- dev notebook image ------------------------------------------------------------------
+# JupyterLab for ad-hoc exploration of the SQLite database. DEV ONLY, by three independent
+# mechanisms rather than by convention:
+#
+#   1. the `notebook` service exists ONLY in docker-compose.yml -- docker-compose.prod.yml is a
+#      STANDALONE file (not an overlay), so a service absent from it cannot start in production;
+#   2. that service sits behind a compose profile, so a bare `docker compose up` never starts it;
+#   3. it binds 127.0.0.1 only, so even a mistaken start is not reachable off the machine.
+#
+# `tests/test_compose_shape.py` asserts 1 and 3, because "we would never do that" is not a
+# guarantee and this stack has already had one service reach production by accident.
+FROM api AS notebook
+RUN pip install --no-cache-dir ".[jupyter]"
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]

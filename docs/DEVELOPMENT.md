@@ -271,6 +271,49 @@ venv, no host Python needed.
 docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e
 ```
 
+## Exploring the database in a notebook (dev only)
+
+JupyterLab against the local SQLite database, with `pandas` and `duckdb`:
+
+```bash
+docker compose --profile notebook up -d notebook
+docker compose --profile notebook exec -T notebook jupyter lab list   # prints the token URL
+# open http://127.0.0.1:8888/?token=...
+docker compose --profile notebook down
+```
+
+Notebooks live in `./notebooks` on the host (gitignored except the README), so they survive the
+container.
+
+**It cannot run in production, by three independent mechanisms** — not by convention:
+
+1. the service exists only in `docker-compose.yml`, and `docker-compose.prod.yml` is a
+   **standalone** file rather than an overlay, so production cannot start a service it does not
+   define;
+2. it sits behind the `notebook` profile, so a bare `docker compose up` never starts it;
+3. it binds **127.0.0.1 only** — verified unreachable on the host's LAN address.
+
+`tests/test_compose_shape.py` asserts 1 and 3, plus the read-only data mount, by parsing the
+compose files. "We would never do that" is not a guarantee.
+
+**The data volume is mounted `:ro`.** The API and the batch jobs contend for the single SQLite
+write lock, and a notebook holding a write connection open between cells is a real hazard — a
+write attempt fails with `attempt to write a readonly database`.
+
+For big aggregations, prefer DuckDB over pandas — it reads the SQLite file directly, the same
+mechanism `analytical/` uses, and returns a DataFrame:
+
+```python
+import duckdb
+con = duckdb.connect()
+con.execute("ATTACH '/app/data/secfin.db' AS sq (TYPE sqlite)")
+con.execute("SELECT peer_group, peer_count FROM sq.sector_dupont WHERE fiscal_year=2025").df()
+```
+
+⚠️ `pd.read_sql("SELECT * FROM raw_facts")` is 121M rows and will exhaust memory. Aggregate in
+SQL, not in pandas.
+
+
 Two containers: `e2e-app` seeds the AAPL/JPM/WMT fixtures into a throwaway DB
 (`scripts/seed_fixture.py`, no network) and serves the app with a `/health` healthcheck;
 once healthy, `e2e` runs `scripts/headless_check.js` in the official Puppeteer image against

@@ -30,3 +30,7 @@ clearyfi_frontend/.vite/
 # committed: a baseline QA regenerates from the base commit is stronger evidence than one the
 # engineer hands over, and a committed one rots the moment the design moves.
 clearyfi_frontend/.render/
+
+# Dev notebooks — scratch work, never committed. The directory + its README stay.
+notebooks/*
+!notebooks/README.md

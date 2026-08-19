@@ -17,6 +17,10 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
+    # tests/test_compose_shape.py parses the compose files rather than grepping them. In the dev
+    # extra so those guards RUN in a normal test pass -- they use importorskip, and a guard that
+    # silently skips is not a guard.
+    "pyyaml>=6.0",
 ]
 # Milestone 2.5 batch/analytical jobs ONLY (13F cross-manager inversion, later
 # cross-company screening) -- never a runtime dependency of the live API. Pinned
@@ -25,6 +29,16 @@ dev = [
 # 1.4.x is DuckDB's LTS line; picked over the newer 1.5.x for a batch job that should
 # need the least maintenance attention.
 analytical = [
+    "duckdb==1.4.5",
+]
+# DEV-ONLY notebook tooling. Never installed in the serving image, never referenced by
+# docker-compose.prod.yml, and not a runtime dependency of anything. `duckdb` is repeated
+# rather than depending on `analytical` because a notebook wants it for ATTACH-ing the SQLite
+# file (the same mechanism analytical/ uses) and the two extras should be independently
+# installable. See docker-compose.yml's `notebook` service.
+jupyter = [
+    "jupyterlab>=4.0",
+    "pandas>=2.0",
     "duckdb==1.4.5",
 ]
 
