@@ -354,7 +354,62 @@ It surfaced only because a documentation sweep read §7 and asked whether the mo
 
 A timestamped `.env.bak-*` is written on the droplet before any future edit to it.
 
-### 5c. The sector surface has NO producer scheduled here (found 2026-08-14)
+### 5h. Production hydrated from the operator machine (2026-08-19)
+
+The droplet's database was replaced wholesale with the local one. It had been ingested and
+re-derived on a 16-core box over weeks; the droplet's copy was a much thinner ancestor.
+
+| | before | after |
+|---|---:|---:|
+| `raw_facts` | 64,657,414 | **121,318,516** |
+| `metric_values` | 2,719,004 | **17,702,852** |
+| `/v1/sectors` | **0 groups** | **62 groups**, FY2025 |
+| `sector_theme_scores` | 0 | 22,746 (63 sectors) |
+| insider `transaction_code` | **100% NULL** | populated |
+| size | 34.2 GB | 59.5 GB |
+
+That closed OPS-11 (the whole insider corpus predated the parser, so every open-market filter saw
+an empty table) and made the sector surface real here for the first time.
+
+**Method — three gates, none of them skippable.** Nothing was destroyed until all three passed:
+
+1. `gzip -t` on the transferred archive — proves the transfer.
+2. **MD5 against the local source** (`5573ceea2740c3146334d71b0a4b4f1f`) on the DECOMPRESSED
+   file — proves it is byte-identical to what was verified locally.
+3. `PRAGMA quick_check` on that same file — **3h 20m**, reading at ~7 MB/s off network-attached
+   block storage. This was the first successful integrity check this database had ever had; the
+   equivalent had been killed twice on the local copy (see RECOVERY.md).
+
+The old database was then PARKED as `secfin.old.db` rather than deleted, and only removed on
+2026-08-21 after a bake period — with the `gzip -t` of the compressed rollback chained ahead of
+the `rm`, so a bad archive would have aborted the delete.
+
+Rollback today: `data/backups/prod-preHydrate-20260819T000957Z.db.gz` (5.9 GB).
+
+**Two things that went wrong, worth repeating for the next one:**
+
+* Decompressing filled the volume to **0 bytes free** for several minutes while the API was
+  writing cache-aside to it. No damage, but the 9.8 GB archive was still sitting there and should
+  have been deleted the moment the MD5 matched.
+* `api_keys` does not survive a wholesale replacement — the incoming file carries the SOURCE
+  machine's keys. They were exported off-box first (11 KB JSON) and re-imported into the new file
+  BEFORE the swap. All 60 happened to be test keys; the habit is the point.
+
+### 5c. Sector data is a SNAPSHOT here — still no producer scheduled (2026-08-14, amended 2026-08-19)
+
+⚠️ **The tables below are populated as of 2026-08-19, but by the hydration above, not by anything
+running here.** Every producer in this table is still unscheduled on this droplet, so the sector
+data does not refresh — it ages from a fixed snapshot.
+
+**And staleness here is only half-detectable.** `scripts/check_state.py`'s FRESH checks will catch
+`sector_insider_flow`, `sector_geographic_mix`, `insider_peer_ratios` and `disclosure_stats`,
+because each carries a wall-clock stamp its batch wrote. **`sector_dupont` and
+`sector_theme_scores` carry none** — they are keyed by `fiscal_year`, which says what they
+DESCRIBE and nothing about when they were computed. Those two gate the roster, so the tables whose
+staleness matters most are precisely the ones nothing will alarm on. Scheduling the producers is
+the fix; a `computed_at` column on those two would be the cheap mitigation.
+
+The original finding, still true of the SCHEDULING:
 
 Every table behind `/v1/sectors*` is empty on this droplet, and this is not a fault of any
 deploy — those batches have never had a timer. Recorded here rather than fixed because the

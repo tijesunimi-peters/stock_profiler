@@ -32,18 +32,18 @@ The ones with a real blast radius. All in `docs/DEPLOYMENT_DO.md`.
 | # | Item | Why it matters | Source |
 |---|---|---|---|
 | OPS-1 | **No off-box backups.** Backups are local files on the droplet; DO Spaces was chosen and never wired. | `api_keys` (60 rows) exists ONLY in the live DB and is not regenerable from SEC. Everything else is. | §7 |
-| OPS-2 | **Cheap stopgap for OPS-1: export just `api_keys` off-box.** Costs kilobytes. | Removes the only irreplaceable-data risk without waiting for Spaces. | §7 |
+| OPS-2 | ✅ **DONE 2026-08-19** — `api_keys` + `api_key_usage` exported off-box (11 KB JSON) during the hydration, and re-imported into the new database. Re-export after any real signup. | Removes the only irreplaceable-data risk without waiting for Spaces. | §5h |
 | OPS-3 | **Lower `secfin_backup_retention` from 7 before enabling `secfin-backup.timer`.** | `backup.py` writes the timestamped copy AND `secfin-latest.db` — 2 × 34 GB per run now. Seven of those cannot fit a 48 GB disk. Same shape as the 2026-07-21 disk-fill. | §6b, §5e |
 | OPS-4 | ✅ **DONE** — `scripts/check_state.py` asserts state instead of describing it. Run it after every deploy. | Caught OPS-11 and OPS-12 below on its first production run. | `scripts/check_state.py` |
-| OPS-11 | 🔴 **Production's whole insider corpus predates the parser.** 163,102 rows, **100% NULL** on `transaction_code`, `is_derivative`, `rule_10b5_1`. Repair: `python -m secfin.ingest.insider_backfill --stale-only`. | Everything filtering on open-market codes sees an empty table: `/peers/insider-net-ratio` returns `na` for every company, and the daily batch has written **0 rows while logging OK** for three days. Local was repaired 2026-08-13; prod never was. | `check_state.py` |
+| OPS-11 | ✅ **DONE 2026-08-19** — fixed by the hydration, not by the repair job: the local corpus was already repaired, so replacing the database carried the populated columns across. `check_state.py` confirms `populated:insider_transactions.transaction_code`. | Was: every open-market filter saw an empty table, and the daily batch wrote 0 rows while logging OK. | §5h |
 | OPS-12 | **`secfin-insider-peer-ratio.timer` reports OK on zero output.** The runner checks the exit code, which a batch with nothing to write returns happily. | Three consecutive "OK insider peer ratios computed" entries, 0 rows each. A green status file is not evidence of output. | `check_state.py` |
 | OPS-13 | **The analytics image now depends on the frontend build.** `analytics` is `FROM api`, and `api` gained a Node stage — so a frontend breakage takes the batch image down too. | Observed 2026-08-17: `FAIL could not build the analytics image` while a bad rsync had the frontend broken. | Dockerfile |
 | OPS-5 | **The two weekly chains are installed but DISABLED** pending a hand-measured run. | `peer-analytics` is ~16 h on this droplet, `disclosure-stats` ~40 min. Measured; not yet enabled. | §5b |
-| OPS-6 | **Nothing schedules the sector producers.** Four of five have no timer; the fifth is chain step 2, never reached. | `/sectors` renders an honest empty state in production. `sector_dupont` gates the roster, so it is the one that matters first. | §5c |
+| OPS-6 | **Nothing schedules the sector producers** — unchanged. The tables are now POPULATED (hydrated 2026-08-19, 62 groups) but nothing refreshes them, so the data ages from a fixed snapshot. | Was an empty page; is now a page that will silently go stale instead. `check_state.py`'s FRESH checks are the tripwire. | §5c, §5h |
 | OPS-7 | **`ingest.lifecycle_backfill` → `analytical.sector_lifecycle` has never run anywhere.** | `/v1/sectors/{group}/lifecycle` returns an empty series on every environment. | CLAUDE.md commands |
 | OPS-8 | **rsync deploy still has no deploy key** — the droplet tree is synced, not cloned, so the runbook's `git pull` day-2 flow does not work. | Long-standing. | §4, §7 |
 | OPS-9 | **Part B granular re-ingest state** — the DB moved to the Volume; confirm what remains of the ordered on-box backfills. | The Volume move alone does not populate the sector aggregates. | §7, `DEPLOYMENT_BLOCK_STORAGE.md` |
-| OPS-10 | **12 commits on `master` are unpushed.** | Production is deployed by rsync, so it is current — but this machine holds the only copy. | — |
+| OPS-10 | **Commits on `master` are unpushed.** | Production is deployed by rsync, so it is current — but this machine holds the only copy. | — |
 
 ## 2. Decisions the operator owes
 
