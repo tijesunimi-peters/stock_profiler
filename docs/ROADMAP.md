@@ -569,8 +569,8 @@ a time.
 
 **M4 status: complete.** Both items — cross-company screening and concept
 listing/ranking — are done, verified against real SEC data end-to-end. What's left
-project-wide is the pre-launch checklist below and the deliberately-deferred Track 2
-items, neither of which is more Track-1 feature work.
+project-wide is the pre-launch checklist below and Track 2 (`docs/ROADMAP_TRACK2.md`,
+active as of 2026-08-22), neither of which is more Track-1 feature work.
 
 ## Candidate data source — Form 144 (insider proposed sales) [Track 1, PARTLY SHIPPED]
 
@@ -621,11 +621,13 @@ a periodic form-144 scan) — measure discovery coverage before shipping it as a
 - [ ] Downstream (optional): enrich `ROADMAP_13F_ANALYTICS.md` A4 (insider × institutional
       timeline) with proposed-sales markers alongside executed Form 4 trades.
 
-## Deferred (NOT Track 1 — decide later, deliberately)
+## Track 2 — reversed from deferred, now active (2026-08-22)
 
-- [ ] Track 2: MD&A / risk factors / footnotes (free-text narrative)
-- [ ] Any LLM summarization of filings (recurring per-token cost — revisit only with a
-      clear pricing story)
+Previously deferred here as "NOT Track 1 — decide later." The operator decided: MD&A / risk
+factors / footnotes (free-text narrative) and bounded LLM extraction over filing text are now in
+scope, subject to the cost/typed-output/honest-absence ground rules in `CLAUDE.md`. Pipeline
+design and the frontend's existing (currently fixture-backed) UI requirements are tracked in
+`docs/ROADMAP_TRACK2.md`, not duplicated here.
 
 ## Pre-launch checklist
 

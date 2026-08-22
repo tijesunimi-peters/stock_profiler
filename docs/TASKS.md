@@ -87,6 +87,18 @@ The largest single backlog: 15 items in three graded waves. Wave A is the near-t
 | **B** | B1 turnover intensity · B2 concentration trend · B3 position tenure · B4 ownership breadth + holder churn · B5 issuer net derived flow in shares |
 | **C** | C1 manager overlap/similarity · C2 most-held/added/exited leaderboards · C2a cluster buying · C3 amendment diff view · C4 sector rotation (market-wide) · C5 under-the-radar discovery |
 
+### Track 2 (filing narrative) — `docs/ROADMAP_TRACK2.md`
+
+New as of 2026-08-22. Pipeline design + UI-requirements inventory for the fields listed under
+"Frontend surfaces still on fixtures" below.
+
+| Wave | Items |
+|---|---|
+| **0** | Wire 5 already-real fields (cyber flags, auditor identity/tenure, deficient filings, headcount, ICFR attestation flag) into `sectorQualitative` — zero new pipeline |
+| **A** | Document fetch, unwilling section parser, LM tone/fog metrics, YoY similarity — no LLM |
+| **B** | Targeted LLM extraction (CAMs, litigation matters, MD&A drivers, outlook, cyber framework name) — gated on an LLM budget decision |
+| **C** | Sector-level narrative rollups (DuckDB batch) — gated on Wave A running across enough filers |
+
 ### Other roadmaps
 
 - [ ] **Milestone 2.5** — stand up the analytical query path as infrastructure separate from serving — `ROADMAP.md:303`
@@ -104,19 +116,21 @@ the banner, so it is self-reporting and does not need duplicating here. As of 20
 | Surface | Status |
 |---|---|
 | company overview | **mixture** — 6 sections real; `capital.insiderOwn/shelf/convert` and `covenant` are permanently unsourceable |
-| qualitative · filings | Track 2 by ruling — most of it will never have an endpoint |
+| qualitative · filings | **Reclassified 2026-08-22** — Track 2 is now in scope. Most fields need `ROADMAP_TRACK2.md` Wave A/B; a subset is already answerable with zero new parsing (see that doc's §0) |
 | manager · compare | not yet ported |
 
 ## 5. Deliberately NOT doing
 
 Recorded so nobody re-opens them by accident. `ROADMAP.md:621-622`:
 
-- **Track 2** — MD&A, risk factors, footnotes, any free-text narrative.
-- **Any LLM summarization of filings** — recurring per-token cost fights the cheap-subscription
-  goal. Revisit only with a specific paying reason.
+- **Cross-company screening query language** — planned but not started early; see `ROADMAP.md`.
 
-`CLAUDE.md` guardrail 1 makes the first one an instruction: if a task drifts toward Track 2, stop
-and flag it rather than implementing it.
+**No longer on this list: Track 2.** Reversed 2026-08-22 (operator decision) — MD&A, risk
+factors, footnotes, free-text narrative, and bounded LLM extraction are now in scope. See the
+Track 2 section of `CLAUDE.md` and the new `docs/ROADMAP_TRACK2.md` (pipeline design + UI
+requirements inventory, added under item 4 below). `CLAUDE.md` guardrail 1 still applies in
+narrowed form: a Track 2 task that skips the cost/typed-output/honest-absence ground rules should
+be flagged, not built as asked.
 
 ---
 

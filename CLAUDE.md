@@ -9,9 +9,9 @@ into one clean canonical schema, and serves it as developer-friendly JSON. The b
 is a low-cost subscription API that undercuts existing financial-data providers by turning
 messy SEC filings into consistent, queryable data.
 
-## Scope: Track 1 only (structured numeric data)
+## Scope: Track 1 (structured numeric data) + Track 2 (filing narrative), both active
 
-**In scope right now:**
+**Track 1 — in scope, shipped/shipping:**
 - Income statements
 - Balance sheets
 - Cash flow statements
@@ -19,31 +19,45 @@ messy SEC filings into consistent, queryable data.
 - Institutional ownership (Form 13F holdings; Schedules 13D / 13G)
 
 All of these are filed with the SEC in structured form (XBRL for financials, ownership XML
-for insider trades, an XML information table for 13F). We **ingest and re-shape structured
-data — we do not scrape or parse HTML.**
+for insider trades, an XML information table for 13F). Track 1 **ingests and re-shapes
+structured data — it does not scrape or parse HTML.**
 
 > **One documented exception (operator ruling, 2026-08-02): `sec/exhibits.py` parses EX-21**, the
 > subsidiaries exhibit, because that list exists in no structured source — not companyfacts (numeric
 > facts only), not the DERA datasets, not `/submissions/`. It was a parsed list or no list.
 >
-> The exception is deliberately narrow and does not generalise. **A second document parser is a new
-> decision, not a precedent this one already set.** What makes it defensible is that the parser is
-> unwilling: it reads one table, requires a recognisable header or two data rows, and returns
-> `status="na"` with a reason for anything else — because a partial subsidiary list is worse than
-> none, since a reader cannot tell a short list from a badly-parsed one.
+> What makes it defensible is that the parser is unwilling: it reads one table, requires a
+> recognisable header or two data rows, and returns `status="na"` with a reason for anything else —
+> because a partial subsidiary list is worse than none, since a reader cannot tell a short list from
+> a badly-parsed one. **Track 2 (below) generalises the underlying decision — that a bounded,
+> unwilling parser beats no data — into its own scoped workstream; it does not inherit EX-21's
+> narrower boundary of "one table, one exhibit."**
 
 **Critical 13F caveat:** 13F is a quarter-end *holdings snapshot*, NOT transactions. Any
 "buy/sell" is DERIVED by diffing consecutive quarters (`normalize/flows.py` → `HoldingDelta`).
 Never present derived deltas as reported trades. Carry the long-only / ~45-day-lag caveats.
 
-**Explicitly out of scope (do not build yet):**
-- MD&A, risk factors, footnotes, or any free-text narrative ("Track 2")
-- Any LLM-based summarization of filings
-- Cross-company screening query language (planned; see docs/ROADMAP.md — do not start early)
+**Track 2 — in scope as of 2026-08-22 (operator decision, reversing the prior deferral):**
+free-text filing narrative — MD&A, risk factors (Item 1A), legal proceedings (Item 3), and
+derived text analytics (Loughran-McDonald tone, readability, YoY section similarity), plus
+bounded LLM extraction over a cost-controlled subset. Design reference: `docs/ROADMAP_TRACK2.md`
+(pipeline architecture + UI requirements inventory).
 
-If a task drifts toward Track 2 or free-text extraction, **stop and flag it** rather than
-implementing it. Track 2 has a recurring per-token cost that fights the "cheap subscription" goal
-and is a deliberate later decision.
+Ground rules carried over from the deferral period, still binding:
+- **Cost discipline is non-negotiable.** LLM extraction runs on a targeted subset (e.g. sections
+  whose YoY similarity dropped sharply), never as a blanket per-filing-per-quarter sweep — this is
+  the mechanism, not a suggestion, for keeping Track 2 from fighting the cheap-subscription goal.
+- **Land LLM output as normalized, typed tables**, never raw JSON blobs — same
+  parse-once-store-forever discipline as Track 1.
+- **This is a second document parser and a new decision** — it does not extend the EX-21
+  exception's narrower ruling, and it does not relax guardrail 2's no-scrape-outside-SEC rule:
+  Track 2 still reads only the filing HTML/XBRL that SEC EDGAR itself serves.
+- **A partial or low-confidence extraction is worse than an honest absence.** Every Track 2 field
+  either carries real parsed/derived output or an explicit `status="na"` with a reason — never a
+  guess presented as data. This mirrors the EX-21 parser's own unwillingness.
+
+Cross-company screening query language remains **separately** planned and **not** started early
+(see `docs/ROADMAP.md`) — track that decision independently of Track 2.
 
 ## Architecture (four stages)
 
@@ -562,7 +576,11 @@ docker compose --profile e2e up --abort-on-container-exit --exit-code-from e2e  
 
 ## Guardrails for the agent
 
-1. Don't expand into Track 2 (free text / summarization) — flag instead.
+1. Track 2 (free-text / summarization / LLM extraction) is now in scope — see the Track 2
+   section above and `docs/ROADMAP_TRACK2.md` — but stay inside its ground rules: cost-bounded
+   LLM use, normalized typed output, honest `status="na"` over a guess. A task that ignores those
+   rules (e.g. a blanket per-filing LLM sweep, or a free-text field with no absence path) should
+   still be flagged rather than built as asked.
 2. Don't weaken SEC rate limiting or drop the User-Agent.
 3. When you add a new canonical concept, update `normalize/mapping.py` AND `docs/DATA_MODEL.md`.
 4. Prefer extending the mapping table over hard-coding company-specific fixes in `statements.py`.
