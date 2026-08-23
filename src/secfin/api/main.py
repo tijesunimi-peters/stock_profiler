@@ -52,6 +52,9 @@ from secfin.storage.sqlite_sector_geographic_mix_repository import (
     SQLiteSectorGeographicMixRepository,
 )
 from secfin.storage.sqlite_disclosure_stat_repository import SQLiteDisclosureStatRepository
+from secfin.storage.sqlite_sector_governance_stat_repository import (
+    SQLiteSectorGovernanceStatRepository,
+)
 from secfin.storage.sqlite_insider_peer_ratio_repository import (
     SQLiteInsiderPeerRatioRepository,
 )
@@ -222,6 +225,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sector_geographic_mix_repo = SQLiteSectorGeographicMixRepository(
         settings.secfin_db_path
     )
+    # Precomputed sector cyber/auditor/deficient-filing stats (Track 2 Wave 0) -- same read-only-
+    # on-the-serving-path shape; analytical/sector_governance_stats.py is the sole writer. See
+    # routes.get_sector_governance_stat_repo.
+    app.state.sector_governance_stat_repo = SQLiteSectorGovernanceStatRepository(
+        settings.secfin_db_path
+    )
     try:
         yield
     finally:
@@ -247,6 +256,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.insider_peer_ratio_repo.close()
         app.state.disclosure_stat_repo.close()
         app.state.sector_geographic_mix_repo.close()
+        app.state.sector_governance_stat_repo.close()
 
 
 app = FastAPI(

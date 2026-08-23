@@ -23,7 +23,7 @@ calling endpoints that already exist:
 |---|---|---|
 | `CYBER.adopted/board/ciso/incidents8k` | `cyd:` XBRL flags via `sec/cover.py` + 8-K Item 1.05 via `filing_index` | Tagged booleans, not prose — `cover.py`'s own docstring distinguishes the flag from the narrative |
 | `AUDITORS`, `AUDITOR_CHANGES`, `AUDITOR_TENURE` | `dei:AuditorName`/`AuditorFirmId` (`cover.py`) + 8-K Item 4.01 (`auditor_continuity.py`) | Already a shipped module; `api.ts` line 5138 says so explicitly |
-| `DEFICIENT` (12b-25, ICFR material weakness flag, 4.02 restatement) | `filing_index` form/item codes | Existence + dates, no text read |
+| `DEFICIENT` (12b-25 late filing, 4.02 restatement) | `filing_index` form/item codes | Existence + dates, no text read. **Correction:** an earlier draft of this row also listed an "ICFR material weakness flag" — there is no such structured signal anywhere (`sec/cover.py`'s own docstring confirms the Item 9A conclusion is pure prose); dropped from this row, ships as 2 fields not 3 |
 | Human-capital **headcount** (as distinct from the human-capital *narrative*) | `dei:EntityNumberOfEmployees` (already a mapped concept, `normalize/mapping.py:1032`) | Tagged numeric fact, ~11% filer coverage per `normalize/schema.py:89` |
 | ICFR **attestation flag** (as distinct from the ICFR *conclusion*) | `dei:IcfrAuditorAttestationFlag` (`cover.py`) | Says ICFR is subject to attestation; says nothing about whether it was effective — `cover.py` warns against conflating the two, which is exactly the bug this would fix if wired carelessly |
 
@@ -201,7 +201,12 @@ vs. gated on a prior stage's output existing for more than one fiscal year.
 
 - **Wave 0 (ship first, no pipeline):** wire §0's five fields into real `sectorQualitative` /
   `companyDisclosure` responses. Removes 5 of ~15 fixture blocks from the Qualitative page for
-  free.
+  free. **✅ DONE 2026-08-23** for the sector-level three (`cyber`, `auditors`/`auditorChanges`/
+  `auditorTenure`, `deficient`) — new `analytical/sector_governance_stats.py` batch →
+  `sector_governance_stats` table → `GET /v1/sectors/{group}/disclosure-mix`, wired into
+  `sectorQualitative`. Real filer names, not `pickFilers`, back the `Reveal` affordance for these
+  fields specifically. The other two (per-company cyber-flag/auditor-identity/headcount wiring on
+  the Company Hub) were already live before this pass — see the resolver comments in `api.ts`.
 - **Wave A (Stages 1-4, no LLM):** document fetch, unwilling section parser, LM tone/fog metrics,
   YoY similarity. Ships `RF_VOLUME`, theme coverage via embeddings, excerpts, `EMERGING`,
   non-GAAP/keyword fields, the tone-shift leaderboard. This is the bulk of the page and needs no

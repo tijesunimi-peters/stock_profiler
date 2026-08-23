@@ -1442,6 +1442,68 @@ class SectorGeographicMix(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+# --- Sector cyber/auditor/deficient-filing disclosure mix (Track 2 Wave 0) ---------------------
+#
+# A SIC-sector roll-up of per-company facts that are already Track 1 (tagged cover-page facts +
+# filing-index existence/dates) but were only ever served per-company. Cyber flags are
+# UNTAGGED-vs-tagged, never yes-vs-no. Auditor tenure is a FLOOR (see
+# normalize/auditor_continuity.py), not a start date. Material weakness (ICFR) is deliberately
+# absent -- that conclusion is Item 9A prose with no structured signal anywhere (see sec/cover.py).
+
+
+class FilerRef(BaseModel):
+    """One company behind a count -- real identity, not a decorative placeholder."""
+
+    cik: int
+    name: str | None = None
+
+
+class CyberDisclosureStats(BaseModel):
+    """Item 1C shares (0-100, rounded) over companies that TAGGED the flag -- untagged filers are
+    excluded from the denominator, never counted as "no"."""
+
+    adopted: int | None = None  # % describing an Item 1C process (cyber_processes_integrated)
+    board: int | None = None  # % reporting board-level cyber oversight
+    ciso: int | None = None  # % naming a position/committee responsible for cyber risk
+    incidents_8k: int = 0  # count of 8-K Item 1.05 material-incident filings, summed
+
+
+class AuditorShare(BaseModel):
+    name: str
+    share: int  # 0-100, rounded; count of companies naming this firm / total companies with one named
+
+
+class DeficientFilingCategory(BaseModel):
+    label: str
+    basis: str
+    count: int
+    filers: list[FilerRef] = Field(default_factory=list)
+
+
+class SectorDisclosureMix(BaseModel):
+    """One SIC group's cyber/auditor/deficient-filing disclosure mix.
+
+    `has_data=False` is a valid, honest result: the batch has not covered this group -- rendered
+    as N/A, never a fabricated 0%."""
+
+    group: str
+    group_label: str
+    peer_basis: str
+    has_data: bool = False
+    derived: bool = True
+    companies_in_scope: int = 0  # all profiled companies sharing this SIC prefix
+    companies_covered: int = 0  # companies with a computed governance-stats row
+    cyber: CyberDisclosureStats | None = None
+    cyber_incident_filers: list[FilerRef] = Field(default_factory=list)
+    auditors: list[AuditorShare] = Field(default_factory=list)
+    auditor_changes: int = 0
+    auditor_change_filers: list[FilerRef] = Field(default_factory=list)
+    auditor_tenure_years: float | None = None
+    auditor_tenure_label: str | None = None  # pre-formatted, e.g. "8.4 yr median tenure"
+    deficient: list[DeficientFilingCategory] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
 # --- Per-company value list within a sector (Sector Analytics app, Company view / altitude 2) -----
 #
 # Every company in a SIC group with a comparable (non-N/A) value for one metric+period -- for the

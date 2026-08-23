@@ -96,6 +96,28 @@ export const PROVENANCE = {
         "07 obligations (partly \u2014 commitments, restructuring and guarantees are real)",
       ],
     },
+    // Track 2 Wave 0 (2026-08-22): five fields moved off qualitative.ts fixtures onto
+    // /v1/sectors/{group}/disclosure-mix. The rest of the page (themes, going-concern,
+    // litigation, CAMs, risk-factor volume, non-GAAP, human-capital/climate) is real narrative
+    // parsing, not yet built -- still fixture. `hasGovernanceData` on the payload itself carries
+    // the PER-SECTOR truth (a sector the batch hasn't reached falls back honestly); this entry
+    // is the page-level description of what CAN be real, shown regardless of any one sector.
+    qualitative: {
+      real: [
+        "cybersecurity \u2014 Item 1C flags & 8-K 1.05 incidents",
+        "auditor landscape \u2014 identity, changes, tenure floor",
+        "late & deficient filings \u2014 Form 12b-25, 8-K 4.02 (material weakness stays synthetic, no structured signal exists for it)",
+      ],
+      synthetic: [
+        "risk-factor themes",
+        "going-concern watch",
+        "material litigation",
+        "critical audit matters",
+        "risk-factor volume",
+        "non-GAAP & charges",
+        "human-capital & climate disclosure",
+      ],
+    },
   } as Record<string, { real: string[]; synthetic: string[] }>,
   syntheticSurfaces: [
     // `company overview` is the only company view left, and it is a MIXTURE -- see
@@ -4492,6 +4514,34 @@ interface SectorGeographicMixResponse {
   reason?: string | null;
 }
 
+/** A real filer behind a count — used so a `Reveal` never pairs a real number with a fake name. */
+interface FilerRefResponse {
+  cik: number;
+  name: string | null;
+}
+
+/**
+ * Wire shape of `/v1/sectors/{group}/disclosure-mix` (Track 2 Wave 0). Cyber percentages are
+ * `null` when NO covered company tagged that specific Item 1C flag — not 0%, which would claim a
+ * measured absence rather than an unmeasured one.
+ */
+interface SectorDisclosureMixResponse {
+  group: string;
+  group_label: string;
+  has_data: boolean;
+  companies_in_scope: number;
+  companies_covered: number;
+  cyber: { adopted: number | null; board: number | null; ciso: number | null; incidents_8k: number } | null;
+  cyber_incident_filers: FilerRefResponse[];
+  auditors: { name: string; share: number }[];
+  auditor_changes: number;
+  auditor_change_filers: FilerRefResponse[];
+  auditor_tenure_years: number | null;
+  auditor_tenure_label: string | null;
+  deficient: { label: string; basis: string; count: number; filers: FilerRefResponse[] }[];
+  reason?: string | null;
+}
+
 /** One scorecard tile. An unscored theme keeps its identity and carries WHY, never a number. */
 export interface SectorThemeTile {
   key: string;
@@ -5400,20 +5450,30 @@ export const api = {
   },
 
   /**
-   * The qualitative altitude. **Track 2 — no endpoint will ever back most of this.**
+   * The qualitative altitude. **Track 2 by ruling no longer — reversed 2026-08-22, see
+   * docs/ROADMAP_TRACK2.md.** Wave 0 wires the five fields that were ALREADY Track 1 (tagged
+   * cover-page facts + filing-index existence/dates) but only ever served per-company:
+   * `/v1/sectors/{group}/disclosure-mix` now backs `cyber`, `auditors`, `auditorChanges`,
+   * `auditorTenure` and `deficient`. Risk themes, going-concern language, CAMs, non-GAAP and
+   * human-capital coverage are still counted from NARRATIVE text — real parsing (Wave A/B), not
+   * yet built — and stay on `qualitative.ts` fixtures, clearly.
    *
-   * Risk themes, going-concern language, CAMs, Item 1C and human-capital figures are counted from
-   * NARRATIVE text, which `CLAUDE.md` guardrail 1 puts out of scope. It goes through the seam
-   * anyway so the boundary is drawn in one place: when Phase A wires the sector views, this
-   * function is where the honest "not ingested" empty states live, rather than scattered through
-   * a 389-line view.
-   *
-   * The parts that ARE Track 1 and could be filled: auditor changes and late filings (8-K item
-   * codes and NT forms via `/filing-index`), and the cybersecurity flags (V3 found `cyd:` booleans
-   * in the 10-K instance). Everything else stays an empty state.
+   * One fetch, `.catch(() => null)`: a dead endpoint degrades this page to exactly its old
+   * fixture behaviour rather than blanking it. `has_data: false` (the batch has not covered this
+   * SIC group) degrades the same way — **never** silently paired with the endpoint's own real
+   * counts, since a real count next to a fixture-generated filer list would misrepresent a guess
+   * as evidence. `cyberIncidentFilers`/`auditorChangeFilers`/`deficient[].filers` are populated
+   * ONLY when the corresponding count is real, precisely so `Reveal` can tell which count it's
+   * showing filers for.
    */
-  sectorQualitative: (_sectorId: string, _fiscalPeriod: string) =>
-    resolve<SectorQualitative>({
+  sectorQualitative: async (sectorId: string, _fiscalPeriod: string): Promise<SectorQualitative> => {
+    const mix = await getJson<SectorDisclosureMixResponse>(
+      `/v1/sectors/${encodeURIComponent(sectorId)}/disclosure-mix`,
+    ).catch(() => null);
+    const real = mix?.has_data === true;
+    const toFilerRefs = (refs: FilerRefResponse[]) => refs.map((f) => ({ cik: f.cik, name: f.name }));
+
+    return {
       themes: qual.QUAL_THEMES,
       themeLang: qual.THEME_LANG,
       emerging: qual.EMERGING,
@@ -5421,24 +5481,35 @@ export const api = {
       litigation: qual.LITIGATION,
       litigationTotal: qual.LITIGATION_TOTAL,
       signalMatrix: qual.SIGNAL_MATRIX,
-      cyber: qual.CYBER,
+      hasGovernanceData: real,
+      cyber:
+        real && mix!.cyber
+          ? { adopted: mix!.cyber.adopted, board: mix!.cyber.board, ciso: mix!.cyber.ciso, incidents8k: mix!.cyber.incidents_8k }
+          : { adopted: qual.CYBER.adopted, board: qual.CYBER.board, ciso: qual.CYBER.ciso, incidents8k: qual.CYBER.incidents8k },
+      cyberIncidentFilers: real ? toFilerRefs(mix!.cyber_incident_filers) : undefined,
       cams: qual.CAMS,
-      auditors: qual.AUDITORS,
-      auditorChanges: qual.AUDITOR_CHANGES,
-      auditorTenure: qual.AUDITOR_TENURE,
+      auditors: real && mix!.auditors.length ? mix!.auditors.map((a) => ({ name: a.name, share: a.share })) : qual.AUDITORS,
+      auditorChanges: real ? mix!.auditor_changes : qual.AUDITOR_CHANGES,
+      auditorChangeFilers: real ? toFilerRefs(mix!.auditor_change_filers) : undefined,
+      auditorTenure:
+        real
+          ? (mix!.auditor_tenure_label ?? "no auditor tenure floor established for any filer in this sector")
+          : qual.AUDITOR_TENURE,
       rfVolume: qual.RF_VOLUME,
       nonGaap: qual.NON_GAAP,
-      deficient: qual.DEFICIENT,
+      deficient: real
+        ? mix!.deficient.map((d) => ({ label: d.label, basis: d.basis, count: d.count, filers: toFilerRefs(d.filers) }))
+        : qual.DEFICIENT.map((d) => ({ label: d.label, basis: d.basis, count: d.count, filers: undefined })),
       hcClimate: qual.HC_CLIMATE,
       /*
        * Parameterised, so it rides the payload as a function rather than a value: the view asks
-       * for a theme's filers on demand, when a reveal is opened. Phase A turns this into its own
-       * call (`/sectors/{group}/{metric}/companies` is the nearest real shape), which is exactly
-       * why it must not be imported from `qualitative.ts` directly — the view would then have two
-       * sources for one page.
+       * for a theme's filers on demand, when a reveal is opened. Still fixture-backed for the
+       * fields that stay Track 2 (themes, going-concern, litigation) — the five Wave 0 fields
+       * above carry their own real filer lists instead and never call this.
        */
       pickFilers: qual.pickFilers,
-    }),
+    };
+  },
 
   /**
    * One risk theme's filings. Phase A: `/filing-index` for the metadata — form, date, accession.
@@ -5786,6 +5857,12 @@ export interface SectorOverview {
   periodEnd: string | null;
 }
 
+/** A real filer behind a count, for `Reveal` — see the resolver doc comment on when this is set. */
+export interface QualFilerRef {
+  cik: number;
+  name: string | null;
+}
+
 export interface SectorQualitative {
   themes: typeof qual.QUAL_THEMES;
   themeLang: typeof qual.THEME_LANG;
@@ -5794,14 +5871,20 @@ export interface SectorQualitative {
   litigation: typeof qual.LITIGATION;
   litigationTotal: typeof qual.LITIGATION_TOTAL;
   signalMatrix: typeof qual.SIGNAL_MATRIX;
-  cyber: typeof qual.CYBER;
+  /** True when `cyber`/`auditors`/`auditorChanges`/`auditorTenure`/`deficient` are real for THIS
+   *  sector (not a fixture fallback). Static per-page provenance (`PROVENANCE.partialSurfaces`)
+   *  can't know this — a sector the batch hasn't covered yet still falls back honestly. */
+  hasGovernanceData: boolean;
+  cyber: { adopted: number | null; board: number | null; ciso: number | null; incidents8k: number };
+  cyberIncidentFilers?: QualFilerRef[];
   cams: typeof qual.CAMS;
-  auditors: typeof qual.AUDITORS;
-  auditorChanges: typeof qual.AUDITOR_CHANGES;
-  auditorTenure: typeof qual.AUDITOR_TENURE;
+  auditors: { name: string; share: number }[];
+  auditorChanges: number;
+  auditorChangeFilers?: QualFilerRef[];
+  auditorTenure: string;
   rfVolume: typeof qual.RF_VOLUME;
   nonGaap: typeof qual.NON_GAAP;
-  deficient: typeof qual.DEFICIENT;
+  deficient: { label: string; basis: string; count: number; filers?: QualFilerRef[] }[];
   hcClimate: typeof qual.HC_CLIMATE;
   pickFilers: typeof qual.pickFilers;
 }

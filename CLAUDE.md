@@ -531,6 +531,15 @@ python -m secfin.analytical.insider_peer_ratio --window-days 365   # --as-of YYY
 # Requires the filing index to be backfilled market-wide first, or a "peer group" is whatever
 # handful the cache-aside path happened to index.
 python -m secfin.analytical.disclosure_stats
+
+# per-company cyber/auditor/deficient-filing stats for the sector Qualitative page's Track 2
+# Wave 0 real fields (docs/ROADMAP_TRACK2.md). DuckDB batch over filing_cover_facts + filing_index
+# JOIN company_profiles -> sector_governance_stats. Deliberately self-contained -- recomputes its
+# own late-notice/non-reliance counts rather than reading disclosure_stats above, so this
+# endpoint's correctness never depends on that job's schedule. Powers
+# GET /v1/sectors/{group}/disclosure-mix.
+python -m secfin.analytical.sector_governance_stats
+
 # ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote:
 #     metrics_backfill -> peer_distribution -> peer_ranks        (secfin-peer-analytics.timer,
 #                                                                 Sun 08:00 UTC, ~16 h on 1 vCPU)

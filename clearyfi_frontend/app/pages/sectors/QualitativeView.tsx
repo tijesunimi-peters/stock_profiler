@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { QUAL_THEMES, dirChip } from "../../data/sector-catalog";
 import { api } from "../../data/api";
+import type { QualFilerRef } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { StateBlock } from "@ds";
 import { GEO_COLORS } from "../../data/sector-catalog";
@@ -35,19 +36,27 @@ function CovBar({ pct }: { pct: number }) {
  *
  * Inherits its parent's size and color so it reads as the number it replaces, not as a control
  * bolted beside one — the affordance is the caret, and it stays quiet until used.
+ *
+ * `names`, when given, is a REAL filer list from the backend (Track 2 Wave 0's five real fields)
+ * and is shown instead of `pickFilers`. Never both: pairing a real count with `pickFilers`'
+ * deterministic-fake names would misrepresent a guess as evidence, so a caller either passes real
+ * `names` or leaves it undefined and falls back to the existing fixture reveal.
  */
 function Reveal({
   id,
   count,
   pickFilers,
+  names,
 }: {
   id: string;
   count: number;
   /* Passed down rather than imported: the filer list is DATA, and a child reaching straight into
      `qualitative.ts` would give this page a second source for one figure. */
   pickFilers: (id: string, n: number) => readonly string[];
+  names?: QualFilerRef[];
 }) {
   const [open, setOpen] = useState(false);
+  const chips = names ? names.map((f) => f.name ?? `CIK ${f.cik}`) : pickFilers(id, count);
   return (
     <span className="qual-reveal">
       <button
@@ -65,7 +74,7 @@ function Reveal({
       </button>
       {open && (
         <span className="qual-reveal-chips">
-          {pickFilers(id, count).map((tk) => (
+          {chips.map((tk) => (
             <span className="qual-tk" key={tk}>
               {tk}
             </span>
@@ -76,15 +85,16 @@ function Reveal({
   );
 }
 
-/** A labelled coverage row — used by four of the landscape cards. */
-function CovRow({ label, cov }: { label: string; cov: number }) {
+/** A labelled coverage row — used by four of the landscape cards. `cov=null` means no covered
+ *  company had a value for this specific measure, shown as N/A rather than a false 0%. */
+function CovRow({ label, cov }: { label: string; cov: number | null }) {
   return (
     <div className="qual-covrow">
       <div className="qual-covrow-head">
         <span className="qual-covrow-label">{label}</span>
-        <span className="qual-covrow-pct">{cov}%</span>
+        <span className="qual-covrow-pct">{cov == null ? "N/A" : `${cov}%`}</span>
       </div>
-      <CovBar pct={cov} />
+      <CovBar pct={cov ?? 0} />
     </div>
   );
 }
@@ -115,9 +125,10 @@ export function QualitativeView() {
   const {
     themeLang: THEME_LANG, emerging: EMERGING, goingConcern: GOING_CONCERN,
     litigation: LITIGATION, litigationTotal: LITIGATION_TOTAL, signalMatrix: SIGNAL_MATRIX,
-    cyber: CYBER, cams: CAMS, auditors: AUDITORS, auditorChanges: AUDITOR_CHANGES,
-    auditorTenure: AUDITOR_TENURE, rfVolume: RF_VOLUME, nonGaap: NON_GAAP,
-    deficient: DEFICIENT, hcClimate: HC_CLIMATE, pickFilers,
+    cyber: CYBER, cyberIncidentFilers, cams: CAMS, auditors: AUDITORS,
+    auditorChanges: AUDITOR_CHANGES, auditorChangeFilers, auditorTenure: AUDITOR_TENURE,
+    rfVolume: RF_VOLUME, nonGaap: NON_GAAP, deficient: DEFICIENT, hcClimate: HC_CLIMATE,
+    pickFilers,
   } = read.data;
 
   // Real, from the roster. `?? 0` is banned here for the same reason it is in the seam: no count
@@ -310,7 +321,7 @@ export function QualitativeView() {
           <CovRow label="Board oversight named" cov={CYBER.board} />
           <CovRow label="CISO / mgmt role named" cov={CYBER.ciso} />
           <div className="qual-incident">
-            <Reveal id="cyber8k" count={CYBER.incidents8k} pickFilers={pickFilers} />
+            <Reveal id="cyber8k" count={CYBER.incidents8k} pickFilers={pickFilers} names={cyberIncidentFilers} />
             <span>filed 8-K Item 1.05 this year</span>
           </div>
         </div>
@@ -345,7 +356,7 @@ export function QualitativeView() {
           </div>
           <div className="qual-auditor-foot">
             <span className="qual-auditor-changes">
-              <Reveal id="auditchg" count={AUDITOR_CHANGES} pickFilers={pickFilers} />
+              <Reveal id="auditchg" count={AUDITOR_CHANGES} pickFilers={pickFilers} names={auditorChangeFilers} />
               <span>changes (8-K 4.01)</span>
             </span>
             <span>{AUDITOR_TENURE}</span>
@@ -397,7 +408,7 @@ export function QualitativeView() {
                 <div className="qual-hint-sm">{d.basis}</div>
               </div>
               <span className="qual-def-count">
-                <Reveal id={`def-${d.label}`} count={d.count} pickFilers={pickFilers} />
+                <Reveal id={`def-${d.label}`} count={d.count} pickFilers={pickFilers} names={d.filers} />
               </span>
             </div>
           ))}

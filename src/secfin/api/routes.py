@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict
@@ -89,6 +90,7 @@ from secfin.normalize.register import (
     turnover,
 )
 from secfin.normalize.schema import (
+    AuditorShare,
     BalanceSheetViz,
     BeneficialOwnership,
     CapitalStructureSeries,
@@ -101,6 +103,9 @@ from secfin.normalize.schema import (
     ConceptSeries,
     CondensedStatement,
     CusipResolutionStats,
+    CyberDisclosureStats,
+    DeficientFilingCategory,
+    FilerRef,
     FiscalPeriod,
     GeographicMixBuckets,
     HoldingsSnapshot,
@@ -120,6 +125,7 @@ from secfin.normalize.schema import (
     RestatementBasis,
     SectorCompanyValue,
     SectorCompanyValueList,
+    SectorDisclosureMix,
     SectorDupont,
     SectorGeographicMix,
     SectorInsiderFlow,
@@ -186,6 +192,7 @@ from secfin.storage.repository import RawFactRepository
 from secfin.storage.sector_dupont_repository import SectorDupontRepository, SectorDupontRow
 from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRepository
 from secfin.storage.disclosure_stat_repository import DisclosureStatRepository
+from secfin.storage.sector_governance_stat_repository import SectorGovernanceStatRepository
 from secfin.storage.insider_peer_ratio_repository import InsiderPeerRatioRepository
 from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
@@ -426,6 +433,10 @@ def get_disclosure_stat_repo(request: Request) -> DisclosureStatRepository:
 
 def get_sector_geographic_mix_repo(request: Request) -> SectorGeographicMixRepository:
     return request.app.state.sector_geographic_mix_repo
+
+
+def get_sector_governance_stat_repo(request: Request) -> SectorGovernanceStatRepository:
+    return request.app.state.sector_governance_stat_repo
 
 
 def get_sector_company_repo(request: Request) -> SectorCompanyRepository:
@@ -2907,6 +2918,124 @@ async def get_sector_geographic_mix(
         revenue_covered_share=row.revenue_covered_share,
         as_of=row.as_of,
         caveats=_GEO_MIX_CAVEATS,
+    )
+
+
+# ---- Sector cyber/auditor/deficient-filing disclosure mix (Track 2 Wave 0) ---------------------
+#
+# A SIC-sector roll-up of facts that are already Track 1 -- tagged Item 1C cyber flags and auditor
+# identity from filing_cover_facts, an auditor-tenure FLOOR (same method as the per-company
+# /audit endpoint), and late-filing/restatement counts from the filing index -- but were only
+# ever served per-company until now. See docs/ROADMAP_TRACK2.md's Wave 0.
+_GOVERNANCE_MIX_CAVEATS = [
+    "DERIVED from tagged XBRL cover-page facts and the filing INDEX -- no filing document is read.",
+    "Item 1C cyber flags are UNTAGGED-vs-tagged, not yes-vs-no: a filer with no value is excluded "
+    "from that percentage's denominator, never counted as 'no'.",
+    "Auditor tenure is a FLOOR, not a start date -- a company below the 2-year indexed-window "
+    "minimum is excluded from the median, never shown as 0.",
+    "Late filings and restatements are existence + dates from the filing index, not a judgement "
+    "about materiality or cause.",
+    "Material weakness (ICFR) is NOT included -- that conclusion is Item 9A prose and has no "
+    "structured signal anywhere; do not infer it from anything on this page.",
+]
+
+
+@public_router.get(
+    "/sectors/{group}/disclosure-mix",
+    response_model=SectorDisclosureMix,
+    tags=["Sectors"],
+    summary="One sector's cyber, auditor and deficient-filing disclosure mix",
+)
+async def get_sector_disclosure_mix(
+    group: str,
+    profile_repo: CompanyProfileRepository = Depends(get_company_profile_repo),
+    gov_repo: SectorGovernanceStatRepository = Depends(get_sector_governance_stat_repo),
+) -> SectorDisclosureMix:
+    """One SIC group's cybersecurity-disclosure, auditor-landscape and deficient-filing picture.
+
+    A **precomputed** read of `sector_governance_stats` (`analytical/sector_governance_stats.py`
+    is the sole producer; the live path never runs the aggregation -- CLAUDE.md guardrail 6),
+    aggregated live over that batch's per-company rows the same way `/companies/{symbol}/
+    disclosure-stats` aggregates its own per-company table. `has_data=False` is a valid, honest
+    result -- the batch has not covered this group -- never a fabricated 0%.
+    """
+    sic_digits = settings.secfin_peer_sic_digits
+    peer_basis = f"SIC {sic_digits}-digit"
+    rows = gov_repo.get_group(group)
+    companies_in_scope = profile_repo.count_in_group(group, sic_digits)
+
+    if not rows:
+        return SectorDisclosureMix(
+            group=group,
+            group_label=sic2_label(group),
+            peer_basis=peer_basis,
+            companies_in_scope=companies_in_scope,
+            caveats=_GOVERNANCE_MIX_CAVEATS,
+        )
+
+    def ref(r) -> FilerRef:
+        return FilerRef(cik=r.cik, name=r.company_name)
+
+    def pct(get) -> int | None:
+        vals = [get(r) for r in rows if get(r) is not None]
+        return round(100 * sum(vals) / len(vals)) if vals else None
+
+    cyber = CyberDisclosureStats(
+        adopted=pct(lambda r: r.cyber_processes_integrated),
+        board=pct(lambda r: r.cyber_reports_to_board),
+        ciso=pct(lambda r: r.cyber_positions_responsible),
+        incidents_8k=sum(r.cyber_incident_8k_count for r in rows),
+    )
+    cyber_incident_filers = [ref(r) for r in rows if r.cyber_incident_8k_count > 0]
+
+    auditor_counts = Counter(r.auditor_name for r in rows if r.auditor_name)
+    total_named = sum(auditor_counts.values())
+    auditors = (
+        [
+            AuditorShare(name=name, share=round(100 * count / total_named))
+            for name, count in auditor_counts.most_common()
+        ]
+        if total_named
+        else []
+    )
+
+    changed = [r for r in rows if r.tenure_since_is_change]
+    tenures_ok = [r.tenure_years for r in rows if r.tenure_status == "ok" and r.tenure_years is not None]
+    median_tenure = statistics.median(tenures_ok) if tenures_ok else None
+
+    deficient = [
+        DeficientFilingCategory(
+            label="NT 10-K / 10-Q (late)",
+            basis="Form 12b-25",
+            count=sum(r.late_notice_count for r in rows),
+            filers=[ref(r) for r in rows if r.late_notice_count > 0],
+        ),
+        DeficientFilingCategory(
+            label="Restatement (Item 4.02)",
+            basis="8-K",
+            count=sum(r.non_reliance_count for r in rows),
+            filers=[ref(r) for r in rows if r.non_reliance_count > 0],
+        ),
+    ]
+
+    return SectorDisclosureMix(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=peer_basis,
+        has_data=True,
+        companies_in_scope=companies_in_scope,
+        companies_covered=len(rows),
+        cyber=cyber,
+        cyber_incident_filers=cyber_incident_filers,
+        auditors=auditors,
+        auditor_changes=len(changed),
+        auditor_change_filers=[ref(r) for r in changed],
+        auditor_tenure_years=median_tenure,
+        auditor_tenure_label=(
+            f"{median_tenure:.1f} yr median tenure" if median_tenure is not None else None
+        ),
+        deficient=deficient,
+        caveats=_GOVERNANCE_MIX_CAVEATS,
     )
 
 
