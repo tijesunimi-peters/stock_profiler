@@ -1,0 +1,6 @@
+{
+  "commit": "b1050c21e180fc736a280571ee16d05cebe9c107",
+  "projectId": "5a511b67-e35f-4954-8c76-fdba40e37113",
+  "components": 28,
+  "note": "Written by scripts/ds-sync.mjs. Records the commit the design project was last synced from; scripts/ds-check.mjs compares src/ against it. NOT read by the converter \u2014 kept out of config.json because that file's keys are strictly validated."
+}

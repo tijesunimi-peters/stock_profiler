@@ -6,5 +6,18 @@
   "srcDir": "src",
   "tsconfig": "tsconfig.json",
   "cssEntry": "dist/clearyfi.css",
-  "extraFonts": ["dist/fonts/fonts.css"]
+  "extraFonts": [
+    "dist/fonts/fonts.css"
+  ],
+  "projectId": "5a511b67-e35f-4954-8c76-fdba40e37113",
+  "overrides": {
+    "AppShell": {
+      "cardMode": "single",
+      "viewport": "1180x840"
+    },
+    "ViewRail": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
 }
