@@ -1,9 +1,0 @@
-{
-  "namespace": "ClearyFiDS",
-  "source": "@clearyfi/design-prototype@0.1.0",
-  "shape": "package",
-  "provider": null,
-  "componentCount": 27,
-  "skippedStoryIds": [],
-  "runtimeFontPrefixes": []
-}
