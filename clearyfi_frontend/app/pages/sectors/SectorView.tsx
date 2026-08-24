@@ -474,6 +474,10 @@ export function SectorRail() {
     () => (roster ? api.sectorOverview(sel.sectorGroup, roster.fiscalYear) : new Promise<never>(() => {})),
     [sel.sectorGroup, roster?.fiscalYear],
   );
+  // Independent of the snapshot read above: a dead tone-shift endpoint must not blank the
+  // snapshot card, and a slow/failed snapshot must not hold up a "What's moving" card that has
+  // its own data ready.
+  const moving = useApi(() => api.sectorToneShift(sel.sectorGroup), [sel.sectorGroup]);
 
   if (read.error) return <StateBlock variant="error" copy={read.error.message} />;
   if (!read.data) return <StateBlock variant="loading" copy="Reading this sector's snapshot." />;
@@ -516,19 +520,42 @@ export function SectorRail() {
         changes this quarter", that kind of thing — attributed to Track 2. There is no sector-grain
         filing feed: `filing_index` is per company and nothing rolls 8-K item codes up to a SIC
         group. The card keeps its place and says that, rather than being deleted (which would hide
-        that the question was asked) or filled (which is what it did before).
+        that the question was asked) or filled (which is what it did before) — EXCEPT the
+        tone-shift leaderboard below, which IS a real sector-grain read (Track 2 Wave A,
+        `analytical/tone_shift_alerts.py`), when the batch has covered this group.
       */}
       <div className="rail-card is-tint">
         <div className="rail-card-head">
           <span className="rail-title">What&apos;s moving</span>
-          <span className="rail-badge">not built</span>
+          <span className="rail-badge">{moving.data?.hasData ? "real" : "not built"}</span>
         </div>
-        <div className="rail-sub">Filing events · walled off from metrics</div>
-        <div className="rail-note">
-          No filing-event feed exists at sector grain. The filing index is per company, and 8-K item
-          codes are not rolled up to a SIC group — so there is nothing to show here that would not
-          be assembled on the spot.
+        <div className="rail-sub">
+          {moving.data?.hasData
+            ? "Biggest YoY Risk Factors / Legal Proceedings rewrites"
+            : "Filing events · walled off from metrics"}
         </div>
+        {moving.data?.hasData ? (
+          <>
+            {moving.data.rows.map((r) => (
+              <div className="rail-row" key={`${r.cik}-${r.itemLabel}`}>
+                <span className="rail-row-k">
+                  {r.name} · {r.itemLabel}
+                </span>
+                <span className="rail-row-v">{r.similarity}</span>
+              </div>
+            ))}
+            <div className="rail-note">
+              {moving.data.caveat ??
+                "A low similarity score is a raw signal that the text changed a lot, not a confirmed rewrite."}
+            </div>
+          </>
+        ) : (
+          <div className="rail-note">
+            No filing-event feed exists at sector grain. The filing index is per company, and 8-K item
+            codes are not rolled up to a SIC group — so there is nothing to show here that would not
+            be assembled on the spot.
+          </div>
+        )}
       </div>
 
       <div className="rail-card">

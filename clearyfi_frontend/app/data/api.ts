@@ -692,6 +692,52 @@ interface SegmentsResponse {
   }[];
 }
 
+/** Wire shape of `/v1/companies/{symbol}/section-similarity` (Track 2 Wave A, Stage 4). */
+interface SectionSimilarityItemResponse {
+  item_code: string; // "RF" | "LEGAL"
+  item_label: string;
+  accession: string;
+  prior_accession: string;
+  filing_date: string | null;
+  word_count: number | null;
+  cosine_similarity: number | null;
+  jaccard_similarity: number | null;
+  status: string; // "ok" | "no_prior" | "not_parsed"
+  reason: string | null;
+}
+interface CompanySectionSimilarityResponse {
+  cik: number;
+  has_data: boolean;
+  accession: string | null;
+  items: SectionSimilarityItemResponse[];
+  caveats: string[];
+}
+
+function toNarrativeShift(res: CompanySectionSimilarityResponse | null) {
+  const ok = res?.has_data === true;
+  const rows = ok
+    ? res!.items.map((i) => ({
+        label: i.item_label,
+        similarity:
+          i.status === "ok" && i.cosine_similarity !== null
+            ? `${(i.cosine_similarity * 100).toFixed(0)}% similar YoY`
+            : "N/A",
+        words: i.word_count === null ? "N/A" : `${i.word_count.toLocaleString()} words`,
+        reason: i.reason,
+      }))
+    : [];
+  return {
+    ok,
+    rows,
+    reason:
+      res?.items?.[0]?.reason ??
+      "No parsed Risk Factors/Legal Proceedings section for this company's latest filing yet.",
+    note:
+      "A similarity SCORE between this filing's text and last year's same section — not a diff. "
+      + "No validated threshold exists for what counts as a meaningful rewrite.",
+  };
+}
+
 interface SectorCompanyValuesResponse {
   group: string;
   metric: string;
@@ -4724,6 +4770,58 @@ function toSectorGeographic(res: SectorGeographicMixResponse | null) {
   };
 }
 
+/** Wire shape of `/v1/sectors/{group}/tone-shift` (Track 2 Wave A, Stage 6). */
+interface SectorToneShiftAlertResponse {
+  cik: number;
+  company_name: string | null;
+  item_code: string; // "RF" | "LEGAL"
+  accession: string;
+  prior_accession: string;
+  filing_date: string | null;
+  cosine_similarity: number;
+  jaccard_similarity: number;
+}
+interface SectorToneShiftResponse {
+  group: string;
+  group_label: string;
+  peer_basis: string;
+  has_data: boolean;
+  companies_covered: number;
+  alerts: SectorToneShiftAlertResponse[];
+  caveats: string[];
+}
+
+const _TONE_SHIFT_ITEM_LABEL: Record<string, string> = { RF: "Risk Factors", LEGAL: "Legal Proceedings" };
+
+export interface SectorMovingRow {
+  cik: number;
+  name: string;
+  itemLabel: string;
+  similarity: string;
+  filedDate: string;
+}
+export interface SectorMoving {
+  hasData: boolean;
+  rows: SectorMovingRow[];
+  caveat: string | null;
+}
+
+function toSectorMoving(res: SectorToneShiftResponse | null): SectorMoving {
+  const real = res?.has_data === true;
+  if (!real) return { hasData: false, rows: [], caveat: null };
+  return {
+    hasData: true,
+    rows: res!.alerts.slice(0, 5).map((a) => ({
+      cik: a.cik,
+      name: a.company_name ?? `CIK ${a.cik}`,
+      itemLabel: _TONE_SHIFT_ITEM_LABEL[a.item_code] ?? a.item_code,
+      similarity: `${(a.cosine_similarity * 100).toFixed(0)}% similar YoY`,
+      filedDate: a.filing_date ?? "N/A",
+    })),
+    caveat: res!.caveats[1] ?? null,
+  };
+}
+
 /**
  * How many indexed filings the timeline rail asks for.
  *
@@ -5145,6 +5243,20 @@ export const api = {
   },
 
   /**
+   * §08's Risk Factors / Legal Proceedings YoY similarity (Track 2 Wave A, Stage 4) — a SCORE,
+   * never a diff. The same computation `sectorToneShift` ranks across a sector, read for ONE
+   * company's latest filing. `has_data: false` covers two distinct absences (no filing indexed
+   * at all, vs. one indexed but not yet parsed) — both render as the same honest empty state
+   * here, since neither is a fabricated score to distinguish visually.
+   */
+  companySectionSimilarity: async (symbol: string) => {
+    const res = await getJson<CompanySectionSimilarityResponse>(
+      `/v1/companies/${encodeURIComponent(symbol)}/section-similarity`,
+    ).catch(() => null);
+    return toNarrativeShift(res);
+  },
+
+  /**
    * §05 governance & people, now entirely on real filings.
    *
    * `/insider-summary` (§05.4), `/officer-changes` (§05.1), `/pay-versus-performance` (§05.3) and
@@ -5447,6 +5559,21 @@ export const api = {
       filerCount: point?.peer_count ?? null,
       periodEnd: point?.period_end ?? null,
     };
+  },
+
+  /**
+   * The sector rail's "What's moving" card — real, precomputed by `analytical/tone_shift_alerts.py`
+   * (Track 2 Wave A, Stage 6), unlike everything else that card used to gesture at. `has_data:
+   * false` (the batch hasn't covered this SIC group yet) degrades to an empty-rows result, which
+   * the rail reads as "keep the static explanatory copy" — a group the batch hasn't reached must
+   * not look broken, same discipline `sectorQualitative` uses for its own per-sector real/fixture
+   * split.
+   */
+  sectorToneShift: async (group: string): Promise<SectorMoving> => {
+    const res = await getJson<SectorToneShiftResponse>(
+      `/v1/sectors/${encodeURIComponent(group)}/tone-shift`,
+    ).catch(() => null);
+    return toSectorMoving(res);
   },
 
   /**

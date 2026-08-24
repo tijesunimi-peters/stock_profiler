@@ -189,6 +189,9 @@ export function HubOverview() {
   const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T]);
   const governance = useApi(() => api.companyGovernance(T), [T]);
   const disclosure = useApi(() => api.companyDisclosure(T), [T]);
+  // Independent of `disclosure`'s own fetch, same reasoning as every other §08 sub-read: a dead
+  // Track 2 endpoint must not take the rest of the section down with it.
+  const narrative = useApi(() => api.companySectionSimilarity(T), [T]);
 
   const [stmt, setStmt] = useState<"income" | "balance" | "cash">("income");
   // One open drawer at a time, and one shared range/basis across every drawer — the axis
@@ -1384,12 +1387,15 @@ export function HubOverview() {
 
       {/* ============================================================ 08 */}
       {/*
-        RE-SCOPED from "disclosure change" (operator ruling 2026-08-05). Five of the seven designed
-        fields are irreducibly narrative — the risk-factor diff, MD&A drivers, outlook language,
-        the cybersecurity framework line and human-capital headcount. None has a Track 1 path, and
-        none is faked. What fills the section instead is the filing record itself.
+        RE-SCOPED from "disclosure change" (operator ruling 2026-08-05). Of the seven originally
+        designed fields, MD&A drivers, outlook language, the cybersecurity framework line and
+        human-capital headcount remain irreducibly narrative — no Track 2 path exists yet (Stage 5
+        LLM extraction, not built), and none is faked. The risk-factor/legal-proceedings DIFF (the
+        changed text itself) is still out of reach for the same reason — but Track 2 Wave A now
+        gives a YoY similarity SCORE for those two items (below): a number, not the diff text. The
+        card makes that distinction explicit rather than implying a diff view exists.
 
-        Two of the six cards deliberately restate §06 (the operator accepted the duplication).
+        Two of the seven cards deliberately restate §06 (the operator accepted the duplication).
         They name §06 as their source rather than posing as a second finding.
       */}
       <section className="hub-sec">
@@ -1515,6 +1521,27 @@ export function HubOverview() {
               The same 8-K Item 4.01/4.02 and Form 12b-25 filings §06 reads, on the disclosure
               timeline rather than the audit-quality one. {d.audit.windowNote}
             </div>
+          </div>
+
+          <div className="p-card">
+            <div className="hub-panel-head">
+              <span className="hub-label no-mb">Risk Factors &amp; Legal Proceedings · YoY similarity</span>
+              <Src href={L.tenK}>Read the filing ↗</Src>
+            </div>
+            {narrative.data?.ok && narrative.data.rows.length ? (
+              <>
+                <div className="hub-facts">
+                  {narrative.data.rows.map((r) => (
+                    <span key={r.label}>
+                      {r.label}: {r.similarity} · {r.words}
+                    </span>
+                  ))}
+                </div>
+                <div className="hub-note">{narrative.data.note}</div>
+              </>
+            ) : (
+              <FootnoteEmpty reason={narrative.data?.reason ?? null} />
+            )}
           </div>
 
           <div className="p-card">
