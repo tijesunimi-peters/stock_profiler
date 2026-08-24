@@ -44,6 +44,7 @@ The ones with a real blast radius. All in `docs/DEPLOYMENT_DO.md`.
 | OPS-8 | **rsync deploy still has no deploy key** — the droplet tree is synced, not cloned, so the runbook's `git pull` day-2 flow does not work. | Long-standing. | §4, §7 |
 | OPS-9 | **Part B granular re-ingest state** — the DB moved to the Volume; confirm what remains of the ordered on-box backfills. | The Volume move alone does not populate the sector aggregates. | §7, `DEPLOYMENT_BLOCK_STORAGE.md` |
 | OPS-10 | **Commits on `master` are unpushed.** | Production is deployed by rsync, so it is current — but this machine holds the only copy. | — |
+| OPS-14 | **`section_backfill` → `tone_shift_alerts` (Track 2 Wave A) has no timer, on any environment.** Unlike `sector_governance_stats`, this chain couldn't be made self-contained — `tone_shift_alerts` has nothing to compute without `section_backfill`'s output. | `/v1/sectors/{group}/tone-shift` returns `has_data:false` everywhere until both are run, and needs the SAME one-sequential-script discipline as the two existing weekly chains once scheduled — an independent timer risks reading a half-written `section_similarity`. | `CLAUDE.md` commands |
 
 ## 2. Decisions the operator owes
 
@@ -94,8 +95,8 @@ New as of 2026-08-22. Pipeline design + UI-requirements inventory for the fields
 
 | Wave | Items |
 |---|---|
-| **0** | Wire 5 already-real fields (cyber flags, auditor identity/tenure, deficient filings, headcount, ICFR attestation flag) into `sectorQualitative` — zero new pipeline |
-| **A** | Document fetch, unwilling section parser, LM tone/fog metrics, YoY similarity — no LLM |
+| **0** | ✅ DONE 2026-08-23 — wired 5 already-real fields (cyber flags, auditor identity/tenure, deficient filings, headcount, ICFR attestation flag) into `sectorQualitative` — zero new pipeline |
+| **A** | ✅ DONE 2026-08-23 (Stages 1-4 only, theme classification deferred) — document fetch, `sec-parser` segmentation, AFINN tone + Fog/Flesch-Kincaid, YoY similarity, `tone_shift_alerts` leaderboard. See `ROADMAP_TRACK2.md` §4 for the two operator-confirmed deviations (library over stdlib, AFINN over Loughran-McDonald). **Not yet scheduled — OPS-14.** |
 | **B** | Targeted LLM extraction (CAMs, litigation matters, MD&A drivers, outlook, cyber framework name) — gated on an LLM budget decision |
 | **C** | Sector-level narrative rollups (DuckDB batch) — gated on Wave A running across enough filers |
 

@@ -540,16 +540,35 @@ python -m secfin.analytical.disclosure_stats
 # GET /v1/sectors/{group}/disclosure-mix.
 python -m secfin.analytical.sector_governance_stats
 
-# ⚠️ Both of the above are CHAINS -- each step reads what the previous wrote:
+# Track 2 Wave A: fetch + segment + tone/readability-score + YoY-diff 10-K/10-Q filing sections.
+# Runs via the `narrative` image (adds sec-parser -- see the Dockerfile stage docstring), NOT the
+# plain `api` image. Per-filing network fetch, like insider_backfill.py -- not a bulk pipeline job.
+docker compose --profile narrative run --rm narrative \
+  python -m secfin.ingest.section_backfill --forms 10-K,10-Q --limit 1   # --refresh to re-parse
+
+# per-SIC-group YoY Risk Factors / Legal Proceedings similarity roll-up ("biggest rewrites this
+# quarter"). DuckDB batch over section_similarity JOIN company_profiles -> tone_shift_alerts.
+# Powers GET /v1/sectors/{group}/tone-shift. Run via `analytics` (needs duckdb, not sec-parser --
+# reads what section_backfill already wrote, doesn't re-parse anything).
+python -m secfin.analytical.tone_shift_alerts
+
+# ⚠️ Three CHAINS live in this file -- each step reads what the previous wrote:
 #     metrics_backfill -> peer_distribution -> peer_ranks        (secfin-peer-analytics.timer,
 #                                                                 Sun 08:00 UTC, ~16 h on 1 vCPU)
 #     filing_index_backfill --all-issuers -> disclosure_stats    (secfin-disclosure-stats.timer,
 #                                                                 Sat 08:00 UTC, ~40 min)
-#   In production each chain is ONE sequential script (deploy/scripts/run-{peer-analytics,
-#   disclosure-stats}.sh) and a failed step stops it. Independent timers could compute a
-#   distribution from a half-written metric_values. Letting this chain go stale is how 23 of 30
-#   metrics ended up with no peer distribution at all (found 2026-08-12) -- nothing was broken,
-#   it had just never been re-run, and a stale derived table looks exactly like a working one.
+#     section_backfill -> tone_shift_alerts                      (not yet scheduled -- Wave A is
+#                                                                 new; no timer exists for either
+#                                                                 step yet, see docs/TASKS.md)
+#   In production each of the first two chains is ONE sequential script (deploy/scripts/run-
+#   {peer-analytics,disclosure-stats}.sh) and a failed step stops it. Independent timers could
+#   compute a distribution from a half-written metric_values. Letting this chain go stale is how
+#   23 of 30 metrics ended up with no peer distribution at all (found 2026-08-12) -- nothing was
+#   broken, it had just never been re-run, and a stale derived table looks exactly like a working
+#   one. The third chain (section_backfill -> tone_shift_alerts) is unlike sector_governance_stats
+#   above -- that one was made deliberately self-contained precisely to avoid this pattern; this
+#   one couldn't be (tone_shift_alerts has nothing to compute without section_similarity rows to
+#   read), so its own schedule needs the same one-sequential-script discipline once it's wired up.
 
 # sector geographic revenue mix (Sector Analytics v2, P6b) -- a NEW dimensional-XBRL ingest.
 # 1) Bounded ingest of ASC 280 geographic revenue from DERA "Financial Statement Data Sets" quarterly

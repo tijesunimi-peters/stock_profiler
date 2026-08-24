@@ -41,6 +41,18 @@ jupyter = [
     "pandas>=2.0",
     "duckdb==1.4.5",
 ]
+# Filing-narrative segmentation (Track 2 Wave A) -- sec-parser splits a 10-K/10-Q's primary
+# document into Items (sec/filing_sections.py). Ingest-time only (ingest/section_backfill.py);
+# never a dependency of the base install or the live API, same discipline as `analytical`'s
+# duckdb. This is the first HTML/NLP dependency this project has ever taken -- see
+# sec/filing_sections.py's docstring for why (operator decision, 2026-08-23, reversing the
+# stdlib-only default `sec/exhibits.py` set). Pinned exactly: version 0.58.1 is the one the
+# Wave A implementation spike (2026-08-23) verified against three real filings -- its
+# `Edgar10QParser` has no dedicated 10-K support, and the span-extraction workaround in
+# filing_sections.py depends on that specific behavior, not assumed to hold across versions.
+narrative = [
+    "sec-parser==0.58.1",
+]
 
 [build-system]
 requires = ["hatchling"]

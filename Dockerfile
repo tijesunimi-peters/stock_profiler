@@ -57,6 +57,17 @@ RUN pip install --no-cache-dir ".[analytical]"
 CMD ["python", "-c", "import duckdb; print('analytical image; run a batch module explicitly')"]
 
 
+# --- filing-narrative ingest image --------------------------------------------------------
+# The API image ships WITHOUT sec-parser, same reasoning as `analytics` and duckdb: it is only
+# needed by `ingest/section_backfill.py` (Track 2 Wave A, Stages 1-4), never by the live request
+# path. Kept as its OWN stage rather than folded into `analytics` -- a DuckDB-only batch job
+# (Stage 6's `tone_shift_alerts.py`, which still runs via `analytics`) shouldn't carry
+# sec-parser's footprint, and vice versa.
+FROM api AS narrative
+RUN pip install --no-cache-dir ".[narrative]"
+CMD ["python", "-c", "import sec_parser; print('narrative image; run a section_backfill module explicitly')"]
+
+
 # --- dev notebook image ------------------------------------------------------------------
 # JupyterLab for ad-hoc exploration of the SQLite database. DEV ONLY, by three independent
 # mechanisms rather than by convention:

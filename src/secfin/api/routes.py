@@ -100,6 +100,7 @@ from secfin.normalize.schema import (
     CompanyPeerDistribution,
     CompanyPeerRanks,
     CompanyProfileInfo,
+    CompanySectionSimilarity,
     ConceptSeries,
     CondensedStatement,
     CusipResolutionStats,
@@ -123,6 +124,7 @@ from secfin.normalize.schema import (
     PeerRank,
     RawFact,
     RestatementBasis,
+    SectionSimilarityItem,
     SectorCompanyValue,
     SectorCompanyValueList,
     SectorDisclosureMix,
@@ -139,10 +141,12 @@ from secfin.normalize.schema import (
     SectorThemeScore,
     SectorThemeScoreList,
     SectorThemeScores,
+    SectorToneShift,
     Statement,
     StatementType,
     TYPE_OF_REPORTING_PERSON,
     ThemeConstituent,
+    ToneShiftAlert,
 )
 from secfin.normalize.screening import (
     SCREENABLE_CONCEPTS,
@@ -177,6 +181,7 @@ from secfin.storage.cusip_repository import CusipMapRepository
 from secfin.sec.cover import CoverFacts, find_extracted_instance, parse_cover_facts
 from secfin.sec.exhibits import find_ex21_filename, parse_ex21
 from secfin.sec.filing_index import fetch_filing_index
+from secfin.sec.filing_sections import _SECTION_NAMES
 from secfin.sec.trading_arrangements import parse_trading_arrangements
 from secfin.sec.proxy import find_def14a_instance, parse_pay_versus_performance
 from secfin.storage.filing_cover_repository import FilingCoverRepository
@@ -193,6 +198,9 @@ from secfin.storage.sector_dupont_repository import SectorDupontRepository, Sect
 from secfin.storage.sector_geographic_mix_repository import SectorGeographicMixRepository
 from secfin.storage.disclosure_stat_repository import DisclosureStatRepository
 from secfin.storage.sector_governance_stat_repository import SectorGovernanceStatRepository
+from secfin.storage.tone_shift_alert_repository import ToneShiftAlertRepository
+from secfin.storage.filing_section_repository import FilingSectionRepository
+from secfin.storage.section_similarity_repository import SectionSimilarityRepository
 from secfin.storage.insider_peer_ratio_repository import InsiderPeerRatioRepository
 from secfin.storage.sector_insider_flow_repository import SectorInsiderFlowRepository
 from secfin.storage.sector_lifecycle_repository import (
@@ -437,6 +445,18 @@ def get_sector_geographic_mix_repo(request: Request) -> SectorGeographicMixRepos
 
 def get_sector_governance_stat_repo(request: Request) -> SectorGovernanceStatRepository:
     return request.app.state.sector_governance_stat_repo
+
+
+def get_tone_shift_alert_repo(request: Request) -> ToneShiftAlertRepository:
+    return request.app.state.tone_shift_alert_repo
+
+
+def get_filing_section_repo(request: Request) -> FilingSectionRepository:
+    return request.app.state.filing_section_repo
+
+
+def get_section_similarity_repo(request: Request) -> SectionSimilarityRepository:
+    return request.app.state.section_similarity_repo
 
 
 def get_sector_company_repo(request: Request) -> SectorCompanyRepository:
@@ -3036,6 +3056,149 @@ async def get_sector_disclosure_mix(
         ),
         deficient=deficient,
         caveats=_GOVERNANCE_MIX_CAVEATS,
+    )
+
+
+# ---- Sector tone-shift leaderboard (Track 2 Wave A, Stage 6) -----------------------------------
+_TONE_SHIFT_CAVEATS = [
+    "DERIVED: cosine/Jaccard similarity between this filing's Risk Factors or Legal Proceedings "
+    "text and the same company's prior comparable filing -- not a reported figure.",
+    "A LOW similarity score is a raw signal that the text changed a lot, NOT a confirmed "
+    "'meaningful rewrite' verdict -- no significance threshold has been validated yet. "
+    "Boilerplate reordering can score as a large apparent change with no real news behind it.",
+    "Risk Factors and Legal Proceedings only -- the other segmented items are not compared here.",
+    "Comparison is same-form-only (10-K against 10-K, 10-Q against 10-Q); a company's first "
+    "indexed filing of a form has no prior to compare against and carries no row.",
+]
+
+@public_router.get(
+    "/sectors/{group}/tone-shift",
+    response_model=SectorToneShift,
+    tags=["Sectors"],
+    summary="One sector's biggest YoY Risk Factors / Legal Proceedings rewrites",
+)
+async def get_sector_tone_shift(
+    group: str,
+    repo: ToneShiftAlertRepository = Depends(get_tone_shift_alert_repo),
+) -> SectorToneShift:
+    """One SIC group's filings with the largest apparent YoY change in Risk Factors or Legal
+    Proceedings text, ascending by `cosine_similarity` (lowest first).
+
+    A **precomputed** read of `tone_shift_alerts` (`analytical/tone_shift_alerts.py` is the sole
+    producer; the live path never runs the DuckDB join -- CLAUDE.md guardrail 6), sorted live over
+    that batch's rows the same way `/sectors/{group}/disclosure-mix` aggregates its own per-company
+    table. `has_data=False` is a valid, honest result -- the batch has not covered this group --
+    never a fabricated ranking.
+    """
+    peer_basis = f"SIC {settings.secfin_peer_sic_digits}-digit"
+    rows = repo.get_group(group)
+    if not rows:
+        return SectorToneShift(
+            group=group, group_label=sic2_label(group), peer_basis=peer_basis,
+            caveats=_TONE_SHIFT_CAVEATS,
+        )
+
+    ordered = sorted(rows, key=lambda r: r.cosine_similarity)
+    alerts = [
+        ToneShiftAlert(
+            cik=r.cik,
+            company_name=r.company_name,
+            item_code=r.item_code,
+            accession=r.accession,
+            prior_accession=r.prior_accession,
+            filing_date=r.filing_date,
+            cosine_similarity=r.cosine_similarity,
+            jaccard_similarity=r.jaccard_similarity,
+        )
+        for r in ordered
+    ]
+    return SectorToneShift(
+        group=group,
+        group_label=sic2_label(group),
+        peer_basis=peer_basis,
+        has_data=True,
+        companies_covered=len({r.cik for r in rows}),
+        alerts=alerts,
+        caveats=_TONE_SHIFT_CAVEATS,
+    )
+
+
+# ---- Per-company section similarity (Track 2 Wave A, Stage 4 -- company-facing) -----------------
+_SECTION_SIMILARITY_ITEMS = ("RF", "LEGAL")
+
+
+@public_router.get(
+    "/companies/{symbol}/section-similarity",
+    response_model=CompanySectionSimilarity,
+    tags=["Filings"],
+    summary="YoY Risk Factors / Legal Proceedings similarity for this company's latest filing",
+)
+async def get_company_section_similarity(
+    symbol: str,
+    ticker_cache: TickerCache = Depends(get_ticker_cache),
+    filing_repo: FilingIndexRepository = Depends(get_filing_index_repo),
+    section_repo: FilingSectionRepository = Depends(get_filing_section_repo),
+    similarity_repo: SectionSimilarityRepository = Depends(get_section_similarity_repo),
+) -> CompanySectionSimilarity:
+    """The SAME score `/sectors/{group}/tone-shift` ranks across a sector, read for ONE company.
+
+    A SCORE, never a diff -- how much Risk Factors or Legal Proceedings changed year over year,
+    not what changed. `has_data=False` with `accession=None` means no 10-K/10-Q is indexed for
+    this company; `has_data=False` with `accession` set means one was found but Wave A has not
+    parsed it yet -- distinct absences, neither a fabricated score.
+    """
+    async with SECClient() as client:
+        cik = await _cik_from_symbol(client, ticker_cache, symbol)
+
+    filings = filing_repo.get_filings(cik, ["10-K", "10-Q"], 1)
+    if not filings:
+        return CompanySectionSimilarity(cik=cik, caveats=_TONE_SHIFT_CAVEATS)
+
+    latest = filings[0]
+    sections = section_repo.get_sections(cik, latest.accession)
+    if not sections:
+        return CompanySectionSimilarity(
+            cik=cik, accession=latest.accession, caveats=_TONE_SHIFT_CAVEATS
+        )
+
+    items: list[SectionSimilarityItem] = []
+    for code in _SECTION_SIMILARITY_ITEMS:
+        section = sections.get(code)
+        if section is None or section.status != "ok":
+            items.append(
+                SectionSimilarityItem(
+                    item_code=code,
+                    item_label=_SECTION_NAMES[code],
+                    accession=latest.accession,
+                    prior_accession="",
+                    status="not_parsed",
+                    reason=(
+                        section.reason
+                        if section is not None
+                        else "No section found in the latest filing."
+                    ),
+                )
+            )
+            continue
+        sim = similarity_repo.get(cik, latest.accession, code)
+        items.append(
+            SectionSimilarityItem(
+                item_code=code,
+                item_label=_SECTION_NAMES[code],
+                accession=latest.accession,
+                prior_accession=sim.prior_accession if sim else "",
+                filing_date=latest.filing_date,
+                word_count=section.word_count,
+                cosine_similarity=sim.cosine_similarity if sim else None,
+                jaccard_similarity=sim.jaccard_similarity if sim else None,
+                status="ok" if sim else "no_prior",
+                reason=None if sim else "No prior comparable filing indexed for this company/form.",
+            )
+        )
+
+    return CompanySectionSimilarity(
+        cik=cik, has_data=True, accession=latest.accession, items=items,
+        caveats=_TONE_SHIFT_CAVEATS,
     )
 
 

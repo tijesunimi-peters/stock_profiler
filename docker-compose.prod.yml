@@ -75,6 +75,22 @@ services:
     volumes:
       - ${SECFIN_DATA_MOUNT:-secfin-data}:/app/data
 
+  # --- filing-narrative ingest (opt-in via profile; NEVER started by `docker compose up`) ---
+  # Same source, same volume, different image: the `narrative` build target adds sec-parser
+  # (Track 2 Wave A), which the serving image deliberately does not carry. Run explicitly, e.g.
+  #   docker compose -f docker-compose.prod.yml --profile narrative run --rm narrative \
+  #     python -m secfin.ingest.section_backfill --forms 10-K,10-Q --limit 1
+  narrative:
+    profiles: ["narrative"]
+    build:
+      context: .
+      target: narrative
+    environment:
+      SEC_USER_AGENT: "${SEC_USER_AGENT:?Set SEC_USER_AGENT, e.g. 'sec-financials-api you@example.com'}"
+      SECFIN_DB_PATH: "/app/data/secfin.db"
+    volumes:
+      - ${SECFIN_DATA_MOUNT:-secfin-data}:/app/data
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

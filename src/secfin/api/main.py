@@ -55,6 +55,11 @@ from secfin.storage.sqlite_disclosure_stat_repository import SQLiteDisclosureSta
 from secfin.storage.sqlite_sector_governance_stat_repository import (
     SQLiteSectorGovernanceStatRepository,
 )
+from secfin.storage.sqlite_tone_shift_alert_repository import SQLiteToneShiftAlertRepository
+from secfin.storage.sqlite_filing_section_repository import SQLiteFilingSectionRepository
+from secfin.storage.sqlite_section_similarity_repository import (
+    SQLiteSectionSimilarityRepository,
+)
 from secfin.storage.sqlite_insider_peer_ratio_repository import (
     SQLiteInsiderPeerRatioRepository,
 )
@@ -231,6 +236,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sector_governance_stat_repo = SQLiteSectorGovernanceStatRepository(
         settings.secfin_db_path
     )
+    # Precomputed sector tone-shift leaderboard (Track 2 Wave A, Stage 6) -- same shape;
+    # analytical/tone_shift_alerts.py is the sole writer. See routes.get_tone_shift_alert_repo.
+    app.state.tone_shift_alert_repo = SQLiteToneShiftAlertRepository(settings.secfin_db_path)
+    # Parsed Item sections + YoY similarity (Track 2 Wave A, Stages 2/4) -- previously only
+    # constructed by ingest/section_backfill.py; exposed here for the company-facing
+    # GET /companies/{symbol}/section-similarity route. Point-reads only, no batch dependency.
+    app.state.filing_section_repo = SQLiteFilingSectionRepository(settings.secfin_db_path)
+    app.state.section_similarity_repo = SQLiteSectionSimilarityRepository(settings.secfin_db_path)
     try:
         yield
     finally:
@@ -257,6 +270,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.disclosure_stat_repo.close()
         app.state.sector_geographic_mix_repo.close()
         app.state.sector_governance_stat_repo.close()
+        app.state.tone_shift_alert_repo.close()
+        app.state.filing_section_repo.close()
+        app.state.section_similarity_repo.close()
 
 
 app = FastAPI(

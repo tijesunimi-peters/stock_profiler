@@ -207,10 +207,34 @@ vs. gated on a prior stage's output existing for more than one fiscal year.
   `sectorQualitative`. Real filer names, not `pickFilers`, back the `Reveal` affordance for these
   fields specifically. The other two (per-company cyber-flag/auditor-identity/headcount wiring on
   the Company Hub) were already live before this pass — see the resolver comments in `api.ts`.
-- **Wave A (Stages 1-4, no LLM):** document fetch, unwilling section parser, LM tone/fog metrics,
-  YoY similarity. Ships `RF_VOLUME`, theme coverage via embeddings, excerpts, `EMERGING`,
-  non-GAAP/keyword fields, the tone-shift leaderboard. This is the bulk of the page and needs no
-  LLM budget decision to start.
+- **Wave A (Stages 1-4, no LLM). ✅ DONE 2026-08-23**, scoped to Stages 1-4 only — theme
+  classification (`QUAL_THEMES`/`THEME_LANG`/`EMERGING`) is NOT bundled in (it needs the taxonomy
+  + embedding-approach decisions §5 still lists as open) and stays deferred. What shipped:
+  `sec/filing_document.py` (fetch) → `sec/filing_sections.py` (segmentation) →
+  `normalize/section_metrics.py` (tone/readability) → `normalize/section_similarity.py` (YoY
+  diff) → `ingest/section_backfill.py` (orchestration) → `analytical/tone_shift_alerts.py` +
+  `GET /v1/sectors/{group}/tone-shift` (Stage 6, the one shipped leaderboard). Verified end-to-end
+  against live SEC data (Apple's last two 10-Ks: Risk Factors YoY cosine 0.997, Legal Proceedings
+  0.979 — both sane).
+
+  **Two deviations from this doc's own earlier framing, both operator-confirmed during
+  implementation:**
+  - **Segmentation uses `sec-parser==0.58.1`, not stdlib** — §5's "worth a deliberate call, not a
+    default" was resolved in the library's favor. The library has no dedicated 10-K parser
+    (`Edgar10QParser` is the only concrete class); the working design runs it against both forms
+    anyway (10-K's differently-numbered Items just fall back to generic `TitleElement`
+    classification, harmless `UserWarning`s suppressed) and extracts by SPAN over the flat,
+    document-order element list — not tree-nesting, which undercounts badly for 10-K. See
+    `sec/filing_sections.py`'s docstring for the full mechanism, verified against three real
+    filings.
+  - **Tone scoring uses AFINN-165, not Loughran-McDonald.** Checked, not assumed: the LM
+    dictionary is not freely redistributable (`sraf.nd.edu` routes to a license-by-request email,
+    not an open file). AFINN-165 (Apache-2.0, `normalize/afinn_wordlist.txt`, checked in) gives
+    positive/negative tone only — LM's uncertainty/litigious/constraining categories are NOT
+    approximated with a substitute list (that would just be a differently-named unlicensed
+    derivative of LM's own curation). Weak/strong modal verbs are computed from the closed set of
+    English modal auxiliaries, which is grammar, not a licensed dataset. See
+    `normalize/section_metrics.py`'s docstring.
 - **Wave B (Stage 5, targeted LLM):** CAMs, litigation matters, going-concern edge cases, MD&A
   drivers, outlook language, cybersecurity framework name. Gated on Wave A's similarity scores
   existing (the targeting signal) and on an LLM budget/provider decision (open, see §5).
@@ -220,15 +244,20 @@ vs. gated on a prior stage's output existing for more than one fiscal year.
 
 ## 5. Open decisions for the operator
 
+- ~~**Segmentation approach**~~ **Decided 2026-08-23: `sec-parser`, not stdlib.** See Wave A's
+  entry above.
+- ~~**LM word list**~~ **Decided 2026-08-23: AFINN-165, not Loughran-McDonald** (licensing —
+  see Wave A's entry above). If a licensed LM copy is obtained later, `normalize/section_metrics.py`
+  is the single place to swap it in; the `tone_positive`/`tone_negative` field names would need to
+  become `lm_positive`/`lm_negative` at that point, and uncertainty/litigious/constraining could
+  be added for the first time (they are not approximated today, just absent).
 - **LLM provider + per-filing budget cap.** Stage 5 is the one recurring per-token cost;
   `CLAUDE.md` requires bounding it but doesn't fix a number. Needs a ceiling before Wave B starts.
-- **Segmentation approach**: an existing library (`sec-parser` / `edgartools`) vs. a hand-rolled
-  header detector in the EX-21 style. The draft recommends a library; this project has so far
-  preferred owning its parsers narrowly (EX-21, `cover.py`) rather than taking a dependency that
-  might silently change segmentation behavior across versions. Worth a deliberate call, not a
-  default.
 - **Coverage floor** — confirm the earliest fiscal year Track 2 can promise, against EDGAR
-  full-text search availability, before it ships on any page.
+  full-text search availability, before it ships on any page. Not yet checked for Wave A's own
+  `section_backfill.py` either — it walks whatever `filing_index` already covers, which is its
+  own rolling-window limit (see `docs/DEPLOYMENT_DO.md` on `filing_index_backfill`'s coverage),
+  not a Track-2-specific floor.
 - **Theme taxonomy ownership** — `QUAL_THEMES`' 9 hardcoded themes were prototype content, not a
   researched taxonomy. Decide whether it ships as-is, gets revised, or grows per-sector.
 - **DEC-1/DEC-2 revisit** (`docs/TASKS.md` §2): the "what changed this filing" band was scoped to

@@ -1773,6 +1773,93 @@ not US-GAAP financial concepts.
 
 ---
 
+## Filing narrative sections + derived metrics (Track 2 Wave A) — `filing_sections`, `section_metrics`, `section_similarity`
+
+Backs `analytical/tone_shift_alerts.py` and `GET /v1/sectors/{group}/tone-shift`. The project's
+first document-parsing pipeline over filing PROSE (`sec/exhibits.py`'s EX-21 table is the only
+prior document parse, and its narrow ruling does not extend here — see `CLAUDE.md`'s Track 2
+section for this pipeline's own, separate authorization).
+
+**Source: the primary 10-K/10-Q document**, fetched the same way `sec/exhibits.py` locates EX-21
+— a filing's `-index-headers.html` (SGML headers, HTML-escaped) regexed for a `<TYPE>{form}`
+block, then that document fetched by filename. See `sec/filing_document.py`.
+
+### `item_code` is a canonical taxonomy, independent of form-specific Item numbering
+
+| `item_code` | Meaning | 10-K Item | 10-Q Item |
+|---|---|---|---|
+| `RF` | Risk Factors | 1A | Part II, Item 1A |
+| `LEGAL` | Legal Proceedings | 3 | Part II, Item 1 |
+| `MDNA` | Management's Discussion and Analysis | 7 | Part I, Item 2 |
+| `MARKET_RISK` | Quantitative/Qualitative Disclosures About Market Risk | 7A | Part I, Item 3 |
+| `CYBER` | Cybersecurity | 1C | *(not applicable — no row at all, never a manufactured `status="na"`)* |
+
+A stable key across fiscal periods and form types is what makes the YoY diff in
+`section_similarity` possible — the alternative (keying on the raw Item number) would break the
+moment a company's Item numbering shifts, or when comparing a 10-K to a 10-Q.
+
+### Segmentation: `sec-parser`, span extraction over the flat element list — not tree nesting
+
+Confirmed during the Wave A implementation spike (2026-08-23), against three real filings (Apple's
+10-K, Apple's 10-Q, a small-cap 10-Q): `sec_parser.Edgar10QParser` — despite the name — is used
+for BOTH forms. It has no dedicated 10-K parser class; run against a 10-K it still extracts every
+Item as a generic `TitleElement` (just not its 10-Q-specific `TopSectionTitle` classification),
+with a harmless `UserWarning` per unrecognized section identifier (suppressed).
+
+**Section text is the span between one recognized Item title and the next, in document order** —
+NOT `TreeBuilder`/`SemanticTree` nesting, which was tried first and undercounted badly for 10-K
+(only 10-Q's items get restructured under their title by the library's own
+`TopSectionManagerFor10Q` step). The span approach was verified correct on both forms: Apple's
+10-K Item 1A extracted at 9,226 words (its real Risk Factors length), and every non-target Item
+tested stayed within 1-2 words when it should — confirming boundaries don't leak into neighbors.
+
+**The Table of Contents trap is handled structurally, not by a word-count heuristic.**
+`sec-parser`'s `TableOfContentsClassifier` filtered TOC-origin Item captions in every filing
+tested — zero duplicate/TOC-origin matches across all three. A defensive word-count floor
+(`_MIN_WORDS` in `sec/filing_sections.py`) is still kept as a backstop, per this codebase's
+standing "a partial extraction is worse than none" principle (from `sec/exhibits.py`), but is not
+the primary TOC defense.
+
+**Unwilling, same property as EX-21's parser**: a section that fails to parse, has no recognizable
+header, or falls below its per-form/per-item word-count floor gets `status="na"` with a
+distinguishing reason — never a guess.
+
+### Tone/readability metrics: AFINN-165, not Loughran-McDonald (licensing)
+
+`normalize/section_metrics.py` computes `tone_positive`/`tone_negative` (AFINN-165, Apache-2.0,
+checked in as `normalize/afinn_wordlist.txt`) and `weak_modal`/`strong_modal` (the closed set of
+English modal auxiliary verbs — grammar, not a licensed dataset), plus `fog_index` and
+`flesch_kincaid` (pure syllable-counting formulas, no word list at all). **The Loughran-McDonald
+Master Dictionary this stage was originally scoped around is not freely redistributable** —
+`sraf.nd.edu`'s download page routes to a license-by-request email, confirmed during
+implementation, not assumed from the original pipeline sketch. LM's uncertainty/litigious/
+constraining categories have no open equivalent and are simply absent, not approximated with a
+substitute — recreating LM's own curation under a different name would just be an unlicensed
+derivative of the same editorial work.
+
+### `section_similarity` carries no "significantly changed" verdict
+
+Cosine + Jaccard, hand-rolled (no numpy — matching `normalize/coholding.py`'s existing hand-rolled
+Jaccard for 13F manager overlap), same-form-only (a 10-Q's often-brief Risk Factors against a
+10-K's full one would score a spurious near-zero, a form-type artifact not a real rewrite). Ships
+raw scores only. `normalize/filing_changes.py`'s own documented lesson — a value-level diff was
+tried and abandoned after 289-876 false-positive-heavy diffs per company from boilerplate
+reclassification noise — is why no threshold is set here: MD&A boilerplate reordering could
+produce a spuriously low score the same way. `GET /v1/sectors/{group}/tone-shift`'s caveats state
+this on every response; a low score is a raw signal, not a confirmed "meaningful rewrite".
+
+### Schema versioning, same convention as `filing_cover_facts`
+
+`SECTIONS_SCHEMA_VERSION` / `METRICS_SCHEMA_VERSION` / `SIMILARITY_SCHEMA_VERSION` each live in
+their owning module. A row written under an older version reads as a cache MISS on the next
+`get_*` call, not an answer — the caller re-parses/re-scores and heals it, exactly
+`SQLiteFilingCoverRepository.get_cover`'s `COVER_SCHEMA_VERSION` check.
+
+**Not a canonical concept.** No `mapping.py` change — this is derived text analytics, not a
+US-GAAP financial concept.
+
+---
+
 ## Obligation groups (`OBLIGATION_GROUPS`) — §07
 
 Same `(label, concepts, coverage, primaries)` registry shape as `FOOTNOTE_GROUPS` and

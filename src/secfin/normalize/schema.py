@@ -1504,6 +1504,75 @@ class SectorDisclosureMix(BaseModel):
     caveats: list[str] = Field(default_factory=list)
 
 
+# --- Sector tone-shift leaderboard (Track 2 Wave A, Stage 6) -----------------------------------
+#
+# "Biggest risk-factor/legal-proceedings rewrites this quarter" -- a DERIVED YoY similarity score
+# (normalize/section_similarity.py), never a verdict that a rewrite is meaningful. Cosine/Jaccard
+# are raw signals; no "significantly changed" threshold has been validated yet (see that module's
+# docstring), so the caveats say so on every response.
+
+
+class ToneShiftAlert(BaseModel):
+    cik: int
+    company_name: str | None = None
+    item_code: str  # "RF" | "LEGAL"
+    accession: str
+    prior_accession: str
+    filing_date: str | None = None
+    cosine_similarity: float
+    jaccard_similarity: float
+
+
+class SectorToneShift(BaseModel):
+    """One SIC group's tone-shift leaderboard, ascending by `cosine_similarity` (lowest first --
+    the biggest apparent rewrites). `has_data=False` is a valid, honest result: the batch has not
+    covered this group -- never a fabricated ranking."""
+
+    group: str
+    group_label: str
+    peer_basis: str
+    has_data: bool = False
+    companies_covered: int = 0
+    alerts: list[ToneShiftAlert] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
+# --- Per-company section similarity (Track 2 Wave A, Stage 4 -- company-facing) -----------------
+#
+# The SAME cosine/Jaccard scores /sectors/{group}/tone-shift ranks across a sector, read for ONE
+# company instead. A SCORE, never a diff: this tells a reader HOW MUCH Risk Factors or Legal
+# Proceedings changed YoY, not WHAT changed -- no "significantly changed" threshold exists (see
+# normalize/section_similarity.py), so caveats repeat here verbatim.
+
+
+class SectionSimilarityItem(BaseModel):
+    item_code: str  # "RF" | "LEGAL"
+    item_label: str
+    accession: str
+    prior_accession: str
+    filing_date: str | None = None
+    word_count: int | None = None
+    cosine_similarity: float | None = None
+    jaccard_similarity: float | None = None
+    status: str  # "ok" | "no_prior" | "not_parsed"
+    reason: str | None = None  # populated whenever status != "ok"
+
+
+class CompanySectionSimilarity(BaseModel):
+    """One company's latest-filing Risk Factors / Legal Proceedings YoY similarity.
+
+    `has_data=False` is a valid, honest result -- no filing indexed, or none parsed by Wave A yet
+    -- never a fabricated score. `accession` is populated even when `has_data=False` whenever a
+    filing WAS found but not yet parsed, so a caller can tell "nothing indexed" from "indexed but
+    not yet processed"."""
+
+    cik: int
+    has_data: bool = False
+    accession: str | None = None
+    items: list[SectionSimilarityItem] = Field(default_factory=list)
+    caveats: list[str] = Field(default_factory=list)
+
+
 # --- Per-company value list within a sector (Sector Analytics app, Company view / altitude 2) -----
 #
 # Every company in a SIC group with a comparable (non-N/A) value for one metric+period -- for the
