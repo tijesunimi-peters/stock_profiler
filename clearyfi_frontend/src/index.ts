@@ -75,6 +75,12 @@ export type { StatTileRowProps } from "./components/StatTileRow.js";
 // data display
 export { StatementTable } from "./components/StatementTable.js";
 export type { StatementTableProps, StatementRow } from "./components/StatementTable.js";
+export { PagedTable } from "./components/PagedTable.js";
+export type { PagedTableProps } from "./components/PagedTable.js";
+export { PagedList } from "./components/PagedList.js";
+export type { PagedListProps } from "./components/PagedList.js";
+export { Pager } from "./components/Pager.js";
+export type { PagerProps } from "./components/Pager.js";
 export { ChartCard } from "./components/ChartCard.js";
 export type { ChartCardProps } from "./components/ChartCard.js";
 export { StateBlock } from "./components/StateBlock.js";

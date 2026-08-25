@@ -123,6 +123,24 @@ UPLOADED, and the re-sync diff compares that anchor against a fresh build — it
 project's current file contents. So the pull-back step above is the only thing that will ever
 notice an online change.
 
+## Paged table + list (added 2026-08-25)
+
+`Pager`, `PagedTable`, `PagedList` port the static UI's `ClearyFi.paginatedTable`
+(`src/secfin/api/static/app.js:1936`) into the DS. Pager CSS is a verbatim port of
+`static/app.css:617-641`; all six tokens it uses already existed, so no new tokens.
+
+- **Default pageSize is 10**, matching all four product call sites (`manager.js:216,288`,
+  `company.js:5525,5712`). The upstream default of 25 is used by nobody.
+- **No sticky `th`, deliberately.** A paged table fits on screen, and it renders inside
+  `.stmt-wrap` (`overflow-x`), where a sticky header pins to the WRAPPER not the viewport —
+  the product hit this and undoes it at `company.css:125`. Do not "fix" this by adding sticky.
+- **`Pager` returns null at pageCount <= 1** — a short collection must look unpaged. Its preview
+  frames that case in a labelled box, because an empty cell is indistinguishable from a broken one.
+- Paging is display-only: the component holds every row. That is what lets summaries above a
+  table keep describing ALL of it. A server-paged variant would break that property.
+- `.paged-empty-text` exists because there is **no bare `.drained` rule** — only compound ones
+  (`.stmt-amt.drained` etc.). Same trap as `.sr-only`. Check before reusing a class name.
+
 ## Repo hygiene — unresolved
 
 - **`ds-bundle/` (139 files) and `.ds-sync/` (393 files) are TRACKED in git** from the aborted
