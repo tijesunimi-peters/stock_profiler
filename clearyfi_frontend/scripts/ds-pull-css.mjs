@@ -66,12 +66,16 @@ const removed = [...rs].filter((r) => !rr.has(r));
 const tok = (css) => new Set(css.match(/--[a-z0-9-]+(?=\s*:)/g) ?? []);
 const [ts, tr] = [tok(source), tok(remote)];
 
+// Which side is ahead? Applying is only ever right when the PROJECT has changes the source
+// lacks. If the source is strictly ahead — the normal case after editing clearyfi.css locally —
+// applying would silently delete that work, so say so plainly instead of offering it.
+const sourceAhead = added.length === 0 && removed.length > 0;
 console.log(`⚠ stylesheet diverged\n`);
 const B = (s) => Buffer.byteLength(s, "utf8");
 console.log(`  source  ${SOURCE.padEnd(28)} ${String(B(source)).padStart(6)}B  ${sha(source)}`);
 console.log(`  remote  ${"(the design project)".padEnd(28)} ${String(B(remote)).padStart(6)}B  ${sha(remote)}\n`);
-if (added.length)   console.log(`  + ${added.length} new selector(s): ${added.slice(0, 8).join(", ")}${added.length > 8 ? " …" : ""}`);
-if (removed.length) console.log(`  − ${removed.length} removed selector(s): ${removed.slice(0, 8).join(", ")}${removed.length > 8 ? " …" : ""}`);
+if (added.length)   console.log(`  + ${added.length} selector(s) the project has and src/ does not: ${added.slice(0, 8).join(", ")}${added.length > 8 ? " …" : ""}`);
+if (removed.length) console.log(`  − ${removed.length} selector(s) src/ has and the project does not: ${removed.slice(0, 8).join(", ")}${removed.length > 8 ? " …" : ""}`);
 const tAdd = [...tr].filter((t) => !ts.has(t));
 const tDel = [...ts].filter((t) => !tr.has(t));
 if (tAdd.length) console.log(`  + tokens: ${tAdd.join(", ")}`);
@@ -84,6 +88,16 @@ if (newExternal.length) {
 if (problems.length) {
   console.log(`\n✗ refusing to apply:`);
   for (const p of problems) console.log(`    · ${p}`);
+  process.exit(1);
+}
+
+if (sourceAhead) {
+  console.log(`\n  → src/ is AHEAD of the project: every difference is something src/ has and the`);
+  console.log(`    project lacks. Nothing was edited online. Applying would DELETE that local work.`);
+  console.log(`    Rebuild and re-sync to push it up instead.`);
+  if (!APPLY) process.exit(2);
+  console.log(`\n✗ refusing --apply while src/ is strictly ahead — this would only discard work.`);
+  console.log(`  If you really mean to revert src/ to the project's copy, restore it from git.`);
   process.exit(1);
 }
 

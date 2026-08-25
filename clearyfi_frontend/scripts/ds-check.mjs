@@ -22,7 +22,19 @@ if (!existsSync(STATE)) {
 const { commit, projectId } = JSON.parse(readFileSync(STATE, "utf8"));
 let changed = "";
 try {
-  changed = execSync(`git diff --name-only ${commit} -- src/`, { encoding: "utf8" }).trim();
+  // Tracked edits since the synced commit...
+  const tracked = execSync(`git diff --name-only ${commit} -- src/`, { encoding: "utf8" }).trim();
+  // ...plus files git does not track yet. A brand-new component is untracked, so `git diff`
+  // alone reports "in sync" for exactly the change most likely to matter.
+  const untracked = execSync(`git ls-files --others --exclude-standard -- src/`, {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((f) => `${f}  (untracked)`)
+    .join("\n");
+  changed = [tracked, untracked].filter(Boolean).join("\n");
 } catch {
   console.log(`· cannot compare against ${commit.slice(0, 12)} (unknown commit) — re-sync to reset.`);
   process.exit(0);
