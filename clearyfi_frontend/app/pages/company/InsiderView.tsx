@@ -11,9 +11,11 @@
  * consequences of a grant or a vesting date, and folding them into one "net insider buying"
  * figure is the most common way this data is misread.
  */
+import { useState } from "react";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
-import { StateBlock } from "@ds";
+import { paginate } from "../../lib/paginate";
+import { Pager, StateBlock } from "@ds";
 import { Histogram } from "../../charts/bars";
 import { PeerStrip } from "../../charts/strips";
 import { DotCalendar } from "../../charts/misc";
@@ -43,11 +45,18 @@ export function InsiderView() {
   const sel = useSelection();
   const T = sel.focal;
   const res = useApi(() => api.companyInsiderActivity(T, INSIDER_WINDOW_FILINGS), [T]);
+  // Above the early returns below: a hook must run on every render.
+  const [ledgerPage, setLedgerPage] = useState(0);
 
   if (res.error) return <StateBlock variant="error" copy={res.error.message} />;
   if (!res.data) return <StateBlock variant="loading" copy="Reading this filer's Section 16 filings." />;
   const d = res.data.ledger;
   if (!d.ok) return <StateBlock variant="empty" copy={d.reason ?? "No Section 16 filings read."} />;
+
+  // The ledger is unbounded on real data — a busy filer reports thousands of Form 4 rows, and
+  // rendering every one built a DOM to match. Paging is display-only: the counts and charts
+  // above still describe all `d.rows`.
+  const ledger = paginate(d.rows, ledgerPage);
 
   return (
     <div className="ia">
@@ -178,8 +187,8 @@ export function InsiderView() {
           <span className="ta-r">Filed</span>
           <span className="ta-r">Lag</span>
         </div>
-        {d.rows.map((r, i) => (
-          <div className="ia-ledger-row" key={`${r.person}${r.fDate}${i}`}>
+        {ledger.slice.map((r, i) => (
+          <div className="ia-ledger-row" key={`${r.person}${r.fDate}${ledger.start + i}`}>
             <span className="ia-person">
               <span className="ia-person-name">{r.person}</span>
               <span className="ia-person-sub">
@@ -194,6 +203,13 @@ export function InsiderView() {
             </span>
           </div>
         ))}
+        <Pager
+          page={ledger.page}
+          pageCount={ledger.pageCount}
+          rangeLabel={ledger.rangeLabel}
+          onPrev={() => setLedgerPage(ledger.page - 1)}
+          onNext={() => setLedgerPage(ledger.page + 1)}
+        />
         <div className="hub-note">
           Transaction date and filing date are both on the form; latency is the gap in business
           days, and is shown only for Form 4, whose deadline is two business days. Codes are the

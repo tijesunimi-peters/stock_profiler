@@ -6,11 +6,12 @@
  * outstanding. That constraint is why this view looks the way it does.
  */
 import { useState } from "react";
-import { ChartCard, Disclosure, StateBlock, StatTile, StatTileRow, STANDARD_DISCLOSURES } from "@ds";
+import { ChartCard, Disclosure, Pager, StateBlock, StatTile, StatTileRow, STANDARD_DISCLOSURES } from "@ds";
 import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { compact, humanDate } from "../../lib/format";
+import { paginate } from "../../lib/paginate";
 import { CompositionStrip } from "@ds";
 import { SeriesChart, Sparkline, StackedAreaChart, StepChart } from "../../charts/series";
 import { CohortHeatmap, LorenzChart, MatrixChart, Treemap, UpsetChart } from "../../charts/misc";
@@ -143,6 +144,7 @@ export function InstitutionalView() {
   // One overlay for both expandable charts in this section — same pattern as Financial history.
   const [zoom, setZoom] = useState<null | "register" | "mgrGrid" | "flow" | "pareto" | "tree" | "upset">(null);
   const [holdView, setHoldView] = useState<"ranked" | "treemap">("ranked");
+  const [holdPage, setHoldPage] = useState(0);
   const [overlapView, setOverlapView] = useState<"combos" | "peers">("combos");
   const [flowsOpen, setFlowsOpen] = useState(false);
   const [stewOpen, setStewOpen] = useState(false);
@@ -171,6 +173,10 @@ export function InstitutionalView() {
   // reads that section makes.
   const ext = seriesRead.data.extras;
   const reg = seriesRead.data.register;
+  // The register is unbounded — a widely-held issuer has well over a thousand 13F filers, and
+  // the ranked table rendered every one. Display-only: the tiles, Lorenz curve and concentration
+  // figures above still describe all `reg.holders`.
+  const held = paginate(reg.holders, holdPage);
   const flows = flowsRead.data.flows;
   const stew = stewardRead.data.steward;
   const beh = behaviourRead.data.behavior;
@@ -531,7 +537,7 @@ export function InstitutionalView() {
               <span className="ta-r">% of 13F</span>
               <span className="ta-r">Δ QoQ</span>
             </div>
-            {reg.holders.map((h) => (
+            {held.slice.map((h) => (
               <div className="inst-hold-grid hub-row" key={h.name}>
                 <span className="hub-cell">
                   <span className="row-title">{h.name}</span>
@@ -544,6 +550,13 @@ export function InstitutionalView() {
                 <span className="hub-cell-mono ta-r is-soft">{h.delta}</span>
               </div>
             ))}
+            <Pager
+              page={held.page}
+              pageCount={held.pageCount}
+              rangeLabel={held.rangeLabel}
+              onPrev={() => setHoldPage(held.page - 1)}
+              onNext={() => setHoldPage(held.page + 1)}
+            />
             <div className="hub-note">
               Managers are named as they appear on the cover of the 13F-HR; affiliated entities
               file separately and are not consolidated here.
