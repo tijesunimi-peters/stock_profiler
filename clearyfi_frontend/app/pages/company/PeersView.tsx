@@ -49,10 +49,11 @@ export function PeersView() {
   const peerRead = useApi(() => api.companyPeerRelative(T, PX_YEAR, PX_PERIOD), [T]);
   const identity = useApi(() => api.companyIdentity(T), [T]);
 
-  if (peerRead.error || identity.error) {
-    return <StateBlock variant="error" copy={(peerRead.error ?? identity.error)!.message} />;
-  }
-  if (!peerRead.data || !identity.data) {
+  // Gate on the peer read only. `identity` supplies two crumb strings and nothing the page is
+  // about — holding the whole view for it means a slow identity endpoint hides a peer set that
+  // is ready. Both uses below fall back rather than render a guess.
+  if (peerRead.error) return <StateBlock variant="error" copy={peerRead.error.message} />;
+  if (!peerRead.data) {
     return <StateBlock variant="loading" copy="Reading this filer's peer set." />;
   }
 
@@ -76,7 +77,7 @@ export function PeersView() {
         <div className="qual-masthead-left">
           {/* The FILER's own SIC, from its own profile — not the sector selector's. */}
           <span className="qual-crumb">
-            {identity.data.sector?.label ?? identity.data.sector?.sic ?? "No SIC on file"}
+            {identity.data?.sector?.label ?? identity.data?.sector?.sic ?? "No SIC on file"}
           </span>
           <span className="qual-sep">›</span>
           <span className="ia-name">{T}</span>
@@ -84,7 +85,7 @@ export function PeersView() {
         </div>
         <div className="qual-masthead-right">
           <span className="hub-crumb-pill">
-            {identity.data.contextPill}
+            {identity.data?.contextPill ?? ""}
           </span>
           {/*
             The period this view actually queried, from its own constants -- not a claim about

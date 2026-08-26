@@ -9,7 +9,8 @@ import { useState } from "react";
 import { ChartCard, Disclosure, Pager, StateBlock, StatTile, StatTileRow, STANDARD_DISCLOSURES } from "@ds";
 import { INST_HEADS, edgarLink, INST_GLOSSARY, type Calc } from "../../data/hub-catalog";
 import { api } from "../../data/api";
-import { useApi } from "../../lib/useApi";
+import { useApi, useInView } from "../../lib/useApi";
+import { LazySection } from "../../ui/LazySection";
 import { compact, humanDate } from "../../lib/format";
 import { paginate } from "../../lib/paginate";
 import { CompositionStrip } from "@ds";
@@ -122,14 +123,27 @@ export function InstitutionalView() {
    * vocabularies: a 13F QUARTER-END for point-in-time reads, a LOOKBACK COUNT for the series ones.
    * They are not interchangeable — see `data/api.ts`.
    */
+  // §01 is eager: it is above the fold, so deferring it would only add a flash. Everything below
+  // waits until the reader is approaching it.
   const snapshotRead = useApi(() => api.instRegisterSnapshot(T), [T]);
-  const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T]);
-  const flowsRead = useApi(() => api.instFlows(T), [T]);
-  const behaviourRead = useApi(() => api.instBehaviour(T), [T]);
-  const stewardRead = useApi(() => api.instStewardship(T), [T]);
-  const limitsRead = useApi(() => api.instLimits(T), [T]);
   // Its own read: the crumb needs the filer's name and SIC, and the source links need its CIK.
   const basics = useApi(() => api.companyBasics(T), [T]);
+
+  // One sentinel per deferred section. `useInView` latches, so a section fetches once and keeps
+  // its data when the reader scrolls away and back.
+  const [s2, s2Seen] = useInView();
+  const [s3, s3Seen] = useInView();
+  const [s4, s4Seen] = useInView();
+  const [s5, s5Seen] = useInView();
+  const [s6, s6Seen] = useInView();
+
+  const seriesRead = useApi(() => api.instRegisterSeries(T, INST_QUARTERS), [T], { enabled: s2Seen });
+  // §03's data also backs the zoom overlay, whose pareto/treemap/upset/matrix views are §03
+  // charts — so it travels with §03, and the overlay guards on it having landed.
+  const flowsRead = useApi(() => api.instFlows(T), [T], { enabled: s3Seen });
+  const stewardRead = useApi(() => api.instStewardship(T), [T], { enabled: s4Seen });
+  const behaviourRead = useApi(() => api.instBehaviour(T), [T], { enabled: s5Seen });
+  const limitsRead = useApi(() => api.instLimits(T), [T], { enabled: s6Seen });
 
   const [openCalc, setOpenCalc] = useState<string | null>(null);
   const [formsOpen, setFormsOpen] = useState(false);
@@ -155,32 +169,21 @@ export function InstitutionalView() {
   const [ganttZoom, setGanttZoom] = useState(false);
   const [holdersOpen, setHoldersOpen] = useState(false);
 
-  // Gate after every hook. See the note in HubOverview: per-section paint is a Phase A decision,
-  // where the latency is real enough to measure.
-  // `basics` joins the gate because the CIK it carries builds eight EDGAR source links. Rendering
-  // before it lands would paint links to CIK 0000000000 for a beat — briefly wrong is still wrong,
-  // and a reader who clicks in that beat lands nowhere.
-  const reads = [snapshotRead, seriesRead, flowsRead, behaviourRead, stewardRead, limitsRead, basics];
-  const failed = reads.find((r) => r.error);
-  if (failed) return <StateBlock variant="error" copy={failed.error!.message} />;
-  if (!snapshotRead.data || !seriesRead.data || !flowsRead.data || !behaviourRead.data || !stewardRead.data || !limitsRead.data || !basics.data) {
+  // Gate after every hook — but only on §01 and `basics` now. Every other section paints when its
+  // own read lands (see LazySection), so one slow endpoint no longer holds up the page and one
+  // dead endpoint no longer blanks it. Same reasoning SectorRail already applies to its two reads.
+  //
+  // `basics` stays in the gate because the CIK it carries builds eight EDGAR source links.
+  // Rendering before it lands would paint links to CIK 0000000000 for a beat — briefly wrong is
+  // still wrong, and a reader who clicks in that beat lands nowhere.
+  if (snapshotRead.error) return <StateBlock variant="error" copy={snapshotRead.error.message} />;
+  if (basics.error) return <StateBlock variant="error" copy={basics.error.message} />;
+  if (!snapshotRead.data || !basics.data) {
     return <StateBlock variant="loading" copy="Reading this issuer's 13F register." />;
   }
 
   const f = snapshotRead.data.freshness;
   const snap = snapshotRead.data.snapshot;
-  // §02's drawers travel with §02's data, not §01's — their inputs are the per-quarter register
-  // reads that section makes.
-  const ext = seriesRead.data.extras;
-  const reg = seriesRead.data.register;
-  // The register is unbounded — a widely-held issuer has well over a thousand 13F filers, and
-  // the ranked table rendered every one. Display-only: the tiles, Lorenz curve and concentration
-  // figures above still describe all `reg.holders`.
-  const held = paginate(reg.holders, holdPage);
-  const flows = flowsRead.data.flows;
-  const stew = stewardRead.data.steward;
-  const beh = behaviourRead.data.behavior;
-  const lim = limitsRead.data.limits;
 
   return (
     <div className="hub">
@@ -374,6 +377,16 @@ export function InstitutionalView() {
 
       <section className="hub-sec">
         <InstHead id="i2" />
+        <LazySection innerRef={s2} read={seriesRead} minHeight={960} pendingCopy="Reading the register over time.">
+          {(d) => {
+              const ext = d.extras;
+              const reg = d.register;
+              // The register is unbounded — a widely-held issuer has well over a thousand 13F
+              // filers. Display-only: the tiles, Lorenz curve and concentration figures still
+              // describe all `reg.holders`.
+              const held = paginate(reg.holders, holdPage);
+            return (
+              <>
 
         <div className="inst-split">
           <div className="p-card">
@@ -563,8 +576,21 @@ export function InstitutionalView() {
             </div>
           </div>
         )}
+              </>
+            );
+          }}
+        </LazySection>
 
-        {zoom && (
+        {/*
+          The overlay spans sections — register/mgrGrid are §02's charts, pareto/treemap/upset/
+          matrix are §03's — so it lives outside both LazySections and guards on the reads it
+          needs. Every button that opens it sits inside a section that has already loaded, so in
+          practice the guard is satisfied whenever it can be opened at all.
+        */}
+        {zoom && seriesRead.data && flowsRead.data && (() => {
+          const reg = seriesRead.data!.register;
+          const flows = flowsRead.data!.flows;
+          return (
           <div className="hist-zoom" role="dialog" aria-label="Expanded chart">
             <div className="hist-zoom-panel">
               <div className="hist-zoom-head">
@@ -651,11 +677,17 @@ export function InstitutionalView() {
               )}
             </div>
           </div>
-        )}
+          );
+        })()}
       </section>
 
       <section className="hub-sec">
         <InstHead id="i3" />
+        <LazySection innerRef={s3} read={flowsRead} minHeight={2400} pendingCopy="Reading position flows and concentration.">
+          {(d) => {
+              const flows = d.flows;
+            return (
+              <>
 
         <div className="p-card">
           <div className="hub-panel-head">
@@ -918,10 +950,19 @@ export function InstitutionalView() {
             ))}
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       <section className="hub-sec">
         <InstHead id="i4" />
+        <LazySection innerRef={s4} read={stewardRead} minHeight={890} pendingCopy="Reading ownership and stewardship.">
+          {(d) => {
+              const stew = d.steward;
+            return (
+              <>
 
         <div className="p-card">
           <div className="hub-panel-head">
@@ -1127,10 +1168,19 @@ export function InstitutionalView() {
             </div>
           </div>
         )}
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       <section className="hub-sec">
         <InstHead id="i5" />
+        <LazySection innerRef={s5} read={behaviourRead} minHeight={940} pendingCopy="Reading holder behaviour.">
+          {(d) => {
+              const beh = d.behavior;
+            return (
+              <>
 
         <div className="p-card">
           <div className="hub-panel-head">
@@ -1270,10 +1320,19 @@ export function InstitutionalView() {
             </div>
           </div>
         )}
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       <section className="hub-sec">
         <InstHead id="i6" />
+        <LazySection innerRef={s6} read={limitsRead} minHeight={720} pendingCopy="Reading this register's limits and supply.">
+          {(d) => {
+              const lim = d.limits;
+            return (
+              <>
 
         <div className="p-card">
           <div className="hub-panel-head">
@@ -1404,6 +1463,10 @@ export function InstitutionalView() {
             </div>
           </div>
         )}
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       <section className="hub-sec">
