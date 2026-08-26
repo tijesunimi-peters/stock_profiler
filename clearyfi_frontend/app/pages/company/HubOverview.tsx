@@ -1975,7 +1975,18 @@ export function HubRail() {
   const latestPerForm = windowRows.filter(
     (e, i) => windowRows.findIndex((x) => x.form === e.form) === i,
   );
-  const rows = filter === "all" ? latestPerForm : windowRows.filter((e) => e.form === filter);
+  /*
+   * A drilled-into form can run long — NVDA files 95 Form 4s in a year — and the rail is a
+   * narrow column, not a table. Cap it at the newest few.
+   *
+   * The cap is only honest because the caption prints BOTH numbers ("newest 10 of 95"). A bare
+   * ten rows would read as the complete set, which is the same failure as the "9 of 9 filings
+   * shown" this rail replaced. There is no "show all" here: the rail is a summary, and §08 is
+   * where filing activity is actually analysed.
+   */
+  const FORM_DRILL_LIMIT = 10;
+  const formMatches = filter === "all" ? [] : windowRows.filter((e) => e.form === filter);
+  const rows = filter === "all" ? latestPerForm : formMatches.slice(0, FORM_DRILL_LIMIT);
 
   return (
     <div className="rail-card">
@@ -1995,7 +2006,9 @@ export function HubRail() {
       <div className="hub-hint hub-mb-sm">
         {filter === "all"
           ? `most recent of each form · ${rows.length} type${rows.length === 1 ? "" : "s"}`
-          : `form ${filter} · ${rows.length} filing${rows.length === 1 ? "" : "s"}`}
+          : formMatches.length > rows.length
+            ? `form ${filter} · newest ${rows.length} of ${formMatches.length}`
+            : `form ${filter} · ${rows.length} filing${rows.length === 1 ? "" : "s"}`}
         {coversYear
           ? " · last 12 months"
           : oldestFetched
