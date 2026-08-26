@@ -1942,8 +1942,40 @@ export function HubRail() {
     );
   }
 
-  const forms = ["all", ...Array.from(new Set(d.rows.map((e) => e.form)))];
-  const rows = filter === "all" ? d.rows : d.rows.filter((e) => e.form === filter);
+  /*
+   * The rail answers "what has this filer filed lately, of each kind" — so the default is the
+   * MOST RECENT filing of each form type over the last twelve months, not the newest N rows.
+   * Picking a form drills into every filing of that form inside the same window.
+   *
+   * Two honesty points, both in the caption below rather than assumed away:
+   *
+   *  - A row with no filed date cannot be placed in a window at all, so it is excluded and
+   *    counted. Dropping it silently would shrink a form's history without saying so.
+   *  - The window is only real if the FETCHED slice reaches back a year. It usually does at
+   *    `FILINGS_RAIL_LIMIT`, but a very busy filer can file more than that in twelve months, and
+   *    then the rail is showing a cap, not a year. `coversYear` is what the caption keys off.
+   */
+  const YEAR_DAYS = 365;
+  const cutoff = new Date(Date.now() - YEAR_DAYS * 86400000).toISOString().slice(0, 10);
+  const undated = d.rows.filter((e) => !e.filed).length;
+  const windowRows = d.rows.filter((e) => e.filed && e.filed >= cutoff);
+  const oldestFetched = d.rows.reduce<string | null>(
+    (o, e) => (e.filed && (o === null || e.filed < o) ? e.filed : o),
+    null,
+  );
+  const coversYear = oldestFetched !== null && oldestFetched <= cutoff;
+  // How far the fetch actually reaches, so a shortfall is proportionate: eight days short reads
+  // very differently from four months short, and "does not reach 12 months" alone hides which.
+  const coveredDays = oldestFetched
+    ? Math.round((Date.now() - new Date(oldestFetched).getTime()) / 86400000)
+    : 0;
+
+  const forms = ["all", ...Array.from(new Set(windowRows.map((e) => e.form)))];
+  // Newest first from the endpoint, so the first row seen for a form IS its most recent.
+  const latestPerForm = windowRows.filter(
+    (e, i) => windowRows.findIndex((x) => x.form === e.form) === i,
+  );
+  const rows = filter === "all" ? latestPerForm : windowRows.filter((e) => e.form === filter);
 
   return (
     <div className="rail-card">
@@ -1954,9 +1986,25 @@ export function HubRail() {
         a complete history. Both the fetched count and the indexed count are shown, plus the
         window, because an index is EDGAR's rolling recent list rather than a filer's whole past.
       */}
+      {/*
+        The caption names the SLICE, never a total. It has to carry three separate facts: what
+        rule produced these rows, whether the twelve-month window is real or capped, and how many
+        rows exist behind it. The rail's old caption said "9 of 9 filings shown" for filers with
+        a thousand indexed — a cap presented as a complete history.
+      */}
       <div className="hub-hint hub-mb-sm">
-        newest {rows.length} shown · {d.indexed.toLocaleString()} indexed
+        {filter === "all"
+          ? `most recent of each form · ${rows.length} type${rows.length === 1 ? "" : "s"}`
+          : `form ${filter} · ${rows.length} filing${rows.length === 1 ? "" : "s"}`}
+        {coversYear
+          ? " · last 12 months"
+          : oldestFetched
+            ? ` · reaches ${coveredDays} days, not 12 months — the newest ${d.rows.length} filings stop at ${oldestFetched}`
+            : ""}
+        {" · "}
+        {d.indexed.toLocaleString()} indexed
         {d.window ? ` · ${d.window}` : ""}
+        {undated > 0 ? ` · ${undated} undated, excluded` : ""}
       </div>
       <div className="hub-tl-filters">
         {forms.map((f) => (

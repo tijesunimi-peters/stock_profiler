@@ -4830,7 +4830,13 @@ function toSectorMoving(res: SectorToneShiftResponse | null): SectorMoving {
  * company with 1,001, which is the exact failure mode a silent cap produces: a slice that reads
  * as a whole.
  */
-const FILINGS_RAIL_LIMIT = 60;
+// The rail shows the most recent filing of each form type over the last 12 months, so it has to
+// FETCH at least a year. 60 did not: NVDA's newest 60 span 141 days, AAPL's 312. A form last filed
+// outside the fetched slice would simply be missing, and the rail would read as "this filer has not
+// filed one" — a cap presented as a complete history, which is what this rail was rewritten to stop
+// doing. 200 is the endpoint's maximum (`_FILINGS_PAGE_MAX`) and covers ~470 days at NVDA's rate;
+// where even that falls short of a year the caption says so rather than implying coverage.
+const FILINGS_RAIL_LIMIT = 200;
 
 interface FilingsResponse {
   cik: number;
