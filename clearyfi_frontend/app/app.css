@@ -5701,6 +5701,11 @@
   border-bottom: 1px solid var(--rule);
 }
 
+/* PagedList wraps each item in an <li> carrying its own padding and bottom rule. The person
+   row already has both (grid, 8px 0, border-top), so flatten the wrapper rather than let the
+   two stack into doubled gaps and doubled separators. */
+.ia-people-paged .paged-list-items > li { padding: 0; border-bottom: 0; }
+
 .ia-person {
   display: flex;
   flex-direction: column;

@@ -15,7 +15,7 @@ import { useState } from "react";
 import { api } from "../../data/api";
 import { useApi } from "../../lib/useApi";
 import { paginate } from "../../lib/paginate";
-import { Pager, StateBlock } from "@ds";
+import { PagedList, Pager, StateBlock } from "@ds";
 import { Histogram } from "../../charts/bars";
 import { PeerStrip } from "../../charts/strips";
 import { DotCalendar } from "../../charts/misc";
@@ -224,18 +224,29 @@ export function InsiderView() {
             <span className="hub-panel-title">By person</span>
             <span className="hub-hint">net shares, all codes</span>
           </div>
-          {d.people.map((p) => (
-            <div className="ia-person-row" key={p.name}>
-              <span className="ia-person">
-                <span className="ia-person-name">{p.name}</span>
-                <span className="ia-person-sub">
-                  {p.role} · {p.n} · codes {p.codes}
+          {/*
+            PagedList, not Pager+slice like the ledger above: this is a LIST, not a table —
+            no column header declares what its three columns are, and what they mean is carried
+            by the panel hint. The row markup is unchanged; `.ia-people-paged` only flattens the
+            <li> PagedList wraps it in, so the row keeps its own grid, padding and top rule
+            rather than doubling them.
+          */}
+          <PagedList
+            className="ia-people-paged"
+            items={d.people}
+            renderItem={(p) => (
+              <div className="ia-person-row">
+                <span className="ia-person">
+                  <span className="ia-person-name">{p.name}</span>
+                  <span className="ia-person-sub">
+                    {p.role} · {p.n} · codes {p.codes}
+                  </span>
                 </span>
-              </span>
-              <span className="hub-cell-mono ta-r is-soft">{p.arrow}</span>
-              <span className="hub-cell-mono ta-r">{p.netLabel}</span>
-            </div>
-          ))}
+                <span className="hub-cell-mono ta-r is-soft">{p.arrow}</span>
+                <span className="hub-cell-mono ta-r">{p.netLabel}</span>
+              </div>
+            )}
+          />
           <div className="hub-note">{d.peopleNote}</div>
         </div>
 
