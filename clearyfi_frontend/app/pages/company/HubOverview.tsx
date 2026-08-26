@@ -16,7 +16,8 @@ import {
   HUB_SECTIONS, LABEL_TO_ID, unitFmt, HUB_CALCS, type HubCalc, type SnapshotTile,
 } from "../../data/hub-catalog";
 import { api } from "../../data/api";
-import { useApi } from "../../lib/useApi";
+import { useApi, useInView } from "../../lib/useApi";
+import { LazySection } from "../../ui/LazySection";
 import { SeriesChart, Sparkline } from "../../charts/series";
 import { useSelection } from "../../state";
 import { navigate } from "../../router";
@@ -183,11 +184,31 @@ export function HubOverview() {
    * `/metrics` and `/statements` both REQUIRE a year, and a `FiscalPeriod` carries none of its own.
    * Passing it now is what stops Phase A having to re-thread it through every call site.
    */
+  // `identity` is eager: §01 is above the fold and every other section reads `L` and
+  // `d.structure` from it, so deferring it would defer everything.
   const identity = useApi(() => api.companyIdentity(T), [T]);
-  const financials = useApi(() => api.companyFinancials(T, HUB_YEAR, HUB_PERIOD), [T]);
-  const footnotes = useApi(() => api.companyFootnotes(T, HUB_YEAR, HUB_PERIOD), [T]);
-  const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T]);
-  const governance = useApi(() => api.companyGovernance(T), [T]);
+
+  // One sentinel per deferred section; `useInView` latches, so a section fetches once.
+  const [s2, s2Seen] = useInView();
+  const [s3, s3Seen] = useInView();
+  const [s4, s4Seen] = useInView();
+  const [s5, s5Seen] = useInView();
+  const [s6, s6Seen] = useInView();
+  const [s7, s7Seen] = useInView();
+  const [s8, s8Seen] = useInView();
+
+  // Three reads serve one section each; two span several, so they load as soon as ANY of their
+  // sections is approached and every one of those sections waits on the same resource.
+  const financials = useApi(() => api.companyFinancials(T, HUB_YEAR, HUB_PERIOD), [T], { enabled: s2Seen });
+  const segments = useApi(() => api.companySegments(T, HUB_YEAR), [T], { enabled: s3Seen });
+  const governance = useApi(() => api.companyGovernance(T), [T], { enabled: s5Seen });
+  const footnotes = useApi(() => api.companyFootnotes(T, HUB_YEAR, HUB_PERIOD), [T], {
+    enabled: s2Seen || s4Seen || s7Seen,
+  });
+  // Eager, unlike the rest: the "What changed this filing" band sits ABOVE §01, so gating this
+  // behind §05's sentinel would leave the band empty until the reader scrolled to §05. It is not
+  // in the page gate either — the band guards itself and fills in, so a slow disclosure endpoint
+  // delays one band rather than the page.
   const disclosure = useApi(() => api.companyDisclosure(T), [T]);
   // Independent of `disclosure`'s own fetch, same reasoning as every other §08 sub-read: a dead
   // Track 2 endpoint must not take the rest of the section down with it.
@@ -209,30 +230,24 @@ export function HubOverview() {
   const toggleCalc = (id: string) => setCalc((c) => (c === id ? null : id));
 
   /*
-   * Gate on ALL SEVEN, after every hook. Once these are real endpoints the sensible thing is to
-   * paint each section as its own read lands; today they resolve in the same tick, so a
-   * per-section skeleton would be theatre. Progressive paint belongs in Phase A, where the
-   * latency is real and the choice can be measured.
+   * Gate on `identity` alone, after every hook.
+   *
+   * This gated on all seven, and the note here argued a per-section skeleton would be "theatre"
+   * because the reads resolved in the same tick. That premise no longer holds: the reads above
+   * are gated on `useInView`, so a section does not even START fetching until the reader
+   * approaches it. The skeletons mark real waits now, and one dead endpoint takes down one
+   * section rather than the page.
+   *
+   * `identity` stays because §01 is above the fold and every other section reads from it.
    */
-  const reads = [identity, financials, footnotes, segments, governance, disclosure];
-  const failed = reads.find((r) => r.error);
-  if (failed) return <StateBlock variant="error" copy={failed.error!.message} />;
-  if (!identity.data || !financials.data || !footnotes.data || !segments.data || !governance.data || !disclosure.data) {
+  if (identity.error) return <StateBlock variant="error" copy={identity.error.message} />;
+  if (!identity.data) {
     return <StateBlock variant="loading" copy="Reading this filer's facts." />;
   }
 
+  // Only what §01 and the page chrome need. Everything else is rebound inside the section that
+  // uses it, from that section's own reads — see the LazySection wrappers below.
   const L = identity.data.links;
-  const snapshot = financials.data.snapshot;
-  const insider = governance.data.insider;
-  const officers = governance.data.officers;
-  const policies = governance.data.policies;
-  const plans = governance.data.plans;
-  const activity = disclosure.data.activity;
-  const cyber = disclosure.data.cyber;
-  const changes = disclosure.data.changes;
-  const seg = segments.data.seg;
-  const blockholders = footnotes.data.blockholders;
-  const shareClasses = footnotes.data.shareClasses;
 
   /*
    * The section payloads, re-assembled under the shape the JSX below already reads.
@@ -243,21 +258,10 @@ export function HubOverview() {
    * before/after DOM diff meaningful — a refactor that rewrites the markup cannot prove it
    * changed nothing.
    */
-  const d = {
-    changes: disclosure.data.changes,
-    structure: identity.data.structure,
-    years: financials.data.years,
-    statements: financials.data.statements,
-    capital: footnotes.data.capital,
-    pvp: governance.data.pvp,
-    audit: disclosure.data.audit,
-    activity: disclosure.data.activity,
-    cyber: disclosure.data.cyber,
-    obligations: footnotes.data.obligations,
-    footnotes: footnotes.data.footnotes,
-    footnotePeriod: footnotes.data.footnotePeriod,
-    covenant: footnotes.data.covenant,
-  };
+  // §01 is eager and reads `d.structure`, so that one key stays here. Every other key moved into
+  // the section that uses it, rebound from that section's own reads — a section cannot compose a
+  // `d` out of an endpoint it is not waiting on.
+  const d = { structure: identity.data.structure };
 
   return (
     <div className="hub">
@@ -288,6 +292,9 @@ export function HubOverview() {
         repeating the page: those answer the same questions INCLUDING their negatives, and this
         shows only the positives.
       */}
+      {disclosure.data && (() => {
+      const changes = disclosure.data!.changes;
+      return (
       <div className="hub-changed">
         <div className="hub-changed-head">
           <span className="hub-changed-title">What changed this filing</span>
@@ -320,6 +327,8 @@ export function HubOverview() {
           </div>
         )}
       </div>
+      );
+      })()}
 
       {/* ============================================================ 01 */}
       <section className="hub-sec">
@@ -404,6 +413,18 @@ export function HubOverview() {
       {/* ============================================================ 02 */}
       <section className="hub-sec">
         <HubHead id="s2" n="02" title="Financial detail" src="statements & footnotes · XBRL facts as filed" />
+        <LazySection innerRef={s2} read={financials} also={[footnotes]} minHeight={2190} pendingCopy="Reading financial detail.">
+          {() => {
+              const snapshot = financials.data!.snapshot;
+              const d = {
+                years: financials.data!.years,
+                statements: financials.data!.statements,
+                footnotes: footnotes.data!.footnotes,
+                footnotePeriod: footnotes.data!.footnotePeriod,
+                covenant: footnotes.data!.covenant,
+              };
+            return (
+              <>
         <div className="p-card">
           <div className="hub-panel-head is-split">
             <span className="hub-panel-title">Condensed statements</span>
@@ -704,6 +725,10 @@ export function HubOverview() {
             </div>
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 03 */}
@@ -726,6 +751,11 @@ export function HubOverview() {
           title="Segments & geography"
           src="ASC 280 · DERA financial statement data sets"
         />
+        <LazySection innerRef={s3} read={segments} minHeight={535} pendingCopy="Reading segments and geography.">
+          {() => {
+              const seg = segments.data!.seg;
+            return (
+              <>
         <div className="p-card">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Reportable segments</span>
@@ -821,11 +851,24 @@ export function HubOverview() {
             )}
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 04 */}
       <section className="hub-sec">
         <HubHead id="s4" n="04" title="Capital & ownership" src="cash flow statement · 10-Q Item 5 · DEF 14A · 13D/G" />
+        <LazySection innerRef={s4} read={footnotes} minHeight={920} pendingCopy="Reading capital and ownership.">
+          {() => {
+              const blockholders = footnotes.data!.blockholders;
+              const shareClasses = footnotes.data!.shareClasses;
+              const d = {
+                capital: footnotes.data!.capital,
+              };
+            return (
+              <>
         <div className="hub-grid">
           <div className="p-card">
             <div className="hub-panel-head">
@@ -973,11 +1016,28 @@ export function HubOverview() {
             <div className="hub-note">{blockholders.note}</div>
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 05 */}
       <section className="hub-sec">
         <HubHead id="s5" n="05" title="Governance & people" src="DEF 14A · 8-K Item 5.02 · Forms 3/4/5" />
+        <LazySection innerRef={s5} read={governance} also={[disclosure]} minHeight={1815} pendingCopy="Reading governance and people.">
+          {() => {
+              const insider = governance.data!.insider;
+              const officers = governance.data!.officers;
+              const policies = governance.data!.policies;
+              const plans = governance.data!.plans;
+              const activity = disclosure.data!.activity;
+              const changes = disclosure.data!.changes;
+              const d = {
+                pvp: governance.data!.pvp,
+              };
+            return (
+              <>
         <div className="hub-grid">
           {/*
             Two half-answers, interleaved by date and never joined. Form 3 gives the person and
@@ -1189,11 +1249,22 @@ export function HubOverview() {
             )}
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 06 */}
       <section className="hub-sec">
         <HubHead id="s6" n="06" title="Accounting quality & audit" src="10-K XBRL cover page · 8-K 4.01 / 4.02 · Form 12b-25" />
+        <LazySection innerRef={s6} read={disclosure} minHeight={775} pendingCopy="Reading accounting quality and audit.">
+          {() => {
+              const d = {
+                audit: disclosure.data!.audit,
+              };
+            return (
+              <>
         <div className="hub-grid">
           <div className="p-card">
             <div className="hub-panel-head">
@@ -1289,11 +1360,22 @@ export function HubOverview() {
             <FootnoteEmpty reason={d.audit.estimatesReason} />
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 07 */}
       <section className="hub-sec">
         <HubHead id="s7" n="07" title="Obligations & contingencies" src="10-K Item 3 · commitments & contingencies footnote" />
+        <LazySection innerRef={s7} read={footnotes} minHeight={535} pendingCopy="Reading obligations and contingencies.">
+          {() => {
+              const d = {
+                obligations: footnotes.data!.obligations,
+              };
+            return (
+              <>
         <div className="p-card">
           <div className="hub-panel-head">
             <span className="hub-panel-title">Legal proceedings</span>
@@ -1383,6 +1465,10 @@ export function HubOverview() {
             </div>
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {/* ============================================================ 08 */}
@@ -1405,6 +1491,15 @@ export function HubOverview() {
           title="Filing activity & disclosure events"
           src="/submissions/ filing index · 10-K Item 1C · 8-K item codes"
         />
+        <LazySection innerRef={s8} read={disclosure} minHeight={1600} pendingCopy="Reading filing activity.">
+          {() => {
+              const activity = disclosure.data!.activity;
+              const cyber = disclosure.data!.cyber;
+              const d = {
+                audit: disclosure.data!.audit,
+              };
+            return (
+              <>
         <div className="hub-grid">
           <div className="p-card">
             <div className="hub-panel-head is-split">
@@ -1567,6 +1662,10 @@ export function HubOverview() {
             </div>
           </div>
         </div>
+              </>
+            );
+          }}
+        </LazySection>
       </section>
 
       {tray.length > 0 && trayOpen && (

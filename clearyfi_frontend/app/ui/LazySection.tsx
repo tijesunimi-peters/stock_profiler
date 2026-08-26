@@ -10,6 +10,13 @@ export interface LazySectionProps<T> {
   innerRef: (el: Element | null) => void;
   read: Resource<T>;
   /**
+   * Further reads this section needs before it can render. The typed `read` above is the one
+   * handed to `children`; these are gated on but rebound by the caller, which is how a section
+   * that draws on two endpoints (HubOverview's §02 needs financials AND footnotes) waits for
+   * both without the component having to be generic over a tuple.
+   */
+  also?: Resource<unknown>[];
+  /**
    * Space to hold while the section is pending, in px.
    *
    * **Load-bearing.** A zero-height placeholder lets the page grow as sections resolve, which
@@ -37,16 +44,20 @@ export interface LazySectionProps<T> {
 export function LazySection<T>({
   innerRef,
   read,
+  also = [],
   minHeight,
   pendingCopy = "Reading this section.",
   children,
 }: LazySectionProps<T>) {
+  const all = [read, ...also];
+  const failed = all.find((r) => r.error);
+  const ready = read.data !== null && also.every((r) => r.data !== null);
   return (
-    <div ref={innerRef} style={read.data ? undefined : { minHeight }}>
-      {read.error ? (
-        <StateBlock variant="error" copy={read.error.message} />
-      ) : read.data ? (
-        children(read.data)
+    <div ref={innerRef} style={ready ? undefined : { minHeight }}>
+      {failed ? (
+        <StateBlock variant="error" copy={failed.error!.message} />
+      ) : ready ? (
+        children(read.data as T)
       ) : (
         <StateBlock variant="loading" copy={pendingCopy} />
       )}
