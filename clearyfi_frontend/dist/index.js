@@ -36,6 +36,9 @@ export { StatTile } from "./components/StatTile.js";
 export { StatTileRow } from "./components/StatTileRow.js";
 // data display
 export { StatementTable } from "./components/StatementTable.js";
+export { PagedTable } from "./components/PagedTable.js";
+export { PagedList } from "./components/PagedList.js";
+export { Pager } from "./components/Pager.js";
 export { ChartCard } from "./components/ChartCard.js";
 export { StateBlock } from "./components/StateBlock.js";
 // sector analytics

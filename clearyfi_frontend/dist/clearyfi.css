@@ -799,6 +799,51 @@
 }
 .stmt-wrap { overflow-x: auto; }
 
+/* ---------- paged table + list (STYLE_GUIDE §6) ----------
+ *
+ * Ported from the static UI's `ClearyFi.paginatedTable` (static/app.js) and its pager styling
+ * (static/app.css), so a paged table in a design matches the shipped one. Pagination is
+ * display-only: the component holds every row and slices for the DOM, which is what lets the
+ * charts and tiles above a table keep summarising ALL of it.
+ *
+ * No sticky `th` here on purpose. The product's statement tables stick their header because
+ * they run full-length under a scrolling page; a paged table fits on screen, and `.stmt-wrap`
+ * (overflow-x) would make a sticky header pin to the wrapper rather than the viewport. */
+
+.paged-table,
+.paged-list { display: block; }
+
+.paged-list-items { list-style: none; margin: 0; padding: 0; }
+.paged-list-items > li { padding: 9px 2px; border-bottom: 1px solid var(--border-tint-rule); }
+.paged-list-items > li:last-child { border-bottom: 0; }
+
+/* Empty state. The drained treatment is spelled out rather than reusing `.drained`, which has
+   no bare rule -- only compound ones like `.stmt-amt.drained`. */
+.paged-list-empty { padding: 14px 2px; }
+.paged-empty-text { font-family: var(--font-mono); font-size: 11px; color: var(--mono-muted); }
+
+.table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 10px 2px 0;
+}
+.pager-btn {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  padding: 5px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.pager-btn:hover:not(:disabled) { background: var(--bg-badge); }
+.pager-btn:disabled { opacity: 0.4; cursor: default; }
+.pager-label { font-family: var(--font-mono); font-size: 10.5px; color: var(--mono-muted); }
+
 /* ============================================================ sector score tile */
 
 .pa-tile {
