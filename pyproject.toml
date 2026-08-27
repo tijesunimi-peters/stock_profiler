@@ -50,8 +50,18 @@ jupyter = [
 # Wave A implementation spike (2026-08-23) verified against three real filings -- its
 # `Edgar10QParser` has no dedicated 10-K support, and the span-extraction workaround in
 # filing_sections.py depends on that specific behavior, not assumed to hold across versions.
+#
+# `fastembed` (Wave B, added 2026-08-26) computes local sentence embeddings for the no-LLM half
+# of Stage 5 classification (risk themes, CAM topics, litigation categories -- see
+# docs/ROADMAP_TRACK2.md §8.1). Picked over `sentence-transformers`, deliberately: that library
+# pulls in `torch` (500MB-2GB+ CPU wheel); `fastembed` runs on `onnxruntime` alone with small
+# quantized models, closer to this project's cost posture even though a real ML dependency is now
+# accepted in principle. Same extra as `sec-parser` above (both ingest-only, both narrative-
+# pipeline concerns) rather than a third extra. Model name/version are pinned in code, not just
+# here -- see `normalize/section_embeddings.py`'s EMBEDDING_MODEL_NAME.
 narrative = [
     "sec-parser==0.58.1",
+    "fastembed==0.8.0",
 ]
 
 [build-system]

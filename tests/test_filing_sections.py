@@ -121,3 +121,40 @@ def test_repo_roundtrip_and_schema_version_healing(tmp_path):
     repo._conn.commit()
     assert repo.get_sections(1, "acc-1") == {}
     repo.close()
+
+
+def test_split_sentences_keeps_punctuation():
+    from secfin.sec.filing_sections import split_sentences
+
+    text = "We face risk one. We also face risk two! Do we face risk three?"
+    assert split_sentences(text) == [
+        "We face risk one.",
+        "We also face risk two!",
+        "Do we face risk three?",
+    ]
+
+
+def test_split_sentences_keeps_a_trailing_fragment_with_no_terminal_punctuation():
+    from secfin.sec.filing_sections import split_sentences
+
+    assert split_sentences("One sentence. A trailing fragment with no period") == [
+        "One sentence.",
+        "A trailing fragment with no period",
+    ]
+
+
+def test_split_sentences_empty_text_returns_empty_list():
+    from secfin.sec.filing_sections import split_sentences
+
+    assert split_sentences("") == []
+    assert split_sentences("   ") == []
+
+
+def test_split_sentences_matches_sentence_count_from_segment_filing():
+    """The two must never define "a sentence" differently -- `_SENTENCE_END` is the one boundary
+    both `sentence_count` and `split_sentences` are derived from.
+    """
+    from secfin.sec.filing_sections import split_sentences
+
+    text = " ".join(["The Company faces various risks that could materially affect results."] * 5)
+    assert len(split_sentences(text)) == 5

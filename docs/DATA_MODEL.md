@@ -1848,12 +1848,43 @@ reclassification noise — is why no threshold is set here: MD&A boilerplate reo
 produce a spuriously low score the same way. `GET /v1/sectors/{group}/tone-shift`'s caveats state
 this on every response; a low score is a raw signal, not a confirmed "meaningful rewrite".
 
+### `section_sentence_embeddings` (Track 2 Wave B, embedding infra) — vectors only, no taxonomy yet
+
+`normalize/section_embeddings.py` computes one embedding per sentence of an already-segmented
+section (`sec.filing_sections.split_sentences(cleaned_text)` — the SAME sentence boundary
+`sentence_count` above is derived from, not a second definition), via `fastembed`
+(`BAAI/bge-small-en-v1.5`, 384-dim, ONNX Runtime — no `torch`, an operator decision, 2026-08-26,
+over reusing `section_similarity`'s hand-rolled word-count-vector cosine; see
+`docs/ROADMAP_TRACK2.md` §8.1 for why). Unlike `section_similarity`'s hand-rolled cosine, `numpy`
+backs the vector math here — accepted once a real ML dependency (`fastembed`) was already in play,
+not before.
+
+```sql
+CREATE TABLE section_sentence_embeddings (
+  cik INTEGER, accession TEXT, item_code TEXT, sentence_index INTEGER,
+  embedding BLOB,              -- array('f', vector).tobytes() -- stdlib, not numpy; storage stays
+                                -- dependency-free even though computing a vector isn't
+  schema_version INTEGER,      -- EMBEDDINGS_SCHEMA_VERSION, same cache-heals-on-read convention
+  PRIMARY KEY (cik, accession, item_code, sentence_index)
+);
+```
+
+**Vectors only — no sentence text.** A reader needing the sentence itself re-derives it from
+`filing_sections.cleaned_text` via `split_sentences` at the same `sentence_index`, rather than
+storing it twice and risking drift between the two.
+
+**No classifier, no taxonomy, no anchor corpus yet.** This table and
+`normalize/section_embeddings.py`'s `embed_sentences`/`cosine_similarity`/`best_match` are the
+embedding PRIMITIVE only (`ROADMAP_TRACK2.md` §8.4 step 1) — nothing writes to this table yet
+(no ingest wiring), and no theme/CAM-topic anchor vectors exist to score sentences against. Both
+are later steps in the same §8.4 build order.
+
 ### Schema versioning, same convention as `filing_cover_facts`
 
-`SECTIONS_SCHEMA_VERSION` / `METRICS_SCHEMA_VERSION` / `SIMILARITY_SCHEMA_VERSION` each live in
-their owning module. A row written under an older version reads as a cache MISS on the next
-`get_*` call, not an answer — the caller re-parses/re-scores and heals it, exactly
-`SQLiteFilingCoverRepository.get_cover`'s `COVER_SCHEMA_VERSION` check.
+`SECTIONS_SCHEMA_VERSION` / `METRICS_SCHEMA_VERSION` / `SIMILARITY_SCHEMA_VERSION` /
+`EMBEDDINGS_SCHEMA_VERSION` each live in their owning module. A row written under an older version
+reads as a cache MISS on the next `get_*` call, not an answer — the caller re-parses/re-scores and
+heals it, exactly `SQLiteFilingCoverRepository.get_cover`'s `COVER_SCHEMA_VERSION` check.
 
 **Not a canonical concept.** No `mapping.py` change — this is derived text analytics, not a
 US-GAAP financial concept.

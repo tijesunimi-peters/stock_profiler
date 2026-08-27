@@ -508,9 +508,24 @@ it contains a **repeating block** — typically 2-4 named matters, each with its
 
 ### 8.4 Build order
 
-1. Embedding infra (§8.1): `fastembed` extra, `section_sentence_embeddings` table + repository,
-   sentence-splitting reuse, cosine classifier module, anchor-corpus authoring + checked-in
-   artifact.
+1. Embedding infra (§8.1). **✅ DONE 2026-08-26, primitives only** — `fastembed==0.8.0` added to
+   the `narrative` extra; `sec.filing_sections.split_sentences` (reuses `_SENTENCE_END`, keeps
+   punctuation for a readable excerpt later); `normalize/section_embeddings.py`
+   (`embed_sentences`/`cosine_similarity`/`best_match`, both `fastembed` and `numpy` imported
+   lazily so the module stays importable without the `narrative` extra); `section_sentence_embeddings`
+   table + `SectionEmbeddingRepository`/`SQLiteSectionEmbeddingRepository` (vectors keyed
+   `(cik, accession, item_code, sentence_index)`, `array('f', ...)` BLOB packing — stdlib, not
+   numpy, so storage stays dependency-free even though computing a vector isn't). Verified against
+   the real model in the built `narrative` Docker image (384-dim vectors, self-cosine ≈ 1.0), not
+   just mocked. Full test coverage skips cleanly without the extra installed
+   (`tests/test_section_embeddings.py`, `tests/test_section_embedding_repository.py`), and passes
+   for real with it (24/24, including live model inference).
+
+   **Not done yet, still part of step 1**: the anchor-phrase corpus (the ~9 risk themes need short
+   anchor descriptions, embedded once and checked in as a versioned artifact per §8.1) and
+   NO ingest wiring exists — nothing writes to `section_sentence_embeddings` yet, since
+   `section_backfill.py` doesn't call `embed_sentences` anywhere. Both are prerequisites for step
+   4 below, not this step's embedding-primitive scope.
 2. `BUSINESS` item_code (straightforward) → unlocks `HC_CLIMATE`.
 3. `CAM` segmentation + `filing_cam_matters` table (the real new mechanism) → unlocks `CAMS`, and
    later `GOING_CONCERN`'s graduation to a stronger source.

@@ -110,16 +110,32 @@ deliberate labeling asymmetry (10-K points get a fiscal year; 10-Q points get a 
 date, never a guessed fiscal quarter) that a future implementer should not "fix" without first
 reading why.
 
-**Wave B mechanism design, designed 2026-08-26, not built** — which mechanism backs each
-still-fixture Qualitative-page field. Key calls: classification (risk themes, CAM topics,
-litigation categories) uses **real local sentence embeddings via `fastembed`** — the project's
-first ML dependency, an operator decision overriding the cheaper hand-rolled-cosine default — not
-an LLM; several fields the roadmap previously implied needed an LLM (CAM topic naming,
-going-concern "nature" phrasing) don't. Two new Stage-2 segmentation targets are required and
-in scope for this wave: `BUSINESS` (Item 1, straightforward) and `CAM` (the auditor's report's
-Critical Audit Matters block — a repeating structure needing its own `filing_cam_matters` table,
-not a `filing_sections` row). Full mechanism table, the two new item_codes, and build order in
+**Wave B mechanism design, designed 2026-08-26** — which mechanism backs each still-fixture
+Qualitative-page field. Key calls: classification (risk themes, CAM topics, litigation
+categories) uses **real local sentence embeddings via `fastembed`** — the project's first ML
+dependency, an operator decision overriding the cheaper hand-rolled-cosine default — not an LLM;
+several fields the roadmap previously implied needed an LLM (CAM topic naming, going-concern
+"nature" phrasing) don't. Two new Stage-2 segmentation targets are required and in scope for this
+wave: `BUSINESS` (Item 1, straightforward) and `CAM` (the auditor's report's Critical Audit
+Matters block — a repeating structure needing its own `filing_cam_matters` table, not a
+`filing_sections` row). Full mechanism table, the two new item_codes, and build order in
 `ROADMAP_TRACK2.md` §8.
+
+- [x] **§8.4 step 1 — embedding infra (primitives only).** ✅ DONE 2026-08-26.
+  `fastembed==0.8.0` in the `narrative` extra; `section_embeddings.py`
+  (`embed_sentences`/`cosine_similarity`/`best_match`, `BAAI/bge-small-en-v1.5`, 384-dim, both
+  `fastembed` and `numpy` lazily imported); `split_sentences` added to `filing_sections.py`
+  (reused, not redefined); `section_sentence_embeddings` table + repository (`array('f', ...)`
+  BLOB packing, stdlib not numpy). Verified against the real model in the built `narrative`
+  Docker image, not mocked. **Not done**: the anchor-phrase corpus (still needs authoring) and
+  ingest wiring (nothing writes to the table yet) — both are step 1's remaining half, prerequisite
+  to step 4's classifier wiring.
+- [ ] **§8.4 step 2** — `BUSINESS` item_code.
+- [ ] **§8.4 step 3** — `CAM` segmentation + `filing_cam_matters` table.
+- [ ] **§8.4 step 4** — wire the classifier against both taxonomies (needs the anchor corpus from
+  step 1 and, for CAMs, step 3).
+- [ ] **§8.4 step 5** — the cheap Tier 1 regex fields; no dependency on the above, shippable any
+  time.
 
 ### Other roadmaps
 

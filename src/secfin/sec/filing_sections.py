@@ -101,6 +101,29 @@ _WORD = re.compile(r"[A-Za-z']+")
 _SENTENCE_END = re.compile(r"[.!?]+(?:\s|$)")
 
 
+def split_sentences(text: str) -> list[str]:
+    """Split cleaned section text into sentences, on the SAME boundary regex `sentence_count` is
+    already derived from -- one definition of "a sentence" for this text, not two. Reused by
+    `normalize/section_embeddings.py` (Wave B) so embedding granularity matches exactly what
+    Wave A already counts.
+
+    Punctuation is kept (unlike a bare `_SENTENCE_END.split`), because a downstream consumer needs
+    a readable quote, not a token -- Wave B's extractive excerpt selection (`THEME_LANG`) is meant
+    to hand back exactly the sentence a reader would see in the filing.
+    """
+    sentences: list[str] = []
+    start = 0
+    for m in _SENTENCE_END.finditer(text):
+        piece = text[start : m.end()].strip()
+        if piece:
+            sentences.append(piece)
+        start = m.end()
+    tail = text[start:].strip()
+    if tail:
+        sentences.append(tail)
+    return sentences
+
+
 def _base_form(form: str) -> str | None:
     if form.startswith("10-K"):
         return "10-K"
