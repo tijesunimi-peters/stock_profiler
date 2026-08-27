@@ -97,8 +97,29 @@ New as of 2026-08-22. Pipeline design + UI-requirements inventory for the fields
 |---|---|
 | **0** | ✅ DONE 2026-08-23 — wired 5 already-real fields (cyber flags, auditor identity/tenure, deficient filings, headcount, ICFR attestation flag) into `sectorQualitative` — zero new pipeline |
 | **A** | ✅ DONE 2026-08-23 (Stages 1-4 only, theme classification deferred) — document fetch, `sec-parser` segmentation, AFINN tone + Fog/Flesch-Kincaid, YoY similarity, `tone_shift_alerts` leaderboard. See `ROADMAP_TRACK2.md` §4 for the two operator-confirmed deviations (library over stdlib, AFINN over Loughran-McDonald). **Not yet scheduled — OPS-14.** |
-| **B** | Targeted LLM extraction (CAMs, litigation matters, MD&A drivers, outlook, cyber framework name) — gated on an LLM budget decision |
+| **B** | Classification (risk themes, CAMs, going-concern, litigation categories, human-capital/climate) via local embeddings + two new item_codes, plus a smaller bounded-LLM subset (litigation counts, MD&A drivers, outlook) gated on an LLM budget decision. Full mechanism-per-field design in `ROADMAP_TRACK2.md` §8 — **not built yet.** |
 | **C** | Sector-level narrative rollups (DuckDB batch) — gated on Wave A running across enough filers |
+
+**Wave A follow-up, designed 2026-08-24, not built** — a multi-year (5-year) Risk Factors/Legal
+Proceedings similarity trend, not just the latest point Wave A shipped. New route
+(`GET /companies/{symbol}/section-similarity/history?item=&form=`), an `--symbol`/`--cik`
+targeting flag for `section_backfill.py` (mirrors `filing_index_backfill.py`'s existing pattern —
+today's backfill has no way to deepen one company's history without a whole-market run), and a
+`TrendDrawer`-style chart on the Company Hub. Full design in `ROADMAP_TRACK2.md` §7, including a
+deliberate labeling asymmetry (10-K points get a fiscal year; 10-Q points get a plain calendar
+date, never a guessed fiscal quarter) that a future implementer should not "fix" without first
+reading why.
+
+**Wave B mechanism design, designed 2026-08-26, not built** — which mechanism backs each
+still-fixture Qualitative-page field. Key calls: classification (risk themes, CAM topics,
+litigation categories) uses **real local sentence embeddings via `fastembed`** — the project's
+first ML dependency, an operator decision overriding the cheaper hand-rolled-cosine default — not
+an LLM; several fields the roadmap previously implied needed an LLM (CAM topic naming,
+going-concern "nature" phrasing) don't. Two new Stage-2 segmentation targets are required and
+in scope for this wave: `BUSINESS` (Item 1, straightforward) and `CAM` (the auditor's report's
+Critical Audit Matters block — a repeating structure needing its own `filing_cam_matters` table,
+not a `filing_sections` row). Full mechanism table, the two new item_codes, and build order in
+`ROADMAP_TRACK2.md` §8.
 
 ### Other roadmaps
 
