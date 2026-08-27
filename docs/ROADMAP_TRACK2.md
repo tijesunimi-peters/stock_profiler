@@ -542,8 +542,23 @@ it contains a **repeating block** — typically 2-4 named matters, each with its
    suite only asserts what a single-heading synthetic document can reliably prove, plus a
    dependency-free regex-boundary test. **Still open**: `HC_CLIMATE`'s presence/sub-row mechanism
    (§8.2, §8.3) isn't wired up — this step only adds the segmentation target it depends on.
-3. `CAM` segmentation + `filing_cam_matters` table (the real new mechanism) → unlocks `CAMS`, and
-   later `GOING_CONCERN`'s graduation to a stronger source.
+3. `CAM` segmentation + `filing_cam_matters` table. **✅ DONE 2026-08-27** — `sec/filing_cam.py`
+   (`segment_cam_matters`) + `storage/filing_cam_repository.py` / `sqlite_filing_cam_repository.py`
+   → unlocks `CAMS`, and later `GOING_CONCERN`'s graduation to a stronger source. **This was the
+   real new mechanism, and the original design (each CAM's title as its own sub-span, mirroring
+   `filing_sections.py`'s Item-title mechanism) turned out wrong** — verified by running against
+   three real 10-Ks (Apple, Microsoft, JPMorgan Chase) and iterating on ACTUAL output at each step,
+   not by inspecting the HTML once and assuming a pattern generalizes. Real structure: unreliable
+   heading classification, running-page-headers masquerading as real titles, matters merged into
+   one blob with zero-space tag-boundary joins for some filers and cleanly separated for others,
+   mid-sentence page-break splits, and note-reference phrasing that varies by filer ("Note N to
+   the financial statements" vs. "...the CONSOLIDATED financial statements"). Full account of each
+   finding — and each fix an earlier attempt got wrong before this one — in
+   `sec/filing_cam.py`'s module docstring and `docs/DATA_MODEL.md`'s `filing_cam_matters` section;
+   read both before touching this module, the reasoning is load-bearing, not incidental. Verified
+   end-to-end against all three real filers post-fix: Apple (1 matter), Microsoft (2, cleanly
+   separated), JPMorgan Chase (2, recovered from one merged blob). `title_text` is best-effort
+   only, never load-bearing for topic (that's the classifier's job, §8.1/§8.3).
 4. Wire the embedding classifier against both the risk-theme taxonomy (`QUAL_THEMES`/`THEME_LANG`/
    `EMERGING`/`SIGNAL_MATRIX`) and the CAM taxonomy (`CAMS`) — one module, two anchor sets.
 5. Tier 1 regex fields (`GOING_CONCERN` MVP, `NON_GAAP`, cyber framework name,

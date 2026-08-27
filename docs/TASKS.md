@@ -135,7 +135,12 @@ Matters block — a repeating structure needing its own `filing_cam_matters` tab
   filings re-segment and pick up the row retroactively; verified against two real 10-Ks, RF
   extraction confirmed unaffected. `HC_CLIMATE`'s own presence/sub-row mechanism is still unwired
   — this step only adds the segmentation target it needs.
-- [ ] **§8.4 step 3** — `CAM` segmentation + `filing_cam_matters` table.
+- [x] **§8.4 step 3** — `CAM` segmentation + `filing_cam_matters` table. ✅ DONE 2026-08-27. The
+  original design's assumption (each CAM's title as its own sub-span, like a top-level Item) was
+  wrong — real extraction algorithm reverse-engineered from 3 real 10-Ks (Apple, Microsoft,
+  JPMorgan Chase), verified end-to-end post-fix. Full account in `sec/filing_cam.py`'s docstring
+  and `docs/DATA_MODEL.md`. `CAMS` classification itself (embedding-cosine against the new
+  taxonomy) still needs step 4.
 - [ ] **§8.4 step 4** — wire the classifier against both taxonomies (needs the anchor corpus from
   step 1 and, for CAMs, step 3).
 - [ ] **§8.4 step 5** — the cheap Tier 1 regex fields; no dependency on the above, shippable any

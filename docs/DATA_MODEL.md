@@ -1888,12 +1888,67 @@ embedding PRIMITIVE only (`ROADMAP_TRACK2.md` §8.4 step 1) — nothing writes t
 (no ingest wiring), and no theme/CAM-topic anchor vectors exist to score sentences against. Both
 are later steps in the same §8.4 build order.
 
+### `filing_cam_matters` (Track 2 Wave B, §8.2) — Critical Audit Matters, a repeating block
+
+`sec/filing_cam.py`'s `segment_cam_matters` extracts one row per detected CAM from a 10-K's
+auditor's report. **Its own table, not a `filing_sections` row** — CAMs are a REPEATING block
+(1-4 matters per filer per year), which breaks `filing_sections`' `PRIMARY KEY (cik, accession,
+item_code)` invariant of one row per item_code.
+
+```sql
+CREATE TABLE filing_cam_matters (
+  cik INTEGER, accession TEXT, ordinal INTEGER,
+  title_text TEXT,             -- best-effort only, nullable -- see below
+  cleaned_text TEXT, word_count INTEGER,
+  status TEXT, reason TEXT,    -- "ok" | "na" + why, same pattern as filing_sections
+  schema_version INTEGER,      -- CAM_SCHEMA_VERSION, same cache-heals-on-read convention
+  PRIMARY KEY (cik, accession, ordinal)
+);
+```
+
+**The approved design (written before implementation) assumed each CAM's bolded title would land
+as its own `TitleElement`/`TopSectionTitle`, the same sub-span mechanism `filing_sections.py` uses
+for top-level Items — that assumption did not hold**, found by running the extraction against
+three real 10-Ks (Apple, Microsoft, JPMorgan Chase, 2026-08-27) and checking actual output at each
+step, not by inspecting the HTML once and assuming a pattern generalizes. What real filings showed:
+
+- The report heading itself is unreliably classified (a title for two filers, plain inline text
+  for the third), and can ALSO repeat mid-page as a running header that looks like a real title —
+  found directly in JPMorgan's filing. Detection searches every element's text, any type, and a
+  repeated heading is only trusted as the region's real end when followed by an actual report
+  opening ("To the ... Board of Directors...").
+- Individual matters are sometimes their own element (Microsoft: cleanly separated) and sometimes
+  merged into one blob with the disclaimer and each other, joined with literally zero whitespace at
+  the tag boundary (Apple, JPMorgan). Splitting a merged blob is anchored on a reference to the
+  relevant financial-statement note ("Refer to Note N..."/"As described in Note N...") recurring
+  near each matter's start — but only when that reference isn't the piece's first AND sits near a
+  no-space join; counting references alone over-splits a matter's own internal sub-headings
+  ("Description of the Matter" → "How We Addressed the Matter"), which collapse the same way.
+- A page boundary can split one matter's text mid-sentence across two elements; re-joined with an
+  inserted space (a genuine word-run split, unlike the zero-space tag-boundary joins above).
+- Every audit report closes with a PCAOB-mandated auditor-tenure sentence ("We have served as the
+  Company's/Firm's auditor since [year]."), used as the primary stop signal — the only one that
+  neither depends on the next Item being correctly classified nor risks a running-header
+  false-positive.
+
+Full account of each finding, in order, with the real text that exposed it: `sec/filing_cam.py`'s
+module docstring. **`title_text` is best-effort only** (a regex up to a known description-intro
+phrase, `None` if not found) — never load-bearing for what a matter is about; that's the
+(not yet built) embedding classifier's job (§8.1/§8.3), not this module's. A merged blob that
+can't be confidently split stays merged rather than being guessed apart — the same "an unwilling
+parser beats a wrong one" trade-off `sec/exhibits.py` established for EX-21.
+
+**Also authoritative for `GOING_CONCERN`** (§8.3, not yet wired): the auditor's going-concern
+explanatory paragraph, when present, lives in the same report region this module already
+segments.
+
 ### Schema versioning, same convention as `filing_cover_facts`
 
 `SECTIONS_SCHEMA_VERSION` / `METRICS_SCHEMA_VERSION` / `SIMILARITY_SCHEMA_VERSION` /
-`EMBEDDINGS_SCHEMA_VERSION` each live in their owning module. A row written under an older version
-reads as a cache MISS on the next `get_*` call, not an answer — the caller re-parses/re-scores and
-heals it, exactly `SQLiteFilingCoverRepository.get_cover`'s `COVER_SCHEMA_VERSION` check.
+`EMBEDDINGS_SCHEMA_VERSION` / `CAM_SCHEMA_VERSION` each live in their owning module. A row written
+under an older version reads as a cache MISS on the next `get_*` call, not an answer — the caller
+re-parses/re-scores and heals it, exactly `SQLiteFilingCoverRepository.get_cover`'s
+`COVER_SCHEMA_VERSION` check.
 
 **Not a canonical concept.** No `mapping.py` change — this is derived text analytics, not a
 US-GAAP financial concept.
