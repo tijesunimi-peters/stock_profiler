@@ -51,7 +51,10 @@ from dataclasses import dataclass
 #: convention as sec/cover.py's COVER_SCHEMA_VERSION.
 #:
 #: 1 -- initial RF/LEGAL/MDNA/MARKET_RISK/CYBER segmentation via sec-parser span extraction
-SECTIONS_SCHEMA_VERSION = 1
+#: 2 -- added BUSINESS (Item 1, 10-K only), Track 2 Wave B §8.2. A version bump here forces
+#:      already-parsed filings to re-segment on next read -- deliberately, so they pick up the new
+#:      BUSINESS row retroactively rather than only for filings ingested after this change.
+SECTIONS_SCHEMA_VERSION = 2
 
 #: Item captions, matched against normalized title text (non-breaking spaces collapsed, case-
 #: insensitive). The item NUMBER alone is not enough on a 10-Q -- Part I Item 1 ("Financial
@@ -59,6 +62,7 @@ SECTIONS_SCHEMA_VERSION = 1
 #: what disambiguates; no separate Part-tracking is needed as a result.
 _FORM_ITEMS: dict[str, dict[str, re.Pattern[str]]] = {
     "10-K": {
+        "BUSINESS": re.compile(r"^item\s+1\b.*business", re.I | re.S),
         "RF": re.compile(r"^item\s+1a\b.*risk\s+factors", re.I | re.S),
         "LEGAL": re.compile(r"^item\s+3\b.*legal\s+proceedings", re.I | re.S),
         "MDNA": re.compile(r"^item\s+7\b.*management.?s\s+discussion", re.I | re.S),
@@ -70,14 +74,22 @@ _FORM_ITEMS: dict[str, dict[str, re.Pattern[str]]] = {
         "LEGAL": re.compile(r"^item\s+1\b.*legal\s+proceedings", re.I | re.S),
         "MDNA": re.compile(r"^item\s+2\b.*management.?s\s+discussion", re.I | re.S),
         "MARKET_RISK": re.compile(r"^item\s+3\b.*quantitative", re.I | re.S),
-        # No Item 1C on a 10-Q. Deliberately absent, not mapped to a permanent status="na" --
-        # matches filing_changes.py's "notification, not a status board" discipline: an
-        # inapplicable question gets no row at all, not a manufactured non-answer.
+        # No Item 1C, and no standalone "Business" item, on a 10-Q (Part I Item 1 is Financial
+        # Statements there, not Business). Deliberately absent, not mapped to a permanent
+        # status="na" -- matches filing_changes.py's "notification, not a status board"
+        # discipline: an inapplicable question gets no row at all, not a manufactured non-answer.
     },
 }
 
+#: `\b` after the item number alone already excludes "Item 1A"/"1B"/"1C"/"10"/"11" from matching
+#: BUSINESS's `^item\s+1\b` -- "1" and the following letter/digit are both word characters, so no
+#: boundary exists between them and the anchored match fails outright. Verified against a battery
+#: of real and adjacent-looking captions (including "Item 1A. Risk Factors Related to Our
+#: Business" and "Item 10. Directors...") before relying on it -- no negative lookahead needed.
+
 #: Human-readable section names, keyed the same as _FORM_ITEMS' inner dicts.
 _SECTION_NAMES = {
+    "BUSINESS": "Business",
     "RF": "Risk Factors",
     "LEGAL": "Legal Proceedings",
     "MDNA": "Management's Discussion and Analysis",
@@ -91,9 +103,14 @@ _SECTION_NAMES = {
 #: during the 2026-08-23 spike (smallest genuine values seen: a 10-Q MARKET_RISK section at 10
 #: words, LEGAL at 109) -- low enough not to reject legitimate brief disclosures, high enough to
 #: catch a near-empty span (a TOC-adjacent leak showed 1-2 words on non-target items in every
-#: filing tested).
+#: filing tested). BUSINESS's floor (100, matching RF/MDNA) is checked against two real 10-Ks --
+#: Apple (2,309 words) and a small-cap (5,933 words) -- rather than a full multi-filer spike; Item
+#: 1 Business runs long enough in both that a tighter floor wasn't worth deriving from more
+#: samples. Re-derive properly if a filer is ever seen with an implausibly short BUSINESS row.
 _MIN_WORDS: dict[str, dict[str, int]] = {
-    "10-K": {"RF": 100, "LEGAL": 15, "MDNA": 100, "MARKET_RISK": 10, "CYBER": 15},
+    "10-K": {
+        "BUSINESS": 100, "RF": 100, "LEGAL": 15, "MDNA": 100, "MARKET_RISK": 10, "CYBER": 15,
+    },
     "10-Q": {"RF": 15, "LEGAL": 10, "MDNA": 50, "MARKET_RISK": 3},
 }
 

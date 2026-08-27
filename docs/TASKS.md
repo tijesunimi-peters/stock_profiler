@@ -130,7 +130,11 @@ Matters block — a repeating structure needing its own `filing_cam_matters` tab
   Docker image, not mocked. **Not done**: the anchor-phrase corpus (still needs authoring) and
   ingest wiring (nothing writes to the table yet) — both are step 1's remaining half, prerequisite
   to step 4's classifier wiring.
-- [ ] **§8.4 step 2** — `BUSINESS` item_code.
+- [x] **§8.4 step 2** — `BUSINESS` item_code. ✅ DONE 2026-08-27. 10-K only (same
+  deliberate-absence pattern as `CYBER` on 10-Q); `SECTIONS_SCHEMA_VERSION` bumped to 2 so cached
+  filings re-segment and pick up the row retroactively; verified against two real 10-Ks, RF
+  extraction confirmed unaffected. `HC_CLIMATE`'s own presence/sub-row mechanism is still unwired
+  — this step only adds the segmentation target it needs.
 - [ ] **§8.4 step 3** — `CAM` segmentation + `filing_cam_matters` table.
 - [ ] **§8.4 step 4** — wire the classifier against both taxonomies (needs the anchor corpus from
   step 1 and, for CAMs, step 3).

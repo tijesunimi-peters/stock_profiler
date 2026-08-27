@@ -526,7 +526,22 @@ it contains a **repeating block** — typically 2-4 named matters, each with its
    NO ingest wiring exists — nothing writes to `section_sentence_embeddings` yet, since
    `section_backfill.py` doesn't call `embed_sentences` anywhere. Both are prerequisites for step
    4 below, not this step's embedding-primitive scope.
-2. `BUSINESS` item_code (straightforward) → unlocks `HC_CLIMATE`.
+2. `BUSINESS` item_code. **✅ DONE 2026-08-27** — `^item\s+1\b.*business` added to
+   `_FORM_ITEMS["10-K"]` only (10-Q's Item 1 is Financial Statements, not Business — same
+   deliberate-absence treatment as `CYBER`); `\b` alone excludes "1A"/"1B"/"10"/"11" (both sides of
+   the boundary are word characters, so the anchored match fails outright — no negative lookahead
+   needed). `SECTIONS_SCHEMA_VERSION` bumped to 2 so already-cached filings re-segment and pick up
+   the new row retroactively. Verified against two real 10-Ks (Apple: 2,309 words; a small-cap:
+   5,933 words), with RF's extraction confirmed unaffected — Apple's Risk Factors still landed at
+   exactly the 9,226 words the original Wave A spike documented before this item_code existed. A
+   multi-heading synthetic-HTML test attempt hit the same class of `sec-parser` classification
+   unreliability `test_toc_entry_is_not_mistaken_for_the_section_body` already documents (a bare
+   `<h2>Item 1...>` sequence, once "Item 1" classifies as a `TopSectionTitle`, gets swallowed whole
+   by the library's `TopSectionManagerFor10Q` step on minimal fixtures) — real-filing verification
+   is the load-bearing evidence here, same as it was for Wave A's original 5 item_codes; the test
+   suite only asserts what a single-heading synthetic document can reliably prove, plus a
+   dependency-free regex-boundary test. **Still open**: `HC_CLIMATE`'s presence/sub-row mechanism
+   (§8.2, §8.3) isn't wired up — this step only adds the segmentation target it depends on.
 3. `CAM` segmentation + `filing_cam_matters` table (the real new mechanism) → unlocks `CAMS`, and
    later `GOING_CONCERN`'s graduation to a stronger source.
 4. Wire the embedding classifier against both the risk-theme taxonomy (`QUAL_THEMES`/`THEME_LANG`/

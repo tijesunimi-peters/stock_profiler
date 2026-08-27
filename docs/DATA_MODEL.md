@@ -1788,11 +1788,20 @@ block, then that document fetched by filename. See `sec/filing_document.py`.
 
 | `item_code` | Meaning | 10-K Item | 10-Q Item |
 |---|---|---|---|
+| `BUSINESS` | Business (Track 2 Wave B, added 2026-08-26) | 1 | *(not applicable — 10-Q's Part I Item 1 is Financial Statements, not Business; no row at all, never a manufactured `status="na"`)* |
 | `RF` | Risk Factors | 1A | Part II, Item 1A |
 | `LEGAL` | Legal Proceedings | 3 | Part II, Item 1 |
 | `MDNA` | Management's Discussion and Analysis | 7 | Part I, Item 2 |
 | `MARKET_RISK` | Quantitative/Qualitative Disclosures About Market Risk | 7A | Part I, Item 3 |
 | `CYBER` | Cybersecurity | 1C | *(not applicable — no row at all, never a manufactured `status="na"`)* |
+
+`BUSINESS`'s regex (`^item\s+1\b.*business`) relies on `\b` alone to exclude "Item 1A"/"1B"/"10"/
+"11" — the digit and the character immediately after it (a letter or another digit) are both word
+characters, so no boundary exists between them and the anchored `^item\s+1\b` match fails outright
+for any of those captions. No negative lookahead needed; verified against real captions
+(including "Item 1A. Risk Factors Related to Our Business") before relying on it. Checked against
+two real 10-Ks (Apple: 2,309 words; a small-cap: 5,933 words) rather than a full multi-filer spike
+— see `sec/filing_sections.py`'s `_MIN_WORDS` comment.
 
 A stable key across fiscal periods and form types is what makes the YoY diff in
 `section_similarity` possible — the alternative (keying on the raw Item number) would break the
