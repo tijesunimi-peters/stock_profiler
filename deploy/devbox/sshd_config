@@ -45,6 +45,13 @@ AllowAgentForwarding yes
 ClientAliveInterval 30
 ClientAliveCountMax 6
 
+# VERBOSE, not the default INFO. At INFO a failed login logs only "Connection closed [preauth]"
+# -- which is indistinguishable between "the client offered no key we accept", "the client ran
+# out of identities to try" and "the client gave up". VERBOSE logs the FINGERPRINT of every key
+# offered, which turns "it does not work" into "it offered these three, none is authorised".
+# The box is reachable from the internet, so this is also the log you would want after the fact.
+LogLevel VERBOSE
+
 PrintMotd no
 AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/openssh/sftp-server

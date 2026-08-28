@@ -336,6 +336,66 @@ ngrok is still a third party in the path, but SSH is end-to-end encrypted, so th
 ciphertext it cannot read. That is a materially different position from an HTTP tunnel, where
 TLS terminates at their edge.
 
+### Put a Host block in the laptop's ~/.ssh/config
+
+Worth doing before the first connection, because the failure it prevents is opaque. An
+`IdentityFile`/`IdentitiesOnly` entry scoped to a `Host` pattern only applies to hosts matching
+that pattern -- so a block written for this machine's home IP does **not** apply to
+`*.tcp.ngrok.io`. ssh then falls back to the default identity paths, never offers the key the box
+actually authorises, and the connection dies during auth. On the client that reads as
+`Connection closed by <ngrok edge ip> port <n>`; on the server it is
+`Connection closed ... [preauth]` with no key ever accepted. Nothing in either message mentions
+identities.
+
+```sshconfig
+Host devbox
+    HostName 4.tcp.ngrok.io        # from remote-dev-url.sh; changes on every agent restart
+    Port 15099                     # likewise
+    User dev
+    IdentityFile ~/.ssh/id_ed25519 # the key that is in this machine's ~/.ssh/authorized_keys
+    IdentitiesOnly yes             # offer ONLY that key -- see MaxAuthTries below
+    HostKeyAlias clearyfi-devbox   # pin known_hosts to the box, not to the ngrok address
+    LocalForward 8000 api:8000
+    LocalForward 5174 localhost:5174
+    ServerAliveInterval 30
+```
+
+Then it is just `ssh devbox`, and `tmux new -A -s dev`.
+
+`IdentitiesOnly yes` matters twice over: without it ssh offers every identity it can find,
+including everything in a loaded agent, and each offer burns one of the server's `MaxAuthTries`
+(6). A laptop with a full agent can exhaust that before reaching the right key, and the error --
+"Too many authentication failures" -- points at the count rather than at the cause.
+
+### Diagnosing a refused connection
+
+`sshd` runs at `LogLevel VERBOSE`, so `docker compose logs devbox` names the fingerprint of every
+key offered. Compare it against what the box accepts:
+
+```bash
+docker compose exec devbox ssh-keygen -lf /home/dev/.ssh/authorized_keys
+```
+
+If the offered fingerprint is not in that list, it is a client-side identity problem, not the
+tunnel. To see it from the client's side, add `-v`:
+
+```bash
+ssh -v -i ~/.ssh/<key> -p <port> dev@<host>.tcp.ngrok.io
+```
+
+To prove the tunnel itself is intact independently of any key, compare the host key seen through
+it against the box's own -- they must be identical:
+
+```bash
+ssh-keyscan -t ed25519 -p <port> <host>.tcp.ngrok.io | ssh-keygen -lf -
+docker compose exec devbox ssh-keygen -lf /etc/ssh/keys/ssh_host_ed25519_key.pub
+```
+
+**A public TCP endpoint is scanned within minutes of coming up.** Expect log lines like
+`banner exchange: ... invalid format` from addresses you do not recognise -- those are probes
+sending HTTP at an SSH port, not your connection. Match on the timestamp and the source before
+concluding anything from one.
+
 ### Things that will bite you
 
 - **tmux sessions do not survive a container restart.** They are process state. `restart:
