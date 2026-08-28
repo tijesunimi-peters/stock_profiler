@@ -472,6 +472,10 @@ repo is the source of truth, not this machine's dotfiles -- which is the point f
 reach from elsewhere: the config that follows you is the one in git, and a change made in the box
 can be committed and pushed rather than becoming local drift.
 
+All of this is in the image and the entrypoint, so it happens on `docker compose --profile
+remote up -d` with no manual step -- verified against a clean-room run with brand-new volumes,
+which cloned the repo, linked the config, installed TPM and came up serving ssh unprompted.
+
 | repo path | linked to |
 |---|---|
 | repo root (`init.lua`, `lua/`) | `~/.config/nvim` |
@@ -499,7 +503,13 @@ tmux start ends in an error and no declared plugin loads, so the entrypoint clon
 leaving it to `prefix + I` -- a box you attach to over a tunnel should come up working.
 
 Plugin **data** stays local to the box: `~/.local/share/nvim` is built inside the home volume on
-first launch and kept across restarts. To get that minute out of the way up front:
+first launch (~163 MB, 69 plugins) and kept across restarts.
+
+**The very first `nvim` launch on a new box ends in an error, and that is expected.** lazy installs
+the plugins during that same run, so `mappings.lua`'s `colorscheme catppuccin-frappe` executes
+before catppuccin exists and throws. The second launch is clean. It is a property of the config --
+the same thing happens on any fresh machine -- not of the container. Get it over with before you
+are sitting in front of it:
 
 ```bash
 docker compose exec -u dev devbox nvim --headless "+Lazy! sync" +qa
