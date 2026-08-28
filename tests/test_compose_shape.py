@@ -170,6 +170,29 @@ def test_profiled_services_require_no_variable_the_default_stack_does_not():
     )
 
 
+def test_the_devbox_disables_per_source_penalties():
+    """Per-source penalties must stay OFF, and that is not a relaxation.
+
+    Every connection to the devbox arrives from ONE address -- the ngrok container on the compose
+    network. The public client IP is never visible to sshd; the tunnel is the peer. So the input
+    the penalty mechanism keys on carries no information, and attacker and operator share a
+    source by construction.
+
+    Leaving it on (the OpenSSH >= 9.8 default) is therefore a shared-fate lockout: a public TCP
+    endpoint is scanned within minutes, each probe trips a penalty against that one address, and
+    while one is active sshd refuses new connections instantly. The operator sees a bare
+    "Connection closed by <edge ip>" naming neither reason nor source. Any stranger with a port
+    scanner can lock them out for up to ten minutes at a time.
+
+    Asserted because the fix looks exactly like something a later hardening pass would revert.
+    """
+    conf = (ROOT / "deploy" / "devbox" / "sshd_config").read_text()
+    assert "\nPerSourcePenalties no" in "\n" + conf, (
+        "devbox sshd has per-source penalties on. Every connection shares one source IP (the "
+        "ngrok container), so scanners hitting the public endpoint will lock the operator out."
+    )
+
+
 def test_the_devbox_forwards_tcp():
     """`AllowTcpForwarding` is how the app is reached at all.
 

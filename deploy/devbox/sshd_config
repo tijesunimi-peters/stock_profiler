@@ -40,6 +40,28 @@ X11Forwarding no
 PermitTunnel no
 AllowAgentForwarding yes
 
+# OFF, and this is a correctness fix rather than a relaxation.
+#
+# Every connection to this box arrives from ONE address -- the ngrok container on the compose
+# network (172.18.0.2). The public client IP is not visible to sshd at all; the tunnel is the
+# peer. So per-source penalties cannot distinguish an attacker from the operator: they share a
+# source by construction.
+#
+# The consequence is a shared-fate lockout. A public TCP endpoint is scanned within minutes, and
+# every probe that sends a bad banner or hangs up trips `noauth:1`, `grace-exceeded:10` or
+# `refuseconnection:10` against that one address. Penalties accumulate to `max:600`, and while
+# one is active sshd refuses new connections instantly -- which the client reports as a bare
+# "Connection closed by <ngrok edge ip> port <n>", naming neither a reason nor a source. Any
+# stranger with a port scanner can lock the operator out for ten minutes at a time.
+#
+# Nothing is given up by disabling it. The mechanism exists to slow password brute-forcing;
+# this box is key-only (PasswordAuthentication no, above), so there is no guessing to slow, and
+# the input the mechanism keys on carries no information here.
+#
+# On by default since OpenSSH 9.8; this image ships 10.0p2. tests/test_compose_shape.py pins it
+# so a later "hardening" pass cannot quietly reintroduce the lockout.
+PerSourcePenalties no
+
 # tmux sessions are meant to outlive a coffee break. NAT and the tunnel edge both drop idle
 # TCP, so the server pings rather than letting a silent connection rot.
 ClientAliveInterval 30

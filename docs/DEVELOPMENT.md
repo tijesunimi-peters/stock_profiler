@@ -396,6 +396,20 @@ docker compose exec devbox ssh-keygen -lf /etc/ssh/keys/ssh_host_ed25519_key.pub
 sending HTTP at an SSH port, not your connection. Match on the timestamp and the source before
 concluding anything from one.
 
+Note that every connection reaches sshd from the SAME address, the ngrok container's -- the
+public client IP is not visible to it, because the tunnel is the peer. That is why
+`PerSourcePenalties` is off in `deploy/devbox/sshd_config`: left at the OpenSSH default it would
+let those scanners accumulate penalties against the one address you also arrive from, and refuse
+your connections for up to ten minutes at a time. It costs nothing to disable, because the
+mechanism exists to slow password guessing and this box is key-only.
+
+Harmless `-v` output, so you can skip past it: `load_hostkeys: fopen
+/Users/you/.ssh/known_hosts2: No such file or directory` is ssh checking for a legacy protocol-2
+known-hosts file that essentially nobody has. It appears on every connection, successful or not,
+and never indicates a problem. The lines that matter are `Offering public key:` (which
+identities were tried) and `Authentications that can continue:` (whether the server accepted
+one).
+
 ### Things that will bite you
 
 - **tmux sessions do not survive a container restart.** They are process state. `restart:
