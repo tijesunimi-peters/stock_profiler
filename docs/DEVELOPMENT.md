@@ -248,6 +248,132 @@ stopped first. `mode=ro` refuses to create the file if it doesn't exist yet (rat
 silently starting a new empty DB), which is a useful sanity check that you're pointed at
 real data.
 
+## 9. Developing from somewhere else (SSH over ngrok)
+
+Two profile-gated services let you keep working from a laptop that has nothing installed on it
+but an SSH client: `devbox`, a container with the toolchain and `tmux` in it, and `ngrok`, the
+agent that makes it reachable. The agent dials **out**, so there is no inbound port to open and
+no router configuration involved.
+
+```
+laptop                          ngrok edge          this machine (compose network)
+------                          ----------          -----------------------------
+ssh -p N ....tcp.ngrok.io ----> TCP endpoint -----> devbox:22   (sshd, tmux, node, python)
+  -L 8000:api:8000                                    |  repo bind-mounted at /workspace
+  -L 5174:localhost:5174                              +--> api:8000     (the running API)
+                                                      +--> vite :5174   (npm run dev in the box)
+browser -> localhost:8000, localhost:5174
+```
+
+### One-time setup
+
+```bash
+# 1. Put an ngrok authtoken in .env  (https://dashboard.ngrok.com/get-started/your-authtoken)
+echo 'NGROK_AUTHTOKEN=...' >> .env
+
+# 2. Build and start both services
+docker compose --profile remote up -d --build
+
+# 3. Install the frontend deps INSIDE the box (its node_modules is a container-owned volume,
+#    deliberately separate from the host's -- see below)
+docker compose exec -u dev -w /workspace/clearyfi_frontend devbox npm ci
+```
+
+By default the box authorises whatever is in this machine's `~/.ssh/authorized_keys` — the keys
+already trusted to log in here, which is what the laptop holds. Override with
+`DEVBOX_AUTHORIZED_KEYS`. Note that `~/.ssh/id_ed25519.pub` would be the **wrong** file: it
+authorises this computer, not the one connecting. This machine's own key is mounted separately
+and always authorised, so `ssh -p 2222 dev@127.0.0.1` works locally.
+
+### Connecting
+
+ngrok's TCP endpoint is a **new random host:port every time the agent restarts**, so look it up
+rather than remembering it:
+
+```bash
+bash deploy/scripts/remote-dev-url.sh
+```
+
+It prints the full command, which looks like:
+
+```bash
+ssh -p 12345 dev@8.tcp.ngrok.io \
+    -o HostKeyAlias=clearyfi-devbox \
+    -L 8000:api:8000 \
+    -L 5174:localhost:5174
+
+tmux new -A -s dev          # attach, or create on the first run
+```
+
+`HostKeyAlias` pins `known_hosts` to the devbox's own persistent host key instead of to the ngrok
+address. Without it every session produces a fresh "authenticity of host" prompt, which is how
+you stop reading them.
+
+With that session open, on the laptop:
+
+| URL | What it is |
+|---|---|
+| `http://localhost:8000` | the API and the built app — the `api` container |
+| `http://localhost:5174` | the vite dev server, once you run `npm run dev` in the box |
+
+`-L 8000:api:8000` is resolved from the **container's** side of the compose network, so `api` is
+a Docker DNS name and the API needs no published port for this to work.
+
+### Why the app is not tunnelled directly
+
+It would be one line to point an ngrok HTTP tunnel at `api:8000`, and it would be a mistake.
+`api/auth.py`'s `_is_first_party_browser` treats any request carrying `Sec-Fetch-Site:
+same-origin` as first-party and **skips both the API-key requirement and the rate limit** — and
+every browser sends that header. A public URL would therefore serve the entire API, keyless and
+unthrottled, to anyone who found it, over a multi-GB store, while spending our SEC request
+budget. Its own docstring says it is "NOT a security boundary".
+
+Routing everything through SSH means that gate never faces the internet. It also means the
+browser's `Host` header stays `localhost`, so vite's `allowedHosts` check and its HMR websocket
+both work untouched — a public tunnel would have needed both reconfigured.
+
+ngrok is still a third party in the path, but SSH is end-to-end encrypted, so the edge relays
+ciphertext it cannot read. That is a materially different position from an HTTP tunnel, where
+TLS terminates at their edge.
+
+### Things that will bite you
+
+- **tmux sessions do not survive a container restart.** They are process state. `restart:
+  unless-stopped` carries the box across host reboots and Docker daemon restarts, which is most
+  of the value, but `docker compose build` followed by a recreate ends every session.
+- **The box is a second SQLite writer.** `api` holds a write connection; an ingest job run from
+  the devbox is another against the same lock. This is exactly the contention `notebook` avoids
+  with `:ro`. Fine for editing and `pytest`; think before starting a backfill while the API
+  serves.
+- **`node_modules` inside the box is a named volume, not the host's.** The host tree is host-built
+  binaries (`.dockerignore` already refuses to copy it for the same reason), so the two are kept
+  apart in both directions. `npm ci` has to be run once inside the box, and again after a
+  dependency change.
+- **A TCP endpoint may not be available on every ngrok plan.** One is all this design needs. If
+  `remote-dev-url.sh` reports the agent is up but published no TCP endpoint, that is what it is
+  telling you.
+- **Locked accounts fail as "Permission denied (publickey)".** If you ever rebuild the user in
+  `deploy/devbox/Dockerfile`, keep the `usermod -p '*'`: `useradd` leaves the account
+  password-*locked*, and sshd refuses a locked account before it ever reads `authorized_keys`.
+  The real reason appears only in `docker compose logs devbox`.
+
+### Local checks, without involving ngrok
+
+`devbox` publishes `127.0.0.1:2222` so the container can be verified on its own:
+
+```bash
+ssh -p 2222 dev@127.0.0.1 'whoami; tmux -V; node -v; python -V'
+ssh -p 2222 dev@127.0.0.1 'curl -sf http://api:8000/health'      # docker DNS works
+ssh -p 2222 -o PubkeyAuthentication=no dev@127.0.0.1             # must be denied
+docker compose logs devbox                                        # sshd's own reasons
+```
+
+Both `devbox` and `ngrok` bind loopback only, sit behind the `remote` profile, and are absent
+from `docker-compose.prod.yml`. `tests/test_compose_shape.py` asserts all three, plus that the
+sshd config stays key-only and that neither service introduces a required environment variable
+(compose evaluates those even when the profile is not selected, which would break every other
+compose command).
+
 ## Running tests / lint (Docker)
 
 The prod `api` image deliberately ships without `tests/` or the `[dev]` extra, so

@@ -11,6 +11,7 @@ production database. This test is the tripwire for that.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,11 @@ yaml = pytest.importorskip("yaml", reason="PyYAML not installed; compose shape u
 ROOT = Path(__file__).resolve().parent.parent
 
 #: Services that exist for development only. Adding one here is how you declare that intent.
-DEV_ONLY = {"notebook", "test", "e2e", "e2e-app"}
+DEV_ONLY = {"notebook", "test", "e2e", "e2e-app", "devbox", "ngrok"}
+
+#: Dev services that publish a port. Every one of them must be loopback-bound -- see
+#: `test_dev_only_published_ports_are_loopback_only` for why that is asserted and not trusted.
+PORT_PUBLISHING_DEV_SERVICES = ("notebook", "devbox", "ngrok")
 
 
 def _load(name: str) -> dict:
@@ -69,6 +74,113 @@ def test_the_notebook_binds_loopback_only():
         assert str(port).startswith("127.0.0.1:"), (
             f"notebook port {port!r} is not loopback-bound"
         )
+
+
+@pytest.mark.parametrize("name", PORT_PUBLISHING_DEV_SERVICES)
+def test_dev_only_published_ports_are_loopback_only(name: str):
+    """Same rule as the notebook, generalised, because `devbox` raises the stakes.
+
+    `devbox` runs an SSH daemon and `ngrok` runs the agent that publishes it. Their remote path
+    is the tunnel -- deliberately, so exactly one thing is internet-reachable and it is one we
+    chose. A `0.0.0.0` mapping here would quietly add a second: an SSH port on every interface of
+    this machine, reachable by anything on the LAN, with none of the host sshd's hardening
+    applied to it. The local mappings exist only so the box can be checked from the host without
+    involving ngrok.
+    """
+    dev = _load("docker-compose.yml")
+    svc = dev["services"].get(name)
+    if svc is None:
+        pytest.skip(f"{name} not defined")
+    for port in svc.get("ports", []):
+        assert str(port).startswith("127.0.0.1:"), (
+            f"{name} port {port!r} is not loopback-bound"
+        )
+
+
+def test_the_devbox_sshd_is_key_only():
+    """The devbox is reachable from the public internet through the tunnel, so its sshd config is
+    a security boundary rather than a convenience.
+
+    Asserted rather than reviewed because the failure is silent: password auth left on still
+    works for the operator, and nothing about a healthy container or a working tunnel would
+    reveal that the box now accepts guesses from anyone who finds the endpoint.
+    """
+    conf = (ROOT / "deploy" / "devbox" / "sshd_config").read_text()
+    directives = {}
+    for line in conf.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition(" ")
+        directives[key.lower()] = value.strip()
+
+    assert directives.get("passwordauthentication") == "no", "devbox sshd accepts passwords"
+    assert directives.get("permitrootlogin") == "no", "devbox sshd permits root login"
+    assert directives.get("kbdinteractiveauthentication") == "no", (
+        "devbox sshd allows keyboard-interactive auth, which is a password prompt by another name"
+    )
+    assert directives.get("permitemptypasswords") == "no", "devbox sshd permits empty passwords"
+    assert directives.get("pubkeyauthentication") == "yes", (
+        "devbox sshd has no pubkey auth -- with passwords off, nothing could log in"
+    )
+    assert directives.get("allowusers") == "dev", "devbox sshd is not restricted to the dev user"
+
+
+def test_profiled_services_require_no_variable_the_default_stack_does_not():
+    """A profiled service must not make an unrelated compose command fail.
+
+    Compose interpolates the WHOLE file before it applies `--profile`, so a `${VAR:?...}` inside
+    a profiled service is not scoped to that profile at all. That is how this was found: a
+    required NGROK_AUTHTOKEN broke `--profile test`, which has nothing to do with tunnels.
+
+    The rule is not "profiled services may not require variables" -- `analytics` and `narrative`
+    legitimately require SEC_USER_AGENT. It is that they may not require anything the DEFAULT
+    stack does not already require. SEC_USER_AGENT is mandatory for `api`, so demanding it costs
+    nobody anything; an ngrok token is mandatory for nobody, so demanding it breaks everybody.
+    """
+    raw = (ROOT / "docker-compose.yml").read_text()
+    dev = _load("docker-compose.yml")
+
+    required = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):\?")
+
+    def required_vars(service: dict) -> set[str]:
+        return set(required.findall(yaml.safe_dump(service)))
+
+    default_stack = {
+        name for name, svc in dev["services"].items() if not svc.get("profiles")
+    }
+    always_required: set[str] = set()
+    for name in default_stack:
+        always_required |= required_vars(dev["services"][name])
+
+    for name, svc in dev["services"].items():
+        if not svc.get("profiles"):
+            continue
+        extra = required_vars(svc) - always_required
+        assert not extra, (
+            f"profiled service {name!r} requires {sorted(extra)}, which the default stack "
+            f"({sorted(default_stack)}) does not. Compose evaluates that even when the profile "
+            "is not selected, so every other compose command fails for anyone who has not set "
+            "it. Use ${VAR:-} and fail at run time instead."
+        )
+
+    assert "${SEC_USER_AGENT:?" in raw, (
+        "api's SEC_USER_AGENT guard is gone -- the SEC blocks requests without a User-Agent, "
+        "so failing at compose time is deliberate"
+    )
+
+
+def test_the_devbox_forwards_tcp():
+    """`AllowTcpForwarding` is how the app is reached at all.
+
+    The whole access model is one tunnel to SSH plus `ssh -L 8000:api:8000`, resolved from the
+    container's side of the compose network. Turning this off as generic "hardening" would not
+    look like a security change -- it would look like the API had gone down.
+    """
+    conf = (ROOT / "deploy" / "devbox" / "sshd_config").read_text()
+    assert "\nAllowTcpForwarding yes" in "\n" + conf, (
+        "devbox sshd does not allow TCP forwarding; `ssh -L 8000:api:8000` would fail"
+    )
 
 
 def test_the_notebook_mounts_the_database_read_only():
