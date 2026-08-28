@@ -15,7 +15,21 @@ PermitRootLogin no
 AllowUsers dev
 
 PubkeyAuthentication yes
-AuthorizedKeysFile .ssh/authorized_keys
+
+# Read STRAIGHT OFF the read-only mounts, not from a copy in ~/.ssh. sshd reads these at
+# authentication time, so a key added to the host's ~/.ssh/authorized_keys authorises the new
+# machine on the NEXT CONNECTION -- no container restart, nothing to remember, and no second list
+# that can drift from the first.
+#
+# The earlier design copied them at boot on the assumption that StrictModes would reject a path
+# outside the user's home. It does not: the mounted file arrives owned by uid 1000 (which is
+# `dev` here, by construction -- see DEV_UID in the Dockerfile) at mode 600, under root-owned
+# 0755 parents, which is exactly what StrictModes wants. Assumption checked, not inherited.
+#
+# Two files: the host's authorized_keys (the machines allowed to log into the HOST, i.e. the
+# laptops) and the host's own public key (so the box can be reached from the host itself without
+# going out through the tunnel and back).
+AuthorizedKeysFile /etc/devbox/keys/authorized_keys /etc/devbox/keys/this-host.pub
 
 PasswordAuthentication no
 PermitEmptyPasswords no

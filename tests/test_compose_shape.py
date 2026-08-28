@@ -193,6 +193,38 @@ def test_the_devbox_disables_per_source_penalties():
     )
 
 
+def test_the_devbox_reads_authorized_keys_from_the_mount():
+    """sshd must read the mounted key files DIRECTLY, never a boot-time copy.
+
+    sshd consults AuthorizedKeysFile at authentication time, so pointing it at the read-only
+    mounts makes a key added to the host's ~/.ssh/authorized_keys work on the next connection.
+    Copying them into ~/.ssh at container start instead -- the original design -- silently
+    reintroduces a restart requirement, and worse, a second copy that can drift from the first
+    while both look correct.
+
+    It was done that way on the assumption that StrictModes would reject a path outside the
+    user's home. It does not: the mount arrives owned by uid 1000 (which is `dev`, by
+    construction) at mode 600 under root-owned 0755 parents, which is what StrictModes wants.
+    """
+    conf = (ROOT / "deploy" / "devbox" / "sshd_config").read_text()
+    line = next(
+        (ln for ln in conf.splitlines() if ln.strip().startswith("AuthorizedKeysFile")), None
+    )
+    assert line is not None, "devbox sshd has no AuthorizedKeysFile directive"
+    assert "/etc/devbox/keys/" in line, (
+        f"AuthorizedKeysFile is {line.strip()!r} -- it must point at the read-only mounts, or "
+        "adding a key to the host needs a container restart to take effect"
+    )
+    assert ".ssh/authorized_keys" not in line, (
+        "AuthorizedKeysFile points into the user's home, which means a boot-time copy is back"
+    )
+
+    entry = (ROOT / "deploy" / "devbox" / "entrypoint.sh").read_text()
+    assert "install -m 600" not in entry or "authorized_keys" not in entry.split("install -m 600")[1][:120], (
+        "the entrypoint installs an authorized_keys copy again"
+    )
+
+
 def test_the_devbox_forwards_tcp():
     """`AllowTcpForwarding` is how the app is reached at all.
 

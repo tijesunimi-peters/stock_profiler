@@ -279,11 +279,26 @@ docker compose --profile remote up -d --build
 docker compose exec -u dev -w /workspace/clearyfi_frontend devbox npm ci
 ```
 
-By default the box authorises whatever is in this machine's `~/.ssh/authorized_keys` — the keys
-already trusted to log in here, which is what the laptop holds. Override with
-`DEVBOX_AUTHORIZED_KEYS`. Note that `~/.ssh/id_ed25519.pub` would be the **wrong** file: it
-authorises this computer, not the one connecting. This machine's own key is mounted separately
-and always authorised, so `ssh -p 2222 dev@127.0.0.1` works locally.
+### Authorising another machine
+
+The box reads this machine's `~/.ssh/authorized_keys` **live** — `AuthorizedKeysFile` points
+straight at the read-only mount, and sshd consults it at authentication time. So authorising a
+new laptop is one command, run **on that laptop**, and it takes effect on the next connection
+with no restart and nothing to remember here:
+
+```bash
+ssh-copy-id -i ~/.ssh/<keyname>.pub <you>@192.168.x.x
+```
+
+Keep the `-i` and name the key. Without it `ssh-copy-id` copies every public key it can find,
+which is how unrelated keys end up authorised.
+
+That one command covers both hops of the LAN route — the jump host and the container — because
+both read the same file. Point it at a different list with `DEVBOX_AUTHORIZED_KEYS`.
+
+`~/.ssh/id_ed25519.pub` would be the **wrong** file to point at: it authorises *this* computer,
+not the one connecting. It is mounted separately and always authorised, which is what makes
+`ssh -p 2222 dev@127.0.0.1` work from the host without going out through the tunnel and back.
 
 ### Connecting
 
