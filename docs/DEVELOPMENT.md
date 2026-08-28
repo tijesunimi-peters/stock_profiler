@@ -248,6 +248,327 @@ stopped first. `mode=ro` refuses to create the file if it doesn't exist yet (rat
 silently starting a new empty DB), which is a useful sanity check that you're pointed at
 real data.
 
+## 9. Developing from somewhere else (SSH over ngrok)
+
+Two profile-gated services let you keep working from a laptop that has nothing installed on it
+but an SSH client: `devbox`, a container with the toolchain and `tmux` in it, and `ngrok`, the
+agent that makes it reachable. The agent dials **out**, so there is no inbound port to open and
+no router configuration involved.
+
+```
+laptop                          ngrok edge          this machine (compose network)
+------                          ----------          -----------------------------
+ssh -p N ....tcp.ngrok.io ----> TCP endpoint -----> devbox:22   (sshd, tmux, node, python)
+  -L 8000:api:8000                                    |  repo bind-mounted at /workspace
+  -L 5174:localhost:5174                              +--> api:8000     (the running API)
+                                                      +--> vite :5174   (npm run dev in the box)
+browser -> localhost:8000, localhost:5174
+```
+
+### One-time setup
+
+```bash
+# 1. Put an ngrok authtoken in .env  (https://dashboard.ngrok.com/get-started/your-authtoken)
+echo 'NGROK_AUTHTOKEN=...' >> .env
+
+# 2. Build and start both services
+docker compose --profile remote up -d --build
+
+# 3. Install the frontend deps INSIDE the box (its node_modules is a container-owned volume,
+#    deliberately separate from the host's -- see below)
+docker compose exec -u dev -w /workspace/clearyfi_frontend devbox npm ci
+```
+
+By default the box authorises whatever is in this machine's `~/.ssh/authorized_keys` — the keys
+already trusted to log in here, which is what the laptop holds. Override with
+`DEVBOX_AUTHORIZED_KEYS`. Note that `~/.ssh/id_ed25519.pub` would be the **wrong** file: it
+authorises this computer, not the one connecting. This machine's own key is mounted separately
+and always authorised, so `ssh -p 2222 dev@127.0.0.1` works locally.
+
+### Connecting
+
+ngrok's TCP endpoint is a **new random host:port every time the agent restarts**, so look it up
+rather than remembering it:
+
+```bash
+bash deploy/scripts/remote-dev-url.sh
+```
+
+It prints the full command, which looks like:
+
+```bash
+ssh -p 12345 dev@8.tcp.ngrok.io \
+    -o HostKeyAlias=clearyfi-devbox \
+    -L 8000:api:8000 \
+    -L 5174:localhost:5174
+
+tmux new -A -s dev          # attach, or create on the first run
+```
+
+`HostKeyAlias` pins `known_hosts` to the devbox's own persistent host key instead of to the ngrok
+address. Without it every session produces a fresh "authenticity of host" prompt, which is how
+you stop reading them.
+
+With that session open, on the laptop:
+
+| URL | What it is |
+|---|---|
+| `http://localhost:8000` | the API and the built app — the `api` container |
+| `http://localhost:5174` | the vite dev server, once you run `npm run dev` in the box |
+
+`-L 8000:api:8000` is resolved from the **container's** side of the compose network, so `api` is
+a Docker DNS name and the API needs no published port for this to work.
+
+### Why the app is not tunnelled directly
+
+It would be one line to point an ngrok HTTP tunnel at `api:8000`, and it would be a mistake.
+`api/auth.py`'s `_is_first_party_browser` treats any request carrying `Sec-Fetch-Site:
+same-origin` as first-party and **skips both the API-key requirement and the rate limit** — and
+every browser sends that header. A public URL would therefore serve the entire API, keyless and
+unthrottled, to anyone who found it, over a multi-GB store, while spending our SEC request
+budget. Its own docstring says it is "NOT a security boundary".
+
+Routing everything through SSH means that gate never faces the internet. It also means the
+browser's `Host` header stays `localhost`, so vite's `allowedHosts` check and its HMR websocket
+both work untouched — a public tunnel would have needed both reconfigured.
+
+ngrok is still a third party in the path, but SSH is end-to-end encrypted, so the edge relays
+ciphertext it cannot read. That is a materially different position from an HTTP tunnel, where
+TLS terminates at their edge.
+
+### On the same LAN, skip the tunnel entirely
+
+The tunnel exists for being genuinely elsewhere. On the home network the laptop can reach this
+machine directly, and that path is better in every respect: nothing crosses the public internet,
+no ngrok account is involved, and no corporate proxy is in a position to inspect it (a SASE
+product routes internet-bound traffic through its cloud but leaves RFC1918 destinations alone,
+which is why a LAN session works when a tunnelled one stalls).
+
+`devbox` binds `127.0.0.1:2222` on this host and is deliberately NOT on the LAN, so reach it by
+jumping through the host's own sshd -- which is already hardened, already trusted by the laptop,
+and already allows TCP forwarding:
+
+```sshconfig
+Host devbox
+    HostName 127.0.0.1                 # resolved from the JUMP HOST, so this is devbox
+    Port 2222
+    User dev
+    ProxyJump <you>@192.168.x.x        # this machine on the LAN
+    IdentityFile ~/.ssh/<your key>
+    IdentitiesOnly yes
+    HostKeyAlias clearyfi-devbox
+    LocalForward 8000 api:8000
+    LocalForward 5174 localhost:5174
+    ServerAliveInterval 30
+```
+
+`ssh devbox`, then `tmux new -A -s dev`. The forwards still resolve from the devbox side, so
+`api:8000` is the Docker DNS name exactly as it is over the tunnel, and the same tmux session is
+waiting either way -- the two routes are interchangeable, and the box does not know or care which
+one you arrived by.
+
+Publishing `devbox` on the LAN instead would remove the jump, and is deliberately not done: it
+would put an SSH port on every interface of this machine. The jump costs one extra hop on a local
+network and keeps that surface closed.
+
+### Put a Host block in the laptop's ~/.ssh/config
+
+Worth doing before the first connection, because the failure it prevents is opaque. An
+`IdentityFile`/`IdentitiesOnly` entry scoped to a `Host` pattern only applies to hosts matching
+that pattern -- so a block written for this machine's home IP does **not** apply to
+`*.tcp.ngrok.io`. ssh then falls back to the default identity paths, never offers the key the box
+actually authorises, and the connection dies during auth. On the client that reads as
+`Connection closed by <ngrok edge ip> port <n>`; on the server it is
+`Connection closed ... [preauth]` with no key ever accepted. Nothing in either message mentions
+identities.
+
+```sshconfig
+Host devbox
+    HostName 4.tcp.ngrok.io        # from remote-dev-url.sh; changes on every agent restart
+    Port 15099                     # likewise
+    User dev
+    IdentityFile ~/.ssh/id_ed25519 # the key that is in this machine's ~/.ssh/authorized_keys
+    IdentitiesOnly yes             # offer ONLY that key -- see MaxAuthTries below
+    HostKeyAlias clearyfi-devbox   # pin known_hosts to the box, not to the ngrok address
+    LocalForward 8000 api:8000
+    LocalForward 5174 localhost:5174
+    ServerAliveInterval 30
+```
+
+Then it is just `ssh devbox`, and `tmux new -A -s dev`.
+
+`IdentitiesOnly yes` matters twice over: without it ssh offers every identity it can find,
+including everything in a loaded agent, and each offer burns one of the server's `MaxAuthTries`
+(6). A laptop with a full agent can exhaust that before reaching the right key, and the error --
+"Too many authentication failures" -- points at the count rather than at the cause.
+
+### Diagnosing a refused connection
+
+`sshd` runs at `LogLevel VERBOSE`, so `docker compose logs devbox` names the fingerprint of every
+key offered. Compare it against what the box accepts:
+
+```bash
+docker compose exec devbox ssh-keygen -lf /home/dev/.ssh/authorized_keys
+```
+
+If the offered fingerprint is not in that list, it is a client-side identity problem, not the
+tunnel. To see it from the client's side, add `-v`:
+
+```bash
+ssh -v -i ~/.ssh/<key> -p <port> dev@<host>.tcp.ngrok.io
+```
+
+To prove the tunnel itself is intact independently of any key, compare the host key seen through
+it against the box's own -- they must be identical:
+
+```bash
+ssh-keyscan -t ed25519 -p <port> <host>.tcp.ngrok.io | ssh-keygen -lf -
+docker compose exec devbox ssh-keygen -lf /etc/ssh/keys/ssh_host_ed25519_key.pub
+```
+
+**A public TCP endpoint is scanned within minutes of coming up.** Expect log lines like
+`banner exchange: ... invalid format` from addresses you do not recognise -- those are probes
+sending HTTP at an SSH port, not your connection. Match on the timestamp and the source before
+concluding anything from one.
+
+Note that every connection reaches sshd from the SAME address, the ngrok container's -- the
+public client IP is not visible to it, because the tunnel is the peer. That is why
+`PerSourcePenalties` is off in `deploy/devbox/sshd_config`: left at the OpenSSH default it would
+let those scanners accumulate penalties against the one address you also arrive from, and refuse
+your connections for up to ten minutes at a time. It costs nothing to disable, because the
+mechanism exists to slow password guessing and this box is key-only.
+
+**A connection that STALLS rather than being refused is usually a middlebox, not this setup.**
+The signature is specific and worth recognising: the client prints `SSH2_MSG_KEXINIT sent` with
+no matching `received`, and the server logs `Connection from ...` followed ~120 seconds later by
+`Timeout before authentication` -- LoginGraceTime expiring because the client's key exchange
+never arrived. TCP connected and the banners crossed, so it is not a firewall dropping the port;
+something in the path is inspecting the session and refusing to carry it.
+
+Check where the connection actually came from before blaming the client's config, because a
+corporate proxy egresses from its own address:
+
+```bash
+docker compose logs ngrok | grep "join connections"     # r=<the client's apparent IP>
+curl -s https://rdap.arin.net/registry/ip/<that ip> | python3 -m json.tool | head -20
+```
+
+A corporate SASE/proxy (Zscaler, Netskope, Umbrella and friends) will happily complete the TCP
+handshake and then block the SSH session inside it. If the same key and command work from one
+network and stall from another, the network is the variable -- and no amount of `KexAlgorithms`
+or `IdentityFile` tuning on the client will change it.
+
+Harmless `-v` output, so you can skip past it: `load_hostkeys: fopen
+/Users/you/.ssh/known_hosts2: No such file or directory` is ssh checking for a legacy protocol-2
+known-hosts file that essentially nobody has. It appears on every connection, successful or not,
+and never indicates a problem. The lines that matter are `Offering public key:` (which
+identities were tried) and `Authentications that can continue:` (whether the server accepted
+one).
+
+### Your editor and tmux configuration
+
+The box clones <https://github.com/tijesunimi-peters/nvim.git> and links it into place. That
+repo is the source of truth, not this machine's dotfiles -- which is the point for a box you
+reach from elsewhere: the config that follows you is the one in git, and a change made in the box
+can be committed and pushed rather than becoming local drift.
+
+All of this is in the image and the entrypoint, so it happens on `docker compose --profile
+remote up -d` with no manual step -- verified against a clean-room run with brand-new volumes,
+which cloned the repo, linked the config, installed TPM and came up serving ssh unprompted.
+
+| repo path | linked to |
+|---|---|
+| repo root (`init.lua`, `lua/`) | `~/.config/nvim` |
+| `tmux.conf` | `~/.tmux.conf` |
+| `tmux/themes/` | `~/.tmux/themes/` |
+
+**Symlinked, not copied.** nvim writes `lazy-lock.json` into its own config directory, and with a
+symlink that write lands in the repo working tree where you can review and commit it. A copy
+would strand it somewhere you would never look.
+
+**Fetched over HTTPS, pushed over SSH.** The clone happens unattended at container start, with no
+agent and no key available -- the repo is public, so a read needs no credential. The push URL is
+then set to the `git@github.com:` form, so `git push` from inside the box uses the agent you
+forwarded when you connected (`AllowAgentForwarding yes` is already set on the server; you need
+`ForwardAgent yes` on the client).
+
+**A restart pulls, but never destructively.** `git pull --ff-only` runs only when the working
+tree is clean; with uncommitted changes it logs `LOCAL CHANGES present, skipping pull` and leaves
+them alone. Config edited over ssh mid-session is real work, and a container restart must not be
+the thing that eats it.
+
+**TPM is installed separately**, because the repo's `.gitignore` excludes the plugin directories
+while `tmux.conf` still sources `~/.tmux/plugins/tpm/tpm` on its last line. Without it every
+tmux start ends in an error and no declared plugin loads, so the entrypoint clones it rather than
+leaving it to `prefix + I` -- a box you attach to over a tunnel should come up working.
+
+Plugin **data** stays local to the box: `~/.local/share/nvim` is built inside the home volume on
+first launch (~163 MB, 69 plugins) and kept across restarts.
+
+**The very first `nvim` launch on a new box ends in an error, and that is expected.** lazy installs
+the plugins during that same run, so `mappings.lua`'s `colorscheme catppuccin-frappe` executes
+before catppuccin exists and throws. The second launch is clean. It is a property of the config --
+the same thing happens on any fresh machine -- not of the container. Get it over with before you
+are sitting in front of it:
+
+```bash
+docker compose exec -u dev devbox nvim --headless "+Lazy! sync" +qa
+```
+
+Point it somewhere else with `DEVBOX_DOTFILES_REPO` / `DEVBOX_DOTFILES_PUSH_URL`, or set the
+first to empty to leave the editor unconfigured.
+
+Two things about the config itself, neither introduced by the box:
+
+- **There is no vim configuration in that repo** -- no `vimrc` anywhere in it, and none on this
+  host either (`~/.vim/` holds only `tmp/backup`). Full `vim` is installed and starts with its
+  defaults. If a vimrc is meant to exist, it needs adding to the repo.
+- `lua/options.lua` pins `vim.g.python3_host_prog` to `/Users/grzegorz/.asdf/shims/python3` -- an
+  absolute path from whoever the config was inherited from. It is equally wrong on the host; a
+  fresh box just has no reason to stay quiet about it.
+
+### Things that will bite you
+
+- **tmux sessions do not survive a container restart.** They are process state. `restart:
+  unless-stopped` carries the box across host reboots and Docker daemon restarts, which is most
+  of the value, but `docker compose build` followed by a recreate ends every session.
+- **The box is a second SQLite writer.** `api` holds a write connection; an ingest job run from
+  the devbox is another against the same lock. This is exactly the contention `notebook` avoids
+  with `:ro`. Fine for editing and `pytest`; think before starting a backfill while the API
+  serves.
+- **`node_modules` inside the box is a named volume, not the host's.** The host tree is host-built
+  binaries (`.dockerignore` already refuses to copy it for the same reason), so the two are kept
+  apart in both directions. `npm ci` has to be run once inside the box, and again after a
+  dependency change.
+- **A TCP endpoint needs a card on file, even on ngrok's free tier.** The agent authenticates
+  fine, connects, and is then refused with `ERR_NGROK_8013`: "You must add a credit or debit card
+  before you can use TCP endpoints on a free account... This card will NOT be charged." Add one
+  at <https://dashboard.ngrok.com/settings#id-verification> and it works. This is the one
+  external dependency in the whole setup, and it is worth knowing before you build on it.
+  `docker compose logs ngrok` is where that error appears; the container will have given up
+  after three tries rather than looping.
+- **Locked accounts fail as "Permission denied (publickey)".** If you ever rebuild the user in
+  `deploy/devbox/Dockerfile`, keep the `usermod -p '*'`: `useradd` leaves the account
+  password-*locked*, and sshd refuses a locked account before it ever reads `authorized_keys`.
+  The real reason appears only in `docker compose logs devbox`.
+
+### Local checks, without involving ngrok
+
+`devbox` publishes `127.0.0.1:2222` so the container can be verified on its own:
+
+```bash
+ssh -p 2222 dev@127.0.0.1 'whoami; tmux -V; node -v; python -V'
+ssh -p 2222 dev@127.0.0.1 'curl -sf http://api:8000/health'      # docker DNS works
+ssh -p 2222 -o PubkeyAuthentication=no dev@127.0.0.1             # must be denied
+docker compose logs devbox                                        # sshd's own reasons
+```
+
+Both `devbox` and `ngrok` bind loopback only, sit behind the `remote` profile, and are absent
+from `docker-compose.prod.yml`. `tests/test_compose_shape.py` asserts all three, plus that the
+sshd config stays key-only and that neither service introduces a required environment variable
+(compose evaluates those even when the profile is not selected, which would break every other
+compose command).
+
 ## Running tests / lint (Docker)
 
 The prod `api` image deliberately ships without `tests/` or the `[dev]` extra, so

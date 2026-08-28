@@ -141,5 +141,112 @@ services:
       - ./notebooks:/app/notebooks
     working_dir: /app/notebooks
 
+  # --- remote development (opt-in via profile; NEVER started by `docker compose up`) ---------
+  # A dev container you SSH into, plus the ngrok agent that makes it reachable. Together they
+  # let development continue from a laptop with nothing installed on it but an SSH client.
+  # Start both with:  docker compose --profile remote up -d
+  # Then:             bash deploy/scripts/remote-dev-url.sh   (prints the ssh command)
+  # See docs/DEVELOPMENT.md §9.
+
+  devbox:
+    profiles: ["remote"]
+    # Its OWN Dockerfile, not a stage in the root one -- every stage there is reachable by an
+    # untargeted build, and the image that serves production traffic must never acquire a shell
+    # toolchain or an SSH daemon. See deploy/devbox/Dockerfile's header.
+    build:
+      context: .
+      dockerfile: deploy/devbox/Dockerfile
+    # Survives a host reboot or a Docker daemon restart, which is most of the point of a box you
+    # attach to from elsewhere. It does NOT save tmux sessions -- those are process state and die
+    # with the container (see docs/DEVELOPMENT.md §9).
+    restart: unless-stopped
+    ports:
+      # 127.0.0.1 ONLY, on the same reasoning as `notebook` above. The remote path is the tunnel,
+      # not this mapping; this exists so you can `ssh -p 2222 dev@127.0.0.1` from the host to
+      # verify the container without involving ngrok at all.
+      - "127.0.0.1:2222:22"
+    environment:
+      # The vite dev server proxies /v1 here (clearyfi_frontend/vite.config.ts reads this).
+      # Docker DNS, so it works without `api` publishing a port.
+      CLEARYFI_API: "http://api:8000"
+      # Mount points the entrypoint must hand to the `dev` user. Space-separated. These are named
+      # volumes layered over the bind-mounted repo, so Docker has no image path to take ownership
+      # from and creates them root-owned -- `npm ci` then fails with a permissions error that
+      # never mentions ownership. Kept next to the volume list below so the two cannot drift.
+      DEVBOX_OWNED_DIRS: "/workspace/clearyfi_frontend/node_modules"
+      # Editor + tmux configuration comes from git, not from this host -- see the entrypoint.
+      # Cloned over HTTPS (unattended, no credential needed for a public repo); the PUSH url is
+      # the ssh form, so committing from inside the box uses your forwarded agent.
+      DEVBOX_DOTFILES_REPO: "${DEVBOX_DOTFILES_REPO:-https://github.com/tijesunimi-peters/nvim.git}"
+      DEVBOX_DOTFILES_PUSH_URL: "${DEVBOX_DOTFILES_PUSH_URL:-git@github.com:tijesunimi-peters/nvim.git}"
+    volumes:
+      # The repo itself. Edits made over SSH are edits on the host -- nothing you write is
+      # trapped inside the container.
+      - .:/workspace
+      - devbox-home:/home/dev
+      # Container-owned, deliberately NOT the host's node_modules: that tree is ~400 MB of
+      # host-built binaries, and .dockerignore already refuses to copy it for the same reason.
+      # Run `npm ci` once inside the box to fill this.
+      - devbox-node-modules:/workspace/clearyfi_frontend/node_modules
+      - devbox-sshkeys:/etc/ssh/keys
+      # Whose keys may log in. TWO sources, merged by the entrypoint, because two different
+      # machines need in and their keys live in different files:
+      #   1. the keys allowed to log into THIS machine -- i.e. the laptop's. Note that
+      #      ~/.ssh/id_ed25519.pub would be the wrong file: it authorises this computer.
+      #   2. this computer's own key, so `ssh -p 2222 dev@127.0.0.1` works from the host and the
+      #      box can be checked without involving ngrok.
+      - ${DEVBOX_AUTHORIZED_KEYS:-${HOME}/.ssh/authorized_keys}:/etc/devbox/keys/authorized_keys:ro
+      - ${HOME}/.ssh/id_ed25519.pub:/etc/devbox/keys/this-host.pub:ro
+      # Read-WRITE, unlike `notebook`: this is a place you run ingest jobs and tests from. That
+      # makes it a second writer against the same SQLite lock the API holds -- fine for editing
+      # and pytest, worth a thought before starting a backfill while the API serves.
+      - secfin-data:/app/data
+
+  # The tunnel. ONE tcp endpoint, to SSH only -- the app is reached by forwarding over that
+  # connection (`ssh -L 8000:api:8000`), never by publishing it.
+  #
+  # Why not an http tunnel straight to `api`: api/auth.py's `_is_first_party_browser` ungates the
+  # API for anything sending `Sec-Fetch-Site: same-origin`, which every browser does. A public
+  # URL would therefore serve the whole API keyless and rate-limit-exempt to anyone who found it,
+  # and spend our SEC request budget doing it. Its own docstring says it is "NOT a security
+  # boundary". Over SSH that gate never faces the internet, and ngrok relays ciphertext it
+  # cannot read.
+  ngrok:
+    profiles: ["remote"]
+    image: ngrok/ngrok:latest
+    # on-failure with a CAP, not `unless-stopped` like devbox. The agent handles transient network
+    # loss itself and keeps running; if the PROCESS exits, the cause is fatal and permanent --
+    # a bad authtoken, or ERR_NGROK_8013 (TCP endpoints need a card on file even on the free
+    # tier). `unless-stopped` turns those into an infinite reconnect loop against ngrok's API,
+    # which is both useless and rude. Three tries, then it stays down and the logs say why.
+    restart: on-failure:3
+    command: ["tcp", "devbox:22", "--config", "/etc/ngrok.yml", "--log", "stdout"]
+    environment:
+      # Soft default, NOT the `${VAR:?message}` form `api` uses for SEC_USER_AGENT -- and that is
+      # not an inconsistency. Compose interpolates EVERY service in the file before it applies
+      # `--profile`, so a required variable here would make `docker compose up api` and
+      # `--profile test` fail for anyone without an ngrok account. Empty is caught at run time by
+      # ngrok itself, which prints a clear "requires a verified account and authtoken".
+      # tests/test_compose_shape.py pins this.
+      NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
+    volumes:
+      # One setting: web_addr. There is no --web-addr FLAG on `ngrok tcp` (3.39.8) -- passing one
+      # makes the agent exit on startup and compose restart-loops it. No secret in the file; the
+      # authtoken comes from the environment above.
+      - ./deploy/ngrok/ngrok.yml:/etc/ngrok.yml:ro
+    ports:
+      # The local inspector, and how remote-dev-url.sh learns the assigned address. Loopback on
+      # the HOST; the 0.0.0.0 in ngrok.yml is the container's own interface, which the mapping
+      # would otherwise be unable to reach.
+      - "127.0.0.1:4040:4040"
+    depends_on:
+      - devbox
+
+
 volumes:
   secfin-data:
+  # devbox-only, all three. Separate from secfin-data so `docker compose down -v` reasoning
+  # stays per-concern, and so removing the dev box never touches the database.
+  devbox-home:
+  devbox-node-modules:
+  devbox-sshkeys:
