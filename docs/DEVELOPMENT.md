@@ -336,6 +336,41 @@ ngrok is still a third party in the path, but SSH is end-to-end encrypted, so th
 ciphertext it cannot read. That is a materially different position from an HTTP tunnel, where
 TLS terminates at their edge.
 
+### On the same LAN, skip the tunnel entirely
+
+The tunnel exists for being genuinely elsewhere. On the home network the laptop can reach this
+machine directly, and that path is better in every respect: nothing crosses the public internet,
+no ngrok account is involved, and no corporate proxy is in a position to inspect it (a SASE
+product routes internet-bound traffic through its cloud but leaves RFC1918 destinations alone,
+which is why a LAN session works when a tunnelled one stalls).
+
+`devbox` binds `127.0.0.1:2222` on this host and is deliberately NOT on the LAN, so reach it by
+jumping through the host's own sshd -- which is already hardened, already trusted by the laptop,
+and already allows TCP forwarding:
+
+```sshconfig
+Host devbox
+    HostName 127.0.0.1                 # resolved from the JUMP HOST, so this is devbox
+    Port 2222
+    User dev
+    ProxyJump <you>@192.168.x.x        # this machine on the LAN
+    IdentityFile ~/.ssh/<your key>
+    IdentitiesOnly yes
+    HostKeyAlias clearyfi-devbox
+    LocalForward 8000 api:8000
+    LocalForward 5174 localhost:5174
+    ServerAliveInterval 30
+```
+
+`ssh devbox`, then `tmux new -A -s dev`. The forwards still resolve from the devbox side, so
+`api:8000` is the Docker DNS name exactly as it is over the tunnel, and the same tmux session is
+waiting either way -- the two routes are interchangeable, and the box does not know or care which
+one you arrived by.
+
+Publishing `devbox` on the LAN instead would remove the jump, and is deliberately not done: it
+would put an SSH port on every interface of this machine. The jump costs one extra hop on a local
+network and keeps that surface closed.
+
 ### Put a Host block in the laptop's ~/.ssh/config
 
 Worth doing before the first connection, because the failure it prevents is opaque. An
