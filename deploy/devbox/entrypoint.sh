@@ -74,5 +74,42 @@ for owned in ${DEVBOX_OWNED_DIRS:-}; do
     chown dev:dev "$owned"
 done
 
+# --- editor + tmux configuration -----------------------------------------------------------
+# Copied from read-only mounts rather than bind-mounted into place, and that is the whole design:
+#
+#   * nvim WRITES into its own config directory (lazy.nvim maintains lazy-lock.json there), so a
+#     read-only bind mount at ~/.config/nvim would half-work and fail on plugin sync.
+#   * a read-WRITE bind mount would let the container edit the host's real config, which is not a
+#     trade anyone asked for.
+#   * plugin DATA stays out entirely. ~/.local/share/nvim is 760 MB on the host and full of
+#     compiled, host-built artefacts; the box builds its own into the home volume, once, and
+#     keeps it across restarts.
+#
+# Refreshed on EVERY start, so the host is the single source of truth -- edit configs there and
+# restart the box. The corollary is that config edits made INSIDE the box do not survive a
+# restart, which is why this prints what it replaced.
+DOTFILES=/etc/devbox/dotfiles
+
+seed_dotfile() {
+    src="$1"
+    dest="$2"
+    [ -e "$src" ] || return 0
+    # Docker materialises a MISSING bind source as an empty directory, so "empty" means "not
+    # provided" rather than "provided and empty". Without this check a machine with no nvim
+    # config would get an empty ~/.config/nvim, which nvim treats as a real (broken) config.
+    if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
+        return 0
+    fi
+    rm -rf "$dest"
+    cp -a "$src" "$dest"
+    chown -R dev:dev "$dest"
+    echo "devbox: config: $(basename "$dest")"
+}
+
+install -d -m 755 -o dev -g dev "$DEVHOME/.config"
+seed_dotfile "$DOTFILES/tmux.conf" "$DEVHOME/.tmux.conf"
+seed_dotfile "$DOTFILES/tmux" "$DEVHOME/.tmux"
+seed_dotfile "$DOTFILES/nvim" "$DEVHOME/.config/nvim"
+
 echo "devbox: sshd listening on 22 (key-only, user 'dev')"
 exec /usr/sbin/sshd -D -e

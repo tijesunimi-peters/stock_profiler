@@ -465,6 +465,42 @@ and never indicates a problem. The lines that matter are `Offering public key:` 
 identities were tried) and `Authentications that can continue:` (whether the server accepted
 one).
 
+### Your editor and tmux configuration
+
+The box carries the host's `~/.tmux.conf`, `~/.tmux/` and `~/.config/nvim/`, plus neovim itself
+(pinned to a release tarball rather than Debian's package, which trails the 0.12 series the
+config targets) and the tools that config actually reaches for: `rg` and `fd` for telescope, a C
+compiler for treesitter parsers, `unzip` for mason.
+
+They are **copied in on every container start**, from read-only mounts, not bind-mounted at their
+destinations. That is deliberate on three counts:
+
+- nvim *writes* into its own config directory -- lazy.nvim maintains `lazy-lock.json` there -- so
+  a read-only mount at `~/.config/nvim` would work until the first plugin sync and then fail.
+- a read-write mount would let the container edit the host's real config, which is not a trade
+  worth making for a convenience.
+- plugin **data** stays out entirely. `~/.local/share/nvim` is ~760 MB of host-built artefacts on
+  this machine; the box builds its own into the home volume, once, and keeps it across restarts.
+
+**The host is the source of truth.** Edit configs there and restart the box to pick them up. The
+corollary matters: config edits made *inside* the box do not survive a restart. The entrypoint
+prints each file it seeds, so `docker compose logs devbox` shows what was replaced.
+
+First launch installs plugins, which needs network and a minute or two. To get it over with
+before you are sitting in front of it:
+
+```bash
+docker compose exec -u dev devbox nvim --headless "+Lazy! sync" +qa
+```
+
+Two things about the config itself, neither introduced by the box:
+
+- There is no vim configuration to carry. `~/.vim/` on this machine holds only `tmp/backup` and
+  there is no `~/.vimrc`, so full `vim` is installed but starts with its defaults.
+- `lua/options.lua` pins `vim.g.python3_host_prog` to `/Users/grzegorz/.asdf/shims/python3` -- an
+  absolute path from whoever the config was inherited from. It is equally wrong on the host; it
+  only becomes visible here because a fresh box has no other reason to warn.
+
 ### Things that will bite you
 
 - **tmux sessions do not survive a container restart.** They are process state. `restart:
