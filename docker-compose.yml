@@ -209,8 +209,13 @@ services:
   ngrok:
     profiles: ["remote"]
     image: ngrok/ngrok:latest
-    restart: unless-stopped
-    command: ["tcp", "devbox:22", "--web-addr", "0.0.0.0:4040", "--log", "stdout"]
+    # on-failure with a CAP, not `unless-stopped` like devbox. The agent handles transient network
+    # loss itself and keeps running; if the PROCESS exits, the cause is fatal and permanent --
+    # a bad authtoken, or ERR_NGROK_8013 (TCP endpoints need a card on file even on the free
+    # tier). `unless-stopped` turns those into an infinite reconnect loop against ngrok's API,
+    # which is both useless and rude. Three tries, then it stays down and the logs say why.
+    restart: on-failure:3
+    command: ["tcp", "devbox:22", "--config", "/etc/ngrok.yml", "--log", "stdout"]
     environment:
       # Soft default, NOT the `${VAR:?message}` form `api` uses for SEC_USER_AGENT -- and that is
       # not an inconsistency. Compose interpolates EVERY service in the file before it applies
@@ -219,10 +224,15 @@ services:
       # ngrok itself, which prints a clear "requires a verified account and authtoken".
       # tests/test_compose_shape.py pins this.
       NGROK_AUTHTOKEN: "${NGROK_AUTHTOKEN:-}"
+    volumes:
+      # One setting: web_addr. There is no --web-addr FLAG on `ngrok tcp` (3.39.8) -- passing one
+      # makes the agent exit on startup and compose restart-loops it. No secret in the file; the
+      # authtoken comes from the environment above.
+      - ./deploy/ngrok/ngrok.yml:/etc/ngrok.yml:ro
     ports:
       # The local inspector, and how remote-dev-url.sh learns the assigned address. Loopback on
-      # the HOST; 0.0.0.0 in the command above is the container's own interface, which the
-      # mapping would otherwise be unable to reach.
+      # the HOST; the 0.0.0.0 in ngrok.yml is the container's own interface, which the mapping
+      # would otherwise be unable to reach.
       - "127.0.0.1:4040:4040"
     depends_on:
       - devbox

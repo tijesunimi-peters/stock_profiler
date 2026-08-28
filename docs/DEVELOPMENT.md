@@ -349,9 +349,13 @@ TLS terminates at their edge.
   binaries (`.dockerignore` already refuses to copy it for the same reason), so the two are kept
   apart in both directions. `npm ci` has to be run once inside the box, and again after a
   dependency change.
-- **A TCP endpoint may not be available on every ngrok plan.** One is all this design needs. If
-  `remote-dev-url.sh` reports the agent is up but published no TCP endpoint, that is what it is
-  telling you.
+- **A TCP endpoint needs a card on file, even on ngrok's free tier.** The agent authenticates
+  fine, connects, and is then refused with `ERR_NGROK_8013`: "You must add a credit or debit card
+  before you can use TCP endpoints on a free account... This card will NOT be charged." Add one
+  at <https://dashboard.ngrok.com/settings#id-verification> and it works. This is the one
+  external dependency in the whole setup, and it is worth knowing before you build on it.
+  `docker compose logs ngrok` is where that error appears; the container will have given up
+  after three tries rather than looping.
 - **Locked accounts fail as "Permission denied (publickey)".** If you ever rebuild the user in
   `deploy/devbox/Dockerfile`, keep the `usermod -p '*'`: `useradd` leaves the account
   password-*locked*, and sshd refuses a locked account before it ever reads `authorized_keys`.

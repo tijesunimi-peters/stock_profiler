@@ -1,0 +1,23 @@
+# ngrok agent config for the `ngrok` service in docker-compose.yml.
+#
+# It exists for ONE setting. `web_addr` is a config-file option only -- there is no `--web-addr`
+# flag on `ngrok tcp` (checked against 3.39.8; passing one makes the agent exit immediately and
+# compose restart-loops it). Everything else stays on the command line, where it is visible.
+#
+# Contains NO secret and is committed. The authtoken is passed as NGROK_AUTHTOKEN in the
+# environment, which the agent reads natively -- see .env.example.
+version: "3"
+
+agent:
+  # The local inspector. NESTED under `agent:` -- at the top level (where it lived in config v2)
+  # the agent rejects the file outright with "field web_addr not found in type v3yamlConfig".
+  # Verified with `ngrok config check` rather than guessed.
+  #
+  # 0.0.0.0 is the CONTAINER's interface, not an exposure: compose publishes it as
+  # 127.0.0.1:4040 on the host. Binding the container's localhost (the default) would put it
+  # somewhere the port mapping cannot reach.
+  #
+  # deploy/scripts/remote-dev-url.sh reads the assigned tunnel address from here. ngrok hands out
+  # a new random host:port on every agent restart, so this is the only way to learn the current
+  # one short of scraping the logs.
+  web_addr: 0.0.0.0:4040

@@ -12,8 +12,14 @@ INSPECTOR="${NGROK_INSPECTOR:-http://127.0.0.1:4040}"
 
 if ! curl -sf --max-time 5 "${INSPECTOR}/api/tunnels" -o /dev/null 2>/dev/null; then
     echo "No ngrok inspector at ${INSPECTOR}." >&2
-    echo "Start the tunnel first:  docker compose --profile remote up -d" >&2
-    echo "Then check it came up:   docker compose logs ngrok" >&2
+    echo >&2
+    echo "Start the tunnel:  docker compose --profile remote up -d" >&2
+    echo "If it is already started, it failed on startup. Check:" >&2
+    echo "                   docker compose logs ngrok" >&2
+    echo >&2
+    echo "The most likely cause is ERR_NGROK_8013 -- a TCP endpoint needs a card on" >&2
+    echo "file even on the free tier (it is not charged). Add one at" >&2
+    echo "https://dashboard.ngrok.com/settings#id-verification" >&2
     exit 1
 fi
 
