@@ -74,42 +74,75 @@ for owned in ${DEVBOX_OWNED_DIRS:-}; do
     chown dev:dev "$owned"
 done
 
-# --- editor + tmux configuration -----------------------------------------------------------
-# Copied from read-only mounts rather than bind-mounted into place, and that is the whole design:
+# --- editor + tmux configuration ------------------------------------------------------------
+# Cloned from the dotfiles repo, which is the single source of truth -- not copied from this
+# host. That matters for a box you reach from elsewhere: the config that follows you is the one
+# in git, and a change made here can be committed and pushed rather than being a local drift
+# nobody else sees.
 #
-#   * nvim WRITES into its own config directory (lazy.nvim maintains lazy-lock.json there), so a
-#     read-only bind mount at ~/.config/nvim would half-work and fail on plugin sync.
-#   * a read-WRITE bind mount would let the container edit the host's real config, which is not a
-#     trade anyone asked for.
-#   * plugin DATA stays out entirely. ~/.local/share/nvim is 760 MB on the host and full of
-#     compiled, host-built artefacts; the box builds its own into the home volume, once, and
-#     keeps it across restarts.
+# Layout in the repo: the ROOT is the nvim config; tmux.conf and tmux/themes sit beside it.
 #
-# Refreshed on EVERY start, so the host is the single source of truth -- edit configs there and
-# restart the box. The corollary is that config edits made INSIDE the box do not survive a
-# restart, which is why this prints what it replaced.
-DOTFILES=/etc/devbox/dotfiles
-
-seed_dotfile() {
-    src="$1"
-    dest="$2"
-    [ -e "$src" ] || return 0
-    # Docker materialises a MISSING bind source as an empty directory, so "empty" means "not
-    # provided" rather than "provided and empty". Without this check a machine with no nvim
-    # config would get an empty ~/.config/nvim, which nvim treats as a real (broken) config.
-    if [ -d "$src" ] && [ -z "$(ls -A "$src" 2>/dev/null)" ]; then
-        return 0
-    fi
-    rm -rf "$dest"
-    cp -a "$src" "$dest"
-    chown -R dev:dev "$dest"
-    echo "devbox: config: $(basename "$dest")"
-}
+# Cloned over HTTPS because this runs unattended at container start, with no agent and no key --
+# the repo is public, so a read needs no credential. The PUSH url is then set to the ssh form, so
+# `git push` from inside the box uses the agent you forwarded when you connected
+# (`AllowAgentForwarding yes` in sshd_config, `ForwardAgent yes` on the client).
+#
+# Symlinked into place rather than copied, deliberately: nvim writes lazy-lock.json into its own
+# config directory, and with a symlink that write lands in the repo working tree where it can be
+# reviewed and committed. A copy would strand it.
+DOTFILES_REPO="${DEVBOX_DOTFILES_REPO:-https://github.com/tijesunimi-peters/nvim.git}"
+DOTFILES_PUSH="${DEVBOX_DOTFILES_PUSH_URL:-git@github.com:tijesunimi-peters/nvim.git}"
+DOTFILES_DIR="$DEVHOME/.config/dotfiles"
+TPM_DIR="$DEVHOME/.tmux/plugins/tpm"
 
 install -d -m 755 -o dev -g dev "$DEVHOME/.config"
-seed_dotfile "$DOTFILES/tmux.conf" "$DEVHOME/.tmux.conf"
-seed_dotfile "$DOTFILES/tmux" "$DEVHOME/.tmux"
-seed_dotfile "$DOTFILES/nvim" "$DEVHOME/.config/nvim"
+
+if [ -n "$DOTFILES_REPO" ]; then
+    if [ -d "$DOTFILES_DIR/.git" ]; then
+        # Fast-forward only, and ONLY when the tree is clean. Uncommitted work in here is real
+        # work -- config edited over ssh in the middle of a session -- and a container restart
+        # must never be the thing that eats it.
+        if [ -z "$(su dev -c "git -C '$DOTFILES_DIR' status --porcelain" 2>/dev/null)" ]; then
+            su dev -c "git -C '$DOTFILES_DIR' pull --ff-only --quiet" 2>/dev/null \
+                && echo "devbox: dotfiles: updated from ${DOTFILES_REPO}" \
+                || echo "devbox: dotfiles: pull failed (offline?), using the checkout as-is"
+        else
+            echo "devbox: dotfiles: LOCAL CHANGES present, skipping pull -- commit or discard them"
+        fi
+    else
+        if su dev -c "git clone --quiet '$DOTFILES_REPO' '$DOTFILES_DIR'" 2>/dev/null; then
+            su dev -c "git -C '$DOTFILES_DIR' remote set-url --push origin '$DOTFILES_PUSH'" 2>/dev/null
+            echo "devbox: dotfiles: cloned ${DOTFILES_REPO}"
+        else
+            echo "devbox: dotfiles: clone FAILED (no network?) -- editor will start unconfigured" >&2
+        fi
+    fi
+fi
+
+# Link the three destinations at the pieces of the repo. `ln -sfn` is idempotent and replaces a
+# stale link without following it into the target.
+if [ -d "$DOTFILES_DIR" ]; then
+    # rm -rf first, every time. `ln -sfn` onto a REAL directory does not replace it -- it creates
+    # the link inside it -- so a destination left over from an earlier copy-based run (or from a
+    # previous layout) would silently nest instead of relinking.
+    install -d -m 755 -o dev -g dev "$DEVHOME/.tmux"
+    rm -rf "$DEVHOME/.config/nvim" "$DEVHOME/.tmux.conf" "$DEVHOME/.tmux/themes"
+    su dev -c "ln -sfn '$DOTFILES_DIR' '$DEVHOME/.config/nvim'"
+    su dev -c "ln -sfn '$DOTFILES_DIR/tmux.conf' '$DEVHOME/.tmux.conf'"
+    su dev -c "ln -sfn '$DOTFILES_DIR/tmux/themes' '$DEVHOME/.tmux/themes'"
+    echo "devbox: config: nvim + tmux linked from the dotfiles checkout"
+fi
+
+# TPM is NOT in the repo -- its .gitignore excludes the plugin directories -- but tmux.conf's
+# last line sources ~/.tmux/plugins/tpm/tpm. Without this, every tmux start ends in an error and
+# none of the declared plugins load. Cloned here rather than left to `prefix + I`, because a box
+# you attach to over a tunnel should come up working.
+if [ ! -d "$TPM_DIR/.git" ]; then
+    install -d -m 755 -o dev -g dev "$DEVHOME/.tmux/plugins"
+    su dev -c "git clone --quiet --depth 1 https://github.com/tmux-plugins/tpm '$TPM_DIR'" 2>/dev/null \
+        && echo "devbox: config: tpm installed" \
+        || echo "devbox: config: tpm clone failed (no network?) -- tmux plugins will not load" >&2
+fi
 
 echo "devbox: sshd listening on 22 (key-only, user 'dev')"
 exec /usr/sbin/sshd -D -e

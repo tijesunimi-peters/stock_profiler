@@ -174,6 +174,11 @@ services:
       # from and creates them root-owned -- `npm ci` then fails with a permissions error that
       # never mentions ownership. Kept next to the volume list below so the two cannot drift.
       DEVBOX_OWNED_DIRS: "/workspace/clearyfi_frontend/node_modules"
+      # Editor + tmux configuration comes from git, not from this host -- see the entrypoint.
+      # Cloned over HTTPS (unattended, no credential needed for a public repo); the PUSH url is
+      # the ssh form, so committing from inside the box uses your forwarded agent.
+      DEVBOX_DOTFILES_REPO: "${DEVBOX_DOTFILES_REPO:-https://github.com/tijesunimi-peters/nvim.git}"
+      DEVBOX_DOTFILES_PUSH_URL: "${DEVBOX_DOTFILES_PUSH_URL:-git@github.com:tijesunimi-peters/nvim.git}"
     volumes:
       # The repo itself. Edits made over SSH are edits on the host -- nothing you write is
       # trapped inside the container.
@@ -192,13 +197,6 @@ services:
       #      box can be checked without involving ngrok.
       - ${DEVBOX_AUTHORIZED_KEYS:-${HOME}/.ssh/authorized_keys}:/etc/devbox/keys/authorized_keys:ro
       - ${HOME}/.ssh/id_ed25519.pub:/etc/devbox/keys/this-host.pub:ro
-      # Editor + tmux config, READ-ONLY, copied into place by the entrypoint on every start (see
-      # its comment for why copied and not mounted at the destination). The host stays the source
-      # of truth: edit there, restart the box. Plugin DATA is deliberately not here -- the host's
-      # ~/.local/share/nvim is 760 MB of host-built artefacts and the box builds its own.
-      - ${HOME}/.tmux.conf:/etc/devbox/dotfiles/tmux.conf:ro
-      - ${HOME}/.tmux:/etc/devbox/dotfiles/tmux:ro
-      - ${HOME}/.config/nvim:/etc/devbox/dotfiles/nvim:ro
       # Read-WRITE, unlike `notebook`: this is a place you run ingest jobs and tests from. That
       # makes it a second writer against the same SQLite lock the API holds -- fine for editing
       # and pytest, worth a thought before starting a backfill while the API serves.

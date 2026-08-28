@@ -467,39 +467,55 @@ one).
 
 ### Your editor and tmux configuration
 
-The box carries the host's `~/.tmux.conf`, `~/.tmux/` and `~/.config/nvim/`, plus neovim itself
-(pinned to a release tarball rather than Debian's package, which trails the 0.12 series the
-config targets) and the tools that config actually reaches for: `rg` and `fd` for telescope, a C
-compiler for treesitter parsers, `unzip` for mason.
+The box clones <https://github.com/tijesunimi-peters/nvim.git> and links it into place. That
+repo is the source of truth, not this machine's dotfiles -- which is the point for a box you
+reach from elsewhere: the config that follows you is the one in git, and a change made in the box
+can be committed and pushed rather than becoming local drift.
 
-They are **copied in on every container start**, from read-only mounts, not bind-mounted at their
-destinations. That is deliberate on three counts:
+| repo path | linked to |
+|---|---|
+| repo root (`init.lua`, `lua/`) | `~/.config/nvim` |
+| `tmux.conf` | `~/.tmux.conf` |
+| `tmux/themes/` | `~/.tmux/themes/` |
 
-- nvim *writes* into its own config directory -- lazy.nvim maintains `lazy-lock.json` there -- so
-  a read-only mount at `~/.config/nvim` would work until the first plugin sync and then fail.
-- a read-write mount would let the container edit the host's real config, which is not a trade
-  worth making for a convenience.
-- plugin **data** stays out entirely. `~/.local/share/nvim` is ~760 MB of host-built artefacts on
-  this machine; the box builds its own into the home volume, once, and keeps it across restarts.
+**Symlinked, not copied.** nvim writes `lazy-lock.json` into its own config directory, and with a
+symlink that write lands in the repo working tree where you can review and commit it. A copy
+would strand it somewhere you would never look.
 
-**The host is the source of truth.** Edit configs there and restart the box to pick them up. The
-corollary matters: config edits made *inside* the box do not survive a restart. The entrypoint
-prints each file it seeds, so `docker compose logs devbox` shows what was replaced.
+**Fetched over HTTPS, pushed over SSH.** The clone happens unattended at container start, with no
+agent and no key available -- the repo is public, so a read needs no credential. The push URL is
+then set to the `git@github.com:` form, so `git push` from inside the box uses the agent you
+forwarded when you connected (`AllowAgentForwarding yes` is already set on the server; you need
+`ForwardAgent yes` on the client).
 
-First launch installs plugins, which needs network and a minute or two. To get it over with
-before you are sitting in front of it:
+**A restart pulls, but never destructively.** `git pull --ff-only` runs only when the working
+tree is clean; with uncommitted changes it logs `LOCAL CHANGES present, skipping pull` and leaves
+them alone. Config edited over ssh mid-session is real work, and a container restart must not be
+the thing that eats it.
+
+**TPM is installed separately**, because the repo's `.gitignore` excludes the plugin directories
+while `tmux.conf` still sources `~/.tmux/plugins/tpm/tpm` on its last line. Without it every
+tmux start ends in an error and no declared plugin loads, so the entrypoint clones it rather than
+leaving it to `prefix + I` -- a box you attach to over a tunnel should come up working.
+
+Plugin **data** stays local to the box: `~/.local/share/nvim` is built inside the home volume on
+first launch and kept across restarts. To get that minute out of the way up front:
 
 ```bash
 docker compose exec -u dev devbox nvim --headless "+Lazy! sync" +qa
 ```
 
+Point it somewhere else with `DEVBOX_DOTFILES_REPO` / `DEVBOX_DOTFILES_PUSH_URL`, or set the
+first to empty to leave the editor unconfigured.
+
 Two things about the config itself, neither introduced by the box:
 
-- There is no vim configuration to carry. `~/.vim/` on this machine holds only `tmp/backup` and
-  there is no `~/.vimrc`, so full `vim` is installed but starts with its defaults.
+- **There is no vim configuration in that repo** -- no `vimrc` anywhere in it, and none on this
+  host either (`~/.vim/` holds only `tmp/backup`). Full `vim` is installed and starts with its
+  defaults. If a vimrc is meant to exist, it needs adding to the repo.
 - `lua/options.lua` pins `vim.g.python3_host_prog` to `/Users/grzegorz/.asdf/shims/python3` -- an
-  absolute path from whoever the config was inherited from. It is equally wrong on the host; it
-  only becomes visible here because a fresh box has no other reason to warn.
+  absolute path from whoever the config was inherited from. It is equally wrong on the host; a
+  fresh box just has no reason to stay quiet about it.
 
 ### Things that will bite you
 
