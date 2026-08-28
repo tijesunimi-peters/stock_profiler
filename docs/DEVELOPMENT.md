@@ -403,6 +403,26 @@ let those scanners accumulate penalties against the one address you also arrive 
 your connections for up to ten minutes at a time. It costs nothing to disable, because the
 mechanism exists to slow password guessing and this box is key-only.
 
+**A connection that STALLS rather than being refused is usually a middlebox, not this setup.**
+The signature is specific and worth recognising: the client prints `SSH2_MSG_KEXINIT sent` with
+no matching `received`, and the server logs `Connection from ...` followed ~120 seconds later by
+`Timeout before authentication` -- LoginGraceTime expiring because the client's key exchange
+never arrived. TCP connected and the banners crossed, so it is not a firewall dropping the port;
+something in the path is inspecting the session and refusing to carry it.
+
+Check where the connection actually came from before blaming the client's config, because a
+corporate proxy egresses from its own address:
+
+```bash
+docker compose logs ngrok | grep "join connections"     # r=<the client's apparent IP>
+curl -s https://rdap.arin.net/registry/ip/<that ip> | python3 -m json.tool | head -20
+```
+
+A corporate SASE/proxy (Zscaler, Netskope, Umbrella and friends) will happily complete the TCP
+handshake and then block the SSH session inside it. If the same key and command work from one
+network and stall from another, the network is the variable -- and no amount of `KexAlgorithms`
+or `IdentityFile` tuning on the client will change it.
+
 Harmless `-v` output, so you can skip past it: `load_hostkeys: fopen
 /Users/you/.ssh/known_hosts2: No such file or directory` is ssh checking for a legacy protocol-2
 known-hosts file that essentially nobody has. It appears on every connection, successful or not,
