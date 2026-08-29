@@ -1942,6 +1942,42 @@ parser beats a wrong one" trade-off `sec/exhibits.py` established for EX-21.
 explanatory paragraph, when present, lives in the same report region this module already
 segments.
 
+### `normalize/classification_taxonomy.py` + `normalize/theme_classifier.py` (Wave B §8.4 step 4)
+
+The anchor corpus (owed since step 1) and the classifier wired against it. Two anchor sets:
+`RISK_THEMES` (the 9 `QUAL_THEMES` names, verbatim — not a fresh list; §5's taxonomy-ownership
+decision stays open) and `CAM_TOPICS` (extends `CAMS`' 5 fixture names to ~14, cross-checked
+against real CAM matters this project has actually extracted). Each anchor is a short, human-
+written CONCEPT description, embedded once and cached per-process — never per-filing.
+
+**Two directions, not one** — `classify_sentences` (does a many-passage section like Risk Factors
+touch a theme, and which passage is the excerpt) and `classify_topic` (which single topic does one
+already-segmented, single-subject CAM matter belong to). They're asking different questions and
+share only the embedding/cosine primitives underneath, not a single function.
+
+**A real, load-bearing finding from verifying against actual filings, not assumed**: per-SENTENCE
+classification does not discriminate between risk themes — tested against Apple's real 259-sentence
+Risk Factors section, every one of the 9 anchors scored in a narrow 0.71-0.87 band, and two
+unrelated themes landed on the identical best-matching sentence. Grouping into ~4-sentence passages
+before embedding (`DEFAULT_CHUNK_SIZE`) reproduced the clean separation `classify_topic` already
+had for CAM matters (a naturally passage-sized unit): on-topic themes clustered at 0.74-0.82 with
+genuinely on-topic excerpts, weak/absent themes scored 0.66-0.68. `DEFAULT_THEME_THRESHOLD` and
+`DEFAULT_TOPIC_THRESHOLD` (both 0.70) are set from that evidence — real and directionally
+confirmed, but from one filing's score distribution, not a validated production threshold; both
+are explicitly flagged provisional in `theme_classifier.py`, pending a broader-sample re-tune
+before this classifies live filings unsupervised. Full account, including the exact scores and
+excerpts that exposed the per-sentence failure: `theme_classifier.py`'s module docstring.
+
+**Also fixed here**: an `id()`-based anchor-vector cache silently returned a PRIOR anchor set's
+vectors for an unrelated one, because CPython can and does reuse a freed short-lived tuple's memory
+address — caught by a test producing identical scores across different anchors, not by inspection.
+Now keyed on anchor CONTENT (each description, joined), correct for any anchor tuple.
+
+**Not yet wired to ingest or a results table.** Nothing calls this from `section_backfill.py` or a
+CAM-equivalent backfill, and no `section_theme_matches`/`cam_topic_classifications`-shaped table
+exists to persist a result — this step is the classifier module, verified against real embeddings,
+same "primitive first, pipeline wiring separately" scoping as steps 1 and 3.
+
 ### Schema versioning, same convention as `filing_cover_facts`
 
 `SECTIONS_SCHEMA_VERSION` / `METRICS_SCHEMA_VERSION` / `SIMILARITY_SCHEMA_VERSION` /

@@ -141,8 +141,13 @@ Matters block — a repeating structure needing its own `filing_cam_matters` tab
   JPMorgan Chase), verified end-to-end post-fix. Full account in `sec/filing_cam.py`'s docstring
   and `docs/DATA_MODEL.md`. `CAMS` classification itself (embedding-cosine against the new
   taxonomy) still needs step 4.
-- [ ] **§8.4 step 4** — wire the classifier against both taxonomies (needs the anchor corpus from
-  step 1 and, for CAMs, step 3).
+- [x] **§8.4 step 4** — wire the classifier against both taxonomies. ✅ DONE 2026-08-27, classifier
+  module only (not wired to ingest/a results table). Real finding: per-sentence risk-theme
+  classification doesn't discriminate on real data (all 9 themes scored 0.71-0.87 with excerpt
+  collisions on Apple's real Risk Factors) — fixed by grouping into ~4-sentence passages, which
+  reproduced CAM classification's clean separation. Both default thresholds (0.70) are explicitly
+  provisional pending a broader-sample re-tune. Also fixed a real `id()`-based anchor-cache bug.
+  Full account in `normalize/theme_classifier.py` and `docs/DATA_MODEL.md`.
 - [ ] **§8.4 step 5** — the cheap Tier 1 regex fields; no dependency on the above, shippable any
   time.
 

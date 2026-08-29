@@ -560,7 +560,22 @@ it contains a **repeating block** — typically 2-4 named matters, each with its
    separated), JPMorgan Chase (2, recovered from one merged blob). `title_text` is best-effort
    only, never load-bearing for topic (that's the classifier's job, §8.1/§8.3).
 4. Wire the embedding classifier against both the risk-theme taxonomy (`QUAL_THEMES`/`THEME_LANG`/
-   `EMERGING`/`SIGNAL_MATRIX`) and the CAM taxonomy (`CAMS`) — one module, two anchor sets.
+   `EMERGING`/`SIGNAL_MATRIX`) and the CAM taxonomy (`CAMS`). **✅ DONE 2026-08-27, classifier
+   module only** — `normalize/classification_taxonomy.py` (`RISK_THEMES`: the 9 `QUAL_THEMES`
+   names verbatim; `CAM_TOPICS`: extends `CAMS`' 5 fixture names to ~14) +
+   `normalize/theme_classifier.py` (`classify_sentences`/`classify_topic`). **A real finding, not
+   assumed**: per-sentence classification does NOT discriminate between risk themes on real data —
+   run against Apple's actual 259-sentence Risk Factors section, all 9 anchors scored in a narrow
+   0.71-0.87 band with two unrelated themes landing on the identical best sentence. Grouping into
+   ~4-sentence passages before embedding fixed it, reproducing the clean separation
+   `classify_topic` already had on real CAM matters (naturally passage-sized): on-topic themes
+   0.74-0.82, weak/absent themes 0.66-0.68. Verified end-to-end: 5/9 real Apple risk themes matched
+   sensibly at the chosen default threshold (0.70), and all 3 real CAM matters tested (Apple,
+   Microsoft x2) classified correctly. Both defaults are explicitly flagged PROVISIONAL in
+   `theme_classifier.py` — real and directionally confirmed, but from one filing's score
+   distribution, not validated at scale. Also fixed a real `id()`-based anchor-cache bug found via
+   testing, not inspection (see the module docstring). **Not yet wired to ingest or a results
+   table** — same "primitive first" scoping as steps 1 and 3.
 5. Tier 1 regex fields (`GOING_CONCERN` MVP, `NON_GAAP`, cyber framework name,
    `SIGNAL_MATRIX.rf/nw`/`RF_VOLUME.netNew`) have no dependency on 1-4 and are shippable any
    time — cheapest wins first, if sequencing by effort rather than by the table order above.
